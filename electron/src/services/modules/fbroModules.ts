@@ -66,13 +66,14 @@ function module(
   name: string,
   category: LingBuilderModuleManifest['category'],
   description: string,
-  entries: ReturnType<typeof api>[]
+  entries: ReturnType<typeof api>[],
+  version = '2.1.0'
 ): LingBuilderModuleManifest {
   return {
     schemaVersion: 2,
     id,
     name,
-    version: '2.1.0',
+    version,
     category,
     description,
     author: 'LingBuilder',
@@ -267,7 +268,11 @@ const FBRO_NETWORK_PARAM_DOCS: ParamDocTable = {
   通道名: '页面拦截挂钩脚本使用的通道名称，须与页面侧注册的通道一致。',
   文本: '要发送的文本内容（按 UTF-8 传输）。',
   缓冲句柄: '“FBro缓冲_从文本”“FBro任务_取缓冲”等返回的受管缓冲句柄；释放后再用返回负错误码。',
-  WS客户端句柄: 'WebSocket 拦截事件字段 websocket 携带的受管客户端句柄；为 0 表示当前没有客户端。'
+  WS客户端句柄: 'WebSocket 拦截事件字段 websocket 携带的受管客户端句柄；为 0 表示当前没有客户端。',
+  任务ID: '“FBro异步请求_发起”返回的请求任务句柄，或“FBro网络_取下载数据事件”返回的事件任务句柄；释放后再使用返回负错误码。',
+  实例句柄: '“FBro_后台创建”返回的后台实例句柄（长整数）；实例关闭或进程退出后失效。',
+  请求句柄: '“FBro请求_创建”创建的受管请求对象句柄；发起后请求对象只读。',
+  URL请求句柄: '异步 URL 请求任务结果中 urlRequest 字段的受管请求句柄（或 FBro任务_取对象 直取）；用 FBro异步请求_取状态/取响应对象/取消 操作。'
 };
 
 const eventEntries = [
@@ -357,7 +362,7 @@ const automationEntries = [
   api('FBro框架_载入请求', 'LB_FBro_FrameLoadRequest', [{ name: '框架句柄', type: 'longLong' }, { name: '请求句柄', type: 'longLong' }], 'int', '让指定框架按受管请求对象载入（URL、方法、头与提交体）。', { visibility: 'advanced' }),
   api('FBro框架_发送进程消息', 'LB_FBro_FrameSendProcessMessage', [{ name: '框架句柄', type: 'longLong' }, { name: '目标进程', type: 'int' }, { name: '消息句柄', type: 'longLong' }], 'int', '向目标进程发送进程消息；目标进程 0=浏览器进程、1=渲染进程。', { visibility: 'advanced' }),
   api('FBro框架_创建URL请求', 'LB_FBro_FrameCreateUrlRequestAsync', [{ name: '框架句柄', type: 'longLong' }, { name: '请求句柄', type: 'longLong' }], 'longLong', '在框架所属上下文中异步发起 URL 请求；任务结果包含 urlRequest 句柄与 status/error/cached 字段。', { visibility: 'advanced' }),
-  api('FBro异步请求_发起', 'LB_FBro_UrlRequestStartAsync', [{ name: '控件名', type: 'controlRef' }, { name: '请求句柄', type: 'longLong' }], 'longLong', '使用指定浏览器会话上下文异步发起受管 URL 请求；任务结果包含 urlRequest 句柄、status、error 与 cached。', { visibility: 'advanced' }),
+  api('FBro异步请求_发起', 'LB_FBro_UrlRequestStartAsync', [{ name: '控件名', type: 'controlRef' }, { name: '请求句柄', type: 'longLong' }], 'longLong', '使用指定浏览器会话上下文异步发起受管 URL 请求（Chromium 网络栈直发，TLS/H2 指纹与内核浏览器一致，适合纯协议直连接口）；任务结果包含 urlRequest 句柄、status、error 与 cached。本任务同时是请求的完成事件：FBro任务_等待 后可直接取响应对象；下载数据要在任务进行中用 FBro网络_取下载数据事件 领取。请求头务必先设 Accept-Encoding: identity（Chromium 不自动解压正文）。多步流程必须先声明不带初始化的局部变量再按序赋值（带初始化声明会被提升到子程序最前，设置类调用会被排到发起之后而失败，请求发起后对象只读）。', { visibility: 'advanced' }),
   api('FBro异步请求_取状态', 'LB_FBro_UrlRequestGetStatus', [{ name: 'URL请求句柄', type: 'longLong' }], 'int', '读取 URL 请求官方状态（1=未知 2=进行中 3=成功 4=失败）。', { visibility: 'advanced' }),
   api('FBro异步请求_取原请求', 'LB_FBro_UrlRequestGetRequestObject', [{ name: 'URL请求句柄', type: 'longLong' }], 'longLong', '取得 URL 请求对应的受管请求对象句柄。', { visibility: 'advanced' }),
   api('FBro填表_点击元素', 'LB_FBro_FrameTianBiaoClick', [{ name: '框架句柄', type: 'longLong' }, { name: '选择器', type: 'wideString' }, { name: '序号', type: 'int' }], 'int', '按 CSS 选择器点击第 index 个匹配元素（从 0 起）。', { visibility: 'advanced' }),
@@ -508,7 +513,7 @@ const objectEntries = [
   api('FBro响应_置地址', 'LB_FBro_ResponseSetURL', [{ name: '响应句柄', type: 'longLong' }, { name: '地址', type: 'wideString' }], 'int', '设置响应地址。', { visibility: 'advanced' }),
   api('FBro响应_取协议头', 'LB_FBro_ResponseGetHeaderByName', [{ name: '响应句柄', type: 'longLong' }, { name: '头名', type: 'wideString' }], 'wideString', '按名称取响应协议头。', { visibility: 'advanced' }),
   api('FBro响应_置协议头', 'LB_FBro_ResponseSetHeaderByName', [{ name: '响应句柄', type: 'longLong' }, { name: '头名', type: 'wideString' }, { name: '值', type: 'wideString' }, { name: '覆盖同名', type: 'bool' }], 'int', '按名称设置响应协议头。', { visibility: 'advanced' }),
-  api('FBro响应_取协议头映射JSON', 'LB_FBro_ResponseGetHeaderMap', [{ name: '响应句柄', type: 'longLong' }], 'wideString', '取全部协议头，返回 {"名":"值"} JSON。', { visibility: 'advanced' }),
+  api('FBro响应_取协议头映射JSON', 'LB_FBro_ResponseGetHeaderMap', [{ name: '响应句柄', type: 'longLong' }], 'wideString', '取全部协议头，返回 [{"name":"...","value":"..."}] JSON 数组；保持服务端顺序，多值头（如 Set-Cookie）会出现多个同名条目。响应句柄可来自资源响应事件，或 FBro异步请求_取响应对象 返回的纯协议请求响应。', { visibility: 'advanced' }),
   api('FBro响应_设置协议头映射JSON', 'LB_FBro_ResponseSetHeaderMapJson', [{ name: '响应句柄', type: 'longLong' }, { name: '协议头JSON', type: 'wideString' }, { name: '清除原有', type: 'bool' }], 'int', '按 [{"name":..,"value":..}] JSON 批量设置协议头。', { visibility: 'advanced' }),
   api('FBro响应_删除协议头', 'LB_FBro_ResponseDeleteHeaderMap', [{ name: '响应句柄', type: 'longLong' }, { name: '头名', type: 'wideString' }], 'int', '按名称删除协议头。', { visibility: 'advanced' }),
   api('FBro对象_取类型', 'LB_FBro_ObjectGetType', [{ name: '对象句柄', type: 'longLong' }], 'int', '取得受管对象注册表类型。', { visibility: 'advanced' }),
@@ -657,7 +662,30 @@ const networkEntries = [
   api('FBroWS客户端_取协议', 'LB_FBro_WssGetProtocol', [{ name: 'WS客户端句柄', type: 'longLong' }], 'wideString', '读取被拦截 WebSocket 客户端的子协议。', { visibility: 'advanced' }),
   api('FBroWS客户端_取扩展', 'LB_FBro_WssGetExtensions', [{ name: 'WS客户端句柄', type: 'longLong' }], 'wideString', '读取被拦截 WebSocket 客户端的扩展协商结果。', { visibility: 'advanced' }),
   api('FBroWS客户端_发送文本', 'LB_FBro_WssSend', [{ name: 'WS客户端句柄', type: 'longLong' }, { name: '文本', type: 'wideString' }], 'int', '通过被拦截的 WebSocket 客户端发送文本帧。', { visibility: 'advanced' }),
-  api('FBroWS客户端_发送缓冲', 'LB_FBro_WssSendBuffer', [{ name: 'WS客户端句柄', type: 'longLong' }, { name: '缓冲句柄', type: 'longLong' }], 'int', '通过被拦截的 WebSocket 客户端发送二进制帧（受管缓冲）。', { visibility: 'advanced' })
+  api('FBroWS客户端_发送缓冲', 'LB_FBro_WssSendBuffer', [{ name: 'WS客户端句柄', type: 'longLong' }, { name: '缓冲句柄', type: 'longLong' }], 'int', '通过被拦截的 WebSocket 客户端发送二进制帧（受管缓冲）。', { visibility: 'advanced' }),
+  api('FBro异步请求_取响应对象', 'LB_FBro_UrlRequestGetResponse', [{ name: 'URL请求句柄', type: 'longLong' }], 'longLong', '取得 URL 请求的响应对象句柄；必须在请求完成（FBro异步请求_发起 的任务进入完成）之后调用，请求未完成或无响应返回 0。响应头/状态码用 FBro响应_取状态码、FBro响应_取协议头、FBro响应_取协议头映射JSON 读取，用完 FBro对象_释放。受管句柄判空只能 <> 0，禁止 > 0（按长整数打印恒为负数）。', { visibility: 'advanced' }),
+  api('FBro异步请求_取消', 'LB_FBro_UrlRequestCancel', [{ name: 'URL请求句柄', type: 'longLong' }], 'int', '取消进行中的 URL 请求（Chromium 网络栈中断）；已完成请求无副作用。取消后下载数据事件停止投递。', { visibility: 'advanced' }),
+  api('FBro网络_取下载数据事件', 'LB_FBro_UrlRequestNextDownloadData', [{ name: '任务ID', type: 'longLong' }], 'longLong', '领取（或预约）纯协议请求的下一个下载块事件；参数是 FBro异步请求_发起 返回的任务句柄。返回事件任务句柄：任务结果为 {"kind":"downloadData","size":N}，用 FBro网络_取下载块 取回字节（一次性）。事件未到达时任务保持进行中（预约）；请求完成后队列已排空时领取立即得到失败任务（FBro任务_取状态=3），排空循环以「状态 <> 2」收尾即可。', { visibility: 'advanced' }),
+  api('FBro网络_取下载块', 'LB_FBro_TaskTakeUrlRequestBufferResult', [{ name: '任务ID', type: 'longLong' }], 'longLong', '从 FBro网络_取下载数据事件 返回的事件任务取回受管字节缓冲（一次性，重复提取返回 0）；返回 0 表示任务未成功或缓冲已提取。配合 FBro缓冲_转十六进制 拼接收集、FBro缓冲_保存文件 落盘。块按原始字节交付（Chromium 不自动解压，务必先设 Accept-Encoding: identity）；多块正文先拼接十六进制再一次性解码，禁止逐块转文本（块边界会切开 UTF-8 字符）。', { visibility: 'advanced' }),
+  {
+    // 与 FBro异步请求_发起 共用桥导出 LB_FBro_UrlRequestStartAsync（别名唯一性门禁不允许重复登记），
+    // 因此不走 api() 工厂、不设别名；这是 FBro_实例* 句柄族的控制台/纯代码入口：
+    // FBro_后台创建 的实例句柄不进设计器实例表，FBro异步请求_发起(控件名) 在控制台解析不到。
+    command: {
+      name: 'FBro网络_实例发起请求',
+      signature: 'FBro网络_实例发起请求(实例句柄, 请求句柄)',
+      description: '在 FBro_后台创建 返回的实例句柄上异步发起受管 URL 请求（控制台/纯代码无控件场景用；窗口项目带控件的用 FBro异步请求_发起）；返回任务句柄即完成事件，任务结果 JSON 含 urlRequest/status/error/cached，FBro任务_取对象 直取 URL 请求句柄。请求头务必先设 Accept-Encoding: identity；多步流程先声明（不带初始化）后按序赋值。实例句柄无效返回 0。',
+      insertText: 'FBro网络_实例发起请求($1, $2)',
+      returnType: '长整数型',
+      visibility: 'advanced'
+    } as ModuleCommandContribution,
+    binding: {
+      command: 'FBro网络_实例发起请求',
+      runtimeName: 'FBro网络_实例发起请求',
+      parameters: [{ name: '实例句柄', type: 'longLong' }, { name: '请求句柄', type: 'longLong' }],
+      returnType: 'longLong'
+    } as ModuleCommandBinding
+  }
 ];
 
 const vipAggregateOptions = {
@@ -672,7 +700,9 @@ const FBRO_VIP_PARAM_DOCS: ParamDocTable = {
   用户名: '启动代理认证用户名。',
   密码: '启动代理认证密码。',
   JSON: '完整指纹配置 JSON 文本，键见模块文档。',
-  地址: '启动代理地址，格式 "scheme://host:port"。'
+  地址: '启动代理地址，格式 "scheme://host:port"。',
+  实例句柄: 'FBro_后台创建 或 FBro_实例打开原生UI 返回的后台/弹窗实例句柄。',
+  开关: '1 开启新窗口转标签页，0 关闭（随实例销毁失效）。'
 };
 
 const vipEntries = [
@@ -686,7 +716,27 @@ const vipEntries = [
   api('FBroVIP_扩展异步命令', 'LB_FBro_VipExtensionCommandAsync', [{ name: '控件名', type: 'controlRef' }, { name: '命令', type: 'wideString' }, { name: '参数JSON', type: 'wideString' }], 'longLong', '扩展批量高级分发入口；文件路径必须位于生成程序目录内。', { ...vipAggregateOptions, runtimeName: 'FBro指纹_扩展异步命令' }),
   api('FBroVIP_资源规则异步命令', 'LB_FBro_VipResourceCommandAsync', [{ name: '控件名', type: 'controlRef' }, { name: '命令', type: 'wideString' }, { name: '参数JSON', type: 'wideString' }], 'longLong', '资源与响应规则批量高级分发入口；二进制数据只接受 FBro 受管缓冲句柄。', { ...vipAggregateOptions, runtimeName: 'FBro指纹_资源规则异步命令' }),
   api('FBroVIP_开发者工具异步命令', 'LB_FBro_VipDevToolsCommandAsync', [{ name: '控件名', type: 'controlRef' }, { name: '命令', type: 'wideString' }, { name: '参数JSON', type: 'wideString' }], 'longLong', 'DevTools、Runtime 与输入批量高级分发入口；单项命令已经分别公开。', { ...vipAggregateOptions, runtimeName: 'FBro指纹_开发者工具异步命令' }),
-  api('FBroVIP_设置启动代理', 'LB_FBro_SetVipStartupProxy', [{ name: '地址', type: 'wideString' }, { name: '用户名', type: 'wideString' }, { name: '密码', type: 'wideString' }], 'int', '配置 VIP 启动代理；必须在首个 FBro 运行时初始化前调用，凭据只保存在 Bridge 内存中。', { ...vipAggregateOptions, runtimeName: 'FBro指纹_设置启动代理' })
+  api('FBroVIP_设置启动代理', 'LB_FBro_SetVipStartupProxy', [{ name: '地址', type: 'wideString' }, { name: '用户名', type: 'wideString' }, { name: '密码', type: 'wideString' }], 'int', '配置 VIP 启动代理；必须在首个 FBro 运行时初始化前调用，凭据只保存在 Bridge 内存中。', { ...vipAggregateOptions, runtimeName: 'FBro指纹_设置启动代理' }),
+  api('FBroVIP_实例设置新窗口转标签页', 'LB_FBro_SetPopupToTab', [{ name: '实例句柄', type: 'longLong' }, { name: '开关', type: 'int' }], 'int', '开启后（开关传 1，传 0 关闭），该实例内的新窗口（target=_blank、window.open）在 Chrome 原生UI 实例中自动转为本窗口新标签页（等价官方 C# OnBeforePopup+AddTabAt 示例），不再走"当前页加载"兜底；FBro_实例打开原生UI 弹出的窗口继承来源实例的开关，也可以直接把开关设置在弹窗句柄上。仅进程内实例有效；VIP 控制器不可用时自动回落当前页加载。', { capabilityKind: 'single', runtimeName: 'FBroVIP_实例设置新窗口转标签页' }),
+  {
+    // 与 FBroVIP_应用指纹JSON 共用桥导出 LB_FBro_ApplyFingerprintJson（别名唯一性门禁不允许重复登记），
+    // 因此不走 api() 工厂、不设别名；调用经生成器同名运行时包装转发到桥。
+    command: {
+      name: 'FBroVIP_实例应用指纹JSON',
+      signature: 'FBroVIP_实例应用指纹JSON(实例句柄, JSON)',
+      description: '对 FBro_后台创建 / FBro_实例打开原生UI 返回的后台实例或弹窗句柄批量应用完整直接指纹配置，JSON 契约与 FBroVIP_应用指纹JSON 完全一致；指纹设置按浏览器生效，弹窗与来源实例共用缓存目录但是两个浏览器，需要各自应用一次。实例句柄无效返回 -1，浏览器尚未就绪返回 -1（可延迟重试），VIP 授权校验失败返回 -5、VIP 控制器不可用返回 -4。',
+      insertText: 'FBroVIP_实例应用指纹JSON($1, "{\\"platform\\":\\"Windows\\",\\"hardwareConcurrency\\":8}")',
+      returnType: '整数型',
+      capabilityKind: 'single'
+    } as ModuleCommandContribution,
+    binding: {
+      command: 'FBroVIP_实例应用指纹JSON',
+      runtimeName: 'FBroVIP_实例应用指纹JSON',
+      parameters: [{ name: '实例句柄', type: 'longLong' }, { name: 'JSON', type: 'wideString' }],
+      returnType: 'int',
+      encoding: 'wide'
+    } as ModuleCommandBinding
+  }
 ];
 
 export const FBRO_SUBMODULES: LingBuilderModuleManifest[] = [
@@ -695,6 +745,6 @@ export const FBRO_SUBMODULES: LingBuilderModuleManifest[] = [
   module('lingbuilder.fbro.transfer', 'FBro传输模块', '网络', '提供下载与原生打印高层能力。', withParamDocs(FBRO_TRANSFER_PARAM_DOCS, transferEntries)),
   module('lingbuilder.fbro.automation', 'FBro自动化模块', '系统', '提供受管异步 JavaScript 任务与类型化 Frame 操作。', withParamDocs(FBRO_AUTOMATION_PARAM_DOCS, automationEntries)),
   module('lingbuilder.fbro.objects', 'FBro受管对象模块', '系统', '提供任务、缓冲及 Value、Dictionary、List、Stream、Image、Certificate、DragData 的类型化不透明句柄 API。', withParamDocs(FBRO_OBJECTS_PARAM_DOCS, objectEntries)),
-  module('lingbuilder.fbro.network', 'FBro高级网络模块', '网络', '提供显式启用的代理与认证高级 API。', withParamDocs(FBRO_NETWORK_PARAM_DOCS, networkEntries)),
-  module('lingbuilder.fbro.vip', 'FBro VIP 指纹模块', '系统', '提供不泄露授权信息的结构化 VIP 指纹入口。', withParamDocs(FBRO_VIP_PARAM_DOCS, vipEntries))
+  module('lingbuilder.fbro.network', 'FBro高级网络模块', '网络', '提供显式启用的代理与认证高级 API，以及基于 Chromium 网络栈的纯协议 HTTP 请求响应读取（下载块事件领取、响应对象/响应头读取）。', withParamDocs(FBRO_NETWORK_PARAM_DOCS, networkEntries), '2.2.0'),
+  module('lingbuilder.fbro.vip', 'FBro VIP 指纹模块', '系统', '提供不泄露授权信息的结构化 VIP 指纹入口。', withParamDocs(FBRO_VIP_PARAM_DOCS, vipEntries), '2.3.0')
 ];

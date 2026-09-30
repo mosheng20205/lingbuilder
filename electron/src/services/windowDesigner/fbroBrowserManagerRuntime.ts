@@ -868,6 +868,121 @@ export function generateFbroBrowserManagerRuntime(enabled: boolean): FbroBrowser
 #endif
     }
 
+    // 按实例编号寻址的区域实例操作族：全部走 LingFbroProcessController 已有的按实例 RPC。
+    FbroRegionInstance* FBro_查找区域(int instanceId) {
+        for (auto& region : fbroRegions_) if (region.id == instanceId) return &region;
+        return nullptr;
+    }
+
+    int FBro_区域是否存活(int instanceId) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        FbroRegionInstance* region = FBro_查找区域(instanceId);
+        if (!region || !region->started) return 0;
+        return (region->host && IsWindow(region->host)
+            && LingFbroProcessController::Instance().State(region->processInstanceId) == L"就绪") ? 1 : 0;
+#else
+        (void)instanceId; return 0;
+#endif
+    }
+
+    int FBro_区域导航(int instanceId, const wchar_t* address) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        FbroRegionInstance* region = FBro_查找区域(instanceId);
+        if (!region || !region->started || !address || !*address) return 0;
+        LingFbroProcessController::Json result;
+        return LingFbroProcessController::Instance().Request(region->processInstanceId, L"navigate",
+            LingFbroProcessController::Json{{"url", lingbuilder_fbro_process_detail::JsonUtf8(address)}}, result) ? 1 : 0;
+#else
+        (void)instanceId; (void)address; return 0;
+#endif
+    }
+
+    int FBro_区域浏览操作(int instanceId, const wchar_t* method) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        FbroRegionInstance* region = FBro_查找区域(instanceId);
+        if (!region || !region->started || !method) return 0;
+        LingFbroProcessController::Json result;
+        if (!LingFbroProcessController::Instance().Request(region->processInstanceId, method,
+            LingFbroProcessController::Json::object(), result)) return 0;
+        return !result.contains("value") || result.value("value", false) ? 1 : 0;
+#else
+        (void)instanceId; (void)method; return 0;
+#endif
+    }
+
+    int FBro_区域后退(int instanceId) { return FBro_区域浏览操作(instanceId, L"back"); }
+    int FBro_区域前进(int instanceId) { return FBro_区域浏览操作(instanceId, L"forward"); }
+    int FBro_区域刷新(int instanceId) { return FBro_区域浏览操作(instanceId, L"reload"); }
+    int FBro_区域停止(int instanceId) { return FBro_区域浏览操作(instanceId, L"stop"); }
+
+    std::wstring FBro_区域取文本(int instanceId, const wchar_t* method) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        FbroRegionInstance* region = FBro_查找区域(instanceId);
+        if (!region || !region->started || !method) return L"";
+        LingFbroProcessController::Json result;
+        if (!LingFbroProcessController::Instance().Request(region->processInstanceId, method,
+            LingFbroProcessController::Json::object(), result)) return L"";
+        return lingbuilder_fbro_process_detail::JsonWide(result, "value");
+#else
+        (void)instanceId; (void)method; return L"";
+#endif
+    }
+
+    std::wstring FBro_区域执行JS(int instanceId, const wchar_t* script) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        FbroRegionInstance* region = FBro_查找区域(instanceId);
+        if (!region || !region->started || !script || !*script) return L"";
+        LingFbroProcessController::Json result;
+        if (!LingFbroProcessController::Instance().Request(region->processInstanceId, L"executeJavaScript",
+            LingFbroProcessController::Json{{"script", lingbuilder_fbro_process_detail::JsonUtf8(script)}}, result)) return L"";
+        return lingbuilder_fbro_process_detail::JsonWide(result, "value");
+#else
+        (void)instanceId; (void)script; return L"";
+#endif
+    }
+
+    std::wstring FBro_区域取标题(int instanceId) { return FBro_区域取文本(instanceId, L"getTitle"); }
+    std::wstring FBro_区域取地址(int instanceId) { return FBro_区域取文本(instanceId, L"getUrl"); }
+
+    int FBro_区域调整(int instanceId, int left, int top, int width, int height) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        FbroRegionInstance* region = FBro_查找区域(instanceId);
+        if (!region || width <= 0 || height <= 0) return 0;
+        region->x = left; region->y = top; region->width = width; region->height = height;
+        if (!hwnd_) return 0;
+        const UINT dpi = GetDpiForWindow(hwnd_);
+        const auto scale = [dpi](int value) { return MulDiv(value, static_cast<int>(dpi ? dpi : 96), 96); };
+        const int scaledWidth = (std::max)(1, scale(width));
+        const int scaledHeight = (std::max)(1, scale(height));
+        if (region->host && IsWindow(region->host)) {
+            SetWindowPos(region->host, nullptr, scale(left), scale(top),
+                scaledWidth, scaledHeight, SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+        if (region->started && LingFbroProcessController::Instance().State(region->processInstanceId) == L"就绪") {
+            LingFbroProcessController::Instance().Notify(region->processInstanceId, L"resize",
+                LingFbroProcessController::Json{{"width", scaledWidth}, {"height", scaledHeight}});
+        }
+        return 1;
+#else
+        (void)instanceId; (void)left; (void)top; (void)width; (void)height; return 0;
+#endif
+    }
+
+    int FBro_关闭区域(int instanceId) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        for (auto item = fbroRegions_.begin(); item != fbroRegions_.end(); ++item) {
+            if (item->id != instanceId) continue;
+            if (item->started) LingFbroProcessController::Instance().Close(item->processInstanceId);
+            if (item->host && IsWindow(item->host)) DestroyWindow(item->host);
+            fbroRegions_.erase(item);
+            return 1;
+        }
+        return 0;
+#else
+        (void)instanceId; return 0;
+#endif
+    }
+
     bool 浏览器管理器_切换索引(int index) {
         if (index < 0 || index >= static_cast<int>(browserManager_.instances.size())) return false;
         浏览器管理器_显示索引(index, true);

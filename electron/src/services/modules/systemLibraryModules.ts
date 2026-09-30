@@ -366,7 +366,6 @@ const consoleModule = createStandardModule({
   version: '1.0.0',
   description: '为控制台程序提供标准输入输出、光标与文本颜色控制；命令只能在控制台程序（含「整数型 启动()」入口）中使用，窗口应用中会给出阻断诊断。',
   tags: ['控制台', '输入输出', '控制台程序'],
-  docs: [{ title: '控制台模块使用说明', path: 'docs/modules/console/README.md' }],
   commands: [
     command('控制台_输出', [{ name: '内容', type: 'wideString', description: '要写入控制台的文本；不附加换行，输出后光标停在文本末尾。'}], 'void', '向控制台标准输出写入文本（不换行）。'),
     command('控制台_输出行', [{ name: '内容', type: 'wideString', description: '要写入控制台的文本；写入后光标移动到下一行行首。'}], 'void', '向控制台标准输出写入一行文本并换行。'),

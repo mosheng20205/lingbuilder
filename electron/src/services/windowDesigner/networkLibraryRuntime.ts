@@ -39,10 +39,30 @@ const wchar_t* TCP_接收文本(int maximumBytes) { if (g_lbTcpSocket == INVALID
 `;
 
 const UDP_RUNTIME = String.raw`
-static SOCKET g_lbUdpSocket = INVALID_SOCKET; static std::wstring g_lbUdpError; static std::wstring g_lbUdpSource; static int g_lbUdpSourcePort = 0;
+static SOCKET g_lbUdpSocket = INVALID_SOCKET; static std::wstring g_lbUdpError; static std::wstring g_lbUdpSource; static int g_lbUdpSourcePort = 0; static bool g_lbUdpReuseAddr = false; static bool g_lbUdpBroadcast = false;
 void UDP_关闭() { if (g_lbUdpSocket != INVALID_SOCKET) { closesocket(g_lbUdpSocket); g_lbUdpSocket = INVALID_SOCKET; } }
 const wchar_t* UDP_取错误() { return LB_ReturnText(g_lbUdpError); } const wchar_t* UDP_取来源地址() { return LB_ReturnText(g_lbUdpSource); } int UDP_取来源端口() { return g_lbUdpSourcePort; }
-static bool LB_EnsureUdpSocket() { if (g_lbUdpSocket != INVALID_SOCKET) return true; if (!LB_EnsureSockets()) return false; g_lbUdpSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP); return g_lbUdpSocket != INVALID_SOCKET; }
+// 广播/端口复用开关都记在标志位上：UDP_绑定 会关闭并重建套接字，开关必须在重建后的套接字上重放，
+// 这样 UDP_允许广播 在绑定前后调用效果一致（命令契约如此承诺）。
+static bool LB_EnsureUdpSocket() {
+    if (g_lbUdpSocket != INVALID_SOCKET) return true; if (!LB_EnsureSockets()) return false;
+    g_lbUdpSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP); if (g_lbUdpSocket == INVALID_SOCKET) return false;
+    if (g_lbUdpReuseAddr) { const BOOL reuse = TRUE; setsockopt(g_lbUdpSocket, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&reuse), sizeof(reuse)); }
+    if (g_lbUdpBroadcast) { const BOOL broadcast = TRUE; setsockopt(g_lbUdpSocket, SOL_SOCKET, SO_BROADCAST, reinterpret_cast<const char*>(&broadcast), sizeof(broadcast)); }
+    return true;
+}
+bool UDP_允许广播(bool allowed) {
+    g_lbUdpBroadcast = allowed;
+    if (!LB_EnsureUdpSocket()) { g_lbUdpError = L"UDP 套接字创建失败，无法开启广播。"; return false; }
+    const BOOL value = allowed ? TRUE : FALSE;
+    if (setsockopt(g_lbUdpSocket, SOL_SOCKET, SO_BROADCAST, reinterpret_cast<const char*>(&value), sizeof(value)) == SOCKET_ERROR) { g_lbUdpError = L"UDP 广播开关设置失败。"; return false; }
+    return true;
+}
+bool UDP_允许端口复用(bool allowed) {
+    g_lbUdpReuseAddr = allowed;
+    if (g_lbUdpSocket != INVALID_SOCKET) { const BOOL value = allowed ? TRUE : FALSE; setsockopt(g_lbUdpSocket, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&value), sizeof(value)); }
+    return true;
+}
 bool UDP_绑定(int port) { UDP_关闭(); g_lbUdpError.clear(); if (!LB_EnsureUdpSocket() || port < 0 || port > 65535) return false; sockaddr_in address = {}; address.sin_family = AF_INET; address.sin_addr.s_addr = htonl(INADDR_ANY); address.sin_port = htons(static_cast<u_short>(port)); if (bind(g_lbUdpSocket, reinterpret_cast<sockaddr*>(&address), sizeof(address)) == SOCKET_ERROR) { g_lbUdpError = L"UDP 端口绑定失败。"; UDP_关闭(); return false; } return true; }
 
 int UDP_发送文本(const wchar_t* host, int port, const wchar_t* text) {

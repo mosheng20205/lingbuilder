@@ -134,9 +134,17 @@ static const wchar_t* LB_CryptoHashFile(const char* algorithm, const wchar_t* pa
     return LB_ReturnText(result == 0 ? LB_CryptoHexEncode(output.data(), output.size()) : L"");
 }
 
+static const wchar_t* LB_CryptoHashBytes(const char* algorithm, const std::vector<unsigned char>& bytes, bool blake3 = false) {
+    const std::wstring result = blake3
+        ? LB_CryptoBlake3(bytes.data(), bytes.size())
+        : LB_CryptoBotanHash(algorithm, bytes.data(), bytes.size());
+    return LB_ReturnText(result);
+}
+
 #define LB_HASH_PAIR(suffix, algorithm) \
 const wchar_t* 哈希_##suffix##文本(const wchar_t* text) { return LB_CryptoHashText(algorithm, text); } \
-const wchar_t* 哈希_##suffix##文件(const wchar_t* path) { return LB_CryptoHashFile(algorithm, path); }
+const wchar_t* 哈希_##suffix##文件(const wchar_t* path) { return LB_CryptoHashFile(algorithm, path); } \
+const wchar_t* 哈希_##suffix##字节集(const std::vector<unsigned char>& bytes) { return LB_CryptoHashBytes(algorithm, bytes); }
 LB_HASH_PAIR(MD5, "MD5")
 LB_HASH_PAIR(SHA1, "SHA-1")
 LB_HASH_PAIR(SHA256, "SHA-256")
@@ -146,6 +154,7 @@ LB_HASH_PAIR(BLAKE2b, "BLAKE2b(512)")
 #undef LB_HASH_PAIR
 const wchar_t* 哈希_BLAKE3文本(const wchar_t* text) { return LB_CryptoHashText(nullptr, text, true); }
 const wchar_t* 哈希_BLAKE3文件(const wchar_t* path) { return LB_CryptoHashFile(nullptr, path, true); }
+const wchar_t* 哈希_BLAKE3字节集(const std::vector<unsigned char>& bytes) { return LB_CryptoHashBytes(nullptr, bytes, true); }
 const wchar_t* 哈希_安全随机十六进制(int byteCount) { std::vector<uint8_t> bytes; const size_t size = static_cast<size_t>((std::max)(0, (std::min)(byteCount, 1024 * 1024))); return LB_ReturnText(LB_CryptoRandom(bytes, size) ? LB_CryptoHexEncode(bytes.data(), bytes.size()) : L""); }
 `;
 

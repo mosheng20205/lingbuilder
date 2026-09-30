@@ -85,7 +85,7 @@ function generate(enabledModules: InstalledModule[], designerBackend?: 'new-emoj
 
 test('HTTP 客户端模块清单、文档和旧兼容入口保持完整', async () => {
   assert.equal(validateModuleManifest(HTTP_CLIENT_MODULE).diagnostics.length, 0);
-  assert.equal(HTTP_CLIENT_COMMAND_SPECS.length, 78);
+  assert.equal(HTTP_CLIENT_COMMAND_SPECS.length, 84);
   assert.deepEqual(
     HTTP_CLIENT_MODULE.bindings?.commands?.map(item => item.command),
     HTTP_CLIENT_MODULE.contributes?.commands?.map(item => item.name)
@@ -96,11 +96,25 @@ test('HTTP 客户端模块清单、文档和旧兼容入口保持完整', async 
   for (const name of ['HTTP客户端_置Cookie', 'HTTP客户端_请求置Cookie', 'HTTP客户端_取CookieJSON', 'HTTP客户端_删除全部Cookie']) {
     assert.ok(HTTP_CLIENT_COMMAND_SPECS.some(item => item.name === name), `缺少 Cookie 注入命令 ${name}`);
   }
+  assert.ok(HTTP_CLIENT_COMMAND_SPECS.some(item => item.name === 'HTTP客户端_设置续传文件'), '缺少断点续传响应落盘命令');
   const documentationPath = path.resolve(process.cwd(), 'docs/modules/http-client/README.md');
   const documentation = await fs.readFile(documentationPath, 'utf8');
   assert.ok(documentation.includes('HTTP客户端_GET异步'));
   assert.ok(documentation.includes('WinHTTP'));
   assert.ok(documentation.includes('HTTP客户端_请求置Cookie'));
+  // 2026-09-29 纯协议批次：跳转链解析 + 逐请求代理覆盖。
+  for (const name of ['HTTP客户端_解析跳转链', 'HTTP客户端请求_设置代理', 'HTTP客户端请求_设置代理凭据']) {
+    assert.ok(HTTP_CLIENT_COMMAND_SPECS.some(item => item.name === name), `缺少 ${name}`);
+  }
+  assert.ok(documentation.includes('HTTP客户端_解析跳转链'));
+  assert.ok(documentation.includes('HTTP客户端请求_设置代理'));
+  // 2026-09-29 方案B：curl-impersonate 仿真后端。
+  for (const name of ['HTTP客户端_设置TLS指纹', 'HTTP客户端_取TLS指纹']) {
+    assert.ok(HTTP_CLIENT_COMMAND_SPECS.some(item => item.name === name), `缺少 ${name}`);
+  }
+  assert.ok(documentation.includes('设置TLS指纹'));
+  const x64Target = HTTP_CLIENT_MODULE.targets?.find(target => target.id === 'windows-msvc-x64');
+  assert.ok(x64Target?.runtimeFiles?.some(file => file.includes('libcurl-impersonate.dll')), 'x64 目标必须随附 libcurl-impersonate.dll');
 });
 
 test('Win32 HTTP 客户端生成共享 WinHTTP runtime、完成消息和处理器引用', () => {
@@ -131,6 +145,26 @@ test('Win32 HTTP 客户端生成共享 WinHTTP runtime、完成消息和处理�
   assert.ok(mainCpp.includes('ManualCookieDomainMatches(host, item.domain)'));
   assert.ok(mainCpp.includes('if (callback == L"请求完成")'));
   assert.ok(mainCpp.includes('HTTP客户端_GET异步(客户端, L"https://example.com", L"请求完成")'));
+  assert.ok(mainCpp.includes('std::wstring ResolveRedirectChain(long long clientId'));
+  assert.ok(mainCpp.includes('WINHTTP_DISABLE_REDIRECTS'));
+  assert.ok(mainCpp.includes('bool SetRequestProxy(long long id, const wchar_t* address)'));
+  assert.ok(mainCpp.includes('int HTTP客户端请求_设置代理(long long request, const wchar_t* address)'));
+  assert.ok(mainCpp.includes('const wchar_t* HTTP客户端_解析跳转链(long long client, const wchar_t* url, int maxHops)'));
+  assert.ok(mainCpp.includes('bool SetImpersonateTarget(long long id, const wchar_t* target)'));
+  assert.ok(mainCpp.includes('easyImpersonate(handle, keepUtf8(impersonateTarget), 1)'));
+  assert.ok(mainCpp.includes('LB_CURL_OPT_CAINFO = 10098'));
+  assert.ok(mainCpp.includes('ExecuteWithImpersonation'));
+  assert.ok(mainCpp.includes('int HTTP客户端_设置TLS指纹(long long client, const wchar_t* target)'));
+});
+
+test('断点续传：设置续传文件生成追加落盘运行时且文件流不占响应体内存上限', () => {
+  const generated = generate([httpModule]);
+  assert.deepEqual(generated.blockingDiagnostics, []);
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.ok(mainCpp.includes('bool HTTP客户端_设置续传文件(long long request, const wchar_t* path)'));
+  assert.ok(mainCpp.includes('request.resumePath = file'));
+  assert.ok(mainCpp.includes('std::ios::app'));
+  assert.ok(mainCpp.includes('if (!toFile && request->downloadedBytes.load() + available > static_cast<long long>(client->maxBodyBytes))'));
 });
 
 test('new_emoji HTTP 客户端复用同一 runtime 并创建消息窗口', () => {

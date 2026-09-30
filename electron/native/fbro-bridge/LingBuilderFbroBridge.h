@@ -288,6 +288,11 @@ LB_FBRO_API int __stdcall LB_FBro_CloseDevTools(LB_FBRO_HANDLE browser);
 LB_FBRO_API int __stdcall LB_FBro_GetIdentifier(LB_FBRO_HANDLE browser);
 LB_FBRO_API int __stdcall LB_FBro_IsSame(LB_FBRO_HANDLE browser, LB_FBRO_HANDLE other);
 LB_FBRO_API int __stdcall LB_FBro_IsPopup(LB_FBRO_HANDLE browser);
+/** 新窗口转标签页开关：开启后（经 FBroVIP_实例设置新窗口转标签页），Chrome 原生UI 实例内的
+ *  新窗口（target=_blank / window.open）在 OnBeforePopup 转为本窗口新标签页（等价官方 C#
+ *  AddTabAt 示例），不再走"当前页加载"兜底；CreateChromeUi 派生弹窗继承来源实例的开关。
+ *  仅进程内 Chrome 原生UI 实例有可见效果；开关随实例销毁失效。 */
+LB_FBRO_API int __stdcall LB_FBro_SetPopupToTab(LB_FBRO_HANDLE browser, int enabled);
 LB_FBRO_API int __stdcall LB_FBro_HasDocument(LB_FBRO_HANDLE browser);
 LB_FBRO_API int __stdcall LB_FBro_TryCloseBrowser(LB_FBRO_HANDLE browser);
 LB_FBRO_API int __stdcall LB_FBro_SetFocus(LB_FBRO_HANDLE browser, int focused);
@@ -707,6 +712,23 @@ LB_FBRO_API LB_FBRO_OBJECT_HANDLE __stdcall LB_FBro_UrlRequestGetRequestObject(
 LB_FBRO_API LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameCreateUrlRequestAsync(
     LB_FBRO_OBJECT_HANDLE frame, LB_FBRO_OBJECT_HANDLE request, LB_FBRO_TASK_CALLBACK callback,
     void* user_data);
+/** 取 URL 请求的响应对象（LB_FBRO_OBJECT_RESPONSE）：必须在请求完成事件（StartAsync 返回的
+ *  任务进入 COMPLETED）之后读取；无响应或未完成返回 0，句柄用 LB_FBro_ObjectRelease 释放。 */
+LB_FBRO_API LB_FBRO_OBJECT_HANDLE __stdcall LB_FBro_UrlRequestGetResponse(
+    LB_FBRO_OBJECT_HANDLE object);
+/** 取消进行中的 URL 请求（Chromium 网络栈中断）；已完成的请求无副作用。 */
+LB_FBRO_API int __stdcall LB_FBro_UrlRequestCancel(LB_FBRO_OBJECT_HANDLE object);
+/** 领取（或预约）下一个下载数据事件。start_task 是 LB_FBro_UrlRequestStartAsync /
+ *  LB_FBro_FrameCreateUrlRequestAsync 返回的任务句柄；返回事件任务句柄（任务结果为
+ *  {"kind":"downloadData","size":N}），字节缓冲经 LB_FBro_TaskTakeUrlRequestBufferResult
+ *  一次性取回。事件未到达时任务保持 RUNNING（预约）；请求完成后队列已排空时领取立即得到
+ *  失败任务（状态 FAILED），排空循环以「任务状态 != COMPLETED」收尾。 */
+LB_FBRO_API int __stdcall LB_FBro_UrlRequestNextDownloadData(LB_FBRO_TASK_HANDLE start_task,
+                                                             LB_FBRO_TASK_HANDLE* result);
+/** 从下载数据事件任务取回受管字节缓冲（一次性；重复提取返回 LB_FBRO_ERROR_NOT_FOUND）。
+ *  Chromium 不自动解压 URLRequest 正文，缓冲按原始字节交付。 */
+LB_FBRO_API int __stdcall LB_FBro_TaskTakeUrlRequestBufferResult(LB_FBRO_TASK_HANDLE task,
+                                                                 LB_FBRO_BUFFER_HANDLE* result);
 /** 填表自动化与页面源码/文本提取。 */
 LB_FBRO_API int __stdcall LB_FBro_FrameTianBiaoClick(LB_FBRO_OBJECT_HANDLE frame,
                                                      const wchar_t* selector, int index);

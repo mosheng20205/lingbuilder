@@ -8,7 +8,7 @@ import type {
 } from './types';
 import { createModuleBindingSnippetArgument, isWideStringAbiBindingType, normalizeControlReferenceCallSnippet, normalizeControlReferenceParameter, withParamDocs, type ParamDocTable } from './bindingValueType';
 
-const CEF3_ALPHA_VERSION = '3.0.0-alpha.3';
+const CEF3_ALPHA_VERSION = '3.0.0-alpha.4';
 const CORE_DEPENDENCY = [{ moduleId: 'lingbuilder.cef3.browser', minimumVersion: CEF3_ALPHA_VERSION }];
 const OBJECT_DEPENDENCY = [...CORE_DEPENDENCY, { moduleId: 'lingbuilder.cef3.objects', minimumVersion: CEF3_ALPHA_VERSION }];
 const TARGET = [{
@@ -158,7 +158,23 @@ const CEF3_SESSION_PARAM_DOCS: ParamDocTable = {
 
 const CEF3_NETWORK_PARAM_DOCS: ParamDocTable = {
   代理地址: '代理地址，格式 "scheme://host:port"；空文本表示直连。必须在浏览器创建前设置。',
-  证书状态: 'CEF 证书状态位掩码（CERT_STATUS_*），可取自 CEF3证书_取证书状态 或证书相关事件。'
+  证书状态: 'CEF 证书状态位掩码（CERT_STATUS_*），可取自 CEF3证书_取证书状态 或证书相关事件。',
+  请求客户端: 'CEF3网络_创建请求客户端 返回的受管回调队列句柄；同一客户端可排队多个请求的事件。',
+  请求: '请求对象句柄（CEF3网络_创建请求 返回）。',
+  URL请求: 'URL 请求句柄（CEF3网络_发起请求 返回）；0 表示发起失败。',
+  响应: '响应对象句柄（CEF3网络_取响应对象 返回）；用 CEF3网络_释放对象 释放。',
+  任务: '事件任务句柄（CEF3网络_取完成事件/取下载数据事件/取认证事件 返回）；读取后用 CEF3任务_释放 释放。',
+  缓冲: '受管字节缓冲句柄（CEF3网络_取下载块 返回）；用 CEF3缓冲_释放 释放。',
+  句柄: '要释放的受管对象句柄（请求、响应等）。',
+  地址: '要请求的完整 URL（含 http:// 或 https://）。',
+  方法: 'HTTP 方法：GET、POST、PUT、DELETE 等，建议大写。',
+  名称: '请求头或响应头名称，如 X-S、Content-Type。',
+  值: '请求头值；同名头会被覆盖，不同名头自动累积。',
+  请求上下文: '隔离会话上下文句柄；传 0 使用默认全局上下文。多账号隔离可配合 CEF3会话_ 系列。',
+  编码: '响应正文解码字符集："utf-8"（默认）、"gbk"、"gb18030"。',
+  字节集: '请求正文原始字节；单次不超过 64 MiB。',
+  用户名: '认证用户名；传空文本表示放弃本次认证。',
+  密码: '认证密码。'
 };
 
 const CEF3_TRANSFER_PARAM_DOCS: ParamDocTable = {
@@ -489,7 +505,31 @@ const sessionEntries = [
 
 const networkEntries = [
   api('CEF3网络_设置代理', 'LB_CEF3_SetProxy', [{ name: '控件名', type: 'controlRef' }, { name: '代理地址', type: 'wideString' }], 'int', '在浏览器创建前设置实例RequestContext代理；空文本表示直连。', { runtimeName: 'CEF3_设置代理', visibility: 'advanced' }),
-  api('CEF3网络_证书状态是否错误', 'cef_is_cert_status_error', [{ name: '证书状态', type: 'int' }], 'bool', '判断CEF证书状态位掩码是否包含错误；0表示CERT_STATUS_NONE。', { visibility: 'advanced' })
+  api('CEF3网络_证书状态是否错误', 'cef_is_cert_status_error', [{ name: '证书状态', type: 'int' }], 'bool', '判断CEF证书状态位掩码是否包含错误；0表示CERT_STATUS_NONE。', { visibility: 'advanced' }),
+  api('CEF3网络_创建请求客户端', 'LB_CEF3_UrlRequestClientCreate', [], 'longLong', '创建URL请求回调队列客户端并返回受管句柄；配合 CEF3网络_发起请求 与各取事件命令使用。前置条件：进程内已初始化CEF（CEF3_初始化、创建窗口浏览器或无头浏览器均可）。', { runtimeName: 'LB_CEF3_UrlRequestClientCreate' }),
+  api('CEF3网络_创建请求', 'LB_CEF3_RequestCreate', [], 'longLong', '创建受管HTTP请求对象；用 CEF3网络_设置请求地址/设置请求方法/设置请求头/设置请求正文 组装后交给 CEF3网络_发起请求。', { runtimeName: 'LB_CEF3_RequestCreate' }),
+  api('CEF3网络_设置请求地址', 'LB_CEF3_RequestSetUrl', [{ name: '请求', type: 'longLong' }, { name: '地址', type: 'wideString' }], 'int', '设置请求完整URL。', { runtimeName: 'LB_CEF3_RequestSetUrl' }),
+  api('CEF3网络_设置请求方法', 'LB_CEF3_RequestSetMethod', [{ name: '请求', type: 'longLong' }, { name: '方法', type: 'wideString' }], 'int', '设置HTTP方法，如 GET、POST，建议大写。', { runtimeName: 'LB_CEF3_RequestSetMethod' }),
+  api('CEF3网络_设置请求头', 'LB_CEF3_RequestSetHeaderByName', [{ name: '请求', type: 'longLong' }, { name: '名称', type: 'wideString' }, { name: '值', type: 'wideString' }], 'int', '按名称设置请求头并覆盖同名头；不同名头自动累积，可多次调用。签名类协议按此逐条设置请求头。'),
+  api('CEF3网络_设置请求正文', 'CefPostData', [{ name: '请求', type: 'longLong' }, { name: '字节集', type: 'bytes' }], 'int', '把字节集设为请求正文（POST/PUT 用）；内部复制字节，单次不超过 64 MiB。重复调用会替换全部正文。'),
+  api('CEF3网络_发起请求', 'LB_CEF3_UrlRequestCreate', [{ name: '请求', type: 'longLong' }, { name: '请求客户端', type: 'longLong' }, { name: '请求上下文', type: 'longLong' }], 'longLong', '在Chromium网络栈中发起请求（TLS/HTTP2 指纹与内核浏览器一致，适合直连协议接口），返回URL请求句柄；0表示失败。请求上下文传 0 使用默认全局上下文。', { example: 'CEF3网络_发起请求(请求1, 请求客户端1, 0)' }),
+  api('CEF3网络_取请求状态', 'CefURLRequest::GetRequestStatus', [{ name: 'URL请求', type: 'longLong' }], 'int', '读取请求状态：0=未知 1=成功 2=进行中 3=已取消 4=失败；-1表示查询失败。轮询到 1 或 4 后再取响应。'),
+  api('CEF3网络_取请求错误', 'CefURLRequest::GetRequestError', [{ name: 'URL请求', type: 'longLong' }], 'int', '请求失败时读取CEF网络错误码（有符号，如 -21 网络变更、-201 证书错误）；成功或未完成时为 0。'),
+  api('CEF3网络_取响应对象', 'CefURLRequest::GetResponse', [{ name: 'URL请求', type: 'longLong' }], 'longLong', '取得响应对象句柄；请求未完成或无响应时返回 0。用完 CEF3网络_释放对象 释放。'),
+  api('CEF3网络_取响应状态码', 'LB_CEF3_ResponseGetStatus', [{ name: '响应', type: 'longLong' }], 'int', '读取HTTP状态码，如 200、404。', { runtimeName: 'LB_CEF3_ResponseGetStatus' }),
+  api('CEF3网络_取响应头', 'CefResponse::GetHeaderByName', [{ name: '响应', type: 'longLong' }, { name: '名称', type: 'wideString' }], 'wideString', '按名称读取响应头值；不存在返回空文本。多值头（如 Set-Cookie）请改用 CEF3网络_取响应头映射JSON。'),
+  api('CEF3网络_取响应头映射JSON', 'CefResponse::GetHeaderMap', [{ name: '响应', type: 'longLong' }], 'wideString', '读取全部响应头，返回 [{"name":"...","value":"..."}] JSON数组；保持服务端顺序，多值头会出现多个同名条目。'),
+  api('CEF3网络_取响应MIME类型', 'CefResponse::GetMimeType', [{ name: '响应', type: 'longLong' }], 'wideString', '读取响应MIME类型，如 application/json。'),
+  api('CEF3网络_取响应地址', 'CefResponse::GetURL', [{ name: '响应', type: 'longLong' }], 'wideString', '读取响应最终地址（跟随重定向后的实际URL）。'),
+  api('CEF3网络_是否来自缓存', 'LB_CEF3_UrlRequestResponseWasCached', [{ name: 'URL请求', type: 'longLong' }], 'bool', '判断响应是否来自本地缓存。', { runtimeName: 'LB_CEF3_UrlRequestResponseWasCached', visibility: 'advanced' }),
+  api('CEF3网络_取消请求', 'LB_CEF3_UrlRequestCancel', [{ name: 'URL请求', type: 'longLong' }], 'int', '取消进行中的请求。', { runtimeName: 'LB_CEF3_UrlRequestCancel' }),
+  api('CEF3网络_取完成事件', 'CefURLRequestClient::OnRequestComplete', [{ name: '请求客户端', type: 'longLong' }], 'longLong', '领取（或预约）请求完成事件任务句柄；无事件时返回进行中的预约任务。用 CEF3任务_取状态 轮询（0=进行中 2=成功 3=失败），读取后用 CEF3任务_释放 释放。', { example: '完成事件1 = CEF3网络_取完成事件(请求客户端1)' }),
+  api('CEF3网络_取下载数据事件', 'CefURLRequestClient::OnDownloadData', [{ name: '请求客户端', type: 'longLong' }], 'longLong', '领取下一个下载块事件任务；任务结果为 {"kind":"downloadData","size":N}，再用 CEF3网络_取下载块 取回字节缓冲。', { example: '下载事件1 = CEF3网络_取下载数据事件(请求客户端1)' }),
+  api('CEF3网络_取下载块', 'CefURLRequestClient 下载块取回', [{ name: '任务', type: 'longLong' }], 'longLong', '从下载块事件任务取回受管字节缓冲（一次性，取后任务内不再保留）；配合 CEF3网络_下载块转文本 或 CEF3缓冲_保存文件 使用，用 CEF3缓冲_释放 释放。'),
+  api('CEF3网络_下载块转文本', 'CefURLRequestClient 下载块解码', [{ name: '缓冲', type: 'longLong' }, { name: '编码', type: 'wideString' }], 'wideString', '把下载块缓冲按指定字符集解码为文本；编码用 "utf-8"/"gbk"/"gb18030"，空文本或未知按 utf-8 处理。二进制正文请改用 CEF3缓冲_保存文件。'),
+  api('CEF3网络_取认证事件', 'CefURLRequestClient::GetAuthCredentials', [{ name: '请求客户端', type: 'longLong' }], 'longLong', '领取（或预约）代理/HTTP认证事件任务；要完成账号密码认证必须在 CEF3网络_发起请求 之前先调用本命令预约，否则认证会被放弃。任务结果JSON含 isProxy/host/port/realm。', { visibility: 'advanced' }),
+  api('CEF3网络_回复认证', 'CefAuthCallback::Continue', [{ name: '任务', type: 'longLong' }, { name: '用户名', type: 'wideString' }, { name: '密码', type: 'wideString' }], 'int', '回答认证事件：用户名传空文本表示放弃（请求按 401/407 失败）。返回 1=已提交 0=已放弃 -1=失败。'),
+  api('CEF3网络_释放对象', 'LB_CEF3_HandleRelease', [{ name: '句柄', type: 'longLong' }], 'int', '释放请求、响应等受管对象句柄；重复释放返回稳定错误码。', { runtimeName: 'LB_CEF3_HandleRelease' })
 ];
 
 const transferEntries = [
@@ -744,7 +784,7 @@ export const CEF3_SUBMODULES: LingBuilderModuleManifest[] = [
   module('lingbuilder.cef3.events', 'CEF3事件模块', '界面', '提供浏览器事件数据、同步决策和处理器引用绑定。', withParamDocs(CEF3_EVENT_PARAM_DOCS, eventEntries)),
   module('lingbuilder.cef3.objects', 'CEF3受管对象模块', '系统', '提供任务、缓冲、Value、Dictionary、List、Image、NavigationEntry和证书类型化对象的安全生命周期接口。', withParamDocs(CEF3_OBJECTS_PARAM_DOCS, objectEntries)),
   module('lingbuilder.cef3.session', 'CEF3会话模块', '网络', '提供每实例RequestContext、缓存和Cookie隔离会话能力。', withParamDocs(CEF3_SESSION_PARAM_DOCS, sessionEntries), true),
-  module('lingbuilder.cef3.network', 'CEF3网络模块', '网络', '提供实例级代理及后续请求/响应扩展入口。', withParamDocs(CEF3_NETWORK_PARAM_DOCS, networkEntries)),
+  module('lingbuilder.cef3.network', 'CEF3网络模块', '网络', '提供实例级代理与基于Chromium网络栈的纯协议HTTP请求族（自定义头/正文、响应头全量读取、代理认证）。', withParamDocs(CEF3_NETWORK_PARAM_DOCS, networkEntries)),
   module('lingbuilder.cef3.transfer', 'CEF3传输模块', '网络', '提供下载、打印、受管二进制流和读写处理器能力。', withParamDocs(CEF3_TRANSFER_PARAM_DOCS, transferEntries), true, transferTypes),
   module('lingbuilder.cef3.automation', 'CEF3自动化模块', '系统', '提供异步JavaScript任务及后续DOM/V8能力。', withParamDocs(CEF3_AUTOMATION_PARAM_DOCS, automationEntries), true),
   module('lingbuilder.cef3.devtools', 'CEF3开发者工具模块', '系统', '提供受设计器策略控制的DevTools入口。', withParamDocs(CEF3_DEVTOOLS_PARAM_DOCS, devtoolsEntries)),

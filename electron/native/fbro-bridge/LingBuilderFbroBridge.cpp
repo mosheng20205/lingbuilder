@@ -137,6 +137,14 @@ std::wstring g_vip_proxy_user;
 std::wstring g_vip_proxy_password;
 std::unordered_map<std::wstring, std::shared_ptr<VipResourcePayload>> g_global_vip_resource_payloads;
 
+struct BufferState {
+  LB_FBRO_BUFFER_HANDLE handle = 0;
+  std::vector<unsigned char> bytes;
+};
+
+/* UrlRequest 事件领取/预约队列（每个异步 URL 请求一个，定义在匿名命名空间）。 */
+struct UrlRequestClientState;
+
 struct TaskState {
   LB_FBRO_TASK_HANDLE handle = 0;
   std::atomic<int> status{LB_FBRO_TASK_PENDING};
@@ -144,13 +152,11 @@ struct TaskState {
   std::wstring error;
   LB_FBRO_OBJECT_HANDLE object = 0;
   LB_FBRO_BUFFER_HANDLE buffer = 0;
+  std::shared_ptr<UrlRequestClientState> url_request_events;
+  std::shared_ptr<BufferState> url_request_buffer;
+  bool url_request_buffer_taken = false;
   LB_FBRO_TASK_CALLBACK callback = nullptr;
   void* user_data = nullptr;
-};
-
-struct BufferState {
-  LB_FBRO_BUFFER_HANDLE handle = 0;
-  std::vector<unsigned char> bytes;
 };
 
 struct ObjectState {
@@ -242,6 +248,9 @@ struct BrowserState {
   bool create_started = false;
   bool extension_load_started = false;
   bool chrome_ui = false;
+  // FBroVIP_实例设置新窗口转标签页：开启后 Chrome 原生UI 实例内的新窗口（target=_blank /
+  // window.open）由 OnBeforePopup 转为本窗口新标签页，不再走"当前页加载"兜底。
+  bool popup_to_tab = false;
   bool background = false;
   std::wstring extra_info_json;
   unsigned int flags = 7;
@@ -2376,15 +2385,26 @@ class BridgeBrowserEvent final : public FBroHsBroEvent {
       Notify(*state, LB_FBRO_EVENT_CREATED, L"浏览器创建完成");
     }
   }
-  bool OnBeforePopup(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame, int,
+  bool OnBeforePopup(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, int,
                      const CefString& target_url, const CefString&,
                      CefLifeSpanHandler::WindowOpenDisposition, bool,
                      const CefPopupFeatures&, CefWindowInfo&, CefBrowserSettings&,
                      bool*, CefRefPtr<FBroUseExtraData>) override {
     std::unique_lock<std::recursive_mutex> lock(g_mutex);
     auto* state = Find(handle_);
+    const bool popup_to_tab = state ? state->popup_to_tab : false;
     lock.unlock();
     if (state) Notify(*state, LB_FBRO_EVENT_BEFORE_POPUP, target_url.ToWString());
+    // 开关打开（FBroVIP_实例设置新窗口转标签页）：等价官方 C# OnBeforePopup 示例——
+    // Chrome 原生UI 实例的新窗口转本窗口新标签页；VIP 控制器不可用时回落"当前页加载"兜底。
+    if (popup_to_tab && browser && !target_url.empty()) {
+      auto vip = FBroHsBrowser_GetVIPControl(browser);
+      if (vip && !FBroHsVIPControl_IsNULL(vip)) {
+        Event_Disable_Control event_control{};
+        FBroHsVIPControl_AddTabAt(vip, target_url, -1, TRUE, CefDictionaryValue::Create(), this, &event_control, L"");
+        return true;
+      }
+    }
     if (frame && !target_url.empty()) frame->LoadURL(target_url);
     return true;
   }
@@ -5401,6 +5421,14 @@ LB_FBRO_HANDLE __stdcall LB_FBro_CreateEx2(HWND host, const wchar_t* url,
   return handle;
 }
 
+int __stdcall LB_FBro_SetPopupToTab(LB_FBRO_HANDLE browser, int enabled) {
+  std::lock_guard<std::recursive_mutex> lock(g_mutex);
+  auto* state = Find(browser);
+  if (!state) return 0;
+  state->popup_to_tab = enabled != 0;
+  return 1;
+}
+
 LB_FBRO_HANDLE __stdcall LB_FBro_CreateBackground(const wchar_t* url,
                                                   const wchar_t* profile_directory,
                                                   const wchar_t* extra_info_json,
@@ -5451,6 +5479,7 @@ LB_FBRO_HANDLE __stdcall LB_FBro_CreateChromeUi(LB_FBRO_HANDLE owner,
     state->callback = callback;
     state->user_data = user_data;
     state->request_context = owner_state->request_context;
+    state->popup_to_tab = owner_state->popup_to_tab;
     state->chrome_ui = true;
     handle = state->handle;
     g_browsers.emplace(handle, std::move(state));
@@ -5862,10 +5891,93 @@ LB_FBRO_TASK_HANDLE __stdcall LB_FBro_MoveBrowserWindowAsync(LB_FBRO_HANDLE brow
   return task->handle;
 }
 namespace {
-/** URL 请求客户端：完成时把 CefURLRequest 注册为受管对象并回传状态 JSON。 */
+/* UrlRequest 事件值：bytes 在领取时才注册为受管缓冲（队列溢出丢弃时不留句柄）。 */
+struct UrlRequestEventValue {
+  bool success = true;
+  std::wstring value;
+  std::vector<unsigned char> bytes;
+};
+
+/* 每个 UrlRequestStartAsync / FrameCreateUrlRequestAsync 附带的事件状态：
+   下载块按「领取/预约」模型分发——有等待者直接完成任务，无等待者入队（上限 32）。
+   OnRequestComplete 之后 finished 置位：已排空的领取立即得到失败任务，保证
+   .lcpp 侧排空循环可以终止（不必等超时）。 */
+struct UrlRequestClientState {
+  std::mutex mutex;
+  bool active = true;
+  bool finished = false;
+  std::deque<UrlRequestEventValue> queued_download_data;
+  std::deque<std::shared_ptr<TaskState>> download_waiters;
+  ~UrlRequestClientState();
+};
+
+constexpr size_t kMaximumUrlRequestDownloadBytes = 64ull * 1024ull * 1024ull;
+constexpr size_t kMaximumQueuedUrlRequestEvents = 32;
+
+void CompleteUrlRequestEventTask(const std::shared_ptr<TaskState>& task,
+                                 UrlRequestEventValue event) {
+  if (!task) return;
+  {
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    if (task->status.load() == LB_FBRO_TASK_CANCELLED) return;
+    if (!event.bytes.empty()) {
+      auto buffer = std::make_shared<BufferState>();
+      buffer->bytes = std::move(event.bytes);
+      task->url_request_buffer = std::move(buffer);
+    }
+  }
+  if (event.success) {
+    CompleteTextTask(task, std::move(event.value));
+  } else {
+    CompleteTextTask(task, L"", std::move(event.value));
+  }
+}
+
+void DeliverUrlRequestEvent(const std::shared_ptr<UrlRequestClientState>& state,
+                            UrlRequestEventValue event) {
+  if (!state) return;
+  std::shared_ptr<TaskState> waiter;
+  {
+    std::lock_guard<std::mutex> lock(state->mutex);
+    if (!state->active) return;
+    auto& waiters = state->download_waiters;
+    while (!waiters.empty()) {
+      waiter = std::move(waiters.front());
+      waiters.pop_front();
+      if (waiter && waiter->status.load() != LB_FBRO_TASK_CANCELLED) break;
+      waiter.reset();
+    }
+    if (!waiter) {
+      auto& queue = state->queued_download_data;
+      if (queue.size() >= kMaximumQueuedUrlRequestEvents) queue.pop_front();
+      queue.push_back(std::move(event));
+      return;
+    }
+  }
+  CompleteUrlRequestEventTask(waiter, std::move(event));
+}
+
+UrlRequestClientState::~UrlRequestClientState() {
+  std::deque<std::shared_ptr<TaskState>> pending;
+  {
+    std::lock_guard<std::mutex> lock(mutex);
+    active = false;
+    pending.swap(download_waiters);
+  }
+  for (auto& waiter : pending) {
+    if (waiter && waiter->status.load() != LB_FBRO_TASK_CANCELLED) {
+      CompleteTextTask(waiter, L"", L"URL请求事件队列已释放");
+    }
+  }
+}
+
+/** URL 请求客户端：完成时把 CefURLRequest 注册为受管对象并回传状态 JSON；
+ *  下载数据按块投递到领取/预约队列，正文按原始字节收集（Chromium 不自动解压）。 */
 class BridgeUrlRequestClient final : public FBroHsURLRequestClient {
  public:
-  explicit BridgeUrlRequestClient(std::shared_ptr<TaskState> task) : task_(std::move(task)) {
+  BridgeUrlRequestClient(std::shared_ptr<TaskState> task,
+                         std::shared_ptr<UrlRequestClientState> events)
+      : task_(std::move(task)), events_(std::move(events)) {
     type_ = URLRequestClientType;
   }
   static void* operator new(size_t size) { return FBroMallocManger_New(size); }
@@ -5895,11 +6007,48 @@ class BridgeUrlRequestClient final : public FBroHsURLRequestClient {
         + L",\"status\":" + std::to_wstring(status_code)
         + L",\"error\":" + std::to_wstring(error_code)
         + L",\"cached\":" + std::wstring(cached ? L"true" : L"false") + L"}";
-    CompleteTextTask(task_, json);
+    {
+      std::lock_guard<std::recursive_mutex> lock(g_mutex);
+      task_->object = handle;
+    }
+    // 完成后不再有新的下载块：让挂起的下载预约立即失败，排空循环可立即终止。
+    std::deque<std::shared_ptr<TaskState>> pending;
+    {
+      std::lock_guard<std::mutex> lock(events_->mutex);
+      events_->finished = true;
+      pending.swap(events_->download_waiters);
+    }
+    for (auto& waiter : pending) {
+      if (waiter && waiter->status.load() != LB_FBRO_TASK_CANCELLED) {
+        CompleteTextTask(waiter, L"", L"URL请求已完成，没有更多下载数据");
+      }
+    }
+    CompleteTextTask(task_, std::move(json));
+  }
+
+  void OnDownloadData(int64_t flag, CefRefPtr<CefURLRequest> request,
+                      const void* data, size_t data_length) override {
+    (void)flag;
+    (void)request;
+    UrlRequestEventValue event;
+    if (data_length > kMaximumUrlRequestDownloadBytes || (data_length > 0 && !data)) {
+      event.success = false;
+      event.value = L"URL请求下载数据超过64 MiB或数据地址无效";
+      DeliverUrlRequestEvent(events_, std::move(event));
+      return;
+    }
+    if (data_length > 0) {
+      const auto* bytes = static_cast<const unsigned char*>(data);
+      event.bytes.assign(bytes, bytes + data_length);
+    }
+    event.value = L"{\"kind\":\"downloadData\",\"size\":"
+        + std::to_wstring(data_length) + L"}";
+    DeliverUrlRequestEvent(events_, std::move(event));
   }
 
  private:
   std::shared_ptr<TaskState> task_;
+  std::shared_ptr<UrlRequestClientState> events_;
 };
 
 /** URL 请求发起任务：UI 线程内创建，失败立即完成，成功由客户端回调完成。 */
@@ -6127,7 +6276,12 @@ LB_FBRO_TASK_HANDLE __stdcall LB_FBro_UrlRequestStartAsync(LB_FBRO_HANDLE browse
   if (!context) context = FBroHsRequestContext_GetGlobalContext();
   if (!context) return 0;
   auto task = CreateTask(callback, user_data);
-  CefRefPtr<BridgeUrlRequestClient> client = new BridgeUrlRequestClient(task);
+  auto events = std::make_shared<UrlRequestClientState>();
+  {
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    task->url_request_events = events;
+  }
+  CefRefPtr<BridgeUrlRequestClient> client = new BridgeUrlRequestClient(task, events);
   CefRefPtr<BridgeUrlRequestStartTask> start = new BridgeUrlRequestStartTask(
       request_state->request, context, client, nullptr, task);
   ScheduleManagedTask(start, task, L"无法投递 URL 请求任务");
@@ -6139,6 +6293,99 @@ int __stdcall LB_FBro_UrlRequestGetStatus(LB_FBRO_OBJECT_HANDLE object) {
   auto state = GetObject(object, LB_FBRO_OBJECT_URL_REQUEST, status);
   if (!state) return status;
   return FBroHsURLRequest_GetRequestStatus(state->url_request);
+}
+
+namespace {
+/** 在 CEF UI 线程同步执行闭包：CefURLRequest 的响应访问/取消按 CEF3 桥同款口径
+ *  必须在 UI 线程调用（跨线程直调拿到空响应）。 */
+bool RunOnFbroUiSync(const std::function<void()>& body, DWORD timeout_milliseconds = 5000) {
+  auto done = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+  if (!done) return false;
+  class BridgeSyncUiTask final : public CefTask {
+   public:
+    BridgeSyncUiTask(HANDLE done, const std::function<void()>& body)
+        : done_(done), body_(body) {}
+    void Execute() override {
+      body_();
+      SetEvent(done_);
+    }
+   private:
+    HANDLE done_;
+    const std::function<void()>& body_;
+    IMPLEMENT_REFCOUNTING(BridgeSyncUiTask);
+  };
+  if (!CefPostTask(TID_UI, new BridgeSyncUiTask(done, body))) {
+    CloseHandle(done);
+    return false;
+  }
+  const bool completed = WaitForSingleObject(done, timeout_milliseconds) == WAIT_OBJECT_0;
+  CloseHandle(done);
+  return completed;
+}
+}  // namespace
+
+LB_FBRO_OBJECT_HANDLE __stdcall LB_FBro_UrlRequestGetResponse(LB_FBRO_OBJECT_HANDLE object) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_URL_REQUEST, status);
+  if (!state) return 0;
+  CefRefPtr<CefResponse> response;
+  if (!RunOnFbroUiSync([&]() { response = FBroHsURLRequest_GetResponse(state->url_request); })) {
+    return 0;
+  }
+  if (!response) return 0;
+  return RegisterCefObject(LB_FBRO_OBJECT_RESPONSE, response, &ObjectState::response, object);
+}
+
+int __stdcall LB_FBro_UrlRequestCancel(LB_FBRO_OBJECT_HANDLE object) {
+  int status = LB_FBRO_OK;
+  auto state = GetObject(object, LB_FBRO_OBJECT_URL_REQUEST, status);
+  if (!state) return status;
+  if (!RunOnFbroUiSync([&]() { FBroHsURLRequest_Cancel(state->url_request); })) {
+    return LB_FBRO_ERROR_OPERATION_FAILED;
+  }
+  return LB_FBRO_OK;
+}
+
+int __stdcall LB_FBro_UrlRequestNextDownloadData(LB_FBRO_TASK_HANDLE start_task,
+                                                 LB_FBRO_TASK_HANDLE* result) {
+  if (!result) return LB_FBRO_ERROR_INVALID_ARGUMENT;
+  *result = 0;
+  std::shared_ptr<UrlRequestClientState> state;
+  {
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    const auto found = g_tasks.find(start_task);
+    if (found == g_tasks.end()) return LB_FBRO_ERROR_RELEASED_HANDLE;
+    state = found->second->url_request_events;
+  }
+  if (!state) return LB_FBRO_ERROR_HANDLE_TYPE;
+  auto waiter = CreateTask(nullptr, nullptr);
+  UrlRequestEventValue queued;
+  bool has_queued = false;
+  bool finished = false;
+  {
+    std::lock_guard<std::mutex> lock(state->mutex);
+    if (!state->active) {
+      std::lock_guard<std::recursive_mutex> global_lock(g_mutex);
+      g_tasks.erase(waiter->handle);
+      return LB_FBRO_ERROR_RELEASED_HANDLE;
+    }
+    if (!state->queued_download_data.empty()) {
+      queued = std::move(state->queued_download_data.front());
+      state->queued_download_data.pop_front();
+      has_queued = true;
+    } else if (state->finished) {
+      finished = true;
+    } else {
+      state->download_waiters.push_back(waiter);
+    }
+  }
+  if (has_queued) {
+    CompleteUrlRequestEventTask(waiter, std::move(queued));
+  } else if (finished) {
+    CompleteTextTask(waiter, L"", L"URL请求已完成，没有更多下载数据");
+  }
+  *result = waiter->handle;
+  return LB_FBRO_OK;
 }
 
 LB_FBRO_OBJECT_HANDLE __stdcall LB_FBro_UrlRequestGetRequestObject(LB_FBRO_OBJECT_HANDLE object) {
@@ -6160,7 +6407,12 @@ LB_FBRO_TASK_HANDLE __stdcall LB_FBro_FrameCreateUrlRequestAsync(LB_FBRO_OBJECT_
   auto request_state = GetObject(request, LB_FBRO_OBJECT_REQUEST, status);
   if (!request_state) return 0;
   auto task = CreateTask(callback, user_data);
-  CefRefPtr<BridgeUrlRequestClient> client = new BridgeUrlRequestClient(task);
+  auto events = std::make_shared<UrlRequestClientState>();
+  {
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    task->url_request_events = events;
+  }
+  CefRefPtr<BridgeUrlRequestClient> client = new BridgeUrlRequestClient(task, events);
   CefRefPtr<BridgeUrlRequestStartTask> start = new BridgeUrlRequestStartTask(
       request_state->request, nullptr, client, frame_state->frame, task);
   ScheduleManagedTask(start, task, L"无法投递框架 URL 请求任务");
@@ -9047,6 +9299,27 @@ int __stdcall LB_FBro_TaskRelease(LB_FBRO_TASK_HANDLE task) {
   found->second->user_data = nullptr;
   g_tasks.erase(found);
   return LB_FBRO_OK;
+}
+
+int __stdcall LB_FBro_TaskTakeUrlRequestBufferResult(LB_FBRO_TASK_HANDLE task,
+                                                     LB_FBRO_BUFFER_HANDLE* result) {
+  if (!result) return LB_FBRO_ERROR_INVALID_ARGUMENT;
+  *result = 0;
+  std::shared_ptr<BufferState> buffer;
+  {
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    const auto found = g_tasks.find(task);
+    if (found == g_tasks.end()) return LB_FBRO_ERROR_RELEASED_HANDLE;
+    auto& state = *found->second;
+    if (state.status.load() != LB_FBRO_TASK_COMPLETED || !state.url_request_buffer) {
+      return LB_FBRO_ERROR_OPERATION_FAILED;
+    }
+    if (state.url_request_buffer_taken) return LB_FBRO_ERROR_NOT_FOUND;
+    state.url_request_buffer_taken = true;
+    buffer = std::move(state.url_request_buffer);
+  }
+  *result = RegisterBuffer(std::move(buffer->bytes));
+  return *result ? LB_FBRO_OK : LB_FBRO_ERROR_OPERATION_FAILED;
 }
 
 LB_FBRO_BUFFER_HANDLE __stdcall LB_FBro_BufferCreate(const void* data, size_t size) {

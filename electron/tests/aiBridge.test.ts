@@ -129,6 +129,19 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.match(String(client.getInstructions() || ''), /lingcpp-designer-controls-empty/u, 'instructions 必须告知“看不到任何组件”的根因诊断');
     assert.match(String(client.getInstructions() || ''), /FBro_启用无头模式/u, 'instructions 必须告知 FBro 无头开关为生成期烘焙且运行期不可切换');
     assert.match(String(client.getInstructions() || ''), /FBro_实例等待加载超时/u, 'instructions 必须给出控制台无消息泵时的同步句柄命令族口径');
+    assert.match(String(client.getInstructions() || ''), /CEF3网络_发起请求/u, 'instructions 必须给出 CEF3 纯协议请求族标准流程');
+    assert.match(String(client.getInstructions() || ''), /Accept-Encoding/u, 'instructions 必须写明 Chromium 正文不解压、需要 identity 请求头');
+    assert.match(String(client.getInstructions() || ''), /设置TLS指纹/u, 'instructions 必须给出方案B TLS 指纹客户端口径');
+    assert.match(String(client.getInstructions() || ''), /curl-impersonate/u, 'instructions 必须写明仿真运行时与档案支持范围');
+    assert.match(String(client.getInstructions() || ''), /FBro网络_取下载数据事件/u, 'instructions 必须给出 FBro 纯协议同能力（下载块事件领取）');
+    assert.match(String(client.getInstructions() || ''), /FBro异步请求_取响应对象/u, 'instructions 必须给出 FBro 纯协议同能力（响应对象读取）');
+    assert.match(String(client.getInstructions() || ''), /FBro网络_取下载块/u, 'instructions 必须给出 FBro 纯协议同能力（下载块一次性取回）');
+    assert.match(String(client.getInstructions() || ''), /FBroVIP_实例应用指纹JSON/u, 'instructions 必须给出 FBro 指纹浏览器纯代码多开链与实例级指纹命令');
+    assert.match(String(client.getInstructions() || ''), /虚拟内核必须与 UA 声称的 Chrome 大版本一致/u, 'instructions 必须写明内核开关随 UA 版本钳位 116~135，写死真实内核会被检测标红');
+    assert.match(String(client.getInstructions() || ''), /timeZone\{hour,minute,name,standardName\}/u, 'instructions 必须写明指纹 JSON 是桥 schema（时区键形态）');
+    assert.match(String(client.getInstructions() || ''), /键名错＝没设/u, 'instructions 必须警示 UI 形状键被静默跳过、应用成功不等于生效');
+    assert.match(String(client.getInstructions() || ''), /隐藏自动化要传 false/u, 'instructions 必须写明 webdriver 虚拟值语义（传 true 反而暴露）');
+    assert.match(String(client.getInstructions() || ''), /clearAllData:true 清空该档案全部数据/u, 'instructions 必须写明 clearAllData 只用于槽位重置、多开保登录态不要发');
     assert.match(String(client.getInstructions() || ''), /module\.scaffold/u, 'instructions 必须告知外部 AI 模块创作入口与六步链');
     assert.match(String(client.getInstructions() || ''), /module-build/u, 'instructions 必须说明欢迎页新建/打开的模块以开发源形式位于 module-build');
     assert.match(String(client.getInstructions() || ''), /无需重新打包安装/u, 'instructions 必须说明开发源模块改动即时生效、不要建议重复安装');
@@ -149,6 +162,10 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.match(String(client.getInstructions() || ''), /EdgeView_置区域位置/u, 'instructions 必须给出留边距区域用 置区域位置 在「大小被改变」同步几何的口径');
     assert.match(String(client.getInstructions() || ''), /窗口_取事件宽度\/高度 在普通 Win32 窗口项目返回设计器逻辑坐标/u, 'instructions 必须写明事件尺寸的坐标口径（逻辑 DIP，防双重缩放）');
     assert.match(String(client.getInstructions() || ''), /铺满整个窗口的区域实例才随窗口自动拉伸/u, 'instructions 必须写明 EdgeView 区域实例的 autoStretch 判定（缩放白屏修复口径）');
+    assert.match(String(client.getInstructions() || ''), /NE元素_设置鼠标光标/u, 'instructions 必须告知 new_emoji 元素级光标命令与光标形状取值');
+    assert.match(String(client.getInstructions() || ''), /NE表格_设置悬停行颜色/u, 'instructions 必须告知表格行悬停由 DLL 原生跟踪、禁止手工换行刷色');
+    assert.match(String(client.getInstructions() || ''), /NE表格_设置悬停列/u, 'instructions 必须告知可点单元格列的悬停变色+手型命令');
+    assert.match(String(client.getInstructions() || ''), /NE按钮_设置悬停三态色/u, 'instructions 必须告知按钮悬停/按下交互态配色命令与换肤重下红线');
     assert.match(String(client.getInstructions() || ''), /outputType="dll"/u, 'instructions 必须给出 DLL 输出的 project.create outputType 路径');
     assert.match(String(client.getInstructions() || ''), /windows-dll.*获取接口版本|获取接口版本.*windows-dll/u, 'instructions 必须说明 windows-dll 模板的能力边界（仅获取接口版本映射）');
     assert.match(String(client.getInstructions() || ''), /禁止再调 run\.wait/u, 'instructions 必须钉住 DLL 项目没有运行入口的红线');
@@ -163,6 +180,25 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.match(String(client.getInstructions() || ''), /全局 文本型 名称/u, 'instructions 必须给出功能库缓存的项目全局变量写法');
     assert.match(String(client.getInstructions() || ''), /字节集_到十六进制文本/u, 'instructions 必须给出字节集一步转十六进制文本的命令');
     assert.match(String(client.getInstructions() || ''), /字节集_到十六进制字节集/u, 'instructions 必须写明十六进制编码命令的新名与「返回字节集不是文本」红线');
+    assert.match(String(client.getInstructions() || ''), /UDP_允许广播/u, 'instructions 必须写明发广播前先开 UDP_允许广播');
+    assert.match(String(client.getInstructions() || ''), /UDP_允许端口复用/u, 'instructions 必须写明端口复用开关须在绑定前调用');
+    assert.match(String(client.getInstructions() || ''), /HTTP客户端_设置续传文件/u, 'instructions 必须给出断点续传落盘命令');
+    assert.match(String(client.getInstructions() || ''), /206 断点续传/u, 'instructions 必须写明静态文件路由自动响应 Range 206');
+    assert.match(String(client.getInstructions() || ''), /位_右移/u, 'instructions 必须给出逻辑右移命令（内嵌 C++ 清零批次位运算族）');
+    assert.match(String(client.getInstructions() || ''), /位_循环左移32/u, 'instructions 必须给出 SM3/MD5 轮函数用的 32 位循环左移');
+    assert.match(String(client.getInstructions() || ''), /64 位补码位模式/u, 'instructions 必须钉住位运算族的 64 位补码位模式红线');
+    assert.match(String(client.getInstructions() || ''), /位_算术右移\(n, 63\)/u, 'instructions 必须给出 zigzag 的位运算组合写法');
+    assert.match(String(client.getInstructions() || ''), /"RAW"/u, 'instructions 必须给出按码点低 8 位截断的 RAW 编码口径');
+    assert.match(String(client.getInstructions() || ''), /PB_写字段_varint/u, 'instructions 必须给出无 schema protobuf 拼装命令');
+    assert.match(String(client.getInstructions() || ''), /PB_字段信息JSON/u, 'instructions 必须给出无 schema 字段信息 JSON 视图');
+    assert.match(String(client.getInstructions() || ''), /PB_字节集转文本树/u, 'instructions 必须给出 decode_raw 式文本树命令');
+    assert.match(String(client.getInstructions() || ''), /PB_导出Proto草稿/u, 'instructions 必须给出 .proto 草稿推断命令');
+    assert.match(String(client.getInstructions() || ''), /哈希_算法字节集/u, 'instructions 必须给出任意二进制摘要的字节集形态');
+    assert.match(String(client.getInstructions() || ''), /进程内存_写字节集/u, 'instructions 必须给出批量写进程内存命令');
+    assert.match(String(client.getInstructions() || ''), /设置鼠标位置/u, 'instructions 必须给出鼠标坐标设置命令');
+    assert.match(String(client.getInstructions() || ''), /lingcpp-inline-cpp-replaceable/u, 'instructions 必须告知内嵌 C++ 可替代警告诊断的存在');
+    assert.match(String(client.getInstructions() || ''), /forbidInlineCpp/u, 'instructions 必须告知项目级禁止内嵌 C++ 门禁与豁免口径');
+    assert.match(String(client.getInstructions() || ''), /内嵌C\+\+替代对照表/u, 'instructions 必须指向 Win32 API → 中文命令对照表文档');
     assert.match(String(client.getInstructions() || ''), /navigator.userAgent/u, 'instructions 必须写明 EdgeView/FBro 区域 UA 只改 navigator.userAgent、不改出站 HTTP 头的红线');
     assert.match(String(client.getInstructions() || ''), /FBroHsCommandLine_EnableCrossFrame/u, 'instructions 必须写明 FBro 跨域走官方包装，不得手写 Chromium 开关拼串');
     assert.match(String(client.getInstructions() || ''), /disable-site-isolation-trials/u, 'instructions 必须带 enableCrossFrame 实测写入的开关，作为真机回读口径');
@@ -1881,6 +1917,123 @@ test('AI Bridge gates apply and preview when source references controls missing 
   }
 });
 
+test('AI Bridge builds dll-output window projects with a zero-window designer model', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const projectId = 'dll-zero-window-designer';
+  const sourcePath = `src/${projectId}/数学文本库.lcpp`;
+  const dllSource = [
+    '包 无窗口DLL测试',
+    '',
+    '类 数学文本库',
+    '公开',
+    '  整数型 加法计算(整数型 被加数, 整数型 加数)',
+    '    局部 整数型 合计 = 0',
+    '    合计 = 被加数 + 加数',
+    '    返回(合计)',
+    '  结束',
+    '结束类',
+    ''
+  ].join('\n');
+  await fs.mkdir(path.dirname(path.join(workspaceRoot, sourcePath)), { recursive: true });
+  await fs.writeFile(path.join(workspaceRoot, sourcePath), dllSource, 'utf8');
+  // 由窗口模板转成无窗口的存量项目：type 仍是 visual-cpp，但设计器模型已清成零窗口。
+  await registerSolutionProject(workspaceRoot, {
+    id: projectId,
+    name: '无窗口DLL测试',
+    type: 'visual-cpp',
+    designerPath: `.lingbuilder/projects/${projectId}/window-designer.json`,
+    buildProperties: { configuration: 'Debug', architecture: 'Win32', additionalArguments: [], outputType: 'dll' }
+  });
+  await fs.mkdir(path.dirname(path.join(workspaceRoot, `.lingbuilder/projects/${projectId}/window-designer.json`)), { recursive: true });
+  await fs.writeFile(
+    path.join(workspaceRoot, `.lingbuilder/projects/${projectId}/window-designer.json`),
+    JSON.stringify({ schemaVersion: 2, id: projectId, name: '无窗口DLL测试', windows: [], resources: [] }),
+    'utf8'
+  );
+
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'yolo', 'dll-zero-window-token'));
+  try {
+    // outputType=dll 的项目不需要窗口：零窗口设计器不得按「设计器缺失或无效」阻断，
+    // 且必须按源码第一个类合成名义宿主窗口（导出面从公开子程序产生）。
+    const preview = await service.nativePreview({ projectId });
+    assert.equal(preview.ok, true);
+    const mainCpp = preview.files.find((file: { relativePath: string }) => file.relativePath === 'main.cpp');
+    assert.ok(mainCpp, '预览必须生成 main.cpp');
+    assert.match(
+      String(mainCpp.content),
+      /extern "C" __declspec\(dllexport\) int 加法计算\(int 被加数, int 加数\)/u,
+      '零窗口 DLL 项目必须从公开子程序生成导出包装'
+    );
+    assert.match(String(mainCpp.content), /LINGBUILDER_PURE_LOGIC_DLL/u, '无窗口命令的 DLL 项目应走纯逻辑精简形态');
+    // 纯源码提案与零窗口 updatedDesignerProject 照常受理（designer-optional 语义同口径）。
+    const proposal = await service.proposeEdit({
+      filePath: sourcePath,
+      projectId,
+      instruction: '把返回值改一下',
+      updatedDesignerProject: { schemaVersion: 2, id: projectId, name: '无窗口DLL测试', resources: [], windows: [] },
+      files: [{ filePath: sourcePath, updatedSource: dllSource.replace('合计 = 被加数 + 加数', '合计 = 被加数 + 加数 + 0') }]
+    });
+    assert.ok(proposal.proposal.id);
+  } finally {
+    await service.shutdown();
+  }
+});
+
+test('AI Bridge builds windows-dll template projects without a designer model on disk', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const projectId = 'dll-no-designer';
+  const sourcePath = `src/${projectId}/DllApi.lcpp`;
+  const dllSource = [
+    '包 DLL导出测试',
+    '',
+    '类 DllApi',
+    '公开',
+    '  整数型 add()',
+    '    返回 (1)',
+    '  结束',
+    '结束类',
+    ''
+  ].join('\n');
+  await fs.mkdir(path.dirname(path.join(workspaceRoot, sourcePath)), { recursive: true });
+  await fs.writeFile(path.join(workspaceRoot, sourcePath), dllSource, 'utf8');
+  await registerSolutionProject(workspaceRoot, {
+    id: projectId,
+    name: 'DLL导出测试',
+    type: 'windows-dll',
+    buildProperties: { configuration: 'Debug', architecture: 'Win32', additionalArguments: [], outputType: 'dll' }
+  });
+
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'yolo', 'dll-no-designer-token'));
+  try {
+    // windows-dll 模板项目按设计不携带设计器模型：不得再按「磁盘设计器缺失」阻断。
+    const preview = await service.nativePreview({ projectId });
+    assert.equal(preview.ok, true);
+    const mainCpp = preview.files.find((file: { relativePath: string }) => file.relativePath === 'main.cpp');
+    assert.ok(mainCpp, '预览必须生成 main.cpp');
+    assert.match(
+      String(mainCpp.content),
+      /extern "C" __declspec\(dllexport\) int add\(\)/u,
+      '零窗口 DLL 项目必须仍从公开子程序生成导出包装'
+    );
+    assert.match(String(mainCpp.content), /BOOL WINAPI DllMain/u, '动态库输出必须生成 DllMain');
+    assert.doesNotMatch(String(mainCpp.content), /wWinMain\s*\(/u, '动态库输出不得生成窗口应用入口函数');
+    // 纯源码提案照常受理；带零窗口 updatedDesignerProject 的提案也不被「至少一个窗口」校验拒绝。
+    const proposal = await service.proposeEdit({
+      filePath: sourcePath,
+      projectId,
+      instruction: '把 add 的返回值改为 2',
+      updatedDesignerProject: { schemaVersion: 2, id: projectId, name: 'DLL导出测试', resources: [], windows: [] },
+      files: [{ filePath: sourcePath, updatedSource: dllSource.replace('返回 (1)', '返回 (2)') }]
+    });
+    assert.ok(proposal.proposal.id);
+    const applied = await service.applyEdit({ proposalId: proposal.proposal.id, approved: true });
+    assert.equal(applied.ok, true);
+    assert.match(await fs.readFile(path.join(workspaceRoot, sourcePath), 'utf8'), /返回 \(2\)/u);
+  } finally {
+    await service.shutdown();
+  }
+});
+
 test('AI Bridge blocks build and preview when a module command argument type mismatches', async () => {
   const workspaceRoot = await createTempWorkspace();
   const projectId = 'arg-type-gate';
@@ -3427,7 +3580,7 @@ async function createTempWorkspace(): Promise<string> {
 /** 在测试工作区 solution.json 中注册项目：设计器模型与 .lingbuilder/projects/<id>/ 写入只允许已注册项目。 */
 async function registerSolutionProject(
   workspaceRoot: string,
-  project: { id: string; name?: string; sourceRoot?: string }
+  project: { id: string; name?: string; sourceRoot?: string; type?: string; designerPath?: string; buildProperties?: Record<string, unknown> }
 ): Promise<void> {
   const solutionPath = path.join(workspaceRoot, '.lingbuilder', 'solution.json');
   let solution: Record<string, unknown> = {
@@ -3447,10 +3600,11 @@ async function registerSolutionProject(
   projects.push({
     id: project.id,
     name: project.name ?? project.id,
-    type: 'visual-cpp',
+    type: project.type ?? 'visual-cpp',
     sourceRoot,
     configRoot: `config/${project.id}`,
-    designerPath: `.lingbuilder/projects/${project.id}/window-designer.json`
+    designerPath: `.lingbuilder/projects/${project.id}/window-designer.json`,
+    ...(project.buildProperties ? { buildProperties: project.buildProperties } : {})
   });
   solution.projects = projects;
   if (!solution.startupProjectId) solution.startupProjectId = project.id;

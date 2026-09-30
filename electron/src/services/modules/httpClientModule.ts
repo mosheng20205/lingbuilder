@@ -63,8 +63,8 @@ const specs: HttpClientCommandSpec[] = [
     returnType: 'bool', returnLabel: '逻辑型', category: '客户端', insertText: 'HTTP客户端_设置超时($1, 10000, 15000, 30000, 30000)'
   },
   {
-    name: 'HTTP客户端_设置资源限制', signature: 'HTTP客户端_设置资源限制(客户端, 响应头上限KB, 响应体上限MB, 上传上限MB, 最大重定向次数)', description: '限制响应头、内存或文件响应、上传和自动重定向，阻止不受控资源占用。',
-    parameters: [...client, parameter('响应头上限KB', 'int', '响应头总大小上限，单位 KB，1 到 1024。'), parameter('响应体上限MB', 'int', '内存中响应正文的大小上限，单位 MB，1 到 4096。'), parameter('上传上限MB', 'int', '上传正文或文件的大小上限，单位 MB，1 到 4096。'), parameter('最大重定向次数', 'int', '自动跟随重定向的最大次数，0 到 100。')],
+    name: 'HTTP客户端_设置资源限制', signature: 'HTTP客户端_设置资源限制(客户端, 响应头上限KB, 响应体上限MB, 上传上限MB, 最大重定向次数)', description: '限制响应头、内存响应、上传和自动重定向，阻止不受控资源占用；流式写入文件（设置响应文件/设置续传文件）的响应按盘落盘，不受响应体上限约束。',
+    parameters: [...client, parameter('响应头上限KB', 'int', '响应头总大小上限，单位 KB，1 到 1024。'), parameter('响应体上限MB', 'int', '内存中响应正文的大小上限，单位 MB，1 到 4096；流式写文件的响应不受此限。'), parameter('上传上限MB', 'int', '上传正文或文件的大小上限，单位 MB，1 到 4096。'), parameter('最大重定向次数', 'int', '自动跟随重定向的最大次数，0 到 100。')],
     returnType: 'bool', returnLabel: '逻辑型', category: '客户端', insertText: 'HTTP客户端_设置资源限制($1, 64, 64, 64, 10)'
   },
   {
@@ -75,6 +75,28 @@ const specs: HttpClientCommandSpec[] = [
     name: 'HTTP客户端_设置代理', signature: 'HTTP客户端_设置代理(客户端, 模式, 代理地址, 绕过列表)', description: '配置代理模式：0 系统默认、1 直连、2 固定代理；固定代理必须提供地址。',
     parameters: [...client, parameter('模式', 'int', '代理模式：0 使用系统默认配置，1 直连不经代理，2 固定代理地址。'), parameter('代理地址', 'wideString', '固定代理地址，模式为 2 时必须提供且不能含换行。'), parameter('绕过列表', 'wideString', '不走代理的域名或 IP 列表，格式遵循 WinHTTP；不需要时传空文本。')], returnType: 'bool', returnLabel: '逻辑型', category: '客户端',
     insertText: 'HTTP客户端_设置代理($1, 0, "", "")'
+  },
+  {
+    name: 'HTTP客户端_解析跳转链', signature: 'HTTP客户端_解析跳转链(客户端, 地址, 最大跳转次数)', description: '手动跟随 3xx 跳转并返回最终地址；分享短链解析用（如 xhslink.com 短链 → 笔记页地址）。失败返回空文本。',
+    parameters: [...client, parameter('地址', 'wideString', requestUrlArg), parameter('最大跳转次数', 'int', '最多跟随的跳转次数，0 到 20；小于 0 时按 10 处理。')], returnType: 'wideString', returnLabel: '文本型', category: '客户端',
+    insertText: 'HTTP客户端_解析跳转链($1, "https://xhslink.com/xxxx", 10)'
+  },
+  {
+    name: 'HTTP客户端请求_设置代理', signature: 'HTTP客户端请求_设置代理(请求, 代理地址)', description: '为单个请求覆盖客户端代理（固定代理模式）；空文本恢复继承客户端代理。必须在实际开始前调用。',
+    parameters: [...request, parameter('代理地址', 'wideString', '本请求使用的固定代理地址，如 "http://代理主机:端口"；空文本表示继承客户端设置。')], returnType: 'bool', returnLabel: '逻辑型', category: '请求'
+  },
+  {
+    name: 'HTTP客户端请求_设置代理凭据', signature: 'HTTP客户端请求_设置代理凭据(请求, 用户名, 密码)', description: '为单个请求设置代理 Basic 凭据，优先于客户端代理凭据；凭据只驻留进程内存。',
+    parameters: [...request, parameter('用户名', 'wideString', '代理认证用户名；空文本清除本请求的代理凭据覆盖。'), parameter('密码', 'wideString', '代理认证密码。')], returnType: 'bool', returnLabel: '逻辑型', category: '请求'
+  },
+  {
+    name: 'HTTP客户端_设置TLS指纹', signature: 'HTTP客户端_设置TLS指纹(客户端, 指纹档案)', description: '把客户端切换到 curl-impersonate 仿真网络栈：TLS ClientHello、HTTP/2 指纹与浏览器默认头与目标浏览器一致（纯协议、不依赖浏览器进程）；空文本恢复 WinHTTP。仅 x64 构建；需随附 libcurl-impersonate.dll。',
+    parameters: [...client, parameter('指纹档案', 'wideString', '仿真目标：chrome99～chrome150、chrome133a、edge99/101、safari 系列或 firefox133+ 等（以 libcurl-impersonate.dll 支持为准，可写 chrome-131 等常见写法）；空文本恢复 WinHTTP 直连。')], returnType: 'bool', returnLabel: '逻辑型', category: '安全',
+    insertText: 'HTTP客户端_设置TLS指纹($1, "chrome-131")'
+  },
+  {
+    name: 'HTTP客户端_取TLS指纹', signature: 'HTTP客户端_取TLS指纹(客户端)', description: '返回客户端当前 TLS 指纹档案名（如 chrome131）；未设置返回空文本。',
+    parameters: client, returnType: 'wideString', returnLabel: '文本型', category: '安全'
   },
   {
     name: 'HTTP客户端_设置服务器凭据', signature: 'HTTP客户端_设置服务器凭据(客户端, 用户名, 密码)', description: '设置内存中的 HTTP Basic 服务器凭据；不会写入模块日志或持久化配置。',
@@ -201,8 +223,13 @@ const specs: HttpClientCommandSpec[] = [
     parameters: [...request, parameter('文件路径', 'wideString', '要上传的本机文件路径，不能为空；按 64KB 分块读取，不把整个文件载入内存。'), parameter('内容类型', 'wideString', '上传时的 Content-Type 文本，例如 application/octet-stream。')], returnType: 'bool', returnLabel: '逻辑型', category: '请求'
   },
   {
-    name: 'HTTP客户端_设置响应文件', signature: 'HTTP客户端_设置响应文件(请求, 文件路径, 允许覆盖)', description: '把响应流式写入临时文件并原子替换目标文件，避免大响应驻留内存。',
+    name: 'HTTP客户端_设置响应文件', signature: 'HTTP客户端_设置响应文件(请求, 文件路径, 允许覆盖)', description: '把响应流式写入临时文件并原子替换目标文件，避免大响应驻留内存；流式文件响应不受响应体内存上限约束。',
     parameters: [...request, parameter('文件路径', 'wideString', '保存响应的本机文件路径，不能为空；先写临时文件再原子替换到该路径。'), parameter('允许覆盖', 'bool', '传真时覆盖已存在的目标文件，传假时目标已存在会失败。')], returnType: 'bool', returnLabel: '逻辑型', category: '响应'
+  },
+  {
+    name: 'HTTP客户端_设置续传文件', signature: 'HTTP客户端_设置续传文件(请求, 文件路径)', description: '把响应流式追加写入目标文件，不清空已有内容，用于断点续传下载；中断时已写入字节保留，配合 Range 请求头（如 bytes=已有大小-）从断点继续，文件不存在时自动创建。',
+    parameters: [...request, parameter('文件路径', 'wideString', '追加写入的本机文件路径，不能为空；文件不存在时自动创建，已存在时从文件尾继续追加。')], returnType: 'bool', returnLabel: '逻辑型', category: '响应',
+    insertText: 'HTTP客户端_设置续传文件($1, "D:\\\\下载\\\\大文件.zip")'
   },
   {
     name: 'HTTP客户端_绑定完成处理器', signature: 'HTTP客户端_绑定完成处理器(请求, &处理器)', description: '绑定请求完成后在创建窗口 UI 线程调用的无参数处理器。',
@@ -352,7 +379,7 @@ export const HTTP_CLIENT_MODULE: LingBuilderModuleManifest = {
   schemaVersion: 2,
   id: 'lingbuilder.net.http-client',
   name: 'HTTP 客户端模块',
-  version: '2.1.0',
+  version: '2.3.0',
   minLingBuilderVersion: '0.2.8',
   category: '网络',
   description: '提供受管 WinHTTP HTTP/HTTPS 客户端、多请求并发、后台完成事件、代理与身份验证、TLS 证书策略、重定向、Cookie、压缩、文本/二进制/文件上传下载、资源限制和运行统计。',
@@ -391,7 +418,8 @@ export const HTTP_CLIENT_MODULE: LingBuilderModuleManifest = {
     },
     {
       id: 'windows-msvc-x64', platform: 'windows', arch: 'x64', toolchain: 'msvc',
-      libs: ['winhttp.lib', 'crypt32.lib'], defines: ['LINGBUILDER_HTTP_CLIENT_MODULE'], compileOptions: ['/std:c++17']
+      libs: ['winhttp.lib', 'crypt32.lib'], defines: ['LINGBUILDER_HTTP_CLIENT_MODULE'], compileOptions: ['/std:c++17'],
+      runtimeFiles: ['runtime/x64/libcurl-impersonate.dll', 'runtime/x64/cacert.pem', 'runtime/LICENSE', 'runtime/LICENSE_BORINGSSL', 'runtime/LICENSE_BROTLI', 'runtime/LICENSE_CARES', 'runtime/LICENSE_CURL', 'runtime/LICENSE_NGHTTP2', 'runtime/LICENSE_NGHTTP3', 'runtime/LICENSE_NGTCP2', 'runtime/LICENSE_ZLIB', 'runtime/LICENSE_ZSTD']
     }
   ],
   bindings: { commands: specs.map(binding) }

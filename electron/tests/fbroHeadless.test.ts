@@ -227,3 +227,53 @@ test('FBro 启动开关白名单与桥内 kStartupSwitchKeys 不漂移', async (
   assert.ok(exportBody.indexOf('std::lock_guard<std::recursive_mutex> lock(g_mutex)') < exportBody.indexOf('g_startup_switches_json = json;'),
     '写入 g_startup_switches_json 必须先持 g_mutex');
 });
+
+test('FBroBrowser 懒创建槽位：data2 第7字段编码、批次跳过与显式创建链路', () => {
+  const project: LingWindowProject = {
+    id: 'fbro-lazy-test',
+    name: 'FBro 懒创建测试项目',
+    windows: [{
+      id: 'main-window',
+      fileName: 'MainWindow.xml',
+      className: 'MainWindow',
+      title: 'MainWindow',
+      width: 960,
+      height: 640,
+      background: '#202020',
+      description: '主窗口',
+      controls: [
+        {
+          id: 'fbro-lazy', type: 'FBroBrowser', name: '浏览器槽1', content: '', x: 8, y: 8,
+          width: 480, height: 320, background: '#ffffff', foreground: '#000000', fontSize: 14,
+          isEnabled: true, visibility: 'Visible',
+          properties: { lazyCreate: true, cacheDir: 'slot-cache-1' }, events: {}
+        },
+        {
+          id: 'fbro-auto', type: 'FBroBrowser', name: 'FBro浏览器2', content: '', x: 8, y: 340,
+          width: 480, height: 280, background: '#ffffff', foreground: '#000000', fontSize: 14,
+          isEnabled: true, visibility: 'Visible', properties: {}, events: {}
+        }
+      ]
+    }],
+    resources: []
+  };
+  const { generated, cpp } = generatedMain(project,
+    '类 MainWindow\n    事件 _MainWindow_创建完毕()\n        FBro_创建(浏览器槽1)\n    结束\n结束类');
+  assert.equal(generated.blockingDiagnostics.length, 0);
+
+  // 解码侧认第 7 字段并把 'lazy' 落到实例标记；旧数据（6/5 字段）保留回退。
+  assert.match(cpp, /DecodeControlRecords\(control\.data2, 7\)/u);
+  assert.match(cpp, /DecodeControlRecords\(control\.data2, 6\)/u);
+  assert.match(cpp, /if \(fields\.size\(\) > 6 && fields\[6\] == L"lazy"\) instance->lazyCreate = true;/u);
+  assert.match(cpp, /bool lazyCreate = false;/u);
+
+  // 自动批次（控件名为空）跳过懒创建槽位；显式按名创建不受影响。
+  assert.match(cpp, /if \(\(!controlName \|\| !controlName\[0\]\) && instance->lazyCreate\) continue;/u);
+
+  // FBro_关闭 后句柄归零（LB_FBRO_HANDLE 是整型，不能写 nullptr），支持「关闭后按需重建」。
+  assert.match(cpp, /LB_FBro_Close\(instance->handle\); instance->handle = 0;/u);
+
+  // 懒槽位 data2 编码出第 7 字段 'lazy'；非懒槽位第 7 字段为空（0:）。
+  const specLines = cpp.split(String.fromCharCode(10)).filter(line => line.includes('4:lazy'));
+  assert.ok(specLines.length >= 1, '懒创建槽位的 data2 必须编码出 4:lazy 第 7 字段');
+});

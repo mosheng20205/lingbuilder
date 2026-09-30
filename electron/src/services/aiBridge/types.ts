@@ -165,6 +165,27 @@ export interface AiBridgeCodeOrganizationFileInfo {
   kind: 'window-main' | 'function-library' | 'fixed' | 'other';
   functionLibraryCount: number;
   classNames: string[];
+  /** 本文件 @ 内嵌 C++ 行数（不含多行文本块内的 @）。 */
+  inlineCppLines: number;
+}
+
+export interface AiBridgeInlineCppUsageInfo {
+  /** 全项目 @ 内嵌 C++ 行总数（含已豁免行）。 */
+  totalLines: number;
+  /** 其中带“// 允许:”豁免标记的行数。 */
+  exemptLines: number;
+  /** 其中已有中文命令可替代的行数（命中替代知识表）。 */
+  replaceableLines: number;
+  readonly fileCount: number;
+  /** 按命中行数降序的替代建议（最多 8 条）。 */
+  suggestions: Array<{
+    api: string;
+    commands: string[];
+    moduleId?: string;
+    note?: string;
+    lineCount: number;
+    fileCount: number;
+  }>;
 }
 
 export interface AiBridgeCodeOrganizationInfo {
@@ -173,6 +194,8 @@ export interface AiBridgeCodeOrganizationInfo {
   files: AiBridgeCodeOrganizationFileInfo[];
   functionLibraries: Array<{ name: string; filePath: string; publicMethods: string[] }>;
   largestFile?: AiBridgeCodeOrganizationFileInfo;
+  /** 全项目内嵌 C++（@ 行）用量报告（2026-09-27 批②）。 */
+  inlineCppUsage: AiBridgeInlineCppUsageInfo;
   /** 中文处方：是否需要把逻辑下沉到功能库。 */
   summary: string;
 }

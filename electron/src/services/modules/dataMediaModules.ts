@@ -135,10 +135,11 @@ const hashAlgorithms = [
 ] as const;
 
 const hash = createStandardModule({
-  id: 'lingbuilder.crypto.hash', name: '哈希摘要模块', category: '系统', description: '计算文本和文件的 MD5、SHA-1、SHA-256、SHA-3、SM3、BLAKE2 与 BLAKE3 摘要。', tags: ['安全', '哈希', 'SHA3', 'SM3', 'BLAKE3'],
+  id: 'lingbuilder.crypto.hash', name: '哈希摘要模块', version: '1.1.0', category: '系统', description: '计算文本、字节集和文件的 MD5、SHA-1、SHA-256、SHA-3、SM3、BLAKE2 与 BLAKE3 摘要。', tags: ['安全', '哈希', 'SHA3', 'SM3', 'BLAKE3'],
   commands: [
     ...hashAlgorithms.flatMap(([commandSuffix, displayName, warning]) => [
       command(`哈希_${commandSuffix}文本`, [{ name: '文本', type: 'wideString', description: '按 UTF-8 编码参与摘要计算的文本。' }], 'wideString', `计算 UTF-8 文本的 ${displayName} 大写十六进制摘要。${warning}`, commandSuffix === 'SHA256' ? '哈希_SHA256文本("LingBuilder")' : {}),
+      command(`哈希_${commandSuffix}字节集`, [{ name: '数据', type: 'bytes', description: '要参与摘要计算的原始字节集，不做任何编码转换；任意二进制（含非 UTF-8）都用它。' }], 'wideString', `计算字节集的 ${displayName} 大写十六进制摘要。${warning}`),
       command(`哈希_${commandSuffix}文件`, [{ name: '路径', type: 'wideString', description: '要流式读取的文件路径。' }], 'wideString', `流式计算文件的 ${displayName} 大写十六进制摘要。${warning}`)
     ]),
     command('哈希_安全随机十六进制', [{ name: '字节数', type: 'int', description: '要生成的随机字节数；小于 0 按 0、大于 1048576 按 1048576 处理，输出大写十六进制文本。'}], 'wideString', '使用系统加密随机源生成十六进制文本。')

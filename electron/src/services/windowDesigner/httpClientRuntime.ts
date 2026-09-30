@@ -75,7 +75,7 @@ public:
         return UpdateClient(id, [&](Client& client) {
             const std::wstring text = value ? value : L"";
             if (text.empty() || ContainsControl(text)) return ClientFail(client, L"HTTP User-Agent 不能为空或包含控制字符。");
-            client.userAgent = text; return true;
+            client.userAgent = text; client.userAgentExplicit = true; return true;
         });
     }
 
@@ -114,8 +114,55 @@ public:
         });
     }
 
+    bool SetRequestProxy(long long id, const wchar_t* address) {
+        return UpdateRequest(id, [&](Request& request) {
+            const std::wstring proxy = address ? address : L"";
+            if (ContainsControl(proxy)) return RequestFailUnlocked(request, L"HTTP 请求代理地址不能包含控制字符。", ERROR_INVALID_PARAMETER);
+            if (proxy.empty()) { request.proxyMode = -1; request.proxy.clear(); request.proxyBypass.clear(); return true; }
+            request.proxyMode = 2; request.proxy = proxy; request.proxyBypass.clear(); return true;
+        });
+    }
+
+    bool SetRequestCredentials(long long id, const wchar_t* user, const wchar_t* password) {
+        return UpdateRequest(id, [&](Request& request) {
+            const std::wstring name = user ? user : L""; const std::wstring secret = password ? password : L"";
+            if (ContainsControl(name) || ContainsControl(secret)) return RequestFailUnlocked(request, L"HTTP 请求代理凭据不能包含控制字符。", ERROR_INVALID_PARAMETER);
+            request.proxyUser = name; request.proxyPassword = secret; return true;
+        });
+    }
+
     bool SetTls(long long id, bool verify, bool allowSelfSigned) {
         return UpdateClient(id, [&](Client& client) { client.verifyCertificate = verify; client.allowSelfSigned = allowSelfSigned; return true; });
+    }
+
+    // 设置 TLS 指纹仿真目标（curl-impersonate）：设好后该客户端全部请求改走 Chromium/BoringSSL 仿真网络栈，
+    // TLS ClientHello、HTTP/2 SETTINGS 与浏览器默认头与目标浏览器一致；空文本恢复 WinHTTP 直连。
+    // 指纹名规范化（去 -/_、小写）后用一次性句柄实测，未知档案立即给中文诊断。
+    bool SetImpersonateTarget(long long id, const wchar_t* target) {
+        const std::wstring raw = target ? target : L"";
+        std::wstring normalized;
+        for (wchar_t ch : raw) {
+            if (ch == L'-' || ch == L'_' || ch == L' ') continue;
+            normalized.push_back(static_cast<wchar_t>(towlower(ch)));
+        }
+        CurlImpersonateApi& api = CurlImpersonate();
+        if (!api.ok) return ClientFailLastError(api.loadError);
+        if (!normalized.empty()) {
+            const int probe = api.impersonateProbe(normalized);
+            if (probe != 0) {
+                return ClientFailLastError(L"TLS 指纹档案「" + normalized + L"」不受支持（libcurl-impersonate 返回码 " + std::to_wstring(probe) + L"）；支持 chrome99～chrome150、edge99/101、safari/ios、firefox133+ 等档案，随 libcurl-impersonate.dll 版本更新。");
+            }
+        }
+        return UpdateClient(id, [&](Client& client) {
+            client.impersonateTarget = normalized;
+            return true;
+        });
+    }
+
+    std::wstring GetImpersonateTarget(long long id) {
+        auto client = FindClient(id); if (!client) return L"";
+        std::lock_guard<std::mutex> lock(client->mutex);
+        return client->impersonateTarget;
     }
 
     bool SetCertificatePin(long long id, const wchar_t* fingerprint) {
@@ -187,8 +234,68 @@ public:
         return SetBinaryBody(id, bytes, contentType);
     }
     bool SetFileBody(long long id, const wchar_t* path, const wchar_t* contentType) { return UpdateRequest(id, [&](Request& request) { const std::wstring file = path ? path : L""; if (file.empty()) return RequestFailUnlocked(request, L"HTTP 上传文件路径不能为空。", ERROR_INVALID_PARAMETER); request.uploadPath = file; request.body.clear(); request.bodyMime = contentType && contentType[0] ? contentType : L"application/octet-stream"; return true; }); }
-    bool SetResponseFile(long long id, const wchar_t* path, bool overwrite) { return UpdateRequest(id, [&](Request& request) { const std::wstring file = path ? path : L""; if (file.empty()) return RequestFailUnlocked(request, L"HTTP 响应文件路径不能为空。", ERROR_INVALID_PARAMETER); request.responsePath = file; request.responseAllowOverwrite = overwrite; return true; }); }
+    bool SetResponseFile(long long id, const wchar_t* path, bool overwrite) { return UpdateRequest(id, [&](Request& request) { const std::wstring file = path ? path : L""; if (file.empty()) return RequestFailUnlocked(request, L"HTTP 响应文件路径不能为空。", ERROR_INVALID_PARAMETER); request.responsePath = file; request.resumePath.clear(); request.responseAllowOverwrite = overwrite; return true; }); }
+    bool SetResumeFile(long long id, const wchar_t* path) { return UpdateRequest(id, [&](Request& request) { const std::wstring file = path ? path : L""; if (file.empty()) return RequestFailUnlocked(request, L"HTTP 续传文件路径不能为空。", ERROR_INVALID_PARAMETER); request.resumePath = file; request.responsePath.clear(); request.responseAllowOverwrite = true; return true; }); }
     bool BindHandler(long long id, const wchar_t* handler) { return UpdateRequest(id, [&](Request& request) { const std::wstring value = handler ? handler : L""; if (value.empty() || ContainsControl(value)) return RequestFailUnlocked(request, L"HTTP 完成处理器不能为空或包含控制字符。", ERROR_INVALID_PARAMETER); request.handler = value; return true; }); }
+
+    // 解析跳转链：手动跟随 3xx Location 直到非跳转状态或次数用尽，返回最终地址；失败返回空文本。
+    // 供分享短链/跳转口令解析使用（如 xhslink.com → xiaohongshu.com/explore/...?xsec_token=...）。
+    // 同步阻塞实现，适合后台线程或控制台程序；窗口事件中请改用异步请求自行处理。
+    std::wstring ResolveRedirectChain(long long clientId, const wchar_t* rawUrl, int maxHops) {
+        auto client = FindClient(clientId); if (!client) { SetGlobalError(L"HTTP 客户端 ID 无效。"); return L""; }
+        std::wstring current = rawUrl ? rawUrl : L"";
+        if (!ValidUrl(current)) { ClientFail(*client, L"HTTP 起始地址无效；必须使用 http:// 或 https://。"); return L""; }
+        const int hops = maxHops < 0 ? 10 : (maxHops > 20 ? 20 : maxHops);
+        HINTERNET session = nullptr; if (!EnsureSession(client, session)) return L"";
+        for (int index = 0; index < hops; ++index) {
+            URL_COMPONENTSW parts = {}; parts.dwStructSize = sizeof(parts);
+            parts.dwSchemeLength = static_cast<DWORD>(-1); parts.dwHostNameLength = static_cast<DWORD>(-1);
+            parts.dwUrlPathLength = static_cast<DWORD>(-1); parts.dwExtraInfoLength = static_cast<DWORD>(-1);
+            if (!WinHttpCrackUrl(current.c_str(), 0, 0, &parts) || (parts.nScheme != INTERNET_SCHEME_HTTP && parts.nScheme != INTERNET_SCHEME_HTTPS)) return current;
+            const bool secure = parts.nScheme == INTERNET_SCHEME_HTTPS;
+            const std::wstring host(parts.lpszHostName, parts.dwHostNameLength);
+            std::wstring path = parts.dwUrlPathLength ? std::wstring(parts.lpszUrlPath, parts.dwUrlPathLength) : L"/";
+            if (parts.dwExtraInfoLength) path.append(parts.lpszExtraInfo, parts.dwExtraInfoLength);
+            HINTERNET connection = WinHttpConnect(session, host.c_str(), parts.nPort, 0);
+            if (!connection) return L"";
+            HINTERNET nativeRequest = WinHttpOpenRequest(connection, L"GET", path.c_str(), nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, secure ? WINHTTP_FLAG_SECURE : 0);
+            if (!nativeRequest) { WinHttpCloseHandle(connection); return L""; }
+            const DWORD disableRedirects = WINHTTP_DISABLE_REDIRECTS;
+            WinHttpSetOption(nativeRequest, WINHTTP_OPTION_DISABLE_FEATURE, (LPVOID)&disableRedirects, sizeof(disableRedirects));
+            const bool sent = WinHttpSendRequest(nativeRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, (DWORD_PTR)nullptr) != FALSE
+                && WinHttpReceiveResponse(nativeRequest, nullptr) != FALSE;
+            if (!sent) { WinHttpCloseHandle(nativeRequest); WinHttpCloseHandle(connection); return L""; }
+            DWORD status = 0, statusSize = sizeof(status);
+            WinHttpQueryHeaders(nativeRequest, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_HEADER_NAME_BY_INDEX, &status, &statusSize, WINHTTP_NO_HEADER_INDEX);
+            if (status < 300 || status >= 400) {
+                WinHttpCloseHandle(nativeRequest); WinHttpCloseHandle(connection);
+                return current;
+            }
+            DWORD locationSize = 0;
+            WinHttpQueryHeaders(nativeRequest, WINHTTP_QUERY_LOCATION, WINHTTP_HEADER_NAME_BY_INDEX, nullptr, &locationSize, WINHTTP_NO_HEADER_INDEX);
+            if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || locationSize == 0) {
+                WinHttpCloseHandle(nativeRequest); WinHttpCloseHandle(connection);
+                return current;
+            }
+            std::wstring location(locationSize / sizeof(wchar_t) + 1, L'\0');
+            if (!WinHttpQueryHeaders(nativeRequest, WINHTTP_QUERY_LOCATION, WINHTTP_HEADER_NAME_BY_INDEX, location.data(), &locationSize, WINHTTP_NO_HEADER_INDEX)) {
+                WinHttpCloseHandle(nativeRequest); WinHttpCloseHandle(connection);
+                return L"";
+            }
+            WinHttpCloseHandle(nativeRequest); WinHttpCloseHandle(connection);
+            while (!location.empty() && location.back() == L'\0') location.pop_back();
+            if (location.rfind(L"https://", 0) == 0 || location.rfind(L"http://", 0) == 0) {
+                current = location;
+            } else if (location.rfind(L"//", 0) == 0) {
+                current = std::wstring(secure ? L"https:" : L"http:") + location;
+            } else if (!location.empty() && location.front() == L'/') {
+                current = std::wstring(secure ? L"https://" : L"http://") + host + location;
+            } else {
+                current = std::wstring(secure ? L"https://" : L"http://") + host + L"/" + location;
+            }
+        }
+        return current;
+    }
 
     bool Start(long long id) {
         auto request = FindRequest(id); if (!request) return false;
@@ -291,10 +398,10 @@ private:
     struct Client {
         long long id = 0; mutable std::mutex mutex; std::wstring userAgent = L"LingBuilder HTTP/2.0"; int resolveTimeoutMs = 10000; int connectTimeoutMs = 15000; int sendTimeoutMs = 30000; int receiveTimeoutMs = 30000;
         size_t maxHeaderBytes = 64 * 1024; size_t maxBodyBytes = 64 * 1024 * 1024; size_t maxUploadBytes = 64 * 1024 * 1024; int maxRedirects = 10; bool allowRedirects = true; bool allowHttpsDowngrade = false; int proxyMode = 0; std::wstring proxy, proxyBypass, serverUser, serverPassword, proxyUser, proxyPassword, certificatePin; bool verifyCertificate = true; bool allowSelfSigned = false; bool autoDecompression = true; bool cookiesEnabled = true;
-        std::vector<std::pair<std::wstring, std::wstring>> defaultHeaders; std::vector<ManualCookie> manualCookies; std::atomic<int> activeCount{0}; std::atomic<long long> totalCount{0}; std::wstring lastError; HINTERNET session = nullptr;
+        std::vector<std::pair<std::wstring, std::wstring>> defaultHeaders; std::vector<ManualCookie> manualCookies; std::atomic<int> activeCount{0}; std::atomic<long long> totalCount{0}; std::wstring lastError; HINTERNET session = nullptr; std::wstring impersonateTarget; bool userAgentExplicit = false;
     };
     struct Request {
-        long long id = 0, clientId = 0; mutable std::mutex mutex; std::condition_variable changed; std::wstring method, url, state = L"未开始", handler, error, statusText, protocol, finalUrl, headersText, headersJson, responsePath, contentType, certificateSha256, bodyMime = L"application/octet-stream", cookieOverride; std::vector<std::pair<std::wstring, std::wstring>> headers, headerItems; std::vector<unsigned char> body, response; std::wstring uploadPath; bool responseAllowOverwrite = false, async = false, completed = false, cancelled = false; int statusCode = 0, systemError = 0; std::atomic<long long> responseSize{0}; std::atomic<long long> uploadedBytes{0}, downloadedBytes{0}, durationMs{0}; std::chrono::steady_clock::time_point startedAt; std::thread worker; std::atomic<bool> cancelRequested{false}; std::mutex handlesMutex; HINTERNET connection = nullptr, request = nullptr;
+        long long id = 0, clientId = 0; mutable std::mutex mutex; std::condition_variable changed; std::wstring method, url, state = L"未开始", handler, error, statusText, protocol, finalUrl, headersText, headersJson, responsePath, resumePath, contentType, certificateSha256, bodyMime = L"application/octet-stream", cookieOverride; std::vector<std::pair<std::wstring, std::wstring>> headers, headerItems; std::vector<unsigned char> body, response; std::wstring uploadPath; bool responseAllowOverwrite = false, async = false, completed = false, cancelled = false; int statusCode = 0, systemError = 0; int proxyMode = -1; std::wstring proxy, proxyBypass, proxyUser, proxyPassword; std::atomic<long long> responseSize{0}; std::atomic<long long> uploadedBytes{0}, downloadedBytes{0}, durationMs{0}; std::chrono::steady_clock::time_point startedAt; std::thread worker; std::atomic<bool> cancelRequested{false}; std::mutex handlesMutex; HINTERNET connection = nullptr, request = nullptr;
     };
     struct Event { long long requestId = 0; std::wstring handler; };
 
@@ -344,6 +451,7 @@ private:
     static bool RequestFail(Request& request, const wchar_t* message, int code) { std::lock_guard<std::mutex> lock(request.mutex); return RequestFailUnlocked(request, message, code); }
     bool ClientFail(Client& client, const wchar_t* message) { client.lastError = message ? message : L"HTTP 客户端操作失败。"; SetGlobalError(client.lastError.c_str()); return false; }
     bool SetGlobalError(const wchar_t* message) { std::lock_guard<std::mutex> lock(errorMutex_); lastError_ = message ? message : L""; return false; }
+    bool ClientFailLastError(const std::wstring& message) { SetGlobalError(message.c_str()); return false; }
     template <typename F> bool UpdateClient(long long id, F&& update) { auto client = FindClient(id); if (!client) { SetGlobalError(L"HTTP 客户端 ID 无效。"); return false; } if (client->activeCount.load() > 0) return ClientFail(*client, L"HTTP 客户端存在活动请求，当前配置不能修改。"); std::lock_guard<std::mutex> lock(client->mutex); if (client->session) { WinHttpCloseHandle(client->session); client->session = nullptr; } return update(*client); }
     template <typename F> bool UpdateRequest(long long id, F&& update) { auto request = FindRequest(id); if (!request) return false; std::lock_guard<std::mutex> lock(request->mutex); if (request->state != L"未开始") return RequestFailUnlocked(*request, L"HTTP 请求已启动，不能修改配置。", ERROR_INVALID_STATE); return update(*request); }
     std::shared_ptr<Client> FindClient(long long id) const { std::lock_guard<std::mutex> lock(clientsMutex_); auto found = clients_.find(id); return found == clients_.end() ? nullptr : found->second; }
@@ -365,8 +473,398 @@ private:
         request->changed.notify_all(); client->activeCount.fetch_sub(1); if (request->async && !request->handler.empty()) { auto event = std::make_shared<Event>(); event->requestId = request->id; { std::lock_guard<std::mutex> lock(request->mutex); event->handler = request->handler; } long long eventId = nextEventId_.fetch_add(1); { std::lock_guard<std::mutex> lock(eventsMutex_); events_[eventId] = event; } if (notify_ && !notify_(eventId)) { std::lock_guard<std::mutex> lock(eventsMutex_); events_.erase(eventId); } }
     }
 
+    // ================= curl-impersonate 仿真后端（TLS 指纹客户端专用，动态加载） =================
+    // 客户端设置了 TLS 指纹后，该客户端的全部请求改走 libcurl-impersonate（BoringSSL + Chrome H2）：
+    // ClientHello、HTTP/2 SETTINGS、浏览器默认头与目标档案一致，正文按 Accept-Encoding 自动解压。
+    // 选项常量与随包 include/curl/curl.h（libcurl 8.22）逐一核对，升级 DLL 时必须重核。
+    static const int LB_CURL_OPT_URL = 10002;
+    static const int LB_CURL_OPT_ERRORBUFFER = 10010;
+    static const int LB_CURL_OPT_USERAGENT = 10018;
+    static const int LB_CURL_OPT_HTTPHEADER = 10023;
+    static const int LB_CURL_OPT_USERPWD = 10005;
+    static const int LB_CURL_OPT_PROXY = 10004;
+    static const int LB_CURL_OPT_PROXYUSERPWD = 10006;
+    static const int LB_CURL_OPT_COOKIE = 10022;
+    static const int LB_CURL_OPT_FOLLOWLOCATION = 52;
+    static const int LB_CURL_OPT_MAXREDIRS = 68;
+    static const int LB_CURL_OPT_TIMEOUT_MS = 155;
+    static const int LB_CURL_OPT_CONNECTTIMEOUT_MS = 156;
+    static const int LB_CURL_OPT_POSTFIELDS = 10015;
+    static const int LB_CURL_OPT_POSTFIELDSIZE_LARGE = 30120;
+    static const int LB_CURL_OPT_CUSTOMREQUEST = 10036;
+    static const int LB_CURL_OPT_ACCEPT_ENCODING = 10102;
+    static const int LB_CURL_OPT_SSL_VERIFYPEER = 64;
+    static const int LB_CURL_OPT_SSL_VERIFYHOST = 81;
+    static const int LB_CURL_OPT_PINNEDPUBLICKEY = 10230;
+    static const int LB_CURL_OPT_NOPROGRESS = 43;
+    static const int LB_CURL_OPT_WRITEFUNCTION = 20011;
+    static const int LB_CURL_OPT_HEADERFUNCTION = 20079;
+    static const int LB_CURL_OPT_WRITEDATA = 10001;
+    static const int LB_CURL_OPT_HEADERDATA = 10029;
+    static const int LB_CURL_OPT_CAINFO = 10098;
+    static const int LB_CURL_INFO_RESPONSE_CODE = 2097154;
+    static const int LB_CURL_INFO_EFFECTIVE_URL = 1048577;
+
+    struct CurlImpersonateApi {
+        HMODULE module = nullptr;
+        bool attempted = false;
+        bool ok = false;
+        std::wstring loadError;
+        void* (*easyInit)() = nullptr;
+        void (*easyCleanup)(void*) = nullptr;
+        int (*easyPerform)(void*) = nullptr;
+        int (*easySetopt)(void*, int, ...) = nullptr;
+        int (*easyGetinfo)(void*, int, ...) = nullptr;
+        void* (*slistAppend)(void*, const char*) = nullptr;
+        void (*slistFreeAll)(void*) = nullptr;
+        // lexiforest v2.2.3 Windows 构建的仿真入口是函数导出（不是 CURLOPT_IMPERSONATE 选项，
+        // 实测该选项返回 48 未知选项）；第三参非零 = 启用目标浏览器的默认头集合。
+        int (*easyImpersonate)(void*, const char*, int) = nullptr;
+
+        int impersonateProbe(const std::wstring& target) {
+            if (!easyInit || !easySetopt || !easyCleanup || !easyImpersonate) return -1;
+            void* handle = easyInit();
+            if (!handle) return -1;
+            const std::string utf8 = LB_WideToUtf8(target.c_str());
+            const int result = easyImpersonate(handle, utf8.c_str(), 1);
+            easyCleanup(handle);
+            return result;
+        }
+    };
+
+    static CurlImpersonateApi& CurlImpersonate() {
+        static CurlImpersonateApi api;
+        if (!api.attempted) {
+            api.attempted = true;
+            api.module = LoadLibraryW(L"libcurl-impersonate.dll");
+            if (!api.module) {
+                api.loadError = L"未找到 TLS 指纹仿真运行时 libcurl-impersonate.dll（应位于程序目录，随 LingBuilder x64 分发）；请升级或重装 LingBuilder，或改用未设置 TLS 指纹的客户端。";
+                return api;
+            }
+            const auto resolve = [](const char* name) -> void* {
+                return reinterpret_cast<void*>(GetProcAddress(api.module, name));
+            };
+            api.easyInit = reinterpret_cast<void* (*)()>(resolve("curl_easy_init"));
+            api.easyCleanup = reinterpret_cast<void (*)(void*)>(resolve("curl_easy_cleanup"));
+            api.easyPerform = reinterpret_cast<int (*)(void*)>(resolve("curl_easy_perform"));
+            api.easySetopt = reinterpret_cast<int (*)(void*, int, ...)>(resolve("curl_easy_setopt"));
+            api.easyGetinfo = reinterpret_cast<int (*)(void*, int, ...)>(resolve("curl_easy_getinfo"));
+            api.slistAppend = reinterpret_cast<void* (*)(void*, const char*)>(resolve("curl_slist_append"));
+            api.slistFreeAll = reinterpret_cast<void (*)(void*)>(resolve("curl_slist_free_all"));
+            api.easyImpersonate = reinterpret_cast<int (*)(void*, const char*, int)>(resolve("curl_easy_impersonate"));
+            if (!api.easyInit || !api.easyCleanup || !api.easyPerform || !api.easySetopt || !api.easyGetinfo || !api.slistAppend || !api.slistFreeAll || !api.easyImpersonate) {
+                api.loadError = L"libcurl-impersonate.dll 缺少必需导出（curl_easy_init/setopt/getinfo/perform/slist/impersonate），文件可能损坏，请重装 LingBuilder。";
+                return api;
+            }
+            api.ok = true;
+        }
+        return api;
+    }
+
+    static std::string LBCurlUtf8ToHexBase64(const std::vector<unsigned char>& bytes) {
+        // 证书固定需要 "sha256//<base64>" 形态：先转 base64 标准字母表。
+        static const char* alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        std::string output;
+        output.reserve(((bytes.size() + 2) / 3) * 4);
+        for (size_t index = 0; index < bytes.size(); index += 3) {
+            const unsigned int value = (static_cast<unsigned int>(bytes[index]) << 16)
+                | (index + 1 < bytes.size() ? static_cast<unsigned int>(bytes[index + 1]) << 8 : 0u)
+                | (index + 2 < bytes.size() ? static_cast<unsigned int>(bytes[index + 2]) : 0u);
+            output.push_back(alphabet[(value >> 18) & 63]);
+            output.push_back(alphabet[(value >> 12) & 63]);
+            output.push_back(index + 1 < bytes.size() ? alphabet[(value >> 6) & 63] : '=');
+            output.push_back(index + 2 < bytes.size() ? alphabet[value & 63] : '=');
+        }
+        return output;
+    }
+
+    static std::wstring LBCurlUtf8ToWide(const std::string& value) {
+        if (value.empty()) return L"";
+        const int length = MultiByteToWideChar(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), nullptr, 0);
+        if (length <= 0) return L"";
+        std::wstring result(static_cast<size_t>(length), L'\0');
+        MultiByteToWideChar(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), result.data(), length);
+        return result;
+    }
+
+    struct CurlTransferBuffer {
+        std::vector<unsigned char> body;
+        std::string headers;
+        size_t maxBytes = 0;
+        bool tooLarge = false;
+    };
+
+    static size_t LB_CURL_WRITE_CALLBACK(char* ptr, size_t size, size_t nmemb, void* userdata) {
+        auto* buffer = static_cast<CurlTransferBuffer*>(userdata);
+        const size_t total = size * nmemb;
+        if (buffer->maxBytes && buffer->body.size() + total > buffer->maxBytes) {
+            buffer->tooLarge = true;
+            return 0;
+        }
+        buffer->body.insert(buffer->body.end(), ptr, ptr + total);
+        return total;
+    }
+
+    static size_t LB_CURL_HEADER_CALLBACK(char* ptr, size_t size, size_t nmemb, void* userdata) {
+        auto* buffer = static_cast<CurlTransferBuffer*>(userdata);
+        const size_t total = size * nmemb;
+        const std::string line(ptr, ptr + total);
+        // 重定向链上每一跳都有状态行：只保留最后一跳的完整响应头（与 WinHTTP 原始头语义一致）。
+        if (line.rfind("HTTP/", 0) == 0) buffer->headers.clear();
+        buffer->headers.append(line);
+        return total;
+    }
+
+    static std::wstring LBCurlErrorMessage(int code) {
+        switch (code) {
+            case 3: return L"TLS 指纹请求：地址格式无效。";
+            case 6: return L"TLS 指纹请求：无法解析主机名。";
+            case 7: return L"TLS 指纹请求：无法连接目标主机或代理。";
+            case 23: return L"TLS 指纹请求：响应正文超过资源上限。";
+            case 28: return L"TLS 指纹请求：超时。";
+            case 35: return L"TLS 指纹请求：TLS 握手失败。";
+            case 47: return L"TLS 指纹请求：重定向次数过多。";
+            case 55: return L"TLS 指纹请求：发送失败。";
+            case 56: return L"TLS 指纹请求：接收失败。";
+            case 60: return L"TLS 指纹请求：对端证书校验失败。";
+            default: return L"TLS 指纹请求失败（libcurl 错误码见系统错误码）。";
+        }
+    }
+
+    // 仿真请求执行：与 WinHTTP 路径写同一组 Request 字段，响应解析复用 ParseResponseHeaders。
+    // v1 边界：不支持文件上传/断点续传（流式）与运行中取消（取消在请求结束后生效），给中文阻断诊断。
+    void ExecuteWithImpersonation(const std::shared_ptr<Request>& request, const std::shared_ptr<Client>& client) {
+        CurlImpersonateApi& api = CurlImpersonate();
+        if (!api.ok) { RequestFail(*request, api.loadError.c_str(), ERROR_NOT_SUPPORTED); return; }
+        {
+            std::lock_guard<std::mutex> lock(request->mutex);
+            if (!request->uploadPath.empty()) { RequestFailUnlocked(*request, L"TLS 指纹客户端暂不支持文件上传正文，请改用字节集/文本正文或未设指纹的客户端。", ERROR_NOT_SUPPORTED); return; }
+            if (!request->resumePath.empty()) { RequestFailUnlocked(*request, L"TLS 指纹客户端暂不支持断点续传落盘，请改用设置响应文件或未设指纹的客户端。", ERROR_NOT_SUPPORTED); return; }
+        }
+        std::wstring impersonateTarget; bool userAgentExplicit = false;
+        {
+            std::lock_guard<std::mutex> lock(client->mutex);
+            impersonateTarget = client->impersonateTarget;
+        }
+        if (impersonateTarget.empty()) { RequestFail(*request, L"TLS 指纹目标为空。", ERROR_INVALID_STATE); return; }
+        int requestProxyMode = -1; std::wstring requestProxy, requestProxyUser, requestProxyPassword;
+        { std::lock_guard<std::mutex> lock(request->mutex); requestProxyMode = request->proxyMode; requestProxy = request->proxy; requestProxyUser = request->proxyUser; requestProxyPassword = request->proxyPassword; }
+        std::wstring proxyText; std::wstring proxyCredentials; bool forceNoProxy = false;
+        if (requestProxyMode == 2) {
+            proxyText = requestProxy;
+            if (!requestProxyUser.empty()) proxyCredentials = requestProxyUser + L":" + requestProxyPassword;
+        } else if (requestProxyMode == 1) {
+            proxyText = L""; forceNoProxy = true;
+        } else {
+            std::lock_guard<std::mutex> lock(client->mutex);
+            if (client->proxyMode == 2) { proxyText = client->proxy; if (!client->proxyUser.empty()) proxyCredentials = client->proxyUser + L":" + client->proxyPassword; }
+            else if (client->proxyMode == 1) { proxyText = L""; forceNoProxy = true; }
+        }
+        std::wstring method, url; std::vector<std::pair<std::wstring, std::wstring>> headerList; std::vector<unsigned char> body; std::wstring cookieLine;
+        {
+            std::lock_guard<std::mutex> lock(request->mutex);
+            method = request->method; url = request->url; headerList = request->headers; body = request->body;
+            cookieLine = request->cookieOverride;
+        }
+        URL_COMPONENTSW parts = {}; parts.dwStructSize = sizeof(parts);
+        parts.dwSchemeLength = static_cast<DWORD>(-1); parts.dwHostNameLength = static_cast<DWORD>(-1);
+        parts.dwUrlPathLength = static_cast<DWORD>(-1); parts.dwExtraInfoLength = static_cast<DWORD>(-1);
+        const bool cracked = WinHttpCrackUrl(url.c_str(), 0, 0, &parts);
+        const std::wstring requestHost = cracked ? std::wstring(parts.lpszHostName, parts.dwHostNameLength) : L"";
+        const std::wstring requestPath = cracked ? std::wstring(parts.dwUrlPathLength ? parts.lpszUrlPath : L"/", parts.dwUrlPathLength ? parts.dwUrlPathLength : 1) : L"";
+        {
+            std::lock_guard<std::mutex> lock(client->mutex);
+            if (cookieLine.empty() && client->cookiesEnabled) {
+                for (const auto& item : client->manualCookies) {
+                    if (ManualCookieDomainMatches(requestHost, item.domain) && ManualCookiePathMatches(requestPath, item.path)) {
+                        if (!cookieLine.empty()) cookieLine += L"; ";
+                        cookieLine += item.name + L"=" + item.value;
+                    }
+                }
+            } else if (cookieLine.empty() && !client->cookiesEnabled) {
+                // 与 WinHTTP 路径一致：关闭 Cookie 时既不注入手工 Cookie 也不启用引擎。
+            }
+        }
+        size_t maxBodyBytes = 0; std::wstring certificatePin;
+        bool verifyCertificate = true, allowSelfSigned = false, allowRedirects = true; int maxRedirects = 10;
+        int connectTimeoutMs = 15000, receiveTimeoutMs = 30000;
+        std::wstring explicitUserAgent;
+        {
+            std::lock_guard<std::mutex> lock(client->mutex);
+            maxBodyBytes = client->maxBodyBytes;
+            certificatePin = client->certificatePin;
+            verifyCertificate = client->verifyCertificate;
+            allowSelfSigned = client->allowSelfSigned;
+            allowRedirects = client->allowRedirects;
+            maxRedirects = client->maxRedirects;
+            connectTimeoutMs = client->connectTimeoutMs;
+            receiveTimeoutMs = client->receiveTimeoutMs;
+            explicitUserAgent = client->userAgentExplicit ? client->userAgent : L"";
+        }
+        void* handle = api.easyInit();
+        if (!handle) { RequestFail(*request, L"TLS 指纹仿真会话初始化失败。", ERROR_NOT_ENOUGH_MEMORY); return; }
+        CurlTransferBuffer transfer;
+        transfer.maxBytes = maxBodyBytes;
+        std::string errorBuffer(256, static_cast<char>(0));
+        bool certificatePinned = false;
+        // 指针保活：curl 只保存 slist 指针，全部字符串必须活到 perform 结束。
+        std::vector<std::string> stringStorage;
+        const auto keepUtf8 = [&](const std::wstring& value) -> const char* {
+            stringStorage.push_back(LB_WideToUtf8(value.c_str()));
+            return stringStorage.back().c_str();
+        };
+        api.easySetopt(handle, LB_CURL_OPT_ERRORBUFFER, errorBuffer.data());
+        api.easySetopt(handle, LB_CURL_OPT_URL, keepUtf8(url));
+        api.easySetopt(handle, LB_CURL_OPT_WRITEFUNCTION, reinterpret_cast<void*>(&LB_CURL_WRITE_CALLBACK));
+        api.easySetopt(handle, LB_CURL_OPT_HEADERFUNCTION, reinterpret_cast<void*>(&LB_CURL_HEADER_CALLBACK));
+        api.easySetopt(handle, LB_CURL_OPT_WRITEDATA, static_cast<void*>(&transfer));
+        api.easySetopt(handle, LB_CURL_OPT_HEADERDATA, static_cast<void*>(&transfer));
+        api.easySetopt(handle, LB_CURL_OPT_NOPROGRESS, static_cast<long>(1));
+        // Accept-Encoding 置空串 = 用 libcurl 支持的全部压缩并自动解压响应正文
+        // （impersonate 默认头只是声明协商能力，不解压；不设此项会拿到原始压缩字节）。
+        api.easySetopt(handle, LB_CURL_OPT_ACCEPT_ENCODING, "");
+        api.easySetopt(handle, LB_CURL_OPT_FOLLOWLOCATION, static_cast<long>(allowRedirects ? 1 : 0));
+        api.easySetopt(handle, LB_CURL_OPT_MAXREDIRS, static_cast<long>(maxRedirects));
+        api.easySetopt(handle, LB_CURL_OPT_CONNECTTIMEOUT_MS, static_cast<long>(connectTimeoutMs));
+        api.easySetopt(handle, LB_CURL_OPT_TIMEOUT_MS, static_cast<long>(receiveTimeoutMs));
+        api.easySetopt(handle, LB_CURL_OPT_SSL_VERIFYPEER, static_cast<long>(verifyCertificate ? 1 : 0));
+        api.easySetopt(handle, LB_CURL_OPT_SSL_VERIFYHOST, static_cast<long>(verifyCertificate ? 2 : 0));
+        if (certificatePin.size() == 64) {
+            std::vector<unsigned char> pinBytes;
+            bool pinHexValid = true;
+            for (size_t index = 0; index + 1 < certificatePin.size(); index += 2) {
+                const auto digit = [](wchar_t ch) -> int {
+                    if (ch >= L'0' && ch <= L'9') return ch - L'0';
+                    if (ch >= L'a' && ch <= L'f') return ch - L'a' + 10;
+                    if (ch >= L'A' && ch <= L'F') return ch - L'A' + 10;
+                    return -1;
+                };
+                const int high = digit(certificatePin[index]);
+                const int low = digit(certificatePin[index + 1]);
+                if (high < 0 || low < 0) { pinHexValid = false; break; }
+                pinBytes.push_back(static_cast<unsigned char>((high << 4) | low));
+            }
+            if (pinHexValid && pinBytes.size() == 32) {
+                const std::string pinned = "sha256//" + LBCurlUtf8ToHexBase64(pinBytes);
+                if (api.easySetopt(handle, LB_CURL_OPT_PINNEDPUBLICKEY, pinned.c_str()) == 0) certificatePinned = true;
+            }
+        }
+        if (verifyCertificate) {
+            // BoringSSL 无 Windows 证书库集成：把随包 CA 证书包（cacert.pem，位于程序目录）喂给 CURLOPT_CAINFO。
+            wchar_t exePath[MAX_PATH] = {};
+            GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+            std::wstring exeDirectory(exePath);
+            const size_t slash = exeDirectory.find_last_of(L"\\/");
+            if (slash != std::wstring::npos) exeDirectory.resize(slash + 1);
+            const std::wstring caBundle = exeDirectory + L"cacert.pem";
+            if (GetFileAttributesW(caBundle.c_str()) != INVALID_FILE_ATTRIBUTES) {
+                api.easySetopt(handle, LB_CURL_OPT_CAINFO, keepUtf8(caBundle));
+            }
+        }
+        if (!proxyText.empty()) {
+            api.easySetopt(handle, LB_CURL_OPT_PROXY, keepUtf8(proxyText));
+            if (!proxyCredentials.empty()) api.easySetopt(handle, LB_CURL_OPT_PROXYUSERPWD, keepUtf8(proxyCredentials));
+        } else if (forceNoProxy) {
+            api.easySetopt(handle, LB_CURL_OPT_PROXY, "");
+        }
+        // 头顺序 = 仿真目标默认头（UA/sec-ch-ua/Accept-Encoding 等，libcurl 内部 base 头，IMPERSONATE "目标:yes" 启用）
+        // 之后按用户设置顺序追加；同名头以用户头为准。显式 UA 覆盖目标默认 UA。
+        if (!explicitUserAgent.empty()) api.easySetopt(handle, LB_CURL_OPT_USERAGENT, keepUtf8(explicitUserAgent));
+        std::vector<std::string> headerStorage;
+        void* headerSlist = nullptr;
+        const auto appendHeader = [&](const std::wstring& name, const std::wstring& value) {
+            headerStorage.push_back(LB_WideToUtf8((name + L": " + value).c_str()));
+            headerSlist = api.slistAppend(headerSlist, headerStorage.back().c_str());
+        };
+        for (const auto& item : headerList) appendHeader(item.first, item.second);
+        if (!cookieLine.empty()) appendHeader(L"Cookie", cookieLine);
+        if (headerSlist) api.easySetopt(handle, LB_CURL_OPT_HTTPHEADER, headerSlist);
+        if (api.easyImpersonate(handle, keepUtf8(impersonateTarget), 1) != 0) {
+            const std::wstring impersonateError = L"TLS 指纹档案「" + impersonateTarget + L"」未被 libcurl-impersonate.dll 接受，请升级 LingBuilder 或改用已支持档案。";
+            RequestFail(*request, impersonateError.c_str(), ERROR_NOT_SUPPORTED);
+            api.easyCleanup(handle);
+            if (headerSlist) api.slistFreeAll(headerSlist);
+            return;
+        }
+        if (!body.empty() && method == L"POST") {
+            api.easySetopt(handle, LB_CURL_OPT_POSTFIELDS, reinterpret_cast<void*>(const_cast<unsigned char*>(body.data())));
+            api.easySetopt(handle, LB_CURL_OPT_POSTFIELDSIZE_LARGE, static_cast<long long>(body.size()));
+        } else if (!body.empty()) {
+            api.easySetopt(handle, LB_CURL_OPT_POSTFIELDS, reinterpret_cast<void*>(const_cast<unsigned char*>(body.data())));
+            api.easySetopt(handle, LB_CURL_OPT_POSTFIELDSIZE_LARGE, static_cast<long long>(body.size()));
+            api.easySetopt(handle, LB_CURL_OPT_CUSTOMREQUEST, keepUtf8(method));
+        } else if (method != L"GET" && method != L"POST") {
+            api.easySetopt(handle, LB_CURL_OPT_CUSTOMREQUEST, keepUtf8(method));
+        }
+
+        const int performResult = api.easyPerform(handle);
+        long responseCode = 0;
+        char* effectiveUrlUtf8 = nullptr;
+        api.easyGetinfo(handle, LB_CURL_INFO_RESPONSE_CODE, &responseCode);
+        api.easyGetinfo(handle, LB_CURL_INFO_EFFECTIVE_URL, &effectiveUrlUtf8);
+        const std::string headersUtf8 = transfer.headers;
+        const std::vector<unsigned char> responseBytes = transfer.body;
+        const bool responseTooLarge = transfer.tooLarge;
+        if (headerSlist) api.slistFreeAll(headerSlist);
+        api.easyCleanup(handle);
+
+        if (performResult != 0 || responseTooLarge) {
+            const int code = responseTooLarge ? 23 : performResult;
+            std::wstring message = LBCurlErrorMessage(code);
+            if (!responseTooLarge && errorBuffer[0] != static_cast<char>(0)) {
+                const std::wstring detail = LBCurlUtf8ToWide(errorBuffer.c_str());
+                if (!detail.empty()) message += L"：" + detail;
+            }
+            RequestFail(*request, message.c_str(), code);
+            return;
+        }
+        {
+            std::lock_guard<std::mutex> lock(request->mutex);
+            request->statusCode = static_cast<int>(responseCode);
+            std::string statusLine = headersUtf8.substr(0, headersUtf8.find('\n'));
+            while (!statusLine.empty() && (statusLine.back() == '\r' || statusLine.back() == '\n')) statusLine.pop_back();
+            const size_t firstSpace = statusLine.find(' ');
+            const size_t secondSpace = firstSpace == std::string::npos ? std::string::npos : statusLine.find(' ', firstSpace + 1);
+            request->protocol = LBCurlUtf8ToWide(firstSpace == std::string::npos ? statusLine : statusLine.substr(0, firstSpace));
+            if (!request->protocol.empty() && request->protocol.back() == L':') request->protocol.pop_back();
+            request->statusText = secondSpace == std::string::npos ? L"" : LBCurlUtf8ToWide(statusLine.substr(secondSpace + 1));
+            request->headersText = LBCurlUtf8ToWide(headersUtf8);
+            if (effectiveUrlUtf8) request->finalUrl = LBCurlUtf8ToWide(effectiveUrlUtf8);
+            request->response = responseBytes;
+            request->responseSize = static_cast<long long>(responseBytes.size());
+            request->downloadedBytes = static_cast<long long>(responseBytes.size());
+            ParseResponseHeaders(*request);
+        }
+        if (!request->responsePath.empty()) {
+            bool allowOverwrite = false;
+            { std::lock_guard<std::mutex> lock(request->mutex); allowOverwrite = request->responseAllowOverwrite; }
+            if (!SaveBytes(request->responsePath, responseBytes, allowOverwrite, *request)) return;
+            // 与 WinHTTP 流式落盘同一契约：文件响应不占内存正文，取响应字节集返回空字节集。
+            std::lock_guard<std::mutex> lock(request->mutex);
+            request->response.clear();
+        }
+        (void)certificatePinned;
+    }
+
     void Execute(const std::shared_ptr<Request>& request, const std::shared_ptr<Client>& client) {
-        HINTERNET session = nullptr; if (!EnsureSession(client, session)) { RequestFail(*request, L"HTTP 会话创建失败。", GetLastError()); return; }
+        // 设置了 TLS 指纹的客户端整体改走 curl-impersonate 仿真栈（不经 WinHTTP 会话）。
+        // 判定必须在锁外完成：执行路径内部还会取 client->mutex（std::mutex 不可重入）。
+        const bool impersonated = [&client]() {
+            std::lock_guard<std::mutex> lock(client->mutex);
+            return !client->impersonateTarget.empty();
+        }();
+        if (impersonated) { ExecuteWithImpersonation(request, client); return; }
+        // 逐请求代理覆盖：设置了固定代理的请求使用请求私有会话（代理在会话创建时固化），其余复用客户端缓存会话。
+        struct OwnedSessionCloser { HINTERNET handle = nullptr; ~OwnedSessionCloser() { if (handle) WinHttpCloseHandle(handle); } } ownedSessionCloser;
+        int requestProxyMode = -1; std::wstring requestProxy, requestProxyBypass, requestProxyUser, requestProxyPassword;
+        { std::lock_guard<std::mutex> lock(request->mutex); requestProxyMode = request->proxyMode; requestProxy = request->proxy; requestProxyBypass = request->proxyBypass; requestProxyUser = request->proxyUser; requestProxyPassword = request->proxyPassword; }
+        HINTERNET session = nullptr; bool ownedSession = false;
+        if (requestProxyMode == 2) {
+            std::lock_guard<std::mutex> lock(client->mutex);
+            session = WinHttpOpen(client->userAgent.c_str(), WINHTTP_ACCESS_TYPE_NAMED_PROXY, requestProxy.c_str(), requestProxyBypass.empty() ? WINHTTP_NO_PROXY_BYPASS : requestProxyBypass.c_str(), 0);
+            if (session) { ownedSession = true; ownedSessionCloser.handle = session; WinHttpSetTimeouts(session, client->resolveTimeoutMs, client->connectTimeoutMs, client->sendTimeoutMs, client->receiveTimeoutMs); }
+        } else if (!EnsureSession(client, session)) { RequestFail(*request, L"HTTP 会话创建失败。", GetLastError()); return; }
+        if (!session) { RequestFail(*request, L"HTTP 请求代理会话创建失败。", GetLastError()); return; }
         URL_COMPONENTSW parts = {}; parts.dwStructSize = sizeof(parts); parts.dwSchemeLength = static_cast<DWORD>(-1); parts.dwHostNameLength = static_cast<DWORD>(-1); parts.dwUrlPathLength = static_cast<DWORD>(-1); parts.dwExtraInfoLength = static_cast<DWORD>(-1);
         if (!WinHttpCrackUrl(request->url.c_str(), 0, 0, &parts) || (parts.nScheme != INTERNET_SCHEME_HTTP && parts.nScheme != INTERNET_SCHEME_HTTPS)) { RequestFail(*request, L"HTTP 地址解析失败。", GetLastError()); return; }
         const std::wstring host(parts.lpszHostName, parts.dwHostNameLength); std::wstring path = parts.dwUrlPathLength ? std::wstring(parts.lpszUrlPath, parts.dwUrlPathLength) : L"/"; const std::wstring urlPath = path; if (parts.dwExtraInfoLength) path.append(parts.lpszExtraInfo, parts.dwExtraInfoLength);
@@ -389,7 +887,8 @@ private:
             decompression = client->autoDecompression ? WINHTTP_DECOMPRESSION_FLAG_ALL : 0;
             maxUploadBytes = client->maxUploadBytes;
             if (!client->serverUser.empty() && !WinHttpSetCredentials(nativeRequest, WINHTTP_AUTH_TARGET_SERVER, WINHTTP_AUTH_SCHEME_BASIC, client->serverUser.c_str(), client->serverPassword.c_str(), nullptr)) { CloseRequestHandles(request); RequestFail(*request, L"HTTP 服务器凭据设置失败。", GetLastError()); return; }
-            if (!client->proxyUser.empty() && !WinHttpSetCredentials(nativeRequest, WINHTTP_AUTH_TARGET_PROXY, WINHTTP_AUTH_SCHEME_BASIC, client->proxyUser.c_str(), client->proxyPassword.c_str(), nullptr)) { CloseRequestHandles(request); RequestFail(*request, L"HTTP 代理凭据设置失败。", GetLastError()); return; }
+            { const std::wstring& proxyUser = !requestProxyUser.empty() ? requestProxyUser : client->proxyUser; const std::wstring& proxyPassword = !requestProxyUser.empty() ? requestProxyPassword : client->proxyPassword;
+            if (!proxyUser.empty() && !WinHttpSetCredentials(nativeRequest, WINHTTP_AUTH_TARGET_PROXY, WINHTTP_AUTH_SCHEME_BASIC, proxyUser.c_str(), proxyPassword.c_str(), nullptr)) { CloseRequestHandles(request); RequestFail(*request, L"HTTP 代理凭据设置失败。", GetLastError()); return; } }
             DWORD security = 0;
             if (!client->verifyCertificate) security = SECURITY_FLAG_IGNORE_UNKNOWN_CA | SECURITY_FLAG_IGNORE_CERT_DATE_INVALID | SECURITY_FLAG_IGNORE_CERT_CN_INVALID | SECURITY_FLAG_IGNORE_CERT_WRONG_USAGE;
             else if (client->allowSelfSigned) security = SECURITY_FLAG_IGNORE_UNKNOWN_CA;
@@ -485,14 +984,16 @@ private:
         std::wstring responsePath;
         std::wstring temporary;
         bool toFile = false;
+        bool appendMode = false;
         bool allowOverwrite = false;
         {
             std::lock_guard<std::mutex> lock(request->mutex);
             responsePath = request->responsePath;
             allowOverwrite = request->responseAllowOverwrite;
+            if (responsePath.empty()) { responsePath = request->resumePath; appendMode = !responsePath.empty(); }
         }
         toFile = !responsePath.empty();
-        if (toFile) {
+        if (toFile && !appendMode) {
             temporary = responsePath + L".lingbuilder-http-tmp";
             if (!allowOverwrite && GetFileAttributesW(responsePath.c_str()) != INVALID_FILE_ATTRIBUTES) {
                 RequestFail(*request, L"HTTP 目标响应文件已存在，且未允许覆盖。", ERROR_FILE_EXISTS);
@@ -503,12 +1004,21 @@ private:
                 RequestFail(*request, L"HTTP 响应文件创建失败。", GetLastError());
                 return;
             }
+        } else if (toFile) {
+            // 续传模式：直接以追加方式打开目标文件，不清空已有内容、不走临时文件替换；
+            // 下载中断时已写入的字节保留在目标文件中，正是下一次 Range 续传的起点。
+            file.open(std::filesystem::path(responsePath), std::ios::binary | std::ios::app);
+            if (!file) {
+                RequestFail(*request, L"HTTP 续传文件打开失败。", GetLastError());
+                return;
+            }
         }
         while (true) {
             DWORD available = 0;
             if (!WinHttpQueryDataAvailable(nativeRequest, &available)) { RequestFail(*request, L"HTTP 查询响应大小失败。", GetLastError()); break; }
             if (available == 0) break;
-            if (request->downloadedBytes.load() + available > static_cast<long long>(client->maxBodyBytes)) { RequestFail(*request, L"HTTP 响应正文超过资源限制。", ERROR_FILE_TOO_LARGE); break; }
+            // 流式写文件的响应按盘落盘、不驻留内存，不受响应体内存上限约束；上限只保护内存响应。
+            if (!toFile && request->downloadedBytes.load() + available > static_cast<long long>(client->maxBodyBytes)) { RequestFail(*request, L"HTTP 响应正文超过资源限制。", ERROR_FILE_TOO_LARGE); break; }
             std::vector<unsigned char> chunk(available);
             DWORD read = 0;
             if (!WinHttpReadData(nativeRequest, chunk.data(), available, &read)) { RequestFail(*request, L"HTTP 读取响应正文失败。", GetLastError()); break; }
@@ -530,8 +1040,9 @@ private:
                 hasError = !request->error.empty();
             }
             if (hasError) {
-                DeleteFileW(temporary.c_str());
-            } else if (!MoveFileExW(temporary.c_str(), responsePath.c_str(), allowOverwrite ? MOVEFILE_REPLACE_EXISTING : MOVEFILE_COPY_ALLOWED)) {
+                if (!appendMode) DeleteFileW(temporary.c_str());
+                // 追加模式出错时保留已写入内容，作为下一次断点续传的起点。
+            } else if (!appendMode && !MoveFileExW(temporary.c_str(), responsePath.c_str(), allowOverwrite ? MOVEFILE_REPLACE_EXISTING : MOVEFILE_COPY_ALLOWED)) {
                 DeleteFileW(temporary.c_str());
                 RequestFail(*request, L"HTTP 响应文件原子替换失败。", GetLastError());
             }
@@ -563,7 +1074,7 @@ private:
         }
         return expectedPin.empty() || Lower(actual) == Lower(expectedPin);
     }
-    std::wstring RequestText(long long id, int kind) const { auto request = FindRequest(id); if (!request) return L"HTTP 请求 ID 无效。"; std::lock_guard<std::mutex> lock(request->mutex); switch (kind) { case 1: return request->method; case 2: return request->url; case 3: return request->state; case 4: return request->error; case 5: return request->statusText; case 6: return request->protocol; case 7: return request->finalUrl; case 8: return request->headersText; case 9: return request->headersJson; case 10: return request->responsePath; case 11: return request->contentType; case 12: return request->certificateSha256; default: return L""; } }
+    std::wstring RequestText(long long id, int kind) const { auto request = FindRequest(id); if (!request) return L"HTTP 请求 ID 无效。"; std::lock_guard<std::mutex> lock(request->mutex); switch (kind) { case 1: return request->method; case 2: return request->url; case 3: return request->state; case 4: return request->error; case 5: return request->statusText; case 6: return request->protocol; case 7: return request->finalUrl; case 8: return request->headersText; case 9: return request->headersJson; case 10: return request->responsePath.empty() ? request->resumePath : request->responsePath; case 11: return request->contentType; case 12: return request->certificateSha256; default: return L""; } }
     void SetRequestError(long long id, const wchar_t* message, int code) { auto request = FindRequest(id); if (request) RequestFail(*request, message, code); }
 
     mutable std::mutex clientsMutex_, requestsMutex_, eventsMutex_, errorMutex_; std::unordered_map<long long, std::shared_ptr<Client>> clients_; std::unordered_map<long long, std::shared_ptr<Request>> requests_; std::map<long long, std::shared_ptr<Event>> events_; std::shared_ptr<Event> currentEvent_; std::wstring lastError_; NotifyEvent notify_; std::atomic<long long> nextClientId_{1}, nextRequestId_{1}, nextEventId_{1}; long long legacyClientId_ = 0, legacyRequestId_ = 0;
@@ -580,6 +1091,11 @@ const HTTP_CLIENT_WINDOW_METHODS = String.raw`
     bool HTTP客户端_设置代理(long long client, int mode, const wchar_t* address, const wchar_t* bypass) { return httpClientRuntime_.SetProxy(client, mode, address, bypass); }
     bool HTTP客户端_设置服务器凭据(long long client, const wchar_t* user, const wchar_t* password) { return httpClientRuntime_.SetCredentials(client, user, password, false); }
     bool HTTP客户端_设置代理凭据(long long client, const wchar_t* user, const wchar_t* password) { return httpClientRuntime_.SetCredentials(client, user, password, true); }
+    const wchar_t* HTTP客户端_解析跳转链(long long client, const wchar_t* url, int maxHops) { httpClientReturnText_ = httpClientRuntime_.ResolveRedirectChain(client, url, maxHops); return httpClientReturnText_.c_str(); }
+    int HTTP客户端请求_设置代理(long long request, const wchar_t* address) { return httpClientRuntime_.SetRequestProxy(request, address) ? 1 : 0; }
+    int HTTP客户端请求_设置代理凭据(long long request, const wchar_t* user, const wchar_t* password) { return httpClientRuntime_.SetRequestCredentials(request, user, password) ? 1 : 0; }
+    int HTTP客户端_设置TLS指纹(long long client, const wchar_t* target) { return httpClientRuntime_.SetImpersonateTarget(client, target) ? 1 : 0; }
+    const wchar_t* HTTP客户端_取TLS指纹(long long client) { httpClientReturnText_ = httpClientRuntime_.GetImpersonateTarget(client); return httpClientReturnText_.c_str(); }
     bool HTTP客户端_设置TLS策略(long long client, bool verify, bool allowSelfSigned) { return httpClientRuntime_.SetTls(client, verify, allowSelfSigned); }
     bool HTTP客户端_设置证书固定(long long client, const wchar_t* fingerprint) { return httpClientRuntime_.SetCertificatePin(client, fingerprint); }
     bool HTTP客户端_设置自动解压(long long client, bool enabled) { return httpClientRuntime_.SetDecompression(client, enabled); }
@@ -607,6 +1123,7 @@ const HTTP_CLIENT_WINDOW_METHODS = String.raw`
     bool HTTP客户端_设置十六进制正文(long long request, const wchar_t* body, const wchar_t* contentType) { return httpClientRuntime_.SetHexBody(request, body, contentType); }
     bool HTTP客户端_设置文件正文(long long request, const wchar_t* path, const wchar_t* contentType) { return httpClientRuntime_.SetFileBody(request, path, contentType); }
     bool HTTP客户端_设置响应文件(long long request, const wchar_t* path, bool overwrite) { return httpClientRuntime_.SetResponseFile(request, path, overwrite); }
+    bool HTTP客户端_设置续传文件(long long request, const wchar_t* path) { return httpClientRuntime_.SetResumeFile(request, path); }
     bool HTTP客户端_绑定完成处理器(long long request, const wchar_t* handler) { return httpClientRuntime_.BindHandler(request, handler); }
     bool HTTP客户端_开始请求(long long request) { return httpClientRuntime_.Start(request); }
     bool HTTP客户端_执行同步(long long request) { return httpClientRuntime_.ExecuteSync(request); }

@@ -8,7 +8,7 @@ export const TEXT_CODECS_RUNTIME = String.raw`
 #ifndef LB_TEXT_CODECS_RUNTIME_INCLUDED
 #define LB_TEXT_CODECS_RUNTIME_INCLUDED
 
-enum class LB_EncodingKind { Unknown, Auto, Utf8, Utf16Le, Utf16Be, Utf32Le, Utf32Be, Ansi, Gbk, Gb2312, Gb18030 };
+enum class LB_EncodingKind { Unknown, Auto, Utf8, Utf16Le, Utf16Be, Utf32Le, Utf32Be, Ansi, Gbk, Gb2312, Gb18030, Raw };
 
 static std::wstring LB_NormalizeEncodingName(const wchar_t* name) {
     std::wstring result;
@@ -31,6 +31,7 @@ static LB_EncodingKind LB_ParseEncodingKind(const wchar_t* name) {
     if (value == L"GBK" || value == L"CP936") return LB_EncodingKind::Gbk;
     if (value == L"GB2312") return LB_EncodingKind::Gb2312;
     if (value == L"GB18030" || value == L"CP54936") return LB_EncodingKind::Gb18030;
+    if (value == L"RAW" || value == L"LATIN1") return LB_EncodingKind::Raw;
     return LB_EncodingKind::Unknown;
 }
 
@@ -46,6 +47,7 @@ static const wchar_t* LB_EncodingKindName(LB_EncodingKind kind) {
         case LB_EncodingKind::Gbk: return L"GBK";
         case LB_EncodingKind::Gb2312: return L"GB2312";
         case LB_EncodingKind::Gb18030: return L"GB18030";
+        case LB_EncodingKind::Raw: return L"RAW";
         default: return L"";
     }
 }
@@ -159,6 +161,13 @@ static bool LB_EncodeTextBytes(const wchar_t* text, LB_EncodingKind kind, std::v
         return true;
     }
     if (kind == LB_EncodingKind::Gb18030) return LB_WideToCodePage(text, 54936, bytes);
+    if (kind == LB_EncodingKind::Raw) {
+        // RAW：按码点低 8 位直接截断为字节，不查任何代码页（签名算法里的逐字符截断语义，如 wchar_t 截到低 8 位）。
+        const std::wstring value = LB_Wide(text);
+        bytes.reserve(value.size());
+        for (wchar_t character : value) bytes.push_back(static_cast<unsigned char>(static_cast<unsigned short>(character) & 0xFFu));
+        return true;
+    }
 
     std::vector<uint32_t> points;
     if (!LB_WideToCodePoints(text, points)) return false;
@@ -204,6 +213,13 @@ static bool LB_DecodeTextBytes(std::vector<unsigned char> bytes, LB_EncodingKind
         return LB_CodePageToWide(bytes, 936, text);
     }
     if (kind == LB_EncodingKind::Gb18030) return LB_CodePageToWide(bytes, 54936, text);
+    if (kind == LB_EncodingKind::Raw) {
+        // RAW：每个字节映射为等值码点的字符（0 到 255 一一对应），不查任何代码页。
+        std::vector<uint32_t> points;
+        points.reserve(bytes.size());
+        for (unsigned char byte : bytes) points.push_back(static_cast<uint32_t>(byte));
+        return LB_CodePointsToWide(points, text);
+    }
     if (kind == LB_EncodingKind::Utf16Le || kind == LB_EncodingKind::Utf16Be) {
         if (bytes.size() % 2 != 0) return false;
         const bool little = kind == LB_EncodingKind::Utf16Le;
@@ -285,7 +301,7 @@ static bool LB_DecodeFileText(const wchar_t* path, const wchar_t* encodingName, 
     if (!LB_ReadFileBytes(path, bytes, error)) return false;
     LB_EncodingKind kind = LB_EncodingKind::Unknown;
     if (!LB_ResolveEncodingKind(encodingName, bytes, kind)) {
-        error = std::wstring(L"不支持的编码名称：") + LB_Wide(encodingName) + L"；可用 AUTO、UTF-8、UTF-16LE、UTF-16BE、UTF-32LE、UTF-32BE、ANSI、GBK、GB2312、GB18030。";
+        error = std::wstring(L"不支持的编码名称：") + LB_Wide(encodingName) + L"；可用 AUTO、UTF-8、UTF-16LE、UTF-16BE、UTF-32LE、UTF-32BE、ANSI、GBK、GB2312、GB18030、RAW。";
         return false;
     }
     if (!LB_DecodeTextBytes(std::move(bytes), kind, text)) {

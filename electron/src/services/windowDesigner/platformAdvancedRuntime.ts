@@ -260,6 +260,21 @@ static std::vector<unsigned char> LB_ProcessMemoryReadBytes(long long process, l
     return out;
 }
 std::vector<unsigned char> 进程内存_读字节集(long long process, long long address, int length) { return LB_ProcessMemoryReadBytes(process, address, length); }
+bool 进程内存_写字节集(long long process, long long address, const std::vector<unsigned char>& bytes) {
+    if (!process) { LB_ProcessMemorySetError(ERROR_INVALID_PARAMETER, L"进程句柄无效：句柄只能来自 进程内存_打开，传 0 不会执行任何写入。"); return false; }
+    if (bytes.empty() || bytes.size() > static_cast<size_t>(LB_PROCESS_MEMORY_MAX_READ_BYTES)) { LB_ProcessMemorySetError(ERROR_INVALID_PARAMETER, L"写入内容无效：单次写入必须是 1 到 67108864 字节（64MB 上限）。"); return false; }
+    const unsigned long long start = static_cast<unsigned long long>(address);
+    if (address <= 0 || start > LB_PROCESS_MEMORY_MAX_ADDRESS || static_cast<unsigned long long>(bytes.size()) > LB_PROCESS_MEMORY_MAX_ADDRESS - start) { LB_ProcessMemorySetError(ERROR_INVALID_PARAMETER, L"地址超出用户态范围：写入区间必须落在 0 到 0x00007FFFFFFFFFFF 之间。"); return false; }
+    SIZE_T written = 0;
+    if (!WriteProcessMemory(reinterpret_cast<HANDLE>(process), reinterpret_cast<void*>(start), bytes.data(), static_cast<SIZE_T>(bytes.size()), &written) || written != bytes.size()) {
+        const DWORD error = GetLastError() == 0 ? ERROR_PARTIAL_COPY : GetLastError();
+        LB_ProcessMemorySetError(error, error == ERROR_ACCESS_DENIED
+            ? L"写入目标进程内存失败：拒绝访问（错误码 5）。需要以管理员身份运行，且 进程内存_打开 必须传 真 允许写入。"
+            : L"写入目标进程内存失败：目标区域可能不可写或只有部分字节写入（错误码 299），请先用 进程内存_枚举区域JSON 确认地址可写。");
+        return false;
+    }
+    return true;
+}
 long long 进程内存_读到缓冲区(long long process, long long address, int length) {
     std::vector<unsigned char> bytes = LB_ProcessMemoryReadBytes(process, address, length);
     if (bytes.empty()) return 0;

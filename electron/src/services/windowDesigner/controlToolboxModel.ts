@@ -115,3 +115,67 @@ export function saveControlToolboxExpansionState(
     // 工具箱偏好写入失败不应影响窗口设计器本身。
   }
 }
+
+/** 模块贡献控件（contributes.designerControls）的归属模块 ID：namespacedType 前缀，缺省回落 new_emoji。 */
+export function getModuleControlOwningModuleId(control: { namespacedType?: string; type?: string }): string {
+  const prefix = control.namespacedType?.split('/')[0];
+  if (prefix) return prefix;
+  // 工具箱当前只把 new_emoji 模块的 designerControls 渲染进「New_Emoji 控件」分组。
+  return 'lingbuilder.new_emoji.ui';
+}
+
+/** 门禁与工具箱提示里给人看的模块名。 */
+export function getDesignerModuleDisplayName(moduleId: string): string {
+  if (moduleId === 'lingbuilder.win32.basic') return 'Win32基础控件模块';
+  if (moduleId === 'lingbuilder.win32.common-controls') return 'Win32高级控件模块';
+  if (moduleId === 'lingbuilder.new_emoji.ui') return 'New_Emoji 模块';
+  return moduleId;
+}
+
+export interface DesignerControlAddGateInput {
+  /** 工具箱点击传入的类型：模块控件是 previewType（画布预览替身），普通控件即控件类型。 */
+  type: LingControlType;
+  /** 模块贡献控件；普通 Win32 控件不传。 */
+  moduleControl?: { namespacedType?: string; label?: string } | null;
+  /** 当前项目已启用模块集合（/api/modules/project/designer）。 */
+  enabledDesignerModules: ReadonlySet<string>;
+}
+
+// electron 根 tsconfig 未开 strictNullChecks：布尔字面量判别联合不会收窄，
+// 结果类型一律用单一接口（allowed + 必带 reason），与仓内约定一致。
+export interface DesignerControlAddGateResult {
+  allowed: boolean;
+  /** 拦截时的中文原因；allowed=true 时为空串。 */
+  reason: string;
+}
+
+/**
+ * 「点击控件添加到画布」的模块门禁唯一实现。
+ *
+ * 模块贡献控件的真实依赖是提供它的模块（如 new_emoji 表格只依赖 lingbuilder.new_emoji.ui）；
+ * previewType 仅用于画布预览，其 Win32 归属模块（列表视图/选项卡/树形视图 → 高级控件模块）
+ * 不得参与拦截，否则「只启用 new_emoji 的项目」点表格/富列表/标签页/描述列表/树会静默无效
+ * （2026-09-25 实机定位）。普通 Win32 控件仍按其归属模块拦截。
+ */
+export function resolveDesignerControlAddGate(input: DesignerControlAddGateInput): DesignerControlAddGateResult {
+  const { type, moduleControl, enabledDesignerModules } = input;
+  if (moduleControl) {
+    const owningModuleId = getModuleControlOwningModuleId(moduleControl);
+    if (!enabledDesignerModules.has(owningModuleId)) {
+      const label = moduleControl.label || type;
+      return {
+        allowed: false,
+        reason: `${label} 需要先在当前项目中启用 ${getDesignerModuleDisplayName(owningModuleId)}；请在解决方案树「模块 → 配置项目所使用模块」勾选后再添加。`
+      };
+    }
+    return { allowed: true, reason: '' };
+  }
+  const definition = getWin32ControlDefinition(type);
+  if (definition && !enabledDesignerModules.has(definition.moduleId)) {
+    return {
+      allowed: false,
+      reason: `${definition.label} 需要先启用 ${getDesignerModuleDisplayName(definition.moduleId)}。`
+    };
+  }
+  return { allowed: true, reason: '' };
+}

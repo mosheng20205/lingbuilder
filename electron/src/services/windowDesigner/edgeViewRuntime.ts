@@ -287,6 +287,12 @@ export const EDGEVIEW_SAFE_API_NATIVE_MEMBERS = String.raw`
         if (FAILED(started)) EdgeView任务_完成(task, started, L""); return task->id;
     }
     int EdgeView脚本_移除文档预注入(const wchar_t* controlName, const wchar_t* scriptId) { auto* instance = EdgeView_查找控件(controlName); return instance && instance->webView && scriptId && SUCCEEDED(instance->webView->RemoveScriptToExecuteOnDocumentCreated(scriptId)) ? 1 : 0; }
+    long long EdgeView脚本_文档预注入实例异步(int instanceId, const wchar_t* script, const wchar_t* handler) {
+        auto* instance = EdgeView_查找(instanceId); auto task = EdgeView任务_新建(instance, handler); if (!task) return 0;
+        HRESULT started = instance->webView->AddScriptToExecuteOnDocumentCreated(script ? script : L"", Microsoft::WRL::Callback<ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler>([this, task](HRESULT error, LPCWSTR id) -> HRESULT { EdgeView任务_完成(task, error, id); return S_OK; }).Get());
+        if (FAILED(started)) EdgeView任务_完成(task, started, L""); return task->id;
+    }
+    int EdgeView脚本_移除文档预注入实例(int instanceId, const wchar_t* scriptId) { auto* instance = EdgeView_查找(instanceId); return instance && instance->webView && scriptId && SUCCEEDED(instance->webView->RemoveScriptToExecuteOnDocumentCreated(scriptId)) ? 1 : 0; }
     long long EdgeView脚本_执行异步(const wchar_t* controlName, const wchar_t* script, const wchar_t* handler) {
         auto* instance = EdgeView_查找控件(controlName); auto task = EdgeView任务_新建(instance, handler); if (!task) return 0;
         HRESULT started = instance->webView->ExecuteScript(script ? script : L"", Microsoft::WRL::Callback<ICoreWebView2ExecuteScriptCompletedHandler>([this, task](HRESULT error, LPCWSTR json) -> HRESULT { EdgeView任务_完成(task, error, json); return S_OK; }).Get());

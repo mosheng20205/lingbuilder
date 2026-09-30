@@ -66,6 +66,7 @@ export const NEW_EMOJI_WIN32_BASIC_COMMANDS = new Set([
   '到逻辑',
   '取鼠标水平位置',
   '取鼠标垂直位置',
+  '设置鼠标位置',
   '控件_设置文本',
   '控件_设置图片',
   '控件_取文本',

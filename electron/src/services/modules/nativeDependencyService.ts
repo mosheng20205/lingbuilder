@@ -9,7 +9,9 @@ import { CRYPTO_SDK_MODULE_IDS } from './dataMediaModules';
 import { OPENCV_MODULE_ID, OPENCV_SDK_MODULE_ID, OPENCV_VERSION } from './opencvModules';
 import { PROTOBUF_MODULE_ID } from './protobufModule';
 import { validateProtobufSdk, type ProtobufTargetArchitecture } from './protobufSdk';
+import { resolveProtobufSdkLocation } from './protobufSdkLocation';
 import { ARIA2_MODULE_ID, ARIA2_RUNTIME_FILES } from './aria2Module';
+import { HTTP_CLIENT_MODULE } from './httpClientModule';
 import { SQLITE_MODULE_ID, SQLITE_BUNDLED_RUNTIME_SHA256 } from './sqliteModule';
 import { MYSQL_MODULE_ID, MYSQL_BUNDLED_RUNTIME_SHA256 } from './mysqlModule';
 import { EXCEL_MODULE_ID, EXCEL_BUNDLED_RUNTIME_SHA256 } from './excelModule';
@@ -24,7 +26,7 @@ import { EDGEVIEW_WEBVIEW2_SDK_VERSION, locateWebView2SdkPackage } from './webVi
 export { EDGEVIEW_WEBVIEW2_SDK_VERSION };
 
 const FBRO_SDK_VERSION = '135.0.21';
-const FBRO_BRIDGE_VERSION = '2.9.0';
+const FBRO_BRIDGE_VERSION = '2.9.3';
 const FBRO_V3_HEADER_MARKERS = [
   'LB_FBRO_ABI_VERSION_V3',
   'LB_FBRO_EVENT_PACKET_V3',
@@ -117,6 +119,10 @@ export async function materializeModuleNativeDependencies(
 
   if (enabledIds.has(ARIA2_MODULE_ID)) {
     await materializeAria2Runtime(layout, plan);
+  }
+
+  if (enabledIds.has(CURL_IMPERSONATE_MODULE_ID)) {
+    await materializeCurlImpersonateRuntime(layout, plan);
   }
 
   if (enabledIds.has(SQLITE_MODULE_ID)) {
@@ -286,6 +292,17 @@ export async function exportModuleNativeDependencies(
     }, plan);
     diagnostics.push(...plan.blockingDiagnostics);
   }
+  if (enabledModules.some(module => module.manifest.id === CURL_IMPERSONATE_MODULE_ID)) {
+    const curlPlan: ModuleNativeDependencyPlan = { includeDirs: [], sourceFiles: [], libFiles: [], runtimeFiles: [], diagnostics, blockingDiagnostics: [], requiresMsvc: true };
+    await materializeCurlImpersonateRuntime({
+      buildDir: exportDir,
+      sourceDir: exportDir,
+      binDir: exportDir,
+      exportDir,
+      preferredTargetId: 'windows-msvc-x64'
+    }, curlPlan);
+    diagnostics.push(...curlPlan.blockingDiagnostics);
+  }
   if (enabledModules.some(module => module.manifest.id === ARIA2_MODULE_ID)) {
     const plan: ModuleNativeDependencyPlan = { includeDirs: [], sourceFiles: [], libFiles: [], runtimeFiles: [], diagnostics, blockingDiagnostics: [], requiresMsvc: true };
     await materializeAria2Runtime({
@@ -355,7 +372,11 @@ async function materializeProtobufSdk(
   plan: ModuleNativeDependencyPlan
 ): Promise<void> {
   plan.requiresMsvc = true;
-  const sdkRoot = await resolveProtobufSdkRoot(layout);
+  const sdkLocation = await resolveProtobufSdkLocation(layout.buildDir);
+  const sdkRoot = sdkLocation.root;
+  if (sdkLocation.origin === 'bundled') {
+    plan.diagnostics.push('工作区未铺设 Protobuf SDK，本次直接使用 IDE 随包 SDK（只读，不复制进工作区）。');
+  }
   const targetArchitecture: ProtobufTargetArchitecture = layout.preferredTargetId === 'windows-msvc-x64' ? 'x64' : 'win32';
   if (layout.preferredTargetId && layout.preferredTargetId !== 'windows-msvc-win32' && layout.preferredTargetId !== 'windows-msvc-x64') {
     addBlockingDiagnostic(plan, `Protobuf 模块不支持目标 ${layout.preferredTargetId}，当前仅支持 Windows MSVC Win32/x64。`);
@@ -417,6 +438,8 @@ async function materializeProtobufSdk(
 
 const ARIA2_EXECUTABLE_SHA256 = 'be2099c214f63a3cb4954b09a0becd6e2e34660b886d4c898d260febfe9d70c2';
 
+export const CURL_IMPERSONATE_DLL_SHA256 = 'c1470f28710a64d01e2d257dd1b2f43e630c1ad11f6d835d3e82dafd053fddb7';
+const CURL_IMPERSONATE_MODULE_ID = HTTP_CLIENT_MODULE.id;
 async function materializeAria2Runtime(
   layout: ModuleNativeDependencyLayout,
   plan: ModuleNativeDependencyPlan
@@ -480,6 +503,77 @@ async function findBundledAria2Root(): Promise<string | null> {
         fs.access(path.join(candidate, 'aria2c.exe')),
         fs.access(path.join(candidate, 'COPYING')),
         fs.access(path.join(candidate, 'NOTICE.md'))
+      ]);
+      return candidate;
+    } catch {
+      // 尝试下一个由开发环境、打包资源或显式配置提供的位置。
+    }
+  }
+  return null;
+}
+
+async function materializeCurlImpersonateRuntime(
+  layout: ModuleNativeDependencyLayout,
+  plan: ModuleNativeDependencyPlan
+): Promise<void> {
+  plan.requiresMsvc = true;
+  if (layout.preferredTargetId && layout.preferredTargetId !== 'windows-msvc-x64') {
+    // Win32 构建没有 curl-impersonate DLL：不物化也不阻断，运行期对设置TLS指纹给中文诊断。
+    return;
+  }
+  const bundledRoot = await findBundledCurlImpersonateRoot();
+  if (!bundledRoot) {
+    addBlockingDiagnostic(plan, '未找到 LingBuilder 随附的 libcurl-impersonate.dll、cacert.pem（TLS 指纹仿真运行时与 CA 证书包）或许可证文件，无法生成 TLS 指纹能力。');
+    return;
+  }
+  const dllSource = path.join(bundledRoot, 'x64', 'libcurl-impersonate.dll');
+  try {
+    const digest = await sha256File(dllSource);
+    if (digest.toLowerCase() !== CURL_IMPERSONATE_DLL_SHA256) {
+      addBlockingDiagnostic(plan, `随附的 libcurl-impersonate.dll SHA-256 不匹配：期望 ${CURL_IMPERSONATE_DLL_SHA256}，实际 ${digest}。请升级 LingBuilder。`);
+      return;
+    }
+  } catch (error) {
+    addBlockingDiagnostic(plan, `校验 libcurl-impersonate.dll 失败：${errorMessage(error)}`);
+    return;
+  }
+  const moduleRoots = unique([
+    path.join(layout.buildDir, 'modules', CURL_IMPERSONATE_MODULE_ID),
+    path.join(layout.exportDir, 'modules', CURL_IMPERSONATE_MODULE_ID)
+  ]);
+  const licenseNames = ['LICENSE', 'LICENSE_BORINGSSL', 'LICENSE_BROTLI', 'LICENSE_CARES', 'LICENSE_CURL', 'LICENSE_NGHTTP2', 'LICENSE_NGHTTP3', 'LICENSE_NGTCP2', 'LICENSE_ZLIB', 'LICENSE_ZSTD'];
+  const runtimeFiles: Array<[string, string]> = [
+    [dllSource, 'runtime/x64/libcurl-impersonate.dll'],
+    [path.join(bundledRoot, 'cacert.pem'), 'runtime/x64/cacert.pem'],
+    ...licenseNames.map(name => [path.join(bundledRoot, name), `runtime/${name}`] as [string, string])
+  ];
+  for (const [source, runtimeFile] of runtimeFiles) {
+    try {
+      for (const root of moduleRoots) {
+        await copyFileAtomicallyIfDifferent(source, path.join(root, runtimeFile));
+      }
+      const output = path.join(layout.binDir, path.basename(runtimeFile));
+      await copyFileAtomicallyIfDifferent(source, output);
+      plan.runtimeFiles.push(output);
+    } catch (error) {
+      addBlockingDiagnostic(plan, `复制 curl-impersonate 运行时文件失败：${path.basename(runtimeFile)}：${errorMessage(error)}`);
+    }
+  }
+}
+
+async function findBundledCurlImpersonateRoot(): Promise<string | null> {
+  const candidates = unique([
+    process.env.LINGBUILDER_CURL_IMPERSONATE_ROOT || '',
+    process.resourcesPath ? path.join(process.resourcesPath, 'third_party', 'curl-impersonate') : '',
+    path.resolve(process.cwd(), 'third_party', 'curl-impersonate'),
+    path.resolve(process.cwd(), 'electron', 'third_party', 'curl-impersonate')
+  ].filter(Boolean));
+  for (const candidate of candidates) {
+    try {
+      await Promise.all([
+        fs.access(path.join(candidate, 'x64', 'libcurl-impersonate.dll')),
+        fs.access(path.join(candidate, 'cacert.pem')),
+        fs.access(path.join(candidate, 'LICENSE_CURL'))
       ]);
       return candidate;
     } catch {
@@ -801,18 +895,6 @@ async function copyProtobufFiles(
   }
 }
 
-async function resolveProtobufSdkRoot(layout: ModuleNativeDependencyLayout): Promise<string> {
-  const configured = process.env.LINGBUILDER_PROTOBUF_SDK_ROOT?.trim();
-  if (configured) return path.resolve(configured);
-  let current = path.resolve(layout.buildDir);
-  for (let index = 0; index < 8; index += 1) {
-    if (await pathExists(path.join(current, '.lingbuilder'))) return path.join(current, '.lingbuilder', 'toolchains', 'protobuf');
-    const parent = path.dirname(current);
-    if (parent === current) break;
-    current = parent;
-  }
-  return path.resolve(layout.buildDir, '..', '..', '..', '..', '.lingbuilder', 'toolchains', 'protobuf');
-}
 
 /**
  * 读取 PE 导出表，判断 DLL 是否导出指定符号。

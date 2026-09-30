@@ -989,6 +989,29 @@ double 数学_反对数(double value) {
     const double result = std::exp(value);
     return std::isfinite(result) ? result : 0;
 }
+
+// 位运算族（2026-09-27）：全部按 64 位补码位模式处理；移位/循环位数对 64 取模（32 位循环对 32 取模），
+// 与 x86 机器语义一致；逻辑右移高位补 0，算术右移高位补符号位。结果位模式原样作为 long long 返回，
+// 与外部算法代码（varint/签名/哈希）里的 unsigned long long 用法逐位兼容。
+long long 位_与(long long first, long long second) { return static_cast<long long>(static_cast<unsigned long long>(first) & static_cast<unsigned long long>(second)); }
+long long 位_或(long long first, long long second) { return static_cast<long long>(static_cast<unsigned long long>(first) | static_cast<unsigned long long>(second)); }
+long long 位_异或(long long first, long long second) { return static_cast<long long>(static_cast<unsigned long long>(first) ^ static_cast<unsigned long long>(second)); }
+long long 位_取反(long long value) { return static_cast<long long>(~static_cast<unsigned long long>(value)); }
+long long 位_左移(long long value, int digits) { return static_cast<long long>(static_cast<unsigned long long>(value) << (static_cast<unsigned int>(digits) & 63u)); }
+long long 位_右移(long long value, int digits) { return static_cast<long long>(static_cast<unsigned long long>(value) >> (static_cast<unsigned int>(digits) & 63u)); }
+long long 位_算术右移(long long value, int digits) { return value >> (static_cast<unsigned int>(digits) & 63u); }
+int 位_循环左移32(long long value, int digits) {
+    const unsigned int bits = static_cast<unsigned int>(static_cast<unsigned long long>(value) & 0xFFFFFFFFu);
+    const unsigned int count = static_cast<unsigned int>(digits) & 31u;
+    if (count == 0) return static_cast<int>(bits);
+    return static_cast<int>((bits << count) | (bits >> (32u - count)));
+}
+int 位_取字节(long long value, int index) {
+    return static_cast<int>((static_cast<unsigned long long>(value) >> ((static_cast<unsigned int>(index) & 7u) * 8u)) & 0xFFu);
+}
+bool 位_测试(long long value, int position) {
+    return ((static_cast<unsigned long long>(value) >> (static_cast<unsigned int>(position) & 63u)) & 1ULL) != 0;
+}
 `;
 
 const DATETIME_RUNTIME = String.raw`

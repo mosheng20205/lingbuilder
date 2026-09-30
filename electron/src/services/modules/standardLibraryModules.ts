@@ -12,7 +12,7 @@ const srcTextRanged = '要处理的源文本，按 UTF-16 字符计数，位置�
 const searchTarget = '要查找的子文本，区分大小写。';
 const replaceText = '替换后写入的文本；空文本表示删除匹配内容。';
 const hexBytes = '十六进制字节文本，长度必须为偶数且每个字符只允许 0-9、a-f、A-F；格式非法按命令说明返回失败值。';
-const encodingName = '编码名称，忽略大小写以及空格、连字符和下划线；支持 UTF-8、UTF-16LE、UTF-16BE、UTF-32LE、UTF-32BE、ANSI、GBK、GB2312、GB18030。';
+const encodingName = '编码名称，忽略大小写以及空格、连字符和下划线；支持 UTF-8、UTF-16LE、UTF-16BE、UTF-32LE、UTF-32BE、ANSI、GBK、GB2312、GB18030、RAW（别名 LATIN1，按码点低 8 位截断，不查代码页）。';
 const bytesArg = '要操作的字节集；位置与长度均按字节计，索引从 0 起。';
 const bufferHandle = '缓冲区_创建、缓冲区_从字节集 或 缓冲区_从文件 返回的缓冲区句柄；句柄无效时命令按说明返回失败值。';
 const bufferLength = '要读取的字节数；小于 0 表示读取到缓冲区末尾，超出剩余时只取剩余部分，读取后游标前进。';
@@ -171,7 +171,7 @@ const encodingModule = createStandardModule({
   id: 'lingbuilder.std.encoding',
   name: '编码转换模块',
   category: '其他',
-  description: '通过十六进制字节文本安全提供 UTF-8、UTF-16、UTF-32、ANSI、GBK、GB2312、GB18030、BOM、Base64、URL 与 HTML 编解码。',
+  description: '通过十六进制字节文本安全提供 UTF-8、UTF-16、UTF-32、ANSI、GBK、GB2312、GB18030、RAW（按码点低 8 位截断）、BOM、Base64、URL 与 HTML 编解码。',
   tags: ['编码', 'Unicode', 'UTF-8', 'GBK', 'Base64', 'URL'],
   commands: [
     { name: '编码_文本转UTF8', signature: '编码_文本转UTF8(文本)', description: '把 Unicode 文本编码为 UTF-8 字节，返回大写十六进制文本。', insertText: '编码_文本转UTF8("$1")', parameters: [{ name: '文本', type: 'wideString', description: hexEncodeTextArg}], returnType: 'wideString', example: '编码_文本转UTF8("你好")' },
@@ -192,9 +192,9 @@ const encodingModule = createStandardModule({
     { name: '编码_GB2312转文本', signature: '编码_GB2312转文本(GB2312十六进制)', description: '校验 GB2312 字节范围后按 Windows CP936 解码为 Unicode 文本。', insertText: '编码_GB2312转文本("$1")', parameters: [{ name: 'GB2312十六进制', type: 'wideString', description: '待解码的十六进制字节文本，长度必须为偶数；先校验每个双字节落在 GB2312 范围，再按 Windows CP936 解码，超范围返回空文本。'}], returnType: 'wideString' },
     { name: '编码_文本转GB18030', signature: '编码_文本转GB18030(文本)', description: '按 Windows CP54936 把文本编码为 GB18030 字节，返回大写十六进制文本。', insertText: '编码_文本转GB18030("$1")', parameters: [{ name: '文本', type: 'wideString', description: '要编码的源文本；按 Windows CP54936 严格编码，编码失败返回空文本。'}], returnType: 'wideString' },
     { name: '编码_GB18030转文本', signature: '编码_GB18030转文本(GB18030十六进制)', description: '按 Windows CP54936 解码十六进制表示的 GB18030 字节。', insertText: '编码_GB18030转文本("$1")', parameters: [{ name: 'GB18030十六进制', type: 'wideString', description: '待解码的十六进制字节文本，长度必须为偶数；按 Windows CP54936 严格解码，失败返回空文本。'}], returnType: 'wideString' },
-    { name: '编码_字节集转文本', signature: '编码_字节集转文本(数据, 编码名称)', description: '把字节集按指定编码解码为 Unicode 文本，不经十六进制中介；读中文 CSV/文本文件时直接用它。', insertText: '编码_字节集转文本($1, "GBK")', parameters: [{ name: '数据', type: 'bytes', description: '要解码的原始字节集，例如 文件_读入字节集 的结果；空字节集返回空文本。'}, { name: '编码名称', type: 'wideString', description: '字节当前的编码名称，忽略大小写与空格、连字符、下划线；支持 UTF-8、UTF-16LE、UTF-16BE、UTF-32LE、UTF-32BE、ANSI、GBK、GB2312、GB18030，传 AUTO 按「BOM → 严格 UTF-8 → GB18030」自动识别。名称无法识别或字节不是该编码合法序列时返回空文本。'}], returnType: 'wideString', example: '调试输出(编码_字节集转文本(文件_读入字节集(号, 长度), "AUTO"))' },
-    { name: '编码_文本转字节集', signature: '编码_文本转字节集(文本, 编码名称)', description: '把 Unicode 文本按指定编码编码为字节集，用于写出 GBK 等中文编码文件。', insertText: '编码_文本转字节集("$1", "GBK")', parameters: [{ name: '文本', type: 'wideString', description: '要编码的源文本；空文本返回空字节集。'}, { name: '编码名称', type: 'wideString', description: '目标编码名称，取值同 编码_字节集转文本，但必须显式指定（AUTO 返回空字节集）；当前代码页无法无损表示该文本时返回空字节集。'}], returnType: 'bytes' },
-    { name: '编码_转换', signature: '编码_转换(字节十六进制, 来源编码, 目标编码)', description: '在支持的字符编码间转换十六进制字节；编码名支持 UTF-8、UTF-16LE/BE、UTF-32LE/BE、ANSI、GBK、GB2312、GB18030。输出不自动添加 BOM。', insertText: '编码_转换("$1", "UTF-8", "UTF-16LE")', parameters: [{ name: '字节十六进制', type: 'wideString', description: '待转换的十六进制字节文本，长度必须为偶数且只含合法十六进制字符。'}, { name: '来源编码', type: 'wideString', description: '这些字节当前的编码名称，忽略大小写和空格、连字符、下划线；支持 UTF-8、UTF-16LE、UTF-16BE、UTF-32LE、UTF-32BE、ANSI、GBK、GB2312、GB18030，无法识别时返回空文本。'}, { name: '目标编码', type: 'wideString', description: '要转换到的编码名称，取值范围同来源编码；无法识别时返回空文本，输出不自动附加 BOM。'}], returnType: 'wideString' },
+    { name: '编码_字节集转文本', signature: '编码_字节集转文本(数据, 编码名称)', description: '把字节集按指定编码解码为 Unicode 文本，不经十六进制中介；读中文 CSV/文本文件时直接用它。', insertText: '编码_字节集转文本($1, "GBK")', parameters: [{ name: '数据', type: 'bytes', description: '要解码的原始字节集，例如 文件_读入字节集 的结果；空字节集返回空文本。'}, { name: '编码名称', type: 'wideString', description: '字节当前的编码名称，忽略大小写与空格、连字符、下划线；支持 UTF-8、UTF-16LE、UTF-16BE、UTF-32LE、UTF-32BE、ANSI、GBK、GB2312、GB18030、RAW（别名 LATIN1：按码点低 8 位截断/还原，不查任何代码页），传 AUTO 按「BOM → 严格 UTF-8 → GB18030」自动识别。名称无法识别或字节不是该编码合法序列时返回空文本。'}], returnType: 'wideString', example: '调试输出(编码_字节集转文本(文件_读入字节集(号, 长度), "AUTO"))' },
+    { name: '编码_文本转字节集', signature: '编码_文本转字节集(文本, 编码名称)', description: '把 Unicode 文本按指定编码编码为字节集，用于写出 GBK 等中文编码文件。', insertText: '编码_文本转字节集("$1", "GBK")', parameters: [{ name: '文本', type: 'wideString', description: '要编码的源文本；空文本返回空字节集。'}, { name: '编码名称', type: 'wideString', description: '目标编码名称，取值同 编码_字节集转文本（含 RAW：按码点低 8 位截断，签名算法里的逐字符截断语义用它），但必须显式指定（AUTO 返回空字节集）；当前代码页无法无损表示该文本时返回空字节集，RAW 永远不失败。'}], returnType: 'bytes' },
+    { name: '编码_转换', signature: '编码_转换(字节十六进制, 来源编码, 目标编码)', description: '在支持的字符编码间转换十六进制字节；编码名支持 UTF-8、UTF-16LE/BE、UTF-32LE/BE、ANSI、GBK、GB2312、GB18030。输出不自动添加 BOM。', insertText: '编码_转换("$1", "UTF-8", "UTF-16LE")', parameters: [{ name: '字节十六进制', type: 'wideString', description: '待转换的十六进制字节文本，长度必须为偶数且只含合法十六进制字符。'}, { name: '来源编码', type: 'wideString', description: '这些字节当前的编码名称，忽略大小写和空格、连字符、下划线；支持 UTF-8、UTF-16LE、UTF-16BE、UTF-32LE、UTF-32BE、ANSI、GBK、GB2312、GB18030、RAW（按码点低 8 位截断/还原），无法识别时返回空文本。'}, { name: '目标编码', type: 'wideString', description: '要转换到的编码名称，取值范围同来源编码；无法识别时返回空文本，输出不自动附加 BOM。'}], returnType: 'wideString' },
     { name: '编码_添加BOM', signature: '编码_添加BOM(字节十六进制, 编码名称)', description: '为 UTF-8、UTF-16LE/BE 或 UTF-32LE/BE 十六进制字节添加匹配 BOM；已有 BOM 不重复添加。', insertText: '编码_添加BOM("$1", "UTF-8")', parameters: [{ name: '字节十六进制', type: 'wideString', description: '待补 BOM 的十六进制字节文本，长度必须为偶数。'}, { name: '编码名称', type: 'wideString', description: '要补加 BOM 的编码名称，仅支持 UTF-8、UTF-16LE、UTF-16BE、UTF-32LE、UTF-32BE；名称无法识别或字节已带不同 BOM 时返回空文本，已带相同 BOM 时原样返回。'}], returnType: 'wideString' },
     { name: '编码_删除BOM', signature: '编码_删除BOM(字节十六进制)', description: '识别并删除 UTF-8、UTF-16 或 UTF-32 BOM，返回剩余大写十六进制字节。', insertText: '编码_删除BOM("$1")', parameters: [{ name: '字节十六进制', type: 'wideString', description: '待处理的十六进制字节文本，长度必须为偶数；没有 BOM 时原样返回。'}], returnType: 'wideString' },
     { name: '编码_是否有BOM', signature: '编码_是否有BOM(字节十六进制)', description: '判断十六进制字节是否以受支持的 BOM 开头。', insertText: '编码_是否有BOM("$1")', parameters: [{ name: '字节十六进制', type: 'wideString', description: '待检测的十六进制字节文本，长度必须为偶数；格式非法时返回假。'}], returnType: 'bool' },
@@ -212,9 +212,9 @@ const encodingModule = createStandardModule({
 const mathModule = createStandardModule({
   id: 'lingbuilder.std.math',
   name: '数学与随机模块',
-  version: '1.1.0',
+  version: '1.2.0',
   category: '其他',
-  description: '提供常用数学函数、三角对数、取整舍入、范围限制和线程安全随机整数。',
+  description: '提供常用数学函数、三角对数、取整舍入、范围限制、线程安全随机整数和 64 位位运算（与/或/异或/取反/移位/循环移位/取字节/位测试）。',
   tags: ['数学', '随机'],
   commands: [
     { name: '数学_绝对值', signature: '数学_绝对值(数值)', description: '返回数值的绝对值。', insertText: '数学_绝对值(0)', parameters: [{ name: '数值', type: 'double', description: '参与计算的双精度数值，正负不限。'}], returnType: 'double', example: '数学_绝对值(-3.14)' },
@@ -236,6 +236,20 @@ const mathModule = createStandardModule({
     { name: '数学_自然对数', signature: '数学_自然对数(数值)', description: '返回数值的自然对数（以 e 为底）。', insertText: '数学_自然对数(1)', parameters: [{ name: '数值', type: 'double', description: '必须大于 0；0 或负数返回 0。例如 2.718281828… 返回约 1。'}], returnType: 'double', example: '数学_自然对数(1)' },
     { name: '数学_反对数', signature: '数学_反对数(数值)', description: '返回 e 的指定次方（e≈2.718281828）。', insertText: '数学_反对数(0)', parameters: [{ name: '数值', type: 'double', description: '指数；结果溢出时返回 0。例如 1 返回约 2.718282。'}], returnType: 'double', example: '数学_反对数(1)' },
     { name: '数学_置随机种子', signature: '数学_置随机种子(种子)', description: '为随机数生成器设置种子；相同种子将得到相同的随机数序列。', insertText: '数学_置随机种子(0)', parameters: [{ name: '种子', type: 'int', description: '种子数值；-1 表示使用系统时钟作为种子（省略时的默认行为），其它数值原样作为种子。影响 数学_随机整数 的后续序列。'}], returnType: 'void', example: '数学_置随机种子(1)' }
+,
+    // 位运算族（2026-09-27 内嵌 C++ 清零批次）：参数与返回值一律按 64 位补码位模式处理，
+    // 移位/循环位数对 64 取模（32 位循环对 32 取模），与 x86 机器语义一致。
+    // 红线同步锚点：LingBuilder AI 规则手册、MCP_INSTRUCTIONS 第 20 条、docs/modules/内嵌C++替代对照表.md。
+    { name: '位_与', signature: '位_与(甲, 乙)', description: '按 64 位位模式返回「甲 AND 乙」；操作数按补码解释，结果位模式原样作为长整数型返回。', insertText: '位_与($1, $2)', parameters: [{ name: '甲', type: 'longLong', description: '第一个操作数，按 64 位补码位模式参与运算。'}, { name: '乙', type: 'longLong', description: '第二个操作数，按 64 位补码位模式参与运算。'}], returnType: 'longLong' },
+    { name: '位_或', signature: '位_或(甲, 乙)', description: '按 64 位位模式返回「甲 OR 乙」；操作数按补码解释，结果位模式原样作为长整数型返回。', insertText: '位_或($1, $2)', parameters: [{ name: '甲', type: 'longLong', description: '第一个操作数，按 64 位补码位模式参与运算。'}, { name: '乙', type: 'longLong', description: '第二个操作数，按 64 位补码位模式参与运算。'}], returnType: 'longLong' },
+    { name: '位_异或', signature: '位_异或(甲, 乙)', description: '按 64 位位模式返回「甲 XOR 乙」；操作数按补码解释，结果位模式原样作为长整数型返回。protobuf zigzag 编码可写成 位_异或(位_左移(n, 1), 位_算术右移(n, 63))。', insertText: '位_异或($1, $2)', parameters: [{ name: '甲', type: 'longLong', description: '第一个操作数，按 64 位补码位模式参与运算。'}, { name: '乙', type: 'longLong', description: '第二个操作数，按 64 位补码位模式参与运算。'}], returnType: 'longLong', example: '位_异或(240, 15)' },
+    { name: '位_取反', signature: '位_取反(甲)', description: '按 64 位位模式返回逐位取反（NOT）的结果；结果位模式原样作为长整数型返回。', insertText: '位_取反($1)', parameters: [{ name: '甲', type: 'longLong', description: '要取反的 64 位操作数，按补码位模式处理。'}], returnType: 'longLong' },
+    { name: '位_左移', signature: '位_左移(甲, 位数)', description: '按 64 位位模式左移，右侧补 0；位数对 64 取模（与 x86 机器语义一致），结果位模式原样作为长整数型返回。', insertText: '位_左移($1, 1)', parameters: [{ name: '甲', type: 'longLong', description: '要移位的 64 位数值。'}, { name: '位数', type: 'int', description: '左移位数；按补码对 64 取模（0 到 63 生效）。'}], returnType: 'longLong' },
+    { name: '位_右移', signature: '位_右移(甲, 位数)', description: '逻辑右移：按 64 位位模式右移，左侧恒补 0（把操作数当无符号数处理）；位数对 64 取模。例如 位_右移(-1, 1) 得 9223372036854775807。', insertText: '位_右移($1, 1)', parameters: [{ name: '甲', type: 'longLong', description: '要移位的 64 位数值。'}, { name: '位数', type: 'int', description: '右移位数；按补码对 64 取模（0 到 63 生效）。'}], returnType: 'longLong' },
+    { name: '位_算术右移', signature: '位_算术右移(甲, 位数)', description: '算术右移：按有符号语义右移，左侧补符号位；位数对 64 取模。例如 位_算术右移(-1, 1) 仍得 -1。protobuf zigzag 解码用 位_异或(位_右移(z, 1), 取负(位_与(z, 1)))。', insertText: '位_算术右移($1, 1)', parameters: [{ name: '甲', type: 'longLong', description: '要移位的 64 位数值，按有符号数处理。'}, { name: '位数', type: 'int', description: '右移位数；按补码对 64 取模（0 到 63 生效）。'}], returnType: 'longLong' },
+    { name: '位_循环左移32', signature: '位_循环左移32(甲, 位数)', description: '取操作数低 32 位做循环左移（SM3/MD5 等轮函数用），返回 32 位结果；位数对 32 取模。64 位循环请用 lingbuilder.advanced.assembly 的 位运算_循环左移。', insertText: '位_循环左移32($1, 7)', parameters: [{ name: '甲', type: 'longLong', description: '要循环移位的 64 位数值；只使用低 32 位，高位忽略。'}, { name: '位数', type: 'int', description: '循环左移位数；按补码对 32 取模（0 到 31 生效）。'}], returnType: 'int', example: '位_循环左移32(1, 1)' },
+    { name: '位_取字节', signature: '位_取字节(数值, 序号)', description: '取出 64 位位模式中第 序号 个字节（0=最低位字节，7=最高位字节）；序号对 8 取模，返回 0 到 255。', insertText: '位_取字节($1, 0)', parameters: [{ name: '数值', type: 'longLong', description: '源 64 位数值，按位模式处理。'}, { name: '序号', type: 'int', description: '字节序号 0 到 7（0 为最低位字节）；对 8 取模。'}], returnType: 'int', example: '位_取字节(-1, 7)' },
+    { name: '位_测试', signature: '位_测试(数值, 位序)', description: '测试 64 位位模式中第 位序 位是否为 1（0=最低位）；位序对 64 取模。', insertText: '位_测试($1, 0)', parameters: [{ name: '数值', type: 'longLong', description: '源 64 位数值，按位模式处理。'}, { name: '位序', type: 'int', description: '位序号 0 到 63（0 为最低位）；对 64 取模。'}], returnType: 'bool', example: '位_测试(5, 2)' }
   ]
 });
 

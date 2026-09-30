@@ -47,9 +47,11 @@ const tcp = createStandardModule({
 
 const udp = createStandardModule({
   id: 'lingbuilder.net.udp', name: 'UDP通信模块', category: '网络',
-  description: '提供 UDP 绑定、UTF-8 数据报发送接收和关闭能力。', tags: ['UDP', 'Socket'],
+  description: '提供 UDP 绑定、广播开关、端口复用、UTF-8 数据报发送接收和关闭能力，可支撑局域网自动发现与局域网文本消息。', tags: ['UDP', 'Socket', '广播'],
   commands: [
     command('UDP_绑定', [{ name: '端口', type: 'int', description: '要绑定的本机 UDP 端口，0 到 65535；0 表示由系统分配端口，绑定在本机全部接口上。'}], 'bool', '在本机全部接口绑定 UDP 端口。'),
+    command('UDP_允许广播', [{ name: '允许', type: 'bool', description: '传真开启 SO_BROADCAST；发送到 255.255.255.255 等广播地址前必须先开启，否则 Windows 直接拒绝发送。默认关闭。'}], 'bool', '允许 UDP 套接字发送广播数据报（局域网自动发现的前提）；绑定前后调用均可。'),
+    command('UDP_允许端口复用', [{ name: '允许', type: 'bool', description: '传真开启 SO_REUSEADDR；必须在 UDP_绑定 之前调用才生效。开启后同一台机器的多个程序可以绑定同一 UDP 端口，广播包每个套接字都能收到，适合本机多开联调。默认关闭。'}], 'bool', '允许多个程序绑定同一 UDP 端口（本机多开联调必需）。'),
     command('UDP_发送文本', [{ name: '主机', type: 'wideString', description: '目标主机名或地址；只按 IPv4 解析，解析失败返回 -1。'}, { name: '端口', type: 'int', description: '目标端口，1 到 65535；超范围返回 -1。'}, { name: '内容', type: 'wideString', description: '数据报正文，按 UTF-8 编码为一条数据报发出，不保证到达也不自动分片重发。'}], 'int', '发送一条 UTF-8 UDP 数据报。'),
     command('UDP_接收文本', [{ name: '最大字节数', type: 'int', description: '单个数据报最多接收的字节数，上限 65507；小于 1 时按 1 处理，超出部分会被丢弃。'}, { name: '超时毫秒', type: 'int', description: '等待数据报的超时毫秒数；小于 1 时按 1 处理，超时返回空文本。'}], 'wideString', '接收一条 UDP 数据报，超时返回空文本。'),
     command('UDP_取来源地址', [], 'wideString', '返回最近数据报来源 IP。'),
@@ -122,7 +124,6 @@ const pop3 = createStandardModule({
   id: 'lingbuilder.net.pop3', name: '邮件接收模块', category: '网络',
   description: '通过 POP3 协议接收邮件：连接后取回邮件并解析主题、发件人、日期、正文与附件，支持 SSL(TLS) 加密连接（不校验服务器证书）。',
   tags: ['邮件', 'POP3', '接收'],
-  docs: [{ title: '邮件接收模块使用说明', path: 'docs/modules/pop3/README.md' }],
   commands: [
     command('POP3_连接', [{ name: '服务器', type: 'wideString', description: 'POP3 服务器主机名或 IP。'}, { name: '端口', type: 'int', description: '服务端口：明文 110、SSL 995；1 到 65535。'}, { name: '用户名', type: 'wideString', description: '登录账号。'}, { name: '密码', type: 'wideString', description: '登录密码。'}, { name: '是否SSL', type: 'bool', description: '真使用 SSL/TLS 加密连接（不校验服务器证书），假使用明文。'}], 'bool', '连接 POP3 收信服务器并完成登录；失败返回假，用 POP3_取错误 查看原因。', 'POP3_连接("pop.example.com", 995, "user@example.com", "密码", 真)'),
     command('POP3_断开', [], 'void', '断开与收信服务器的连接。'),
@@ -149,7 +150,6 @@ const imap = createStandardModule({
   id: 'lingbuilder.net.imap', name: 'IMAP邮件接收模块', category: '网络',
   description: '通过 IMAP 协议接收邮件：连接后选择文件夹、取回邮件并解析主题、发件人、日期、正文与附件，支持 SSL(TLS) 加密连接（不校验服务器证书）。',
   tags: ['邮件', 'IMAP', '接收'],
-  docs: [{ title: 'IMAP邮件接收模块使用说明', path: 'docs/modules/imap/README.md' }],
   commands: [
     command('IMAP_连接', [{ name: '服务器', type: 'wideString', description: 'IMAP 服务器主机名或 IP。'}, { name: '端口', type: 'int', description: '服务端口：明文 143、SSL 993；1 到 65535。'}, { name: '用户名', type: 'wideString', description: '登录账号。'}, { name: '密码', type: 'wideString', description: '登录密码。'}, { name: '是否SSL', type: 'bool', description: '真使用 SSL/TLS 加密连接（不校验服务器证书），假使用明文。'}], 'bool', '连接 IMAP 收信服务器并完成登录；失败返回假，用 IMAP_取错误 查看原因。', 'IMAP_连接("imap.example.com", 993, "user@example.com", "密码", 真)'),
     command('IMAP_断开', [], 'void', '断开与收信服务器的连接。'),

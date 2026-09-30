@@ -74,7 +74,7 @@ const specs: HttpServerCommandSpec[] = [
     returnType: 'bool', returnLabel: '逻辑型', category: '路由', insertText: 'HTTP_添加静态路由($1, "GET", "/api/data", "{\\"ok\\":true}", "application/json; charset=utf-8")'
   },
   {
-    name: 'HTTP_添加静态文件路由', signature: 'HTTP_添加静态文件路由(服务端, 方法, 路径模式, 文件路径, 下载名称, 内容类型)', description: '注册工作线程直接分块发送磁盘文件的路由（页面、图片、附件下载）；不占用 UI 线程；每次请求读取当前文件内容，文件不存在时该请求返回 404。',
+    name: 'HTTP_添加静态文件路由', signature: 'HTTP_添加静态文件路由(服务端, 方法, 路径模式, 文件路径, 下载名称, 内容类型)', description: '注册工作线程直接分块发送磁盘文件的路由（页面、图片、附件下载）；不占用 UI 线程；每次请求读取当前文件内容，文件不存在时该请求返回 404；自动响应 Range 断点续传请求（206 Partial Content），配合 HTTP客户端_设置续传文件 可实现局域网大文件断点续传。',
     parameters: [parameter('服务端', 'HTTP服务端', serverHandle), parameter('方法', 'wideString', 'HTTP 方法文本，大小写不敏感（自动转大写），通常 GET；* 表示匹配任意方法。'), parameter('路径模式', 'wideString', '必须以 / 开头的路径，如 /index.html 或 /static/*；支持精确匹配和末尾 /* 前缀通配。'), parameter('文件路径', 'wideString', '要发送的本机文件绝对路径（文本型）；前缀通配路由下所有命中路径都返回该文件。'), parameter('下载名称', 'wideString', '非空时附带 Content-Disposition 附件下载名（支持中文，自动按 RFC 5987 编码）；空文本表示内联展示不触发下载。'), parameter('内容类型', 'wideString', '响应 Content-Type，如 "text/html; charset=utf-8"；空文本时按 application/octet-stream 处理。')],
     returnType: 'bool', returnLabel: '逻辑型', category: '路由', insertText: 'HTTP_添加静态文件路由($1, "GET", "/page", "C:\\\\site\\\\index.html", "", "text/html; charset=utf-8")'
   },
@@ -214,7 +214,7 @@ const specs: HttpServerCommandSpec[] = [
     parameters: [parameter('请求', 'HTTP请求', requestHandle), parameter('十六进制', 'wideString', '偶数长度的十六进制文本（如 48656C6C6F），只允许 0-9、a-f、A-F，解码后作为二进制正文发送。'), parameter('内容类型', 'wideString', octetStreamType), parameter('状态码', 'int', responseStatus)], returnType: 'bool', returnLabel: '逻辑型', category: '响应'
   },
   {
-    name: 'HTTP_发送文件', signature: 'HTTP_发送文件(请求, 文件路径, 下载名称, 内容类型, 状态码)', description: '以分块读取方式发送文件，不把整个文件载入内存；自动设置长度和可选下载名称。',
+    name: 'HTTP_发送文件', signature: 'HTTP_发送文件(请求, 文件路径, 下载名称, 内容类型, 状态码)', description: '以分块读取方式发送文件，不把整个文件载入内存；自动设置长度和可选下载名称；请求带 Range 头时自动按 206 断点续传响应。',
     parameters: [parameter('请求', 'HTTP请求', requestHandle), parameter('文件路径', 'wideString', '要发送的本机文件路径，不能为空；分块读取不整体载入内存。不得把未验证的 URL 参数直接拼进路径。'), parameter('下载名称', 'wideString', '非空时附加 Content-Disposition: attachment 触发浏览器下载，自动剔除换行和引号；空文本表示内联展示。'), parameter('内容类型', 'wideString', octetStreamType), parameter('状态码', 'int', `${responseStatus}通常填 200。`)],
     returnType: 'bool', returnLabel: '逻辑型', category: '响应'
   },

@@ -626,6 +626,24 @@ private:
             file.open(std::filesystem::path(response.filePath), std::ios::binary); if (!file) { response.status = 404; response.body = "File Not Found"; response.filePath.clear(); response.contentType = L"text/plain; charset=utf-8"; contentLength = response.body.size(); }
             else { file.seekg(0, std::ios::end); auto end = file.tellg(); if (end < 0) { response.status = 500; response.body = "File Read Error"; response.filePath.clear(); response.contentType = L"text/plain; charset=utf-8"; contentLength = response.body.size(); } else { contentLength = static_cast<unsigned long long>(end); file.seekg(0, std::ios::beg); } }
         }
+        // —— Range 断点续传：只对成功打开的文件响应生效（静态文件路由与 HTTP_发送文件 共用本路径） ——
+        bool isRange = false, rangeUnsatisfiable = false; unsigned long long rangeStart = 0, rangeEnd = 0, totalSize = contentLength;
+        if (!response.filePath.empty() && file.is_open() && request.method != L"HEAD") {
+            auto rangeHeader = request.headers.find(L"range");
+            if (rangeHeader != request.headers.end()) {
+                LB_HttpRange range = ParseRangeHeader(rangeHeader->second, contentLength);
+                if (range.unsatisfiable) rangeUnsatisfiable = true;
+                else if (range.valid) { isRange = true; rangeStart = range.start; rangeEnd = range.end; }
+            }
+        }
+        if (rangeUnsatisfiable) {
+            response.status = 416; response.body = "Requested Range Not Satisfiable"; response.filePath.clear(); response.contentType = L"text/plain; charset=utf-8"; contentLength = response.body.size();
+            response.headers.push_back({ L"Content-Range", L"bytes */" + std::to_wstring(totalSize) });
+        } else if (isRange) {
+            response.status = 206; contentLength = rangeEnd - rangeStart + 1;
+            response.headers.push_back({ L"Content-Range", L"bytes " + std::to_wstring(rangeStart) + L"-" + std::to_wstring(rangeEnd) + L"/" + std::to_wstring(totalSize) });
+        }
+        if (!response.filePath.empty() && !rangeUnsatisfiable) response.headers.push_back({ L"Accept-Ranges", L"bytes" });
         if (response.status == 204 || response.status == 304 || (response.status >= 100 && response.status < 200)) { response.body.clear(); response.filePath.clear(); contentLength = 0; }
         bool keepAlive = request.keepAlive && allowKeepAlive;
         std::ostringstream header; header << (request.protocol == L"HTTP/1.0" ? "HTTP/1.0 " : "HTTP/1.1 ") << response.status << " " << Reason(response.status) << "\r\n";
@@ -634,7 +652,20 @@ private:
         header << "Content-Length: " << contentLength << "\r\nConnection: " << (keepAlive ? "keep-alive" : "close") << "\r\nX-Content-Type-Options: nosniff\r\n\r\n";
         const std::string head = header.str(); if (!SendAll(socketValue, head.data(), head.size())) return false;
         if (request.method == L"HEAD") return keepAlive;
-        if (!response.filePath.empty()) { char buffer[64 * 1024]; while (file) { file.read(buffer, sizeof(buffer)); std::streamsize count = file.gcount(); if (count > 0 && !SendAll(socketValue, buffer, static_cast<size_t>(count))) return false; } }
+        if (!response.filePath.empty()) {
+            if (isRange) file.seekg(static_cast<std::streamoff>(rangeStart), std::ios::beg);
+            char buffer[64 * 1024]; unsigned long long remaining = isRange ? contentLength : 0;
+            while (file) {
+                if (isRange && remaining == 0) break;
+                // sizeof(buffer) 在 32 位构建下是 unsigned int，与 remaining（unsigned long long）直接进 std::min 会让模板参数推导失败（C2672），必须先统一成同类型。
+                const size_t wanted = isRange ? static_cast<size_t>((std::min)(static_cast<unsigned long long>(sizeof(buffer)), remaining)) : sizeof(buffer);
+                file.read(buffer, static_cast<std::streamsize>(wanted));
+                std::streamsize count = file.gcount();
+                if (count <= 0) break;
+                if (!SendAll(socketValue, buffer, static_cast<size_t>(count))) return false;
+                if (isRange) remaining -= static_cast<unsigned long long>(count);
+            }
+        }
         else if (!response.body.empty() && !SendAll(socketValue, response.body.data(), response.body.size())) return false;
         return keepAlive;
     }
@@ -686,9 +717,36 @@ private:
     static void CloseSocket(SOCKET& value) { SOCKET current = value; value = INVALID_SOCKET; if (current != INVALID_SOCKET) { shutdown(current, SD_BOTH); closesocket(current); } }
     static bool SendAll(SOCKET socketValue, const char* data, size_t length) { size_t sent = 0; while (sent < length) { int count = send(socketValue, data + sent, static_cast<int>((std::min)(length - sent, static_cast<size_t>(INT_MAX))), 0); if (count <= 0) return false; sent += static_cast<size_t>(count); } return true; }
     static void SendSimpleError(SOCKET socketValue, int status, const char* reason) { std::string body = reason ? reason : "HTTP Error"; std::ostringstream output; output << "HTTP/1.1 " << status << " " << body << "\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: " << body.size() << "\r\nConnection: close\r\n\r\n" << body; std::string value = output.str(); SendAll(socketValue, value.data(), value.size()); }
-    static const char* Reason(int status) { switch (status) { case 100:return "Continue"; case 200:return "OK"; case 201:return "Created"; case 202:return "Accepted"; case 204:return "No Content"; case 301:return "Moved Permanently"; case 302:return "Found"; case 303:return "See Other"; case 304:return "Not Modified"; case 307:return "Temporary Redirect"; case 308:return "Permanent Redirect"; case 400:return "Bad Request"; case 401:return "Unauthorized"; case 403:return "Forbidden"; case 404:return "Not Found"; case 405:return "Method Not Allowed"; case 408:return "Request Timeout"; case 409:return "Conflict"; case 413:return "Payload Too Large"; case 415:return "Unsupported Media Type"; case 417:return "Expectation Failed"; case 422:return "Unprocessable Content"; case 429:return "Too Many Requests"; case 431:return "Request Header Fields Too Large"; case 500:return "Internal Server Error"; case 501:return "Not Implemented"; case 502:return "Bad Gateway"; case 503:return "Service Unavailable"; case 504:return "Gateway Timeout"; default:return "Status"; } }
+    static const char* Reason(int status) { switch (status) { case 100:return "Continue"; case 200:return "OK"; case 201:return "Created"; case 202:return "Accepted"; case 204:return "No Content"; case 206:return "Partial Content"; case 301:return "Moved Permanently"; case 302:return "Found"; case 303:return "See Other"; case 304:return "Not Modified"; case 307:return "Temporary Redirect"; case 308:return "Permanent Redirect"; case 400:return "Bad Request"; case 401:return "Unauthorized"; case 403:return "Forbidden"; case 404:return "Not Found"; case 405:return "Method Not Allowed"; case 408:return "Request Timeout"; case 409:return "Conflict"; case 413:return "Payload Too Large"; case 415:return "Unsupported Media Type"; case 416:return "Requested Range Not Satisfiable"; case 417:return "Expectation Failed"; case 422:return "Unprocessable Content"; case 429:return "Too Many Requests"; case 431:return "Request Header Fields Too Large"; case 500:return "Internal Server Error"; case 501:return "Not Implemented"; case 502:return "Bad Gateway"; case 503:return "Service Unavailable"; case 504:return "Gateway Timeout"; default:return "Status"; } }
     static std::wstring RequestHeaderValue(const Request& request, const std::wstring& name) { auto found = request.headers.find(name); return found == request.headers.end() ? L"" : found->second; }
     static bool ParseUnsigned(const std::wstring& text, unsigned long long& value) { if (text.empty()) return false; value = 0; for (wchar_t ch : text) { if (ch < L'0' || ch > L'9' || value > (std::numeric_limits<unsigned long long>::max() - static_cast<unsigned>(ch - L'0')) / 10) return false; value = value * 10 + static_cast<unsigned>(ch - L'0'); } return true; }
+    static std::wstring TrimWide(const std::wstring& value) { const wchar_t* whitespace = L" \t"; size_t first = value.find_first_not_of(whitespace), last = value.find_last_not_of(whitespace); return first == std::wstring::npos ? std::wstring() : value.substr(first, last - first + 1); }
+    // Range 头解析（RFC 9110 §14）：bytes=start-end / bytes=start- / bytes=-suffix；
+    // 多段范围、语法非法一律按无 Range 处理（返回 200 全量）；start 超出文件大小按 416 处理。
+    struct LB_HttpRange { bool valid = false; bool unsatisfiable = false; unsigned long long start = 0, end = 0; };
+    static LB_HttpRange ParseRangeHeader(const std::wstring& header, unsigned long long fileSize) {
+        LB_HttpRange range;
+        std::wstring value = Lower(header);
+        if (value.rfind(L"bytes=", 0) != 0) return range;
+        const std::wstring spec = value.substr(6);
+        if (spec.find(L',') != std::wstring::npos) return range;
+        const size_t dash = spec.find(L'-'); if (dash == std::wstring::npos) return range;
+        const std::wstring left = TrimWide(spec.substr(0, dash)), right = TrimWide(spec.substr(dash + 1));
+        if (left.empty() && right.empty()) return range;
+        if (left.empty()) {
+            unsigned long long suffix = 0;
+            if (!ParseUnsigned(right, suffix) || suffix == 0 || fileSize == 0) return range;
+            range.valid = true; range.start = fileSize > suffix ? fileSize - suffix : 0; range.end = fileSize - 1; return range;
+        }
+        if (!ParseUnsigned(left, range.start)) return range;
+        if (range.start >= fileSize) { range.unsatisfiable = true; return range; }
+        range.valid = true;
+        if (right.empty()) { range.end = fileSize - 1; return range; }
+        if (!ParseUnsigned(right, range.end)) { range.valid = false; return range; }
+        if (range.end < range.start) { range.valid = false; return range; }
+        if (range.end > fileSize - 1) range.end = fileSize - 1;
+        return range;
+    }
     static void TrimCr(std::string& value) { if (!value.empty() && value.back() == '\r') value.pop_back(); }
     static void TrimAscii(std::string& value) { const char* whitespace = " \t\r\n"; size_t first = value.find_first_not_of(whitespace), last = value.find_last_not_of(whitespace); value = first == std::string::npos ? std::string() : value.substr(first, last - first + 1); }
     static bool IsAsciiToken(const std::string& value) { if (value.empty()) return false; for (unsigned char ch : value) if (!std::isalnum(ch) && ch != 0x60 && std::string("!#$%&'*+-.^_|~").find(static_cast<char>(ch)) == std::string::npos) return false; return true; }
