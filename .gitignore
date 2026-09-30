@@ -174,3 +174,14 @@ COMPONENT_CARDS_PLAN.md
 
 # 内嵌 Agent 运行时随包内容（Node 与 dsh），由 scripts/prepare-agent-runtime.cjs 生成
 agent-runtime/
+
+# 本机排查/演示工作区与临时产物（不入库）
+/.attack-tmp/
+/AI/
+/electron/2026-08-08：AI
+/electron/2026-08-09：
+/electron/数据/
+/electron/build-meta.json
+/electron/find-bar.png
+/electron/src/emoji-2/.lingbuilder-skill-check/
+/electron/.tmp-*
