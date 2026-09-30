@@ -6,9 +6,9 @@ export const PROTOBUF_MODULE: LingBuilderModuleManifest = {
   schemaVersion: 2,
   id: PROTOBUF_MODULE_ID,
   name: 'Protocol Buffers 模块',
-  version: '1.0.0',
+  version: '1.1.0',
   category: '其他',
-  description: '使用受控 protoc 生成 C++ 消息代码，并通过字节集和反射句柄完成序列化。',
+  description: '无 schema 的 protobuf wire 编解码（不需要 .proto 与 SDK，适合抓包逆向）+ 受控 protoc descriptor 反射消息序列化。',
   author: 'LingBuilder',
   license: 'Apache-2.0',
   tags: ['Protocol Buffers', 'protobuf', 'protoc', '字节集'],
@@ -27,7 +27,18 @@ export const PROTOBUF_MODULE: LingBuilderModuleManifest = {
       { name: 'PB_到JSON', signature: 'PB_到JSON(消息)', description: '按 Protobuf JSON 语义导出消息。', insertText: 'PB_到JSON($1)', returnType: '文本型' },
       { name: 'PB_取最后错误', signature: 'PB_取最后错误()', description: '返回当前线程最近一次 Protobuf 错误。', insertText: 'PB_取最后错误()', returnType: '文本型' },
       { name: 'PB_释放消息', signature: 'PB_释放消息(消息)', description: '释放消息句柄。', insertText: 'PB_释放消息($1)', returnType: '空' },
-      { name: 'PB_释放描述集', signature: 'PB_释放描述集(描述集)', description: '释放描述集句柄。', insertText: 'PB_释放描述集($1)', returnType: '空' }
+      { name: 'PB_释放描述集', signature: 'PB_释放描述集(描述集)', description: '释放描述集句柄。', insertText: 'PB_释放描述集($1)', returnType: '空' },
+      { name: 'PB_写字段_varint', signature: 'PB_写字段_varint(数据, 字段号, 值)', description: '在字节集末尾追加一个 varint 字段（wire type 0），返回拼接后的新字节集；负数按补码 64 位编码为 10 字节（与 proto 标准一致）。', insertText: 'PB_写字段_varint($1, 1, $2)', returnType: '字节集' },
+      { name: 'PB_写字段_固定32', signature: 'PB_写字段_固定32(数据, 字段号, 值)', description: '在字节集末尾追加一个 32 位固定宽度字段（wire type 5，小端），值按位模式处理，返回新字节集。', insertText: 'PB_写字段_固定32($1, 1, $2)', returnType: '字节集' },
+      { name: 'PB_写字段_固定64', signature: 'PB_写字段_固定64(数据, 字段号, 值)', description: '在字节集末尾追加一个 64 位固定宽度字段（wire type 1，小端），值按位模式处理，返回新字节集。', insertText: 'PB_写字段_固定64($1, 1, $2)', returnType: '字节集' },
+      { name: 'PB_写字段_字节集', signature: 'PB_写字段_字节集(数据, 字段号, 值)', description: '在字节集末尾追加一个长度分隔字段（wire type 2），返回新字节集；字节集内容原样写入。', insertText: 'PB_写字段_字节集($1, 1, $2)', returnType: '字节集' },
+      { name: 'PB_写字段_文本', signature: 'PB_写字段_文本(数据, 字段号, 文本)', description: '在字节集末尾追加一个长度分隔字段（wire type 2），文本按 UTF-8 编码后写入，返回新字节集。', insertText: 'PB_写字段_文本($1, 1, "$2")', returnType: '字节集' },
+      { name: 'PB_写字段_嵌套', signature: 'PB_写字段_嵌套(数据, 字段号, 子消息)', description: '把已拼好的子消息字节集作为长度分隔字段（wire type 2）追加，返回新字节集；与 PB_写字段_字节集 同形，命名明示意图。', insertText: 'PB_写字段_嵌套($1, 1, $2)', returnType: '字节集' },
+      { name: 'PB_取字段_varint', signature: 'PB_取字段_varint(数据, 字段号)', description: '无 schema 读取：返回首个匹配字段号的数值（wire type 0/1/5 皆可），值按 64 位位模式返回；字段是长度分隔类型或不存在时返回 0，并用 PB_取最后错误 说明原因。', insertText: 'PB_取字段_varint($1, 1)', returnType: '长整数型' },
+      { name: 'PB_取字段_字节集', signature: 'PB_取字段_字节集(数据, 字段号)', description: '无 schema 读取：返回首个匹配字段号的长度分隔（wire type 2）载荷；字段是数值类型或不存在时返回空字节集，并用 PB_取最后错误 说明原因。', insertText: 'PB_取字段_字节集($1, 1)', returnType: '字节集' },
+      { name: 'PB_字段信息JSON', signature: 'PB_字段信息JSON(数据)', description: '无 schema 解析顶层字段，返回 JSON 数组，每个元素含 字段号/wire/varint（有符号十进制）/hex（载荷十六进制）/utf8（载荷是合法可打印 UTF-8 时给出文本）；数据非法或截断时返回空文本，可用 PB_取最后错误 查看原因。', insertText: 'PB_字段信息JSON($1)', returnType: '文本型' },
+      { name: 'PB_字节集转文本树', signature: 'PB_字节集转文本树(数据, 缩进)', description: '无 schema 调试打印（protoc --decode_raw 风格）：逐字段递归展开为多行文本树，wire2 载荷先尝试按嵌套消息解析（成功递归），否则可打印 UTF-8 按文本显示，否则按十六进制显示；数据非法或截断时返回以 [非法] 开头的说明文本。缩进为每层嵌套空格数（1 到 8，其它值按 2）。', insertText: 'PB_字节集转文本树($1, 2)', returnType: '文本型' },
+      { name: 'PB_导出Proto草稿', signature: 'PB_导出Proto草稿(数据)', description: '按观察到的顶层字段号与线型推断 .proto 草稿（varint→int64、wire1→fixed64、wire5→fixed32、wire2→bytes），供人工判读与 protoc 交叉核对；同一字段出现多种线型时在注释里标注。数据非法或截断时返回空文本。', insertText: 'PB_导出Proto草稿($1)', returnType: '文本型' }
     ],
     docs: [{ title: 'Protocol Buffers 模块手册', path: 'docs/modules/protobuf/README.md' }],
     examples: [{ title: '基础消息序列化', path: 'docs/modules/protobuf/examples/basic.lcpp', description: '展示描述集、字节集和 JSON 的基本调用。' }]
@@ -57,7 +68,18 @@ export const PROTOBUF_MODULE: LingBuilderModuleManifest = {
       { command: 'PB_到JSON', runtimeName: 'PB_到JSON', parameters: [{ name: '消息', type: 'Proto消息', description: 'PB_创建消息 返回的消息句柄；句柄无效时返回空文本。'}], returnType: 'wideString', encoding: 'wide' },
       { command: 'PB_取最后错误', runtimeName: 'PB_取最后错误', returnType: 'wideString', encoding: 'wide' },
       { command: 'PB_释放消息', runtimeName: 'PB_释放消息', parameters: [{ name: '消息', type: 'Proto消息', description: 'PB_创建消息 返回的消息句柄；释放后不可再用。'}], returnType: 'void' },
-      { command: 'PB_释放描述集', runtimeName: 'PB_释放描述集', parameters: [{ name: '描述集', type: 'Proto描述集', description: 'PB_加载描述集 返回的描述集句柄；释放后由它创建的消息句柄需先释放。'}], returnType: 'void' }
+      { command: 'PB_释放描述集', runtimeName: 'PB_释放描述集', parameters: [{ name: '描述集', type: 'Proto描述集', description: 'PB_加载描述集 返回的描述集句柄；释放后由它创建的消息句柄需先释放。'}], returnType: 'void' },
+      { command: 'PB_写字段_varint', runtimeName: 'PB_写字段_varint', parameters: [{ name: '数据', type: 'bytes', description: '已有字节集，新字段追加在其末尾；空字节集等价于从零开始拼。'}, { name: '字段号', type: 'int', description: 'protobuf 字段号，1 到 536870911；超范围返回空字节集并记录错误。'}, { name: '值', type: 'longLong', description: '要写入的 64 位数值，按补码位模式编码为 varint；负数编码为 10 字节（proto 标准语义）。'}], returnType: 'bytes' },
+      { command: 'PB_写字段_固定32', runtimeName: 'PB_写字段_固定32', parameters: [{ name: '数据', type: 'bytes', description: '已有字节集，新字段追加在其末尾。'}, { name: '字段号', type: 'int', description: 'protobuf 字段号，1 到 536870911。'}, { name: '值', type: 'int', description: '要写入的 32 位数值，按位模式小端写入 4 字节（float 位模式也用它承载）。'}], returnType: 'bytes' },
+      { command: 'PB_写字段_固定64', runtimeName: 'PB_写字段_固定64', parameters: [{ name: '数据', type: 'bytes', description: '已有字节集，新字段追加在其末尾。'}, { name: '字段号', type: 'int', description: 'protobuf 字段号，1 到 536870911。'}, { name: '值', type: 'longLong', description: '要写入的 64 位数值，按位模式小端写入 8 字节（double 位模式也用它承载）。'}], returnType: 'bytes' },
+      { command: 'PB_写字段_字节集', runtimeName: 'PB_写字段_字节集', parameters: [{ name: '数据', type: 'bytes', description: '已有字节集，新字段追加在其末尾。'}, { name: '字段号', type: 'int', description: 'protobuf 字段号，1 到 536870911。'}, { name: '值', type: 'bytes', description: '要写入的载荷字节集，前面自动加 varint 长度前缀；空字节集写入长度 0。'}], returnType: 'bytes' },
+      { command: 'PB_写字段_文本', runtimeName: 'PB_写字段_文本', parameters: [{ name: '数据', type: 'bytes', description: '已有字节集，新字段追加在其末尾。'}, { name: '字段号', type: 'int', description: 'protobuf 字段号，1 到 536870911。'}, { name: '文本', type: 'wideString', description: '要写入的文本，按 UTF-8 编码后作为长度分隔载荷。'}], returnType: 'bytes', encoding: 'wide' },
+      { command: 'PB_写字段_嵌套', runtimeName: 'PB_写字段_嵌套', parameters: [{ name: '数据', type: 'bytes', description: '已有字节集，新字段追加在其末尾。'}, { name: '字段号', type: 'int', description: 'protobuf 字段号，1 到 536870911。'}, { name: '子消息', type: 'bytes', description: '已拼好的完整子消息字节集，作为长度分隔载荷写入；递归拼装时先拼子消息再嵌入。'}], returnType: 'bytes' },
+      { command: 'PB_取字段_varint', runtimeName: 'PB_取字段_varint', parameters: [{ name: '数据', type: 'bytes', description: '要解析的 protobuf 字节流（抓包载荷或 PB_写字段_* 的产物）。'}, { name: '字段号', type: 'int', description: '要读取的字段号，1 到 536870911；取首个匹配。'}], returnType: 'longLong' },
+      { command: 'PB_取字段_字节集', runtimeName: 'PB_取字段_字节集', parameters: [{ name: '数据', type: 'bytes', description: '要解析的 protobuf 字节流。'}, { name: '字段号', type: 'int', description: '要读取的字段号，1 到 536870911；取首个匹配的 wire2 载荷（去长度前缀）。'}], returnType: 'bytes' },
+      { command: 'PB_字段信息JSON', runtimeName: 'PB_字段信息JSON', parameters: [{ name: '数据', type: 'bytes', description: '要解析的 protobuf 字节流；只展开顶层，wire2 载荷如需继续展开请取 hex 自行递归。'}], returnType: 'wideString', encoding: 'wide' },
+      { command: 'PB_字节集转文本树', runtimeName: 'PB_字节集转文本树', parameters: [{ name: '数据', type: 'bytes', description: '要解析的 protobuf 字节流；嵌套消息自动递归展开，非法或截断处直接给出 [非法] 说明而不崩溃。'}, { name: '缩进', type: 'int', description: '每层嵌套的空格数，1 到 8，其它值按 2 处理。'}], returnType: 'wideString', encoding: 'wide' },
+      { command: 'PB_导出Proto草稿', runtimeName: 'PB_导出Proto草稿', parameters: [{ name: '数据', type: 'bytes', description: '要推断的 protobuf 字节流（最好是一条完整消息的抓包载荷；可多段混合，字段按观察合并）。'}], returnType: 'wideString', encoding: 'wide' }
     ]
   }
 };

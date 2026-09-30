@@ -140,16 +140,6 @@ function defaultWorkspaceSource(): string | undefined {
   return app.isPackaged ? path.join(process.resourcesPath, 'default-workspace') : undefined;
 }
 
-/**
- * 安装包随附的固定版本 Protobuf SDK。打包后与 default-workspace 里的工具链布局一致；
- * 开发态直接用仓库内 third_party 目录，目录不存在时工作区铺设会自动跳过。
- */
-function bundledProtobufSdkSource(): string {
-  return app.isPackaged
-    ? path.join(process.resourcesPath, 'default-workspace', '.lingbuilder', 'toolchains', 'protobuf')
-    : path.join(repoRoot(), 'electron', 'third_party', 'protobuf');
-}
-
 function rulebookPath(): string {
   return app.isPackaged
     ? path.join(process.resourcesPath, 'docs', 'LingBuilder AI 规则手册.md')
@@ -1910,7 +1900,6 @@ app.whenReady().then(async () => {
     documentsPath: smokeDocumentsPath || app.getPath('documents'),
     userDataPath: app.getPath('userData'),
     defaultWorkspaceSource: defaultWorkspaceSource(),
-    bundledProtobufSdkSource: bundledProtobufSdkSource(),
     seedVersion: app.getVersion(),
     profile: app.isPackaged ? 'packaged' : 'development'
   });
@@ -1931,7 +1920,9 @@ app.whenReady().then(async () => {
       ...process.env,
       // Bridge 子进程据此在 health / workspace.list / MCP serverInfo 上回报 IDE 版本。
       LINGBUILDER_IDE_VERSION: app.getVersion(),
-      LINGBUILDER_SDK_CACHE_ROOT: path.join(app.getPath('userData'), 'sdk-cache')
+      LINGBUILDER_SDK_CACHE_ROOT: path.join(app.getPath('userData'), 'sdk-cache'),
+      // 供 protobufSdkLocation 等只读定位 IDE 随包资源（随包 Protobuf SDK 等）。
+      LINGBUILDER_RESOURCE_ROOT: app.isPackaged ? process.resourcesPath : path.join(repoRoot(), 'electron')
     }
   });
   aiBridgeManager.setFbroVipKey((await resolveFbroVipCredential()).value);

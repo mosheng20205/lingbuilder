@@ -12,11 +12,14 @@ const PROTOBUF_PROVIDER_ID = 'lingbuilder.protobuf.protoc';
 const PROTOBUF_PROVIDER_VERSION = '1.0.0';
 
 export interface ProtobufProviderOptions {
-  protocPath: string | (() => string);
-  sdkRoot?: string | (() => string);
+  protocPath: string | (() => string | Promise<string>);
+  sdkRoot?: string | (() => string | Promise<string>);
   expectedSha256?: string;
   runtimeVersion?: string;
 }
+
+const resolveOptionValue = async (value: string | (() => string | Promise<string>)): Promise<string> =>
+  typeof value === 'function' ? await value() : value;
 
 export function createProtobufCodeGeneratorProvider(options: ProtobufProviderOptions): BuildStepProvider {
   return {
@@ -91,7 +94,7 @@ async function runProtobufStep(step: BuildStep, context: BuildStepContext, optio
       && requestedRuntimeVersion !== PROTOBUF_SDK_VERSION) {
     throw new ProtobufSdkValidationError(`Protobuf 生成器要求固定 runtime 版本 ${PROTOBUF_SDK_VERSION}。`);
   }
-  const configuredProtocPath = path.resolve(typeof options.protocPath === 'function' ? options.protocPath() : options.protocPath);
+  const configuredProtocPath = path.resolve(await resolveOptionValue(options.protocPath));
   if (configuredProtocPath.toLowerCase() !== sdk.protocPath.toLowerCase()) {
     throw new ProtobufSdkValidationError('protoc 必须使用固定 SDK 中的 bin/protoc.exe，禁止回退到系统或工作区外的可执行文件。');
   }
@@ -140,9 +143,9 @@ async function validateProviderSdk(
   if (architecture !== 'win32' && architecture !== 'x64') {
     throw new ProtobufSdkValidationError(`Protobuf Provider 不支持目标架构 ${architecture}。`);
   }
-  const configuredProtocPath = path.resolve(typeof options.protocPath === 'function' ? options.protocPath() : options.protocPath);
+  const configuredProtocPath = path.resolve(await resolveOptionValue(options.protocPath));
   const sdkRoot = path.resolve(typeof options.sdkRoot === 'function'
-    ? options.sdkRoot()
+    ? await options.sdkRoot()
     : options.sdkRoot || path.dirname(path.dirname(configuredProtocPath)));
   const sdk = await validateProtobufSdk(sdkRoot, architecture);
   if (options.runtimeVersion && options.runtimeVersion !== 'pinned' && options.runtimeVersion !== PROTOBUF_SDK_VERSION) {
