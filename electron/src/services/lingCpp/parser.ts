@@ -89,6 +89,10 @@ export const LING_CPP_KEYWORDS = [
   '结束功能库'
 ];
 
+/** 逻辑连词（易语言口径）：长记号 并且/或者 与短记号 且/或，以及 非。
+ * 生成器翻译为 &&/||/!；未知命令准入不得把「且 (...)」这类条件连词误判成命令调用。 */
+export const LING_CPP_LOGICAL_OPERATOR_NAMES = ['并且', '或者', '且', '或', '非'];
+
 export const LING_CPP_COMMANDS = [
   '信息框',
   '调试输出',

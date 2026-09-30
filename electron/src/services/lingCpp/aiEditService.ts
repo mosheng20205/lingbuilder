@@ -39,7 +39,8 @@ export function proposeLingCppEdit(context: LingCppEditContext, draft: LingCppEd
   let designerProject = draft.designerProject
     ? validateDesignerProjectEdit(context.designerProject, draft.designerProject, {
       allowDeletion: /删除|移除|去掉|清除/u.test(context.instruction),
-      allowedControlTypes: allowedDesignerControlTypes
+      allowedControlTypes: allowedDesignerControlTypes,
+      allowEmptyWindows: context.designerOptional === true
     })
     : undefined;
   if (context.projectId && context.designerProject && context.designerProject.id !== context.projectId) {
@@ -70,7 +71,7 @@ export function proposeLingCppEdit(context: LingCppEditContext, draft: LingCppEd
       designerProject = validateDesignerProjectEdit(
         currentDesignerProject,
         createDesignerBeautificationFallback(currentDesignerProject),
-        { allowedControlTypes: getAllowedDesignerControlTypes(context) }
+        { allowedControlTypes: getAllowedDesignerControlTypes(context), allowEmptyWindows: context.designerOptional === true }
       );
     } else if (designerProject && unchangedModel) {
       // 模型没有产生任何布局变化：按纯源码提案受理，丢弃等价模型。
@@ -98,10 +99,14 @@ export function proposeLingCppEdit(context: LingCppEditContext, draft: LingCppEd
     changes,
     ...(designerProject ? {
       designerProject,
-      designerProjectOriginal: cloneDesignerProject(context.designerProjectDiskBaseline ?? context.designerProject),
-      // planner 实际看到的画布/调用方模型：apply 阶段「客户端模型一致性守卫」的比对基准。
-      // 面板画布通常尚未落盘，客户端守卫不能拿提交的画布模型与磁盘比对（必然失败）。
-      ...(context.designerProject ? { designerCallerBaseline: cloneDesignerProject(context.designerProject) } : {}),
+      // 上下文本身没有设计器模型（如 windows-dll 无设计器项目）时两者皆 undefined，
+      // 不产出漂移基准——apply 阶段的 `designerProjectOriginal &&` 守卫已容忍缺失。
+      ...(context.designerProject ? {
+        designerProjectOriginal: cloneDesignerProject(context.designerProjectDiskBaseline ?? context.designerProject),
+        // planner 实际看到的画布/调用方模型：apply 阶段「客户端模型一致性守卫」的比对基准。
+        // 面板画布通常尚未落盘，客户端守卫不能拿提交的画布模型与磁盘比对（必然失败）。
+        designerCallerBaseline: cloneDesignerProject(context.designerProject)
+      } : {}),
       designerAllowedControlTypes: [...allowedDesignerControlTypes]
     } : {}),
     ...(designerUnchanged ? { designerUnchanged: true } : {})
@@ -120,12 +125,15 @@ export function proposeLingCppEdit(context: LingCppEditContext, draft: LingCppEd
 export function validateDesignerProjectEdit(
   original: LingWindowProject | undefined,
   candidate: LingWindowProject,
-  options: { allowDeletion?: boolean; allowedControlTypes?: ReadonlySet<string> } = {}
+  options: { allowDeletion?: boolean; allowedControlTypes?: ReadonlySet<string>; allowEmptyWindows?: boolean } = {}
 ): LingWindowProject {
   if (!candidate || typeof candidate !== 'object') throw new Error('AI 返回的设计器模型不是对象。');
   if (!candidate.id || typeof candidate.id !== 'string') throw new Error('设计器模型缺少有效项目 ID。');
   if (original && candidate.id !== original.id) throw new Error('AI 不得修改当前设计器项目 ID。');
-  if (!Array.isArray(candidate.windows) || candidate.windows.length === 0) throw new Error('设计器模型必须至少包含一个窗口。');
+  // windows-dll 等设计器缺省项目本身无窗口：调用方以 designerOptional 标记后允许零窗口模型。
+  if (!Array.isArray(candidate.windows) || (candidate.windows.length === 0 && !options.allowEmptyWindows)) {
+    throw new Error('设计器模型必须至少包含一个窗口。');
+  }
 
   const windowIds = new Set<string>();
   const originalWindows = new Map((original?.windows || []).map(window => [window.id, window]));
