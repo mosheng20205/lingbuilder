@@ -426,6 +426,26 @@ function buildManifest(commands, designerCatalog, designerCatalogSha256) {
             'NE_运行消息循环()'
           ].join('\n'),
           description: '插入 new_emoji 最小窗口调用。'
+        },
+        {
+          label: 'new_emoji 按钮手型光标+悬停三态色',
+          insertText: [
+            '// 创建后设置：可点元素给手型；悬停/按下三态色按当前主题配色下发（换肤后重设）。',
+            'NE按钮_设置鼠标光标(按钮1, 1)',
+            'NE按钮_设置悬停三态色(按钮1, 0xFF334E78, 0xFF8FB5F5, 0xFFD9E8FF, 0xFF263A59, 0xFF5E7FB6, 0xFFD9E8FF)'
+          ].join('\n'),
+          description: '按钮鼠标手型 + 悬停/按下交互态配色（颜色 0xAARRGGBB，0 沿用默认）。'
+        },
+        {
+          label: 'new_emoji 表格行悬停+可点列高亮手型',
+          insertText: [
+            '// 行悬停由 DLL 原生跟踪（含滚动），替代鼠标移动事件手工换行刷色。',
+            'NE表格_设置悬停行颜色(表格1, 真, 0xFF232838, 0xFFCDD6F4)',
+            '// 「操作」「删除」等可点列：单元格悬停变色 + 手型光标（列号 0 基）。',
+            'NE表格_设置悬停列(表格1, 4, 真, 0xFF31405F, 0xFFCDD6F4, 1)',
+            'NE表格_设置悬停列(表格1, 5, 真, 0xFF31405F, 0xFFCDD6F4, 1)'
+          ].join('\n'),
+          description: '表格行悬停变色 + 操作列悬停高亮与手型光标；暗亮主题切换后在 应用配色 里按主题重下颜色。'
         }
       ],
       docs: [
@@ -503,7 +523,9 @@ const NEW_EMOJI_SINGLE_CONTROL_ID_PARAMETERS = new Set([
 
 // 官方 ABI 语义为「任意可视元素」的通用命令：element_id 不允许按注册组件收窄，
 // 否则 .lcpp 侧对文本/按钮等控件设色会被 controlRef 门禁误拦（component_gallery 实测）。
-const NEW_EMOJI_UNIVERSAL_ELEMENT_COMMANDS = new Set(['EU_SetElementColor']);
+// EU_SetElementCursor 同理（属性桥把该命令登记为 Button/Table 的属性 setter，
+// 但命令本身对全部可视元素有效）。
+const NEW_EMOJI_UNIVERSAL_ELEMENT_COMMANDS = new Set(['EU_SetElementColor', 'EU_SetElementCursor']);
 
 function normalizeNewEmojiControlBindingParameter(parameter, runtimeName, nativeParameter, context) {
   if (nativeParameter?.callbackSignature) {
@@ -671,6 +693,7 @@ function newEmojiDataBridgeCommands(designerControls) {
   const menuType = controlTypesOf(designerControls, 'Menu');
   const badgeType = controlTypesOf(designerControls, 'Badge');
   const tabsType = controlTypesOf(designerControls, 'Tabs');
+  const buttonType = controlTypesOf(designerControls, 'Button');
   const windowParameter = { name: '窗口句柄', type: 'handle', description: 'new_emoji 窗口句柄。' };
   return [
     build('NE表格_设置列', 'NE表格_设置列(控件, 列配置)',
@@ -1010,8 +1033,29 @@ function newEmojiDataBridgeCommands(designerControls) {
       'NE表格_导出Excel(表格1, "D:\\\\data\\\\订单.xlsx", 0)'),
     build('NE表格_导入Excel', 'NE表格_导入Excel(控件, 文件路径, 标志)',
       '从 Excel 文件导入数据到 new_emoji 表格，与 NE_EU_ImportTableExcel 一致。',
-      '整数型', [controlParameter(tableType, '当前窗口中的 NE表格 控件。'), { name: '文件路径', type: 'wideString', description: '来源 .xlsx 文件完整路径。' }, { name: '标志', type: 'int', description: '导入标志位。' }],
-      'NE表格_导入Excel(表格1, "D:\\\\data\\\\订单.xlsx", 0)')
+      '整数型', [controlParameter(tableType, '当前窗口中的 NE表格 控件。'), { name: '文件路径', type: 'wideString', description: '来源 .xlsx 文件完整路径。' }, { name: '标志', type: 'int', description: '导出标志位。' }],
+      'NE表格_导入Excel(表格1, "D:\\\\data\\\\订单.xlsx", 0)'),
+    // ===== 鼠标光标与悬停高亮（2026-09-29 新增导出族） =====
+    build('NE元素_设置鼠标光标', 'NE元素_设置鼠标光标(控件, 光标形状)',
+      '设置任意 new_emoji 可视元素的鼠标光标形状。光标形状：-1 恢复默认；0 箭头；1 手型（超链接手）；2 文本 I 型；3 十字；4 禁止；32512~32654 直传 Win32 标准光标资源号（IDC_*）。适用于按钮、文本、面板等全部元素；可点元素（按钮、链接、可点单元格所在表格列）推荐设 1 手型。',
+      '逻辑型', [{ name: '控件', type: 'controlRef', controlKinds: ['visual'], scope: 'currentWindow', runtimeRepresentation: 'wideName', description: '当前窗口中的任意 new_emoji 可视元素。' }, { name: '光标形状', type: 'int', description: '0 箭头 / 1 手型 / 2 文本 / 3 十字 / 4 禁止，-1 恢复默认。' }],
+      'NE元素_设置鼠标光标(按钮1, 1)'),
+    build('NE按钮_设置鼠标光标', 'NE按钮_设置鼠标光标(控件, 光标形状)',
+      '设置 new_emoji 按钮的鼠标光标形状，等价于对按钮调 NE元素_设置鼠标光标。光标形状：-1 恢复默认；0 箭头；1 手型；2 文本 I 型；3 十字；4 禁止。',
+      '逻辑型', [controlParameter(buttonType, '当前窗口中的 NE按钮 控件。'), { name: '光标形状', type: 'int', description: '0 箭头 / 1 手型 / 2 文本 / 3 十字 / 4 禁止，-1 恢复默认。' }],
+      'NE按钮_设置鼠标光标(按钮1, 1)'),
+    build('NE按钮_设置悬停三态色', 'NE按钮_设置悬停三态色(控件, 悬停背景, 悬停边框, 悬停文字, 按下背景, 按下边框, 按下文字)',
+      '设置 new_emoji 按钮悬停与按下两个交互态的颜色（0xAARRGGBB）。颜色传 0 表示该通道沿用当前配色/主题默认。换肤的应用配色 里必须按主题重新下发，否则悬停色停留在旧主题。',
+      '逻辑型', [controlParameter(buttonType, '当前窗口中的 NE按钮 控件。'), { name: '悬停背景', type: 'int', description: '0xAARRGGBB 悬停背景色，0 沿用默认。' }, { name: '悬停边框', type: 'int', description: '0xAARRGGBB 悬停边框色，0 沿用默认。' }, { name: '悬停文字', type: 'int', description: '0xAARRGGBB 悬停文字色，0 沿用默认。' }, { name: '按下背景', type: 'int', description: '0xAARRGGBB 按下背景色，0 沿用默认。' }, { name: '按下边框', type: 'int', description: '0xAARRGGBB 按下边框色，0 沿用默认。' }, { name: '按下文字', type: 'int', description: '0xAARRGGBB 按下文字色，0 沿用默认。' }],
+      'NE按钮_设置悬停三态色(按钮1, 0xFF334E78, 0xFF8FB5F5, 0xFFD9E8FF, 0xFF263A59, 0xFF5E7FB6, 0xFFD9E8FF)'),
+    build('NE表格_设置悬停行颜色', 'NE表格_设置悬停行颜色(控件, 是否启用, 背景色, 文字色)',
+      '启用 new_emoji 表格的行悬停高亮：鼠标所在行整行变色（DLL 原生跟踪悬停行，含滚动，无需再用鼠标移动事件手工换行刷色）。背景色/文字色为 0xAARRGGBB，传 0 表示该通道沿用主题默认。启用时自定义悬停底色优先于行样式底色（选中行除外）；是否启用=假 恢复主题默认悬停。换肤后需在 应用配色 里按主题重新下发。',
+      '逻辑型', [controlParameter(tableType, '当前窗口中的 NE表格 控件。'), { name: '是否启用', type: 'bool', description: '真=启用自定义悬停色，假=恢复主题默认悬停。' }, { name: '背景色', type: 'int', description: '0xAARRGGBB 悬停行背景色，0 沿用主题默认。' }, { name: '文字色', type: 'int', description: '0xAARRGGBB 悬停行文字色，0 沿用默认；启用后会覆盖该行普通文字色。' }],
+      'NE表格_设置悬停行颜色(表格1, 真, 0xFF232838, 0xFFCDD6F4)'),
+    build('NE表格_设置悬停列', 'NE表格_设置悬停列(控件, 列号, 是否启用, 背景色, 文字色, 光标形状)',
+      '设置 new_emoji 表格某一数据列的悬停高亮与光标：鼠标位于该列单元格时单元格变色并可显示手型光标（列号 0 基，只作用于数据区，表头与滚动条不触发）。背景色/文字色 0xAARRGGBB，传 0 表示该通道沿用默认；光标形状 -1 不改、0 箭头、1 手型、2 文本 I 型、3 十字、4 禁止。适合「操作」「删除」这类可点击单元格列。',
+      '逻辑型', [controlParameter(tableType, '当前窗口中的 NE表格 控件。'), { name: '列号', type: 'int', description: '0 基数据列序号。' }, { name: '是否启用', type: 'bool', description: '真=启用该列悬停高亮，假=关闭。' }, { name: '背景色', type: 'int', description: '0xAARRGGBB 悬停单元格背景色，0 沿用默认。' }, { name: '文字色', type: 'int', description: '0xAARRGGBB 悬停单元格文字色，0 沿用默认。' }, { name: '光标形状', type: 'int', description: '-1 不改 / 0 箭头 / 1 手型 / 2 文本 / 3 十字 / 4 禁止。' }],
+      'NE表格_设置悬停列(表格1, 4, 真, 0xFF31405F, 0xFFCDD6F4, 1)')
   ];
 }
 
@@ -1680,6 +1724,13 @@ const PROPERTY_PARAMETER_ALIASES = {
   'Table.EU_SetTableVirtualOptions': {
     enabled: 'tableVirtualEnabled', rowCount: 'tableVirtualRowCount', cacheWindow: 'tableVirtualCacheWindow'
   },
+  'Table.EU_SetTableRowHover': {
+    enable: 'rowHoverEnabled', hoverBg: 'rowHoverBackgroundColor', hoverFg: 'rowHoverForegroundColor'
+  },
+  'Table.EU_SetTableColumnHover': {
+    col: 'hoverColumnIndex', hoverBg: 'hoverColumnBackgroundColor',
+    hoverFg: 'hoverColumnForegroundColor', cursor: 'hoverColumnCursor'
+  },
   'Image.EU_SetImageStyle': {
     bg: 'imageBackgroundColor', border: 'imageBorderColor', borderWidth: 'borderWidth', radius: 'radius', padding: 'padding'
   },
@@ -1799,7 +1850,10 @@ const PROPERTY_PARAMETER_ALIASES = {
 
 const PROPERTY_PARAMETER_LITERALS = {
   'Dialog.EU_SetDialogOptions': { closeOnMask: 1 },
-  'Slider.EU_SetSliderOptions': { showTooltip: 1 }
+  'Slider.EU_SetSliderOptions': { showTooltip: 1 },
+  // 列悬停由「悬停高亮列号 >= 0」承载开关语义（DLL 侧 col<0 直接忽略），
+  // 属性面板不需要独立的布尔开关。
+  'Table.EU_SetTableColumnHover': { enable: 1 }
 };
 
 // Designer properties use human-friendly units while the native ABI may use a
@@ -1812,6 +1866,18 @@ const PROPERTY_PARAMETER_VALUE_SCALES = {
 function getCustomPropertySetters(component) {
   const textRegions = new Set(['Header', 'Aside', 'Main', 'Footer']);
   const result = [];
+  // EU_SetElementCursor 的导出名不带组件前缀（语义为任意可视元素），
+  // 推断器够不到，这里给 Button/Table 显式声明属性映射（光标形状）。
+  if (component.id === 'Button' || component.id === 'Table') {
+    result.push({
+      command: 'EU_SetElementCursor',
+      parameters: [
+        { name: 'hwnd', type: 'HWND' }, { name: 'element_id', type: 'int' },
+        { name: 'cursor', type: 'int', propertyKey: 'cursorShape' }
+      ],
+      propertyKeys: ['cursorShape']
+    });
+  }
   if (component.id === 'Link') {
     result.push({
       command: 'EU_SetTextOptions',

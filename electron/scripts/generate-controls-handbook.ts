@@ -85,6 +85,12 @@ const chineseName = (definition: Win32ControlDefinition) =>
   getWin32RuntimeControlContract(definition)?.lingCppType ?? definition.label.split('/')[0];
 const instanceName = (definition: Win32ControlDefinition) => `${chineseName(definition)}1`;
 const moduleManifest = (moduleId: string) => BUILTIN_MODULES.find(manifest => manifest.id === moduleId);
+/** 官网 MarkdownText 不支持加粗：模块命令描述里的 **标记** 出站时剥掉，语义不变。 */
+const plainDescription = (description: string) => description.replace(/\*\*/g, '');
+function manifestCommands(moduleId: string) {
+  return (moduleManifest(moduleId)?.contributes?.commands ?? [])
+    .map(command => ({ ...command, description: plainDescription(command.description) }));
+}
 const designerTypeToName = new Map(WIN32_CONTROL_DEFINITIONS.map(definition => [definition.type, `${chineseName(definition)}（${definition.type}）`]));
 const friendlyControlTypes = (types: string[]) => types.map(type => designerTypeToName.get(type.includes('/') ? type.split('/')[1] : type) ?? type).join('、');
 
@@ -208,8 +214,7 @@ function exampleSection(definition: Win32ControlDefinition): string[] {
 }
 
 function familyCommands(definition: Win32ControlDefinition): Array<{ name: string; signature: string; description: string }> {
-  const manifest = moduleManifest(definition.moduleId);
-  const commands = manifest?.contributes?.commands ?? [];
+  const commands = manifestCommands(definition.moduleId);
   const matched = FAMILY_PREFIXES
     .filter(family => family.types.includes(definition.type))
     .flatMap(family => commands.filter(command => command.name.startsWith(family.prefix)));
@@ -221,8 +226,7 @@ function familyCommands(definition: Win32ControlDefinition): Array<{ name: strin
 }
 
 function browserCommandSection(definition: Win32ControlDefinition): string[] {
-  const manifest = moduleManifest(definition.moduleId);
-  const commands = (manifest?.contributes?.commands ?? []) as Array<{ name: string; signature: string; description: string; visibility?: string }>;
+  const commands = manifestCommands(definition.moduleId);
   const advanced = commands.filter(command => command.visibility === 'advanced').length;
   let list: Array<{ name: string; signature: string; description: string }>;
   if (definition.type === 'EdgeBrowser') {
@@ -274,6 +278,9 @@ function controlArticle(definition: Win32ControlDefinition, sortOrder: number): 
   } else {
     lines.push(`${name}由 \`${display.name}\`（\`${definition.moduleId}\`）提供，对应 Win32 原生控件类 \`${definition.nativeClass}\`，工具箱分类「${definition.category}」。`, '');
   }
+  if (definition.moduleId === 'lingbuilder.win32.common-controls') {
+    lines.push(`使用前需在「模块」面板启用 \`lingbuilder.win32.common-controls\`（Win32高级控件模块）；未启用时工具箱里本控件为灰色不可用状态，悬停提示「需要启用高级控件模块」。`, '');
+  }
 
   lines.push('## 设计器属性', '');
   lines.push(`把控件${nonVisual ? '拖入设计器' : '从工具箱拖入窗口'}后，可在属性面板修改以下属性（格式：\`键\`（类型，默认值））：`, '');
@@ -316,8 +323,7 @@ function overviewIndex(entries: Win32ControlDefinition[]): string[] {
 
 function basicOverview(sortOrder: number): HandbookArticle {
   const controls = getWin32ControlsForModule('lingbuilder.win32.basic');
-  const manifest = moduleManifest('lingbuilder.win32.basic');
-  const commands = manifest?.contributes?.commands ?? [];
+  const commands = manifestCommands('lingbuilder.win32.basic');
   const generic = commands.filter(command => command.name.startsWith('控件_'));
   const windowCommands = commands.filter(command => command.name.startsWith('窗口_'));
 
@@ -388,8 +394,7 @@ function advancedOverview(sortOrder: number): HandbookArticle {
   const controls = getWin32ControlsForModule('lingbuilder.win32.common-controls');
   const visual = controls.filter(definition => !isNonVisual(definition));
   const nonVisual = controls.filter(isNonVisual);
-  const manifest = moduleManifest('lingbuilder.win32.common-controls');
-  const commands = manifest?.contributes?.commands ?? [];
+  const commands = manifestCommands('lingbuilder.win32.common-controls');
   const runtime = commands.filter(command => command.name.startsWith('控件_创建') || command.name.startsWith('通过标记'));
   const dialogs = commands.filter(command => ['打开文件', '保存文件', '选择文件夹', '选择颜色', '选择字体', '查找文本', '替换文本', '打印', '打印文本', '页面设置', '任务对话框', '系统对话框_状态'].includes(command.name) || command.name.startsWith('查找替换_') || command.name.startsWith('页面设置_'));
   const families = commands.filter(command =>
@@ -401,6 +406,10 @@ function advancedOverview(sortOrder: number): HandbookArticle {
     '# 高级控件',
     '',
     '高级控件由 `lingbuilder.win32.common-controls`（Win32高级控件模块）提供，包含 ' + `${visual.length} 个可视控件和 ${nonVisual.length} 个非可视资源，对应 Windows 通用控件（Common Controls）、系统对话框与 Media Foundation 媒体能力。`,
+    '',
+    '## 使用前提：先启用模块',
+    '',
+    '高级控件不是新建项目的默认能力，必须先在项目的「模块」面板中启用 `lingbuilder.win32.common-controls`（Win32高级控件模块）。未启用该模块时，设计器工具箱里的高级控件全部是灰色不可用状态，鼠标悬停会提示「需要启用高级控件模块」，此时无法拖入任何高级控件。启用方法：打开工作台的「模块」面板，在搜索框输入「Win32高级控件」或 `common-controls`，点击该模块行内的「启用」开关，回到窗口设计器即可正常拖入。',
     '',
     '## 可视控件目录',
     '',
