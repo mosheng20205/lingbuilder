@@ -63,10 +63,10 @@
 | `lingbuilder.net.cookie` Cookie文本模块 | `module-demo-lingbuilder.net.cookie` | 5 | 0 | 1 | `Cookie文本模块完整演示.lcpppkg` |
 | `lingbuilder.net.dns` DNS与IP模块 | `module-demo-lingbuilder.net.dns` | 5 | 0 | 1 | `DNS与IP模块完整演示.lcpppkg` |
 | `lingbuilder.net.ftp` FTP客户端模块 | `module-demo-lingbuilder.net.ftp` | 7 | 0 | 1 | `FTP客户端模块完整演示.lcpppkg` |
-| `lingbuilder.net.http-client` HTTP 客户端模块 | `module-demo-lingbuilder.net.http-client` | 74 | 0 | 4 | `HTTP客户端模块完整演示.lcpppkg` |
+| `lingbuilder.net.http-client` HTTP 客户端模块 | `module-demo-lingbuilder.net.http-client` | 79 | 0 | 4 | `HTTP客户端模块完整演示.lcpppkg` |
 | `lingbuilder.net.mail` SMTP邮件模块 | `module-demo-lingbuilder.net.mail` | 2 | 0 | 1 | `SMTP邮件模块完整演示.lcpppkg` |
 | `lingbuilder.net.tcp` TCP通信模块 | `module-demo-lingbuilder.net.tcp` | 6 | 0 | 1 | `TCP通信模块完整演示.lcpppkg` |
-| `lingbuilder.net.udp` UDP通信模块 | `module-demo-lingbuilder.net.udp` | 7 | 0 | 1 | `UDP通信模块完整演示.lcpppkg` |
+| `lingbuilder.net.udp` UDP通信模块 | `module-demo-lingbuilder.net.udp` | 9 | 0 | 1 | `UDP通信模块完整演示.lcpppkg` |
 | `lingbuilder.net.url` URL解析模块 | `module-demo-lingbuilder.net.url` | 6 | 0 | 1 | `URL解析模块完整演示.lcpppkg` |
 | `lingbuilder.new_emoji.fbro-shell` new_emoji FBro 浏览器外壳 | `module-demo-lingbuilder.new_emoji.fbro-shell` | 38 | 0 | 2 | `new_emojiFBro浏览器外壳完整演示.lcpppkg` |
 | `lingbuilder.new_emoji.ui` new_emoji 原生界面库 | `module-demo-lingbuilder.new_emoji.ui` | 3784 | 93 | 12 | `新表情原生界面库完整演示.lcpppkg` |

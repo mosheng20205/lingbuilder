@@ -1,0 +1,354 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-25T22:05:22.342Z",
+  "module": {
+    "id": "lingbuilder.net.pop3",
+    "name": "邮件接收模块",
+    "version": "1.0.0",
+    "description": "通过 POP3 协议接收邮件：连接后取回邮件并解析主题、发件人、日期、正文与附件，支持 SSL(TLS) 加密连接（不校验服务器证书）。"
+  },
+  "commandCount": 18,
+  "commands": [
+    {
+      "index": 1,
+      "name": "POP3_连接",
+      "signature": "POP3_连接(服务器, 端口, 用户名, 密码, 是否SSL)",
+      "description": "连接 POP3 收信服务器并完成登录；失败返回假，用 POP3_取错误 查看原因。",
+      "insertText": "POP3_连接(\"$1\", 0, \"$3\", \"$4\", 假)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "POP3_连接",
+        "runtimeName": "POP3_连接",
+        "parameters": [
+          {
+            "name": "服务器",
+            "type": "wideString",
+            "description": "POP3 服务器主机名或 IP。"
+          },
+          {
+            "name": "端口",
+            "type": "int",
+            "description": "服务端口：明文 110、SSL 995；1 到 65535。"
+          },
+          {
+            "name": "用户名",
+            "type": "wideString",
+            "description": "登录账号。"
+          },
+          {
+            "name": "密码",
+            "type": "wideString",
+            "description": "登录密码。"
+          },
+          {
+            "name": "是否SSL",
+            "type": "bool",
+            "description": "真使用 SSL/TLS 加密连接（不校验服务器证书），假使用明文。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "POP3_连接(\"pop.example.com\", 995, \"user@example.com\", \"密码\", 真)"
+      },
+      "demoInvocation": "POP3_连接(\"演示参数1\", 1, \"演示参数3\", \"演示参数4\", 真)"
+    },
+    {
+      "index": 2,
+      "name": "POP3_断开",
+      "signature": "POP3_断开()",
+      "description": "断开与收信服务器的连接。",
+      "insertText": "POP3_断开()",
+      "returnType": "空",
+      "binding": {
+        "command": "POP3_断开",
+        "runtimeName": "POP3_断开",
+        "parameters": [],
+        "returnType": "void"
+      },
+      "demoInvocation": "POP3_断开()"
+    },
+    {
+      "index": 3,
+      "name": "POP3_是否已连接",
+      "signature": "POP3_是否已连接()",
+      "description": "判断当前是否已连接收信服务器。",
+      "insertText": "POP3_是否已连接()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "POP3_是否已连接",
+        "runtimeName": "POP3_是否已连接",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "POP3_是否已连接()"
+    },
+    {
+      "index": 4,
+      "name": "POP3_取邮件数量",
+      "signature": "POP3_取邮件数量()",
+      "description": "返回邮箱中的邮件数量；未连接返回 -1。",
+      "insertText": "POP3_取邮件数量()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "POP3_取邮件数量",
+        "runtimeName": "POP3_取邮件数量",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "POP3_取邮件数量()"
+    },
+    {
+      "index": 5,
+      "name": "POP3_取邮箱总大小",
+      "signature": "POP3_取邮箱总大小()",
+      "description": "返回邮箱中全部邮件的总字节数；未连接返回 -1。",
+      "insertText": "POP3_取邮箱总大小()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "POP3_取邮箱总大小",
+        "runtimeName": "POP3_取邮箱总大小",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "POP3_取邮箱总大小()"
+    },
+    {
+      "index": 6,
+      "name": "POP3_取邮件大小",
+      "signature": "POP3_取邮件大小(序号)",
+      "description": "返回指定邮件的字节数。",
+      "insertText": "POP3_取邮件大小(0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "POP3_取邮件大小",
+        "runtimeName": "POP3_取邮件大小",
+        "parameters": [
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "邮件序号，从 1 起。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "POP3_取邮件大小(1)"
+    },
+    {
+      "index": 7,
+      "name": "POP3_接收邮件",
+      "signature": "POP3_接收邮件(序号)",
+      "description": "取回指定邮件的完整内容并解析为当前邮件上下文，之后用 取主题/取发件人/取正文文本/附件族 命令读取。",
+      "insertText": "POP3_接收邮件(0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "POP3_接收邮件",
+        "runtimeName": "POP3_接收邮件",
+        "parameters": [
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "邮件序号，从 1 起。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "POP3_接收邮件(1)"
+    },
+    {
+      "index": 8,
+      "name": "POP3_删除邮件",
+      "signature": "POP3_删除邮件(序号)",
+      "description": "把指定邮件标记为删除；真正删除发生在 QUIT 时，可用 POP3_复位删除 撤销。",
+      "insertText": "POP3_删除邮件(0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "POP3_删除邮件",
+        "runtimeName": "POP3_删除邮件",
+        "parameters": [
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "要删除的邮件序号，从 1 起。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "POP3_删除邮件(1)"
+    },
+    {
+      "index": 9,
+      "name": "POP3_复位删除",
+      "signature": "POP3_复位删除()",
+      "description": "撤销本次连接中所有删除标记。",
+      "insertText": "POP3_复位删除()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "POP3_复位删除",
+        "runtimeName": "POP3_复位删除",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "POP3_复位删除()"
+    },
+    {
+      "index": 10,
+      "name": "POP3_取主题",
+      "signature": "POP3_取主题()",
+      "description": "返回已接收邮件的主题（自动解码编码字）。",
+      "insertText": "POP3_取主题()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "POP3_取主题",
+        "runtimeName": "POP3_取主题",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "POP3_取主题()"
+    },
+    {
+      "index": 11,
+      "name": "POP3_取发件人",
+      "signature": "POP3_取发件人()",
+      "description": "返回已接收邮件的发件人。",
+      "insertText": "POP3_取发件人()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "POP3_取发件人",
+        "runtimeName": "POP3_取发件人",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "POP3_取发件人()"
+    },
+    {
+      "index": 12,
+      "name": "POP3_取日期",
+      "signature": "POP3_取日期()",
+      "description": "返回已接收邮件的日期头。",
+      "insertText": "POP3_取日期()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "POP3_取日期",
+        "runtimeName": "POP3_取日期",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "POP3_取日期()"
+    },
+    {
+      "index": 13,
+      "name": "POP3_取正文文本",
+      "signature": "POP3_取正文文本()",
+      "description": "返回已接收邮件的纯文本正文。",
+      "insertText": "POP3_取正文文本()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "POP3_取正文文本",
+        "runtimeName": "POP3_取正文文本",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "POP3_取正文文本()"
+    },
+    {
+      "index": 14,
+      "name": "POP3_取网页正文",
+      "signature": "POP3_取网页正文()",
+      "description": "返回已接收邮件的 HTML 正文。",
+      "insertText": "POP3_取网页正文()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "POP3_取网页正文",
+        "runtimeName": "POP3_取网页正文",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "POP3_取网页正文()"
+    },
+    {
+      "index": 15,
+      "name": "POP3_取附件个数",
+      "signature": "POP3_取附件个数()",
+      "description": "返回已接收邮件的附件数量。",
+      "insertText": "POP3_取附件个数()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "POP3_取附件个数",
+        "runtimeName": "POP3_取附件个数",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "POP3_取附件个数()"
+    },
+    {
+      "index": 16,
+      "name": "POP3_取附件名称",
+      "signature": "POP3_取附件名称(附件序号)",
+      "description": "返回指定附件的文件名。",
+      "insertText": "POP3_取附件名称(0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "POP3_取附件名称",
+        "runtimeName": "POP3_取附件名称",
+        "parameters": [
+          {
+            "name": "附件序号",
+            "type": "int",
+            "description": "附件序号，从 0 起。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "POP3_取附件名称(1)"
+    },
+    {
+      "index": 17,
+      "name": "POP3_保存附件",
+      "signature": "POP3_保存附件(附件序号, 保存路径)",
+      "description": "把指定附件内容写入目标文件。",
+      "insertText": "POP3_保存附件(0, \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "POP3_保存附件",
+        "runtimeName": "POP3_保存附件",
+        "parameters": [
+          {
+            "name": "附件序号",
+            "type": "int",
+            "description": "附件序号，从 0 起。"
+          },
+          {
+            "name": "保存路径",
+            "type": "wideString",
+            "description": "保存的完整文件路径，所在目录必须已存在。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "POP3_保存附件(1, \"module-demo-temp.txt\")"
+    },
+    {
+      "index": 18,
+      "name": "POP3_取错误",
+      "signature": "POP3_取错误()",
+      "description": "返回最近一次 POP3 错误或服务端响应。",
+      "insertText": "POP3_取错误()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "POP3_取错误",
+        "runtimeName": "POP3_取错误",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "POP3_取错误()"
+    }
+  ]
+}

@@ -1,0 +1,113 @@
+包 灵码更新助手
+使用 Win32窗口基础模块
+使用 用户注册表模块
+使用 文本处理模块
+使用 数组操作模块
+
+// 功能库「更新工具」：版本比较、安装版本读取（HKCU→HKLM 兜底）与 SHA-256 文件校验。
+// 全部为「参数进、值出」的纯函数：不触碰控件、不保存句柄、不弹对话框。
+// 红线：带初始化的局部变量会被生成器提升到方法最前，因此一律「先声明（字面量初值）、后赋值」。
+功能库 更新工具
+公开:
+
+  // 按点分段比较版本号：返回 正数=左版本更新、负数=右版本更新、0=一致。
+  整数型 比较版本(文本型 左, 文本型 右)
+    局部 文本型 左段[]
+    局部 文本型 右段[]
+    局部 整数型 左段数 = 0
+    局部 整数型 右段数 = 0
+    局部 整数型 段数 = 0
+    局部 整数型 段号 = 0
+    局部 整数型 下标 = 0
+    局部 整数型 左值 = 0
+    局部 整数型 右值 = 0
+    局部 文本型 段文本 = ""
+    文本_分割(左, ".", 左段, 真)
+    文本_分割(右, ".", 右段, 真)
+    左段数 = 数组_取成员数(左段)
+    右段数 = 数组_取成员数(右段)
+    段数 = 左段数
+    如果 (右段数 > 段数)
+        段数 = 右段数
+    如果结束
+    计次循环首 (段数, 段号)
+        下标 = 段号 - 1
+        左值 = 0
+        右值 = 0
+        如果 (下标 < 左段数)
+            段文本 = 数组_取成员(左段, 下标)
+            左值 = 到整数(段文本)
+        如果结束
+        如果 (下标 < 右段数)
+            段文本 = 数组_取成员(右段, 下标)
+            右值 = 到整数(段文本)
+        如果结束
+        如果 (左值 > 右值)
+            返回(1)
+        如果结束
+        如果 (左值 < 右值)
+            返回(-1)
+        如果结束
+    计次循环尾
+    返回(0)
+  结束
+
+  // 读取本机灵码 IDE 版本：先 HKCU（per-user 安装），读不到再查 HKLM（为所有用户安装）。
+  // 卸载键是 electron-builder 由 appId「cn.lingbuilder.ide」确定性派生的 UUIDv5，全机一致。
+  文本型 读安装版本()
+    局部 文本型 版本 = ""
+    版本 = 注册表_读文本("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\af399425-65c0-5c6c-943c-9c9dcfa61b31", "DisplayVersion", "")
+    如果 (版本 != "")
+        返回(版本)
+    如果结束
+    局部 文本型 系统级版本 = ""
+    @ {
+    @     wchar_t 系统缓冲[512] = {};
+    @     DWORD 系统字节数 = sizeof(系统缓冲);
+    @     if (RegGetValueW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\af399425-65c0-5c6c-943c-9c9dcfa61b31", L"DisplayVersion", RRF_RT_REG_SZ, nullptr, 系统缓冲, &系统字节数) == ERROR_SUCCESS) { 系统级版本 = 系统缓冲; }
+    @ }
+    返回(系统级版本)
+  结束
+
+  // 用系统 CNG（BCrypt）流式计算文件 SHA-256，返回大写十六进制；失败返回空文本。
+  // 特意不用 哈希摘要模块：其实现携带 Botan 运行时，会破坏本工具「单 exe 小体积」目标。
+  文本型 文件SHA256(文本型 路径)
+    局部 文本型 结果 = ""
+    @ {
+    @     HANDLE 文件句柄 = CreateFileW(路径.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    @     if (文件句柄 != INVALID_HANDLE_VALUE) {
+    @         BCRYPT_ALG_HANDLE 算法句柄 = nullptr;
+    @         BCRYPT_HASH_HANDLE 哈希句柄 = nullptr;
+    @         if (BCryptOpenAlgorithmProvider(&算法句柄, BCRYPT_SHA256_ALGORITHM, nullptr, 0) == 0) {
+    @             DWORD 对象长度 = 0, 查询字节数 = 0;
+    @             if (BCryptGetProperty(算法句柄, BCRYPT_OBJECT_LENGTH, reinterpret_cast<PUCHAR>(&对象长度), sizeof(对象长度), &查询字节数, 0) == 0 && 对象长度 > 0) {
+    @                 std::vector<BYTE> 对象缓冲(对象长度);
+    @                 if (BCryptCreateHash(算法句柄, &哈希句柄, 对象缓冲.data(), 对象长度, nullptr, 0, 0) == 0) {
+    @                     std::vector<char> 读取缓冲(65536);
+    @                     DWORD 实际字节 = 0;
+    @                     bool 读取失败 = false;
+    @                     for (;;) {
+    @                         if (!ReadFile(文件句柄, 读取缓冲.data(), static_cast<DWORD>(读取缓冲.size()), &实际字节, nullptr)) { 读取失败 = true; break; }
+    @                         if (实际字节 == 0) break;
+    @                         if (BCryptHashData(哈希句柄, reinterpret_cast<PUCHAR>(读取缓冲.data()), 实际字节, 0) != 0) { 读取失败 = true; break; }
+    @                     }
+    @                     if (!读取失败) {
+    @                         BYTE 摘要[32] = {};
+    @                         if (BCryptFinishHash(哈希句柄, 摘要, sizeof(摘要), 0) == 0) {
+    @                             static const wchar_t* 十六进制字符 = L"0123456789ABCDEF";
+    @                             std::wstring 输出;
+    @                             for (DWORD 字节序号 = 0; 字节序号 < sizeof(摘要); 字节序号++) { 输出.push_back(十六进制字符[摘要[字节序号] >> 4]); 输出.push_back(十六进制字符[摘要[字节序号] & 0x0F]); }
+    @                             结果 = 输出;
+    @                         }
+    @                     }
+    @                 }
+    @             }
+    @             if (哈希句柄 != nullptr) BCryptDestroyHash(哈希句柄);
+    @             BCryptCloseAlgorithmProvider(算法句柄, 0);
+    @         }
+    @         CloseHandle(文件句柄);
+    @     }
+    @ }
+    返回(结果)
+  结束
+结束功能库

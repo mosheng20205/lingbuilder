@@ -1,0 +1,3 @@
+LIBRARY "dll-export-test"
+EXPORTS
+  LingBuilder_GetApiVersion

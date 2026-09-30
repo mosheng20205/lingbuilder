@@ -1,0 +1,697 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-25T22:05:22.470Z",
+  "module": {
+    "id": "lingbuilder.std.map",
+    "name": "哈希表与栈模块",
+    "version": "1.0.0",
+    "description": "提供句柄制哈希表（键值映射）与后进先出栈：文本/整数/逻辑/字节集四组值类型，键查找与压弹均为常数级操作。"
+  },
+  "commandCount": 28,
+  "commands": [
+    {
+      "index": 1,
+      "name": "哈希表_创建",
+      "signature": "哈希表_创建(初始容量)",
+      "description": "创建空哈希表并返回句柄（0 表示失败）；初始容量只用于预分配，哈希表会自动增长。",
+      "insertText": "哈希表_创建(16)",
+      "returnType": "哈希表",
+      "binding": {
+        "command": "哈希表_创建",
+        "runtimeName": "哈希表_创建",
+        "parameters": [
+          {
+            "name": "初始容量",
+            "type": "int",
+            "description": "预分配的键值对数量估计值，0 表示不预分配；负数返回句柄 0。"
+          }
+        ],
+        "returnType": "longLong",
+        "example": "局部 哈希表 成绩表\n成绩表 = 哈希表_创建(16)"
+      },
+      "demoInvocation": "哈希表_创建(1)"
+    },
+    {
+      "index": 2,
+      "name": "哈希表_销毁",
+      "signature": "哈希表_销毁(哈希表)",
+      "description": "销毁哈希表并回收句柄；销毁后句柄不可再用。",
+      "insertText": "哈希表_销毁($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "哈希表_销毁",
+        "runtimeName": "哈希表_销毁",
+        "parameters": [
+          {
+            "name": "哈希表",
+            "type": "longLong",
+            "description": "哈希表_创建 返回的哈希表句柄；句柄无效或已销毁时命令按说明返回失败值。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "哈希表_销毁(1)"
+    },
+    {
+      "index": 3,
+      "name": "哈希表_取数量",
+      "signature": "哈希表_取数量(哈希表)",
+      "description": "返回哈希表当前的键值对数量；句柄无效返回 -1。",
+      "insertText": "哈希表_取数量($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "哈希表_取数量",
+        "runtimeName": "哈希表_取数量",
+        "parameters": [
+          {
+            "name": "哈希表",
+            "type": "longLong",
+            "description": "哈希表_创建 返回的哈希表句柄；句柄无效或已销毁时命令按说明返回失败值。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "哈希表_取数量(1)"
+    },
+    {
+      "index": 4,
+      "name": "哈希表_是否包含",
+      "signature": "哈希表_是否包含(哈希表, 键)",
+      "description": "判断哈希表中是否存在指定键。",
+      "insertText": "哈希表_是否包含($1, \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "哈希表_是否包含",
+        "runtimeName": "哈希表_是否包含",
+        "parameters": [
+          {
+            "name": "哈希表",
+            "type": "longLong",
+            "description": "哈希表_创建 返回的哈希表句柄；句柄无效或已销毁时命令按说明返回失败值。"
+          },
+          {
+            "name": "键",
+            "type": "wideString",
+            "description": "映射键，区分大小写；同一个键重复写入时覆盖旧值。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "哈希表_是否包含(1, \"演示参数2\")"
+    },
+    {
+      "index": 5,
+      "name": "哈希表_删除",
+      "signature": "哈希表_删除(哈希表, 键)",
+      "description": "删除指定键值对；键不存在返回假。",
+      "insertText": "哈希表_删除($1, \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "哈希表_删除",
+        "runtimeName": "哈希表_删除",
+        "parameters": [
+          {
+            "name": "哈希表",
+            "type": "longLong",
+            "description": "哈希表_创建 返回的哈希表句柄；句柄无效或已销毁时命令按说明返回失败值。"
+          },
+          {
+            "name": "键",
+            "type": "wideString",
+            "description": "映射键，区分大小写；同一个键重复写入时覆盖旧值。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "哈希表_删除(1, \"演示参数2\")"
+    },
+    {
+      "index": 6,
+      "name": "哈希表_清空",
+      "signature": "哈希表_清空(哈希表)",
+      "description": "删除哈希表中的全部键值对，句柄保持可用。",
+      "insertText": "哈希表_清空($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "哈希表_清空",
+        "runtimeName": "哈希表_清空",
+        "parameters": [
+          {
+            "name": "哈希表",
+            "type": "longLong",
+            "description": "哈希表_创建 返回的哈希表句柄；句柄无效或已销毁时命令按说明返回失败值。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "哈希表_清空(1)"
+    },
+    {
+      "index": 7,
+      "name": "哈希表_置文本",
+      "signature": "哈希表_置文本(哈希表, 键, 值)",
+      "description": "写入或覆盖文本型键值对。",
+      "insertText": "哈希表_置文本($1, \"$2\", \"$3\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "哈希表_置文本",
+        "runtimeName": "哈希表_置文本",
+        "parameters": [
+          {
+            "name": "哈希表",
+            "type": "longLong",
+            "description": "哈希表_创建 返回的哈希表句柄；句柄无效或已销毁时命令按说明返回失败值。"
+          },
+          {
+            "name": "键",
+            "type": "wideString",
+            "description": "映射键，区分大小写；同一个键重复写入时覆盖旧值。"
+          },
+          {
+            "name": "值",
+            "type": "wideString",
+            "description": "要写入的文本值，允许空文本。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "局部 哈希表 成绩表\n成绩表 = 哈希表_创建(16)\n哈希表_置文本(成绩表, \"张三\", \"96\")"
+      },
+      "demoInvocation": "哈希表_置文本(1, \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 8,
+      "name": "哈希表_取文本",
+      "signature": "哈希表_取文本(哈希表, 键)",
+      "description": "读取文本型值；键不存在时返回空文本。",
+      "insertText": "哈希表_取文本($1, \"$2\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "哈希表_取文本",
+        "runtimeName": "哈希表_取文本",
+        "parameters": [
+          {
+            "name": "哈希表",
+            "type": "longLong",
+            "description": "哈希表_创建 返回的哈希表句柄；句柄无效或已销毁时命令按说明返回失败值。"
+          },
+          {
+            "name": "键",
+            "type": "wideString",
+            "description": "映射键，区分大小写；同一个键重复写入时覆盖旧值。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "局部 哈希表 成绩表\n成绩表 = 哈希表_创建(16)\n调试输出(哈希表_取文本(成绩表, \"张三\"))"
+      },
+      "demoInvocation": "哈希表_取文本(1, \"演示参数2\")"
+    },
+    {
+      "index": 9,
+      "name": "哈希表_置整数",
+      "signature": "哈希表_置整数(哈希表, 键, 值)",
+      "description": "写入或覆盖整数型键值对。",
+      "insertText": "哈希表_置整数($1, \"$2\", $3)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "哈希表_置整数",
+        "runtimeName": "哈希表_置整数",
+        "parameters": [
+          {
+            "name": "哈希表",
+            "type": "longLong",
+            "description": "哈希表_创建 返回的哈希表句柄；句柄无效或已销毁时命令按说明返回失败值。"
+          },
+          {
+            "name": "键",
+            "type": "wideString",
+            "description": "映射键，区分大小写；同一个键重复写入时覆盖旧值。"
+          },
+          {
+            "name": "值",
+            "type": "longLong",
+            "description": "要写入的 64 位整数值。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "哈希表_置整数(1, \"演示参数2\", 1)"
+    },
+    {
+      "index": 10,
+      "name": "哈希表_取整数",
+      "signature": "哈希表_取整数(哈希表, 键)",
+      "description": "读取整数型值；键不存在时返回 0。",
+      "insertText": "哈希表_取整数($1, \"$2\")",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "哈希表_取整数",
+        "runtimeName": "哈希表_取整数",
+        "parameters": [
+          {
+            "name": "哈希表",
+            "type": "longLong",
+            "description": "哈希表_创建 返回的哈希表句柄；句柄无效或已销毁时命令按说明返回失败值。"
+          },
+          {
+            "name": "键",
+            "type": "wideString",
+            "description": "映射键，区分大小写；同一个键重复写入时覆盖旧值。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "哈希表_取整数(1, \"演示参数2\")"
+    },
+    {
+      "index": 11,
+      "name": "哈希表_置逻辑",
+      "signature": "哈希表_置逻辑(哈希表, 键, 值)",
+      "description": "写入或覆盖逻辑型键值对。",
+      "insertText": "哈希表_置逻辑($1, \"$2\", $3)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "哈希表_置逻辑",
+        "runtimeName": "哈希表_置逻辑",
+        "parameters": [
+          {
+            "name": "哈希表",
+            "type": "longLong",
+            "description": "哈希表_创建 返回的哈希表句柄；句柄无效或已销毁时命令按说明返回失败值。"
+          },
+          {
+            "name": "键",
+            "type": "wideString",
+            "description": "映射键，区分大小写；同一个键重复写入时覆盖旧值。"
+          },
+          {
+            "name": "值",
+            "type": "bool",
+            "description": "要写入的逻辑值。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "哈希表_置逻辑(1, \"演示参数2\", 真)"
+    },
+    {
+      "index": 12,
+      "name": "哈希表_取逻辑",
+      "signature": "哈希表_取逻辑(哈希表, 键)",
+      "description": "读取逻辑型值；键不存在时返回假。",
+      "insertText": "哈希表_取逻辑($1, \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "哈希表_取逻辑",
+        "runtimeName": "哈希表_取逻辑",
+        "parameters": [
+          {
+            "name": "哈希表",
+            "type": "longLong",
+            "description": "哈希表_创建 返回的哈希表句柄；句柄无效或已销毁时命令按说明返回失败值。"
+          },
+          {
+            "name": "键",
+            "type": "wideString",
+            "description": "映射键，区分大小写；同一个键重复写入时覆盖旧值。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "哈希表_取逻辑(1, \"演示参数2\")"
+    },
+    {
+      "index": 13,
+      "name": "哈希表_置字节集",
+      "signature": "哈希表_置字节集(哈希表, 键, 值)",
+      "description": "写入或覆盖字节集型键值对。",
+      "insertText": "哈希表_置字节集($1, \"$2\", $3)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "哈希表_置字节集",
+        "runtimeName": "哈希表_置字节集",
+        "parameters": [
+          {
+            "name": "哈希表",
+            "type": "longLong",
+            "description": "哈希表_创建 返回的哈希表句柄；句柄无效或已销毁时命令按说明返回失败值。"
+          },
+          {
+            "name": "键",
+            "type": "wideString",
+            "description": "映射键，区分大小写；同一个键重复写入时覆盖旧值。"
+          },
+          {
+            "name": "值",
+            "type": "bytes",
+            "description": "要写入的字节集值，内部保存副本。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "哈希表_置字节集(1, \"演示参数2\", {})"
+    },
+    {
+      "index": 14,
+      "name": "哈希表_取字节集",
+      "signature": "哈希表_取字节集(哈希表, 键)",
+      "description": "读取字节集型值；键不存在时返回空字节集。",
+      "insertText": "哈希表_取字节集($1, \"$2\")",
+      "returnType": "字节集",
+      "binding": {
+        "command": "哈希表_取字节集",
+        "runtimeName": "哈希表_取字节集",
+        "parameters": [
+          {
+            "name": "哈希表",
+            "type": "longLong",
+            "description": "哈希表_创建 返回的哈希表句柄；句柄无效或已销毁时命令按说明返回失败值。"
+          },
+          {
+            "name": "键",
+            "type": "wideString",
+            "description": "映射键，区分大小写；同一个键重复写入时覆盖旧值。"
+          }
+        ],
+        "returnType": "bytes",
+        "encoding": "wide"
+      },
+      "demoInvocation": "哈希表_取字节集(1, \"演示参数2\")"
+    },
+    {
+      "index": 15,
+      "name": "哈希表_取全部键",
+      "signature": "哈希表_取全部键(哈希表, 结果数组)",
+      "description": "把全部键写入文本型数组，返回键的数量；写入顺序不保证与插入顺序一致。",
+      "insertText": "哈希表_取全部键($1, $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "哈希表_取全部键",
+        "runtimeName": "哈希表_取全部键",
+        "parameters": [
+          {
+            "name": "哈希表",
+            "type": "longLong",
+            "description": "哈希表_创建 返回的哈希表句柄；句柄无效或已销毁时命令按说明返回失败值。"
+          },
+          {
+            "name": "结果数组",
+            "type": "array",
+            "description": "接收全部键的文本型数组变量，调用前会先清空原有内容。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "哈希表_取全部键(1, 0)"
+    },
+    {
+      "index": 16,
+      "name": "哈希表_上次操作是否成功",
+      "signature": "哈希表_上次操作是否成功()",
+      "description": "报告本线程上一次 哈希表_取 命令是否取到有效值；哈希表句柄各自独立保存该状态。",
+      "insertText": "哈希表_上次操作是否成功()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "哈希表_上次操作是否成功",
+        "runtimeName": "哈希表_上次操作是否成功",
+        "parameters": [],
+        "returnType": "bool",
+        "example": "局部 哈希表 成绩表\n成绩表 = 哈希表_创建(16)\n哈希表_取文本(成绩表, \"缺省\")\n调试输出(哈希表_上次操作是否成功())"
+      },
+      "demoInvocation": "哈希表_上次操作是否成功()"
+    },
+    {
+      "index": 17,
+      "name": "栈_创建",
+      "signature": "栈_创建(初始容量)",
+      "description": "创建空栈并返回句柄（0 表示失败）；初始容量只用于预分配，栈会自动增长。",
+      "insertText": "栈_创建(16)",
+      "returnType": "栈",
+      "binding": {
+        "command": "栈_创建",
+        "runtimeName": "栈_创建",
+        "parameters": [
+          {
+            "name": "初始容量",
+            "type": "int",
+            "description": "预分配的元素数量估计值，0 表示不预分配；负数返回句柄 0。"
+          }
+        ],
+        "returnType": "longLong",
+        "example": "局部 栈 撤销栈\n撤销栈 = 栈_创建(16)"
+      },
+      "demoInvocation": "栈_创建(1)"
+    },
+    {
+      "index": 18,
+      "name": "栈_销毁",
+      "signature": "栈_销毁(栈)",
+      "description": "销毁栈并回收句柄；销毁后句柄不可再用。",
+      "insertText": "栈_销毁($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "栈_销毁",
+        "runtimeName": "栈_销毁",
+        "parameters": [
+          {
+            "name": "栈",
+            "type": "longLong",
+            "description": "栈_创建 返回的栈句柄；句柄无效或已销毁时命令按说明返回失败值。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "栈_销毁(1)"
+    },
+    {
+      "index": 19,
+      "name": "栈_取数量",
+      "signature": "栈_取数量(栈)",
+      "description": "返回栈当前的元素数量；句柄无效返回 -1。",
+      "insertText": "栈_取数量($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "栈_取数量",
+        "runtimeName": "栈_取数量",
+        "parameters": [
+          {
+            "name": "栈",
+            "type": "longLong",
+            "description": "栈_创建 返回的栈句柄；句柄无效或已销毁时命令按说明返回失败值。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "栈_取数量(1)"
+    },
+    {
+      "index": 20,
+      "name": "栈_是否为空",
+      "signature": "栈_是否为空(栈)",
+      "description": "判断栈是否没有任何元素；句柄无效返回真。",
+      "insertText": "栈_是否为空($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "栈_是否为空",
+        "runtimeName": "栈_是否为空",
+        "parameters": [
+          {
+            "name": "栈",
+            "type": "longLong",
+            "description": "栈_创建 返回的栈句柄；句柄无效或已销毁时命令按说明返回失败值。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "栈_是否为空(1)"
+    },
+    {
+      "index": 21,
+      "name": "栈_清空",
+      "signature": "栈_清空(栈)",
+      "description": "清空栈内全部元素，句柄保持可用。",
+      "insertText": "栈_清空($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "栈_清空",
+        "runtimeName": "栈_清空",
+        "parameters": [
+          {
+            "name": "栈",
+            "type": "longLong",
+            "description": "栈_创建 返回的栈句柄；句柄无效或已销毁时命令按说明返回失败值。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "栈_清空(1)"
+    },
+    {
+      "index": 22,
+      "name": "栈_压入",
+      "signature": "栈_压入(栈, 值)",
+      "description": "把文本值压入栈顶。",
+      "insertText": "栈_压入($1, \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "栈_压入",
+        "runtimeName": "栈_压入",
+        "parameters": [
+          {
+            "name": "栈",
+            "type": "longLong",
+            "description": "栈_创建 返回的栈句柄；句柄无效或已销毁时命令按说明返回失败值。"
+          },
+          {
+            "name": "值",
+            "type": "wideString",
+            "description": "要压入的文本值。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "局部 栈 撤销栈\n撤销栈 = 栈_创建(16)\n栈_压入(撤销栈, \"第一步\")\n调试输出(栈_弹出(撤销栈))"
+      },
+      "demoInvocation": "栈_压入(1, \"演示参数2\")"
+    },
+    {
+      "index": 23,
+      "name": "栈_弹出",
+      "signature": "栈_弹出(栈)",
+      "description": "弹出栈顶文本值；栈为空时返回空文本。",
+      "insertText": "栈_弹出($1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "栈_弹出",
+        "runtimeName": "栈_弹出",
+        "parameters": [
+          {
+            "name": "栈",
+            "type": "longLong",
+            "description": "栈_创建 返回的栈句柄；句柄无效或已销毁时命令按说明返回失败值。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "栈_弹出(1)"
+    },
+    {
+      "index": 24,
+      "name": "栈_压入整数",
+      "signature": "栈_压入整数(栈, 值)",
+      "description": "把整数压入栈顶。",
+      "insertText": "栈_压入整数($1, $2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "栈_压入整数",
+        "runtimeName": "栈_压入整数",
+        "parameters": [
+          {
+            "name": "栈",
+            "type": "longLong",
+            "description": "栈_创建 返回的栈句柄；句柄无效或已销毁时命令按说明返回失败值。"
+          },
+          {
+            "name": "值",
+            "type": "longLong",
+            "description": "要压入的 64 位整数值。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "栈_压入整数(1, 1)"
+    },
+    {
+      "index": 25,
+      "name": "栈_弹出整数",
+      "signature": "栈_弹出整数(栈)",
+      "description": "弹出栈顶整数；栈为空时返回 0。",
+      "insertText": "栈_弹出整数($1)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "栈_弹出整数",
+        "runtimeName": "栈_弹出整数",
+        "parameters": [
+          {
+            "name": "栈",
+            "type": "longLong",
+            "description": "栈_创建 返回的栈句柄；句柄无效或已销毁时命令按说明返回失败值。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "栈_弹出整数(1)"
+    },
+    {
+      "index": 26,
+      "name": "栈_压入字节集",
+      "signature": "栈_压入字节集(栈, 值)",
+      "description": "把字节集压入栈顶。",
+      "insertText": "栈_压入字节集($1, $2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "栈_压入字节集",
+        "runtimeName": "栈_压入字节集",
+        "parameters": [
+          {
+            "name": "栈",
+            "type": "longLong",
+            "description": "栈_创建 返回的栈句柄；句柄无效或已销毁时命令按说明返回失败值。"
+          },
+          {
+            "name": "值",
+            "type": "bytes",
+            "description": "要压入的字节集，内部保存副本。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "栈_压入字节集(1, {})"
+    },
+    {
+      "index": 27,
+      "name": "栈_弹出字节集",
+      "signature": "栈_弹出字节集(栈)",
+      "description": "弹出栈顶字节集；栈为空时返回空字节集。",
+      "insertText": "栈_弹出字节集($1)",
+      "returnType": "字节集",
+      "binding": {
+        "command": "栈_弹出字节集",
+        "runtimeName": "栈_弹出字节集",
+        "parameters": [
+          {
+            "name": "栈",
+            "type": "longLong",
+            "description": "栈_创建 返回的栈句柄；句柄无效或已销毁时命令按说明返回失败值。"
+          }
+        ],
+        "returnType": "bytes"
+      },
+      "demoInvocation": "栈_弹出字节集(1)"
+    },
+    {
+      "index": 28,
+      "name": "栈_上次弹出是否成功",
+      "signature": "栈_上次弹出是否成功()",
+      "description": "报告本线程上一次 栈_弹出 命令是否真的弹出了元素；栈句柄各自独立保存该状态。",
+      "insertText": "栈_上次弹出是否成功()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "栈_上次弹出是否成功",
+        "runtimeName": "栈_上次弹出是否成功",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "栈_上次弹出是否成功()"
+    }
+  ]
+}

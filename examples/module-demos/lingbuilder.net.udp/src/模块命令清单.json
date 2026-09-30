@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.889Z",
+  "generatedAt": "2026-09-25T22:07:31.293Z",
   "module": {
     "id": "lingbuilder.net.udp",
     "name": "UDP通信模块",
     "version": "1.0.0",
-    "description": "提供 UDP 绑定、UTF-8 数据报发送接收和关闭能力。"
+    "description": "提供 UDP 绑定、广播开关、端口复用、UTF-8 数据报发送接收和关闭能力，可支撑局域网自动发现与局域网文本消息。"
   },
-  "commandCount": 7,
+  "commandCount": 9,
   "commands": [
     {
       "index": 1,
@@ -22,7 +22,8 @@
         "parameters": [
           {
             "name": "端口",
-            "type": "int"
+            "type": "int",
+            "description": "要绑定的本机 UDP 端口，0 到 65535；0 表示由系统分配端口，绑定在本机全部接口上。"
           }
         ],
         "returnType": "bool"
@@ -31,6 +32,48 @@
     },
     {
       "index": 2,
+      "name": "UDP_允许广播",
+      "signature": "UDP_允许广播(允许)",
+      "description": "允许 UDP 套接字发送广播数据报（局域网自动发现的前提）；绑定前后调用均可。",
+      "insertText": "UDP_允许广播(假)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "UDP_允许广播",
+        "runtimeName": "UDP_允许广播",
+        "parameters": [
+          {
+            "name": "允许",
+            "type": "bool",
+            "description": "传真开启 SO_BROADCAST；发送到 255.255.255.255 等广播地址前必须先开启，否则 Windows 直接拒绝发送。默认关闭。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "UDP_允许广播(真)"
+    },
+    {
+      "index": 3,
+      "name": "UDP_允许端口复用",
+      "signature": "UDP_允许端口复用(允许)",
+      "description": "允许多个程序绑定同一 UDP 端口（本机多开联调必需）。",
+      "insertText": "UDP_允许端口复用(假)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "UDP_允许端口复用",
+        "runtimeName": "UDP_允许端口复用",
+        "parameters": [
+          {
+            "name": "允许",
+            "type": "bool",
+            "description": "传真开启 SO_REUSEADDR；必须在 UDP_绑定 之前调用才生效。开启后同一台机器的多个程序可以绑定同一 UDP 端口，广播包每个套接字都能收到，适合本机多开联调。默认关闭。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "UDP_允许端口复用(真)"
+    },
+    {
+      "index": 4,
       "name": "UDP_发送文本",
       "signature": "UDP_发送文本(主机, 端口, 内容)",
       "description": "发送一条 UTF-8 UDP 数据报。",
@@ -42,15 +85,18 @@
         "parameters": [
           {
             "name": "主机",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "目标主机名或地址；只按 IPv4 解析，解析失败返回 -1。"
           },
           {
             "name": "端口",
-            "type": "int"
+            "type": "int",
+            "description": "目标端口，1 到 65535；超范围返回 -1。"
           },
           {
             "name": "内容",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "数据报正文，按 UTF-8 编码为一条数据报发出，不保证到达也不自动分片重发。"
           }
         ],
         "returnType": "int",
@@ -59,7 +105,7 @@
       "demoInvocation": "UDP_发送文本(\"演示参数1\", 1, \"演示参数3\")"
     },
     {
-      "index": 3,
+      "index": 5,
       "name": "UDP_接收文本",
       "signature": "UDP_接收文本(最大字节数, 超时毫秒)",
       "description": "接收一条 UDP 数据报，超时返回空文本。",
@@ -71,11 +117,13 @@
         "parameters": [
           {
             "name": "最大字节数",
-            "type": "int"
+            "type": "int",
+            "description": "单个数据报最多接收的字节数，上限 65507；小于 1 时按 1 处理，超出部分会被丢弃。"
           },
           {
             "name": "超时毫秒",
-            "type": "int"
+            "type": "int",
+            "description": "等待数据报的超时毫秒数；小于 1 时按 1 处理，超时返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -84,7 +132,7 @@
       "demoInvocation": "UDP_接收文本(1, 1)"
     },
     {
-      "index": 4,
+      "index": 6,
       "name": "UDP_取来源地址",
       "signature": "UDP_取来源地址()",
       "description": "返回最近数据报来源 IP。",
@@ -100,7 +148,7 @@
       "demoInvocation": "UDP_取来源地址()"
     },
     {
-      "index": 5,
+      "index": 7,
       "name": "UDP_取来源端口",
       "signature": "UDP_取来源端口()",
       "description": "返回最近数据报来源端口。",
@@ -115,7 +163,7 @@
       "demoInvocation": "UDP_取来源端口()"
     },
     {
-      "index": 6,
+      "index": 8,
       "name": "UDP_取错误",
       "signature": "UDP_取错误()",
       "description": "返回最近 UDP 中文错误。",
@@ -131,7 +179,7 @@
       "demoInvocation": "UDP_取错误()"
     },
     {
-      "index": 7,
+      "index": 9,
       "name": "UDP_关闭",
       "signature": "UDP_关闭()",
       "description": "关闭当前 UDP 套接字。",

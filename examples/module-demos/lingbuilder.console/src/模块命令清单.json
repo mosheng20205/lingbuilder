@@ -1,0 +1,237 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-25T22:05:22.139Z",
+  "module": {
+    "id": "lingbuilder.console",
+    "name": "控制台模块",
+    "version": "1.0.0",
+    "description": "为控制台程序提供标准输入输出、光标与文本颜色控制；命令只能在控制台程序（含「整数型 启动()」入口）中使用，窗口应用中会给出阻断诊断。"
+  },
+  "commandCount": 12,
+  "commands": [
+    {
+      "index": 1,
+      "name": "控制台_输出",
+      "signature": "控制台_输出(内容)",
+      "description": "向控制台标准输出写入文本（不换行）。",
+      "insertText": "控制台_输出(\"$1\")",
+      "returnType": "空",
+      "binding": {
+        "command": "控制台_输出",
+        "runtimeName": "控制台_输出",
+        "parameters": [
+          {
+            "name": "内容",
+            "type": "wideString",
+            "description": "要写入控制台的文本；不附加换行，输出后光标停在文本末尾。"
+          }
+        ],
+        "returnType": "void",
+        "encoding": "wide"
+      },
+      "demoInvocation": "控制台_输出(\"演示参数1\")"
+    },
+    {
+      "index": 2,
+      "name": "控制台_输出行",
+      "signature": "控制台_输出行(内容)",
+      "description": "向控制台标准输出写入一行文本并换行。",
+      "insertText": "控制台_输出行(\"$1\")",
+      "returnType": "空",
+      "binding": {
+        "command": "控制台_输出行",
+        "runtimeName": "控制台_输出行",
+        "parameters": [
+          {
+            "name": "内容",
+            "type": "wideString",
+            "description": "要写入控制台的文本；写入后光标移动到下一行行首。"
+          }
+        ],
+        "returnType": "void",
+        "encoding": "wide"
+      },
+      "demoInvocation": "控制台_输出行(\"演示参数1\")"
+    },
+    {
+      "index": 3,
+      "name": "控制台_读行",
+      "signature": "控制台_读行()",
+      "description": "从控制台读取一行输入，遇到回车返回（结果不含回车）；流被重定向或读取失败返回空文本。",
+      "insertText": "控制台_读行()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "控制台_读行",
+        "runtimeName": "控制台_读行",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "控制台_读行()"
+      },
+      "demoInvocation": "控制台_读行()"
+    },
+    {
+      "index": 4,
+      "name": "控制台_清屏",
+      "signature": "控制台_清屏()",
+      "description": "清空控制台屏幕并把光标移回左上角。",
+      "insertText": "控制台_清屏()",
+      "returnType": "空",
+      "binding": {
+        "command": "控制台_清屏",
+        "runtimeName": "控制台_清屏",
+        "parameters": [],
+        "returnType": "void"
+      },
+      "demoInvocation": "控制台_清屏()"
+    },
+    {
+      "index": 5,
+      "name": "控制台_置光标位置",
+      "signature": "控制台_置光标位置(列, 行)",
+      "description": "把控制台光标移动到指定字符位置（后续输出从该位置开始）。",
+      "insertText": "控制台_置光标位置(0, 0)",
+      "returnType": "空",
+      "binding": {
+        "command": "控制台_置光标位置",
+        "runtimeName": "控制台_置光标位置",
+        "parameters": [
+          {
+            "name": "列",
+            "type": "int",
+            "description": "目标列号，从 0 起；超出屏幕宽度时取边界值。"
+          },
+          {
+            "name": "行",
+            "type": "int",
+            "description": "目标行号，从 0 起；超出屏幕高度时取边界值。"
+          }
+        ],
+        "returnType": "void"
+      },
+      "demoInvocation": "控制台_置光标位置(1, 1)"
+    },
+    {
+      "index": 6,
+      "name": "控制台_取光标列",
+      "signature": "控制台_取光标列()",
+      "description": "返回控制台光标当前列号（从 0 起）。",
+      "insertText": "控制台_取光标列()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "控制台_取光标列",
+        "runtimeName": "控制台_取光标列",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "控制台_取光标列()"
+    },
+    {
+      "index": 7,
+      "name": "控制台_取光标行",
+      "signature": "控制台_取光标行()",
+      "description": "返回控制台光标当前行号（从 0 起）。",
+      "insertText": "控制台_取光标行()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "控制台_取光标行",
+        "runtimeName": "控制台_取光标行",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "控制台_取光标行()"
+    },
+    {
+      "index": 8,
+      "name": "控制台_取宽度",
+      "signature": "控制台_取宽度()",
+      "description": "返回控制台屏幕缓冲区的字符宽度。",
+      "insertText": "控制台_取宽度()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "控制台_取宽度",
+        "runtimeName": "控制台_取宽度",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "控制台_取宽度()"
+    },
+    {
+      "index": 9,
+      "name": "控制台_取高度",
+      "signature": "控制台_取高度()",
+      "description": "返回控制台屏幕窗口的字符高度。",
+      "insertText": "控制台_取高度()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "控制台_取高度",
+        "runtimeName": "控制台_取高度",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "控制台_取高度()"
+    },
+    {
+      "index": 10,
+      "name": "控制台_显示光标",
+      "signature": "控制台_显示光标(可见)",
+      "description": "设置控制台光标是否可见。",
+      "insertText": "控制台_显示光标(真)",
+      "returnType": "空",
+      "binding": {
+        "command": "控制台_显示光标",
+        "runtimeName": "控制台_显示光标",
+        "parameters": [
+          {
+            "name": "可见",
+            "type": "bool",
+            "description": "真显示光标，假隐藏光标。"
+          }
+        ],
+        "returnType": "void"
+      },
+      "demoInvocation": "控制台_显示光标(真)"
+    },
+    {
+      "index": 11,
+      "name": "控制台_置颜色",
+      "signature": "控制台_置颜色(前景色, 背景色)",
+      "description": "设置控制台后续输出的前景色与背景色（0～15 编号组合）。",
+      "insertText": "控制台_置颜色(0, 0)",
+      "returnType": "空",
+      "binding": {
+        "command": "控制台_置颜色",
+        "runtimeName": "控制台_置颜色",
+        "parameters": [
+          {
+            "name": "前景色",
+            "type": "int",
+            "description": "前景色编号 0～15：0 黑、1 深蓝、2 深绿、3 青灰、4 深红、5 紫、6 橄榄、7 灰白、8 深灰、9 蓝、10 绿、11 浅青、12 红、13 粉、14 黄、15 白。"
+          },
+          {
+            "name": "背景色",
+            "type": "int",
+            "description": "背景色编号 0～15，取值同前景色。"
+          }
+        ],
+        "returnType": "void"
+      },
+      "demoInvocation": "控制台_置颜色(1, 1)"
+    },
+    {
+      "index": 12,
+      "name": "控制台_恢复颜色",
+      "signature": "控制台_恢复颜色()",
+      "description": "把控制台颜色恢复为默认（灰字黑底）。",
+      "insertText": "控制台_恢复颜色()",
+      "returnType": "空",
+      "binding": {
+        "command": "控制台_恢复颜色",
+        "runtimeName": "控制台_恢复颜色",
+        "parameters": [],
+        "returnType": "void"
+      },
+      "demoInvocation": "控制台_恢复颜色()"
+    }
+  ]
+}

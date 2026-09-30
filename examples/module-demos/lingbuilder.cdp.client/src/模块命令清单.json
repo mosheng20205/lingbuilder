@@ -1,0 +1,4794 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-25T22:05:22.076Z",
+  "module": {
+    "id": "lingbuilder.cdp.client",
+    "name": "CDP 客户端模块",
+    "version": "3.0.0",
+    "description": "提供 Chrome DevTools Protocol 受管客户端：多连接多调试端口并存、页面与 Target/Session flatten 路由、OOPIF/Worker、Runtime binding、Debugger、Performance、Storage 和严格证书裁决地基；阶段 3 的 screencast、完整性能任务与确定性回放仍在实施。"
+  },
+  "commandCount": 148,
+  "commands": [
+    {
+      "index": 1,
+      "name": "CDP_连接",
+      "signature": "CDP_连接(调试地址, 就绪处理器)",
+      "description": "连接本机 Chrome/Edge 调试端口（例如 http://127.0.0.1:9222），立即返回受管连接 ID；握手在后台完成，结果通过就绪处理器通知。默认仅允许 127.0.0.1、localhost 或 ::1。",
+      "insertText": "CDP_连接(\"${1:http://127.0.0.1:9222}\", &${2:连接就绪})",
+      "returnType": "CDP连接",
+      "category": "连接",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_连接",
+        "runtimeName": "CDP_连接",
+        "parameters": [
+          {
+            "name": "调试地址",
+            "type": "wideString",
+            "description": "浏览器调试服务 HTTP 地址，例如 http://127.0.0.1:9222。"
+          },
+          {
+            "name": "就绪处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；连接就绪或失败时在 UI 线程执行，用 CDP_取当前事件类型 判断结果。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "CDP连接",
+        "encoding": "wide",
+        "example": "CDP_连接(\"http://127.0.0.1:9222\", &连接就绪)",
+        "description": "连接本机 Chrome/Edge 调试端口（例如 http://127.0.0.1:9222），立即返回受管连接 ID；握手在后台完成，结果通过就绪处理器通知。默认仅允许 127.0.0.1、localhost 或 ::1。"
+      },
+      "demoInvocation": "CDP_连接(\"https://example.com\", &模块演示回调)"
+    },
+    {
+      "index": 2,
+      "name": "CDP_连接远程",
+      "signature": "CDP_连接远程(调试地址, 就绪处理器)",
+      "description": "连接非本机 CDP 调试地址。远程调试端口会暴露浏览器完整控制权，仅在受信任网络中使用；连接前请确认目标地址与链路安全。",
+      "insertText": "CDP_连接远程(\"${1:http://远程主机:9222}\", &${2:连接就绪})",
+      "returnType": "CDP连接",
+      "category": "连接",
+      "capabilityKind": "managed",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CDP_连接远程",
+        "runtimeName": "CDP_连接远程",
+        "parameters": [
+          {
+            "name": "调试地址",
+            "type": "wideString",
+            "description": "远程浏览器调试服务 HTTP 地址。"
+          },
+          {
+            "name": "就绪处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；连接就绪或失败时在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "CDP连接",
+        "encoding": "wide",
+        "example": "CDP_连接远程(\"http://远程主机:9222\", &连接就绪)",
+        "description": "连接非本机 CDP 调试地址。远程调试端口会暴露浏览器完整控制权，仅在受信任网络中使用；连接前请确认目标地址与链路安全。"
+      },
+      "demoInvocation": "CDP_连接远程(\"https://example.com\", &模块演示回调)"
+    },
+    {
+      "index": 3,
+      "name": "CDP_启动浏览器",
+      "signature": "CDP_启动浏览器(启动参数JSON, 就绪处理器)",
+      "description": "启动本机无头浏览器（自动查找 msedge/chrome，以 --headless=new --remote-debugging-port=0 --user-data-dir=临时独立目录 创建独立进程），等待 DevToolsActivePort 写出实际端口后自动建立 CDP 连接并返回受管连接 ID；就绪结果通过就绪处理器通知。参数 JSON 可含「可执行文件、用户数据目录、额外参数、起始地址、等待超时毫秒」，传空用全默认。返回值为 0 时用 CDP_取最后错误 读中文失败原因。停止请用 CDP_停止浏览器；进程退出会自动回收未停止的浏览器。控制台程序可直接用（无头派发依赖入口泵窗口 + EdgeView_泵消息 或线程等待轮询）。",
+      "insertText": "CDP_启动浏览器(\"\", &${1:连接就绪})",
+      "returnType": "CDP连接",
+      "category": "连接",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_启动浏览器",
+        "runtimeName": "CDP_启动浏览器",
+        "parameters": [
+          {
+            "name": "启动参数JSON",
+            "type": "wideString",
+            "description": "JSON 对象文本，字段均可缺省：可执行文件（msedge.exe/chrome.exe 绝对路径）、用户数据目录（父目录，缺省用系统临时目录）、额外参数（追加到命令行末尾的开关文本）、起始地址（默认 about:blank）、等待超时毫秒（2000~60000，默认 15000）。"
+          },
+          {
+            "name": "就绪处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；CDP 连接就绪或失败时在 UI 线程执行，用 CDP_取当前事件类型 判断结果。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "CDP连接",
+        "encoding": "wide",
+        "example": "CDP_启动浏览器(\"\", &连接就绪)",
+        "description": "启动本机无头浏览器（自动查找 msedge/chrome，以 --headless=new --remote-debugging-port=0 --user-data-dir=临时独立目录 创建独立进程），等待 DevToolsActivePort 写出实际端口后自动建立 CDP 连接并返回受管连接 ID；就绪结果通过就绪处理器通知。参数 JSON 可含「可执行文件、用户数据目录、额外参数、起始地址、等待超时毫秒」，传空用全默认。返回值为 0 时用 CDP_取最后错误 读中文失败原因。停止请用 CDP_停止浏览器；进程退出会自动回收未停止的浏览器。控制台程序可直接用（无头派发依赖入口泵窗口 + EdgeView_泵消息 或线程等待轮询）。"
+      },
+      "demoInvocation": "CDP_启动浏览器(\"{}\", &模块演示回调)"
+    },
+    {
+      "index": 4,
+      "name": "CDP_停止浏览器",
+      "signature": "CDP_停止浏览器(连接)",
+      "description": "优雅停止 CDP_启动浏览器 建立的无头浏览器：先发送 Browser.close，最多等待 3 秒进程退出，超时强制终止；随后断开连接并清理其独立用户数据目录。只对本机启动的浏览器有效，外部连接请用 CDP_断开连接。",
+      "insertText": "CDP_停止浏览器($1)",
+      "returnType": "逻辑型",
+      "category": "连接",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_停止浏览器",
+        "runtimeName": "CDP_停止浏览器",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "CDP连接",
+            "description": "CDP_连接 返回的受管连接 ID；断开后失效。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "CDP_停止浏览器()",
+        "description": "优雅停止 CDP_启动浏览器 建立的无头浏览器：先发送 Browser.close，最多等待 3 秒进程退出，超时强制终止；随后断开连接并清理其独立用户数据目录。只对本机启动的浏览器有效，外部连接请用 CDP_断开连接。"
+      },
+      "demoInvocation": "CDP_停止浏览器(0)"
+    },
+    {
+      "index": 5,
+      "name": "CDP_停止全部浏览器",
+      "signature": "CDP_停止全部浏览器()",
+      "description": "停止并回收当前进程内全部由 CDP_启动浏览器 建立的无头浏览器，返回回收数量；未启动时返回 0。",
+      "insertText": "CDP_停止全部浏览器()",
+      "returnType": "整数型",
+      "category": "连接",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_停止全部浏览器",
+        "runtimeName": "CDP_停止全部浏览器",
+        "parameters": [],
+        "returnType": "int",
+        "encoding": "raw",
+        "example": "CDP_停止全部浏览器()",
+        "description": "停止并回收当前进程内全部由 CDP_启动浏览器 建立的无头浏览器，返回回收数量；未启动时返回 0。"
+      },
+      "demoInvocation": "CDP_停止全部浏览器()"
+    },
+    {
+      "index": 6,
+      "name": "CDP_断开连接",
+      "signature": "CDP_断开连接(连接)",
+      "description": "断开并释放受管连接及其全部页面会话、元素引用和未完成回调。",
+      "insertText": "CDP_断开连接($1)",
+      "returnType": "逻辑型",
+      "category": "连接",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_断开连接",
+        "runtimeName": "CDP_断开连接",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "CDP连接",
+            "description": "CDP_连接 返回的受管连接 ID；断开后失效。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "CDP_断开连接()",
+        "description": "断开并释放受管连接及其全部页面会话、元素引用和未完成回调。"
+      },
+      "demoInvocation": "CDP_断开连接(0)"
+    },
+    {
+      "index": 7,
+      "name": "CDP_取连接数量",
+      "signature": "CDP_取连接数量()",
+      "description": "返回当前进程内并存的活动 CDP 连接数量；CDP 模块支持同时连接多个不同调试端口。",
+      "insertText": "CDP_取连接数量()",
+      "returnType": "整数型",
+      "category": "连接",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取连接数量",
+        "runtimeName": "CDP_取连接数量",
+        "parameters": [],
+        "returnType": "int",
+        "encoding": "raw",
+        "example": "CDP_取连接数量()",
+        "description": "返回当前进程内并存的活动 CDP 连接数量；CDP 模块支持同时连接多个不同调试端口。"
+      },
+      "demoInvocation": "CDP_取连接数量()"
+    },
+    {
+      "index": 8,
+      "name": "CDP_是否已连接",
+      "signature": "CDP_是否已连接(连接)",
+      "description": "判断连接是否已完成 WebSocket 握手并处于可命令状态。",
+      "insertText": "CDP_是否已连接($1)",
+      "returnType": "逻辑型",
+      "category": "连接",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_是否已连接",
+        "runtimeName": "CDP_是否已连接",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "CDP连接",
+            "description": "CDP_连接 返回的受管连接 ID；断开后失效。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "CDP_是否已连接()",
+        "description": "判断连接是否已完成 WebSocket 握手并处于可命令状态。"
+      },
+      "demoInvocation": "CDP_是否已连接(0)"
+    },
+    {
+      "index": 9,
+      "name": "CDP_取连接状态",
+      "signature": "CDP_取连接状态(连接)",
+      "description": "返回连接状态：未配置、连接中、已连接、已断开或错误。",
+      "insertText": "CDP_取连接状态($1)",
+      "returnType": "文本型",
+      "category": "连接",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取连接状态",
+        "runtimeName": "CDP_取连接状态",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "CDP连接",
+            "description": "CDP_连接 返回的受管连接 ID；断开后失效。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "CDP_取连接状态()",
+        "description": "返回连接状态：未配置、连接中、已连接、已断开或错误。"
+      },
+      "demoInvocation": "CDP_取连接状态(0)"
+    },
+    {
+      "index": 10,
+      "name": "CDP_取浏览器版本",
+      "signature": "CDP_取浏览器版本(连接)",
+      "description": "返回连接就绪时缓存的浏览器版本信息（来自 /json/version）。",
+      "insertText": "CDP_取浏览器版本($1)",
+      "returnType": "文本型",
+      "category": "连接",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取浏览器版本",
+        "runtimeName": "CDP_取浏览器版本",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "CDP连接",
+            "description": "CDP_连接 返回的受管连接 ID；断开后失效。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "CDP_取浏览器版本()",
+        "description": "返回连接就绪时缓存的浏览器版本信息（来自 /json/version）。"
+      },
+      "demoInvocation": "CDP_取浏览器版本(0)"
+    },
+    {
+      "index": 11,
+      "name": "CDP_附加页面",
+      "signature": "CDP_附加页面(连接, 网址, 就绪处理器)",
+      "description": "在调试端口的已有标签页中查找指定网址的页面并附加会话（flatten 模式），立即返回受管页面 ID；附加结果通过就绪处理器通知。",
+      "insertText": "CDP_附加页面($1, \"${2:https://example.com}\", &${3:页面就绪})",
+      "returnType": "CDP页面",
+      "category": "页面",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_附加页面",
+        "runtimeName": "CDP_附加页面",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "CDP连接",
+            "description": "CDP_连接 返回的受管连接 ID；断开后失效。"
+          },
+          {
+            "name": "网址",
+            "type": "wideString",
+            "description": "要附加的页面网址，支持前缀匹配。"
+          },
+          {
+            "name": "就绪处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；页面就绪或失败时在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "CDP页面",
+        "encoding": "wide",
+        "example": "CDP_附加页面(示例值, \"https://example.com\", &页面就绪)",
+        "description": "在调试端口的已有标签页中查找指定网址的页面并附加会话（flatten 模式），立即返回受管页面 ID；附加结果通过就绪处理器通知。"
+      },
+      "demoInvocation": "CDP_附加页面(0, \"https://example.com\", &模块演示回调)"
+    },
+    {
+      "index": 12,
+      "name": "CDP_新建页面",
+      "signature": "CDP_新建页面(连接, 网址, 就绪处理器)",
+      "description": "通过 Target.createTarget 新建标签页并附加会话，立即返回受管页面 ID；结果通过就绪处理器通知。",
+      "insertText": "CDP_新建页面($1, \"${2:https://example.com}\", &${3:页面就绪})",
+      "returnType": "CDP页面",
+      "category": "页面",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_新建页面",
+        "runtimeName": "CDP_新建页面",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "CDP连接",
+            "description": "CDP_连接 返回的受管连接 ID；断开后失效。"
+          },
+          {
+            "name": "网址",
+            "type": "wideString",
+            "description": "新页面初始网址。"
+          },
+          {
+            "name": "就绪处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；页面就绪或失败时在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "CDP页面",
+        "encoding": "wide",
+        "example": "CDP_新建页面(示例值, \"https://example.com\", &页面就绪)",
+        "description": "通过 Target.createTarget 新建标签页并附加会话，立即返回受管页面 ID；结果通过就绪处理器通知。"
+      },
+      "demoInvocation": "CDP_新建页面(0, \"https://example.com\", &模块演示回调)"
+    },
+    {
+      "index": 13,
+      "name": "CDP_关闭页面",
+      "signature": "CDP_关闭页面(页面)",
+      "description": "关闭标签页并释放页面会话；断开连接会同时释放全部页面。",
+      "insertText": "CDP_关闭页面($1)",
+      "returnType": "逻辑型",
+      "category": "页面",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_关闭页面",
+        "runtimeName": "CDP_关闭页面",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "CDP_关闭页面()",
+        "description": "关闭标签页并释放页面会话；断开连接会同时释放全部页面。"
+      },
+      "demoInvocation": "CDP_关闭页面(0)"
+    },
+    {
+      "index": 14,
+      "name": "CDP_激活页面",
+      "signature": "CDP_激活页面(页面)",
+      "description": "把指定标签页切换为浏览器当前活动标签。",
+      "insertText": "CDP_激活页面($1)",
+      "returnType": "逻辑型",
+      "category": "页面",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_激活页面",
+        "runtimeName": "CDP_激活页面",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "CDP_激活页面()",
+        "description": "把指定标签页切换为浏览器当前活动标签。"
+      },
+      "demoInvocation": "CDP_激活页面(0)"
+    },
+    {
+      "index": 15,
+      "name": "CDP_取页面数量",
+      "signature": "CDP_取页面数量(连接)",
+      "description": "返回该连接当前的活动页面会话数量。",
+      "insertText": "CDP_取页面数量($1)",
+      "returnType": "整数型",
+      "category": "页面",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取页面数量",
+        "runtimeName": "CDP_取页面数量",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "CDP连接",
+            "description": "CDP_连接 返回的受管连接 ID；断开后失效。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "raw",
+        "example": "CDP_取页面数量()",
+        "description": "返回该连接当前的活动页面会话数量。"
+      },
+      "demoInvocation": "CDP_取页面数量(0)"
+    },
+    {
+      "index": 16,
+      "name": "CDP_取页面网址",
+      "signature": "CDP_取页面网址(页面)",
+      "description": "返回页面会话缓存的当前网址；导航后自动更新。",
+      "insertText": "CDP_取页面网址($1)",
+      "returnType": "文本型",
+      "category": "页面",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取页面网址",
+        "runtimeName": "CDP_取页面网址",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "CDP_取页面网址()",
+        "description": "返回页面会话缓存的当前网址；导航后自动更新。"
+      },
+      "demoInvocation": "CDP_取页面网址(0)"
+    },
+    {
+      "index": 17,
+      "name": "CDP_取页面标题",
+      "signature": "CDP_取页面标题(页面, 完成处理器)",
+      "description": "异步读取页面标题；完成后用 CDP_取当前事件文本 读取结果。",
+      "insertText": "CDP_取页面标题($1, &${2:取得标题})",
+      "returnType": "逻辑型",
+      "category": "页面",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取页面标题",
+        "runtimeName": "CDP_取页面标题",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；完成或失败时在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_取页面标题(示例值, &取得标题)",
+        "description": "异步读取页面标题；完成后用 CDP_取当前事件文本 读取结果。"
+      },
+      "demoInvocation": "CDP_取页面标题(0, &模块演示回调)"
+    },
+    {
+      "index": 18,
+      "name": "CDP_取页面HTML",
+      "signature": "CDP_取页面HTML(页面, 完成处理器)",
+      "description": "异步读取页面完整 outerHTML；完成后用 CDP_取当前事件文本 读取结果。",
+      "insertText": "CDP_取页面HTML($1, &$2)",
+      "returnType": "逻辑型",
+      "category": "页面",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取页面HTML",
+        "runtimeName": "CDP_取页面HTML",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；完成或失败时在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_取页面HTML()",
+        "description": "异步读取页面完整 outerHTML；完成后用 CDP_取当前事件文本 读取结果。"
+      },
+      "demoInvocation": "CDP_取页面HTML(0, &模块演示回调)"
+    },
+    {
+      "index": 19,
+      "name": "CDP_打开网址",
+      "signature": "CDP_打开网址(页面, 网址, 完成处理器)",
+      "description": "导航到指定网址并等待页面加载完成（loadEventFired）后触发完成处理器。",
+      "insertText": "CDP_打开网址($1, \"${2:https://example.com}\", &${3:加载完成})",
+      "returnType": "逻辑型",
+      "category": "导航",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_打开网址",
+        "runtimeName": "CDP_打开网址",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "网址",
+            "type": "wideString",
+            "description": "完整 URL（含协议）。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；加载完成或失败时在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_打开网址(示例值, \"https://example.com\", &加载完成)",
+        "description": "导航到指定网址并等待页面加载完成（loadEventFired）后触发完成处理器。"
+      },
+      "demoInvocation": "CDP_打开网址(0, \"https://example.com\", &模块演示回调)"
+    },
+    {
+      "index": 20,
+      "name": "CDP_刷新页面",
+      "signature": "CDP_刷新页面(页面, 完成处理器)",
+      "description": "重新加载当前页面并等待加载完成后触发完成处理器。",
+      "insertText": "CDP_刷新页面($1, &$2)",
+      "returnType": "逻辑型",
+      "category": "导航",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_刷新页面",
+        "runtimeName": "CDP_刷新页面",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；加载完成或失败时在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_刷新页面()",
+        "description": "重新加载当前页面并等待加载完成后触发完成处理器。"
+      },
+      "demoInvocation": "CDP_刷新页面(0, &模块演示回调)"
+    },
+    {
+      "index": 21,
+      "name": "CDP_后退页面",
+      "signature": "CDP_后退页面(页面, 完成处理器)",
+      "description": "导航到上一页并等待加载完成后触发完成处理器。",
+      "insertText": "CDP_后退页面($1, &$2)",
+      "returnType": "逻辑型",
+      "category": "导航",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_后退页面",
+        "runtimeName": "CDP_后退页面",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；加载完成或失败时在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_后退页面()",
+        "description": "导航到上一页并等待加载完成后触发完成处理器。"
+      },
+      "demoInvocation": "CDP_后退页面(0, &模块演示回调)"
+    },
+    {
+      "index": 22,
+      "name": "CDP_前进页面",
+      "signature": "CDP_前进页面(页面, 完成处理器)",
+      "description": "导航到下一页并等待加载完成后触发完成处理器。",
+      "insertText": "CDP_前进页面($1, &$2)",
+      "returnType": "逻辑型",
+      "category": "导航",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_前进页面",
+        "runtimeName": "CDP_前进页面",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；加载完成或失败时在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_前进页面()",
+        "description": "导航到下一页并等待加载完成后触发完成处理器。"
+      },
+      "demoInvocation": "CDP_前进页面(0, &模块演示回调)"
+    },
+    {
+      "index": 23,
+      "name": "CDP_停止加载",
+      "signature": "CDP_停止加载(页面)",
+      "description": "停止当前页面加载。",
+      "insertText": "CDP_停止加载($1)",
+      "returnType": "逻辑型",
+      "category": "导航",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_停止加载",
+        "runtimeName": "CDP_停止加载",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "CDP_停止加载()",
+        "description": "停止当前页面加载。"
+      },
+      "demoInvocation": "CDP_停止加载(0)"
+    },
+    {
+      "index": 24,
+      "name": "CDP_执行脚本",
+      "signature": "CDP_执行脚本(页面, 脚本代码, 完成处理器)",
+      "description": "在页面中执行 JavaScript（awaitPromise、returnByValue）；完成后用 CDP_取当前事件文本 读取结果文本，脚本抛出的异常会转为中文错误并保留原始信息。",
+      "insertText": "CDP_执行脚本($1, \"${2:document.title}\", &${3:执行完成})",
+      "returnType": "逻辑型",
+      "category": "脚本",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_执行脚本",
+        "runtimeName": "CDP_执行脚本",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "脚本代码",
+            "type": "wideString",
+            "description": "要执行的 JavaScript 表达式；Promise 会等待解析。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；执行完成或失败时在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_执行脚本(示例值, \"document.title\", &执行完成)",
+        "description": "在页面中执行 JavaScript（awaitPromise、returnByValue）；完成后用 CDP_取当前事件文本 读取结果文本，脚本抛出的异常会转为中文错误并保留原始信息。"
+      },
+      "demoInvocation": "CDP_执行脚本(0, \"演示参数2\", &模块演示回调)"
+    },
+    {
+      "index": 25,
+      "name": "CDP_查询元素",
+      "signature": "CDP_查询元素(页面, 选择器)",
+      "description": "按 CSS 选择器创建元素引用；元素有效性在后续元素命令执行时校验，页面导航或元素移除后操作会返回中文错误。",
+      "insertText": "CDP_查询元素($1, \"${2:#submit}\")",
+      "returnType": "CDP元素",
+      "category": "元素",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_查询元素",
+        "runtimeName": "CDP_查询元素",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "选择器",
+            "type": "wideString",
+            "description": "CSS 选择器，例如 #submit。"
+          }
+        ],
+        "returnType": "CDP元素",
+        "encoding": "wide",
+        "example": "CDP_查询元素(示例值, \"#submit\")",
+        "description": "按 CSS 选择器创建元素引用；元素有效性在后续元素命令执行时校验，页面导航或元素移除后操作会返回中文错误。"
+      },
+      "demoInvocation": "CDP_查询元素(0, \"演示参数2\")"
+    },
+    {
+      "index": 26,
+      "name": "CDP_点击元素",
+      "signature": "CDP_点击元素(元素, 完成处理器)",
+      "description": "滚动元素进入视口并在元素中心位置执行真实鼠标点击（mousePressed + mouseReleased）。",
+      "insertText": "CDP_点击元素($1, &${2:点击完成})",
+      "returnType": "逻辑型",
+      "category": "元素",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_点击元素",
+        "runtimeName": "CDP_点击元素",
+        "parameters": [
+          {
+            "name": "元素",
+            "type": "CDP元素",
+            "description": "CDP_查询元素 返回的受管元素引用；页面导航后失效。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；点击完成或失败时在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_点击元素(示例值, &点击完成)",
+        "description": "滚动元素进入视口并在元素中心位置执行真实鼠标点击（mousePressed + mouseReleased）。"
+      },
+      "demoInvocation": "CDP_点击元素(0, &模块演示回调)"
+    },
+    {
+      "index": 27,
+      "name": "CDP_输入文本",
+      "signature": "CDP_输入文本(元素, 文本, 完成处理器)",
+      "description": "聚焦元素并逐字符发送键盘 char 事件输入文本（支持中文）；逐字符输入比 IME 直插在 headless 环境更可靠。",
+      "insertText": "CDP_输入文本($1, $2, &$3)",
+      "returnType": "逻辑型",
+      "category": "元素",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_输入文本",
+        "runtimeName": "CDP_输入文本",
+        "parameters": [
+          {
+            "name": "元素",
+            "type": "CDP元素",
+            "description": "CDP_查询元素 返回的受管元素引用；页面导航后失效。"
+          },
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要输入的文本内容。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；输入完成或失败时在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_输入文本()",
+        "description": "聚焦元素并逐字符发送键盘 char 事件输入文本（支持中文）；逐字符输入比 IME 直插在 headless 环境更可靠。"
+      },
+      "demoInvocation": "CDP_输入文本(0, \"演示参数2\", &模块演示回调)"
+    },
+    {
+      "index": 28,
+      "name": "CDP_取元素文本",
+      "signature": "CDP_取元素文本(元素, 完成处理器)",
+      "description": "异步读取元素 innerText；完成后用 CDP_取当前事件文本 读取结果。",
+      "insertText": "CDP_取元素文本($1, &$2)",
+      "returnType": "逻辑型",
+      "category": "元素",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取元素文本",
+        "runtimeName": "CDP_取元素文本",
+        "parameters": [
+          {
+            "name": "元素",
+            "type": "CDP元素",
+            "description": "CDP_查询元素 返回的受管元素引用；页面导航后失效。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；完成或失败时在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_取元素文本()",
+        "description": "异步读取元素 innerText；完成后用 CDP_取当前事件文本 读取结果。"
+      },
+      "demoInvocation": "CDP_取元素文本(0, &模块演示回调)"
+    },
+    {
+      "index": 29,
+      "name": "CDP_取元素属性",
+      "signature": "CDP_取元素属性(元素, 属性名, 完成处理器)",
+      "description": "异步读取元素指定属性值；完成后用 CDP_取当前事件文本 读取结果。",
+      "insertText": "CDP_取元素属性($1, $2, &$3)",
+      "returnType": "逻辑型",
+      "category": "元素",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取元素属性",
+        "runtimeName": "CDP_取元素属性",
+        "parameters": [
+          {
+            "name": "元素",
+            "type": "CDP元素",
+            "description": "CDP_查询元素 返回的受管元素引用；页面导航后失效。"
+          },
+          {
+            "name": "属性名",
+            "type": "wideString",
+            "description": "HTML 属性名，如 \"href\"。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；完成或失败时在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_取元素属性()",
+        "description": "异步读取元素指定属性值；完成后用 CDP_取当前事件文本 读取结果。"
+      },
+      "demoInvocation": "CDP_取元素属性(0, \"演示参数2\", &模块演示回调)"
+    },
+    {
+      "index": 30,
+      "name": "CDP_取元素数量",
+      "signature": "CDP_取元素数量(页面, 选择器, 完成处理器)",
+      "description": "异步统计匹配选择器的元素数量；完成后用 CDP_取当前事件文本 读取数量文本。",
+      "insertText": "CDP_取元素数量($1, $2, &$3)",
+      "returnType": "逻辑型",
+      "category": "元素",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取元素数量",
+        "runtimeName": "CDP_取元素数量",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "选择器",
+            "type": "wideString",
+            "description": "CSS 选择器文本，如 \"#submit\"。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；完成或失败时在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_取元素数量()",
+        "description": "异步统计匹配选择器的元素数量；完成后用 CDP_取当前事件文本 读取数量文本。"
+      },
+      "demoInvocation": "CDP_取元素数量(0, \"演示参数2\", &模块演示回调)"
+    },
+    {
+      "index": 31,
+      "name": "CDP_鼠标移动",
+      "signature": "CDP_鼠标移动(页面, 横坐标, 纵坐标)",
+      "description": "把鼠标移动到页面视口内指定坐标（CSS 像素）。",
+      "insertText": "CDP_鼠标移动($1, $2, $3)",
+      "returnType": "逻辑型",
+      "category": "输入",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_鼠标移动",
+        "runtimeName": "CDP_鼠标移动",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "横坐标",
+            "type": "int",
+            "description": "鼠标事件 X 坐标（视口坐标）。"
+          },
+          {
+            "name": "纵坐标",
+            "type": "int",
+            "description": "鼠标事件 Y 坐标（视口坐标）。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "CDP_鼠标移动()",
+        "description": "把鼠标移动到页面视口内指定坐标（CSS 像素）。"
+      },
+      "demoInvocation": "CDP_鼠标移动(0, 1, 1)"
+    },
+    {
+      "index": 32,
+      "name": "CDP_鼠标单击",
+      "signature": "CDP_鼠标单击(页面, 横坐标, 纵坐标, 按钮, 次数)",
+      "description": "在指定坐标点击鼠标：按钮 0=左键 1=中键 2=右键；次数 2 表示双击。",
+      "insertText": "CDP_鼠标单击($1, $2, $3, 0, 1)",
+      "returnType": "逻辑型",
+      "category": "输入",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_鼠标单击",
+        "runtimeName": "CDP_鼠标单击",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "横坐标",
+            "type": "int",
+            "description": "鼠标事件 X 坐标（视口坐标）。"
+          },
+          {
+            "name": "纵坐标",
+            "type": "int",
+            "description": "鼠标事件 Y 坐标（视口坐标）。"
+          },
+          {
+            "name": "按钮",
+            "type": "int",
+            "description": "0=左键，1=中键，2=右键。"
+          },
+          {
+            "name": "次数",
+            "type": "int",
+            "description": "点击次数，1=单击，2=双击。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "CDP_鼠标单击(示例值, 示例值, 示例值, 0, 1)",
+        "description": "在指定坐标点击鼠标：按钮 0=左键 1=中键 2=右键；次数 2 表示双击。"
+      },
+      "demoInvocation": "CDP_鼠标单击(0, 1, 1, 1, 1)"
+    },
+    {
+      "index": 33,
+      "name": "CDP_鼠标按下",
+      "signature": "CDP_鼠标按下(页面, 横坐标, 纵坐标, 按钮)",
+      "description": "在指定坐标按下鼠标键不放；与 CDP_鼠标释放 配合实现拖拽。",
+      "insertText": "CDP_鼠标按下($1, $2, $3, $4)",
+      "returnType": "逻辑型",
+      "category": "输入",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_鼠标按下",
+        "runtimeName": "CDP_鼠标按下",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "横坐标",
+            "type": "int",
+            "description": "鼠标事件 X 坐标（视口坐标）。"
+          },
+          {
+            "name": "纵坐标",
+            "type": "int",
+            "description": "鼠标事件 Y 坐标（视口坐标）。"
+          },
+          {
+            "name": "按钮",
+            "type": "int",
+            "description": "0=左键，1=中键，2=右键。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "CDP_鼠标按下()",
+        "description": "在指定坐标按下鼠标键不放；与 CDP_鼠标释放 配合实现拖拽。"
+      },
+      "demoInvocation": "CDP_鼠标按下(0, 1, 1, 1)"
+    },
+    {
+      "index": 34,
+      "name": "CDP_鼠标释放",
+      "signature": "CDP_鼠标释放(页面, 横坐标, 纵坐标, 按钮)",
+      "description": "释放指定坐标已按下的鼠标键。",
+      "insertText": "CDP_鼠标释放($1, $2, $3, $4)",
+      "returnType": "逻辑型",
+      "category": "输入",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_鼠标释放",
+        "runtimeName": "CDP_鼠标释放",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "横坐标",
+            "type": "int",
+            "description": "鼠标事件 X 坐标（视口坐标）。"
+          },
+          {
+            "name": "纵坐标",
+            "type": "int",
+            "description": "鼠标事件 Y 坐标（视口坐标）。"
+          },
+          {
+            "name": "按钮",
+            "type": "int",
+            "description": "0=左键，1=中键，2=右键。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "CDP_鼠标释放()",
+        "description": "释放指定坐标已按下的鼠标键。"
+      },
+      "demoInvocation": "CDP_鼠标释放(0, 1, 1, 1)"
+    },
+    {
+      "index": 35,
+      "name": "CDP_鼠标滚轮",
+      "signature": "CDP_鼠标滚轮(页面, 横坐标, 纵坐标, 横向增量, 纵向增量)",
+      "description": "在指定坐标发送滚轮事件；纵向负数向上、正数向下。",
+      "insertText": "CDP_鼠标滚轮($1, $2, $3, $4, $5)",
+      "returnType": "逻辑型",
+      "category": "输入",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_鼠标滚轮",
+        "runtimeName": "CDP_鼠标滚轮",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "横坐标",
+            "type": "int",
+            "description": "鼠标事件 X 坐标（视口坐标）。"
+          },
+          {
+            "name": "纵坐标",
+            "type": "int",
+            "description": "鼠标事件 Y 坐标（视口坐标）。"
+          },
+          {
+            "name": "横向增量",
+            "type": "int",
+            "description": "滚轮横向滚动增量。"
+          },
+          {
+            "name": "纵向增量",
+            "type": "int",
+            "description": "滚轮纵向增量；负数向上、正数向下。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "CDP_鼠标滚轮()",
+        "description": "在指定坐标发送滚轮事件；纵向负数向上、正数向下。"
+      },
+      "demoInvocation": "CDP_鼠标滚轮(0, 1, 1, 1, 1)"
+    },
+    {
+      "index": 36,
+      "name": "CDP_按键",
+      "signature": "CDP_按键(页面, 键名)",
+      "description": "按下并释放一个按键；键名使用 CDP Key 值，例如 Enter、Tab、a、F5。",
+      "insertText": "CDP_按键($1, \"Enter\")",
+      "returnType": "逻辑型",
+      "category": "输入",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_按键",
+        "runtimeName": "CDP_按键",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "键名",
+            "type": "wideString",
+            "description": "CDP Key 值，例如 Enter、Tab、a。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_按键(示例值, \"Enter\")",
+        "description": "按下并释放一个按键；键名使用 CDP Key 值，例如 Enter、Tab、a、F5。"
+      },
+      "demoInvocation": "CDP_按键(0, \"演示参数2\")"
+    },
+    {
+      "index": 37,
+      "name": "CDP_组合键",
+      "signature": "CDP_组合键(页面, 修饰键, 键名)",
+      "description": "按下修饰键组合再按主键；修饰键使用逗号分隔，支持 Ctrl、Shift、Alt、Meta。",
+      "insertText": "CDP_组合键($1, \"Ctrl\", \"a\")",
+      "returnType": "逻辑型",
+      "category": "输入",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_组合键",
+        "runtimeName": "CDP_组合键",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "修饰键",
+            "type": "wideString",
+            "description": "逗号分隔：Ctrl、Shift、Alt、Meta。"
+          },
+          {
+            "name": "键名",
+            "type": "wideString",
+            "description": "CDP Key 键值，如 Enter、Tab、a、F5。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_组合键(示例值, \"Ctrl\", \"a\")",
+        "description": "按下修饰键组合再按主键；修饰键使用逗号分隔，支持 Ctrl、Shift、Alt、Meta。"
+      },
+      "demoInvocation": "CDP_组合键(0, \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 38,
+      "name": "CDP_插入文本",
+      "signature": "CDP_插入文本(页面, 文本)",
+      "description": "向当前焦点元素通过 Input.insertTextInput 直插文本，不产生按键事件；headless 环境可能不更新输入框的值，可靠输入请用 CDP_输入文本。",
+      "insertText": "CDP_插入文本($1, $2)",
+      "returnType": "逻辑型",
+      "category": "输入",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_插入文本",
+        "runtimeName": "CDP_插入文本",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要输入的文本内容。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_插入文本()",
+        "description": "向当前焦点元素通过 Input.insertTextInput 直插文本，不产生按键事件；headless 环境可能不更新输入框的值，可靠输入请用 CDP_输入文本。"
+      },
+      "demoInvocation": "CDP_插入文本(0, \"演示参数2\")"
+    },
+    {
+      "index": 39,
+      "name": "CDP_绑定网络事件",
+      "signature": "CDP_绑定网络事件(页面, 处理器)",
+      "description": "订阅页面网络事件：网络请求、网络响应、网络完成、网络失败；处理器内用 CDP_取当前网络系列命令读取快照。",
+      "insertText": "CDP_绑定网络事件($1, &${2:网络事件})",
+      "returnType": "逻辑型",
+      "category": "网络",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_绑定网络事件",
+        "runtimeName": "CDP_绑定网络事件",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；网络事件在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_绑定网络事件(示例值, &网络事件)",
+        "description": "订阅页面网络事件：网络请求、网络响应、网络完成、网络失败；处理器内用 CDP_取当前网络系列命令读取快照。"
+      },
+      "demoInvocation": "CDP_绑定网络事件(0, &模块演示回调)"
+    },
+    {
+      "index": 40,
+      "name": "CDP_取网络响应体",
+      "signature": "CDP_取网络响应体(页面, 请求编号, 完成处理器)",
+      "description": "按网络事件快照中的请求编号读取响应体文本；完成后用 CDP_取当前事件文本 读取结果。",
+      "insertText": "CDP_取网络响应体($1, $2, &$3)",
+      "returnType": "逻辑型",
+      "category": "网络",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取网络响应体",
+        "runtimeName": "CDP_取网络响应体",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "请求编号",
+            "type": "wideString",
+            "description": "网络事件快照中的请求编号文本。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；完成或失败时在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_取网络响应体()",
+        "description": "按网络事件快照中的请求编号读取响应体文本；完成后用 CDP_取当前事件文本 读取结果。"
+      },
+      "demoInvocation": "CDP_取网络响应体(0, \"演示参数2\", &模块演示回调)"
+    },
+    {
+      "index": 41,
+      "name": "CDP_取Cookie",
+      "signature": "CDP_取Cookie(连接, 网址, 完成处理器)",
+      "description": "读取指定网址相关 Cookie；完成后用 CDP_取当前事件文本 读取 JSON 结果。Cookie 属于敏感数据，不得写入日志或分享包。",
+      "insertText": "CDP_取Cookie($1, $2, &$3)",
+      "returnType": "逻辑型",
+      "category": "网络",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取Cookie",
+        "runtimeName": "CDP_取Cookie",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "CDP连接",
+            "description": "CDP_连接 返回的受管连接 ID；断开后失效。"
+          },
+          {
+            "name": "网址",
+            "type": "wideString",
+            "description": "完整 URL（含协议）。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；完成或失败时在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_取Cookie()",
+        "description": "读取指定网址相关 Cookie；完成后用 CDP_取当前事件文本 读取 JSON 结果。Cookie 属于敏感数据，不得写入日志或分享包。"
+      },
+      "demoInvocation": "CDP_取Cookie(0, \"https://example.com\", &模块演示回调)"
+    },
+    {
+      "index": 42,
+      "name": "CDP_置Cookie",
+      "signature": "CDP_置Cookie(连接, 名称, 值, 网址, 完成处理器)",
+      "description": "为指定网址写入一个 Cookie。",
+      "insertText": "CDP_置Cookie($1, $2, $3, $4, &$5)",
+      "returnType": "逻辑型",
+      "category": "网络",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_置Cookie",
+        "runtimeName": "CDP_置Cookie",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "CDP连接",
+            "description": "CDP_连接 返回的受管连接 ID；断开后失效。"
+          },
+          {
+            "name": "名称",
+            "type": "wideString",
+            "description": "Cookie 名称。"
+          },
+          {
+            "name": "值",
+            "type": "wideString",
+            "description": "Cookie 内容文本。"
+          },
+          {
+            "name": "网址",
+            "type": "wideString",
+            "description": "完整 URL（含协议）。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；完成或失败时在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_置Cookie()",
+        "description": "为指定网址写入一个 Cookie。"
+      },
+      "demoInvocation": "CDP_置Cookie(0, \"演示参数2\", \"演示参数3\", \"https://example.com\", &模块演示回调)"
+    },
+    {
+      "index": 43,
+      "name": "CDP_删除Cookie",
+      "signature": "CDP_删除Cookie(连接, 名称, 网址, 完成处理器)",
+      "description": "删除指定网址下同名 Cookie。",
+      "insertText": "CDP_删除Cookie($1, $2, $3, &$4)",
+      "returnType": "逻辑型",
+      "category": "网络",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_删除Cookie",
+        "runtimeName": "CDP_删除Cookie",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "CDP连接",
+            "description": "CDP_连接 返回的受管连接 ID；断开后失效。"
+          },
+          {
+            "name": "名称",
+            "type": "wideString",
+            "description": "要安装的绑定名称，页面通过 window[名称] 调用。"
+          },
+          {
+            "name": "网址",
+            "type": "wideString",
+            "description": "完整 URL（含协议）。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；完成或失败时在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_删除Cookie()",
+        "description": "删除指定网址下同名 Cookie。"
+      },
+      "demoInvocation": "CDP_删除Cookie(0, \"演示参数2\", \"https://example.com\", &模块演示回调)"
+    },
+    {
+      "index": 44,
+      "name": "CDP_清空缓存",
+      "signature": "CDP_清空缓存(连接, 完成处理器)",
+      "description": "清除浏览器磁盘缓存。",
+      "insertText": "CDP_清空缓存($1, &$2)",
+      "returnType": "逻辑型",
+      "category": "网络",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_清空缓存",
+        "runtimeName": "CDP_清空缓存",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "CDP连接",
+            "description": "CDP_连接 返回的受管连接 ID；断开后失效。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；完成或失败时在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_清空缓存()",
+        "description": "清除浏览器磁盘缓存。"
+      },
+      "demoInvocation": "CDP_清空缓存(0, &模块演示回调)"
+    },
+    {
+      "index": 45,
+      "name": "CDP_清空Cookie",
+      "signature": "CDP_清空Cookie(连接, 完成处理器)",
+      "description": "清除浏览器全部 Cookie。",
+      "insertText": "CDP_清空Cookie($1, &$2)",
+      "returnType": "逻辑型",
+      "category": "网络",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_清空Cookie",
+        "runtimeName": "CDP_清空Cookie",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "CDP连接",
+            "description": "CDP_连接 返回的受管连接 ID；断开后失效。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；完成或失败时在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_清空Cookie()",
+        "description": "清除浏览器全部 Cookie。"
+      },
+      "demoInvocation": "CDP_清空Cookie(0, &模块演示回调)"
+    },
+    {
+      "index": 46,
+      "name": "CDP_绑定控制台事件",
+      "signature": "CDP_绑定控制台事件(页面, 处理器)",
+      "description": "订阅页面 console 输出；处理器内用 CDP_取当前事件文本 读取消息、CDP_取当前事件详情 读取级别。",
+      "insertText": "CDP_绑定控制台事件($1, &${2:控制台消息})",
+      "returnType": "逻辑型",
+      "category": "事件",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_绑定控制台事件",
+        "runtimeName": "CDP_绑定控制台事件",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；控制台事件在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_绑定控制台事件(示例值, &控制台消息)",
+        "description": "订阅页面 console 输出；处理器内用 CDP_取当前事件文本 读取消息、CDP_取当前事件详情 读取级别。"
+      },
+      "demoInvocation": "CDP_绑定控制台事件(0, &模块演示回调)"
+    },
+    {
+      "index": 47,
+      "name": "CDP_绑定页面异常",
+      "signature": "CDP_绑定页面异常(页面, 处理器)",
+      "description": "订阅页面未捕获异常；处理器内用 CDP_取当前事件文本 读取异常说明。",
+      "insertText": "CDP_绑定页面异常($1, &$2)",
+      "returnType": "逻辑型",
+      "category": "事件",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_绑定页面异常",
+        "runtimeName": "CDP_绑定页面异常",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；异常事件在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_绑定页面异常()",
+        "description": "订阅页面未捕获异常；处理器内用 CDP_取当前事件文本 读取异常说明。"
+      },
+      "demoInvocation": "CDP_绑定页面异常(0, &模块演示回调)"
+    },
+    {
+      "index": 48,
+      "name": "CDP_截图",
+      "signature": "CDP_截图(页面, 文件路径, 全页, 完成处理器)",
+      "description": "截图并保存为 PNG 文件；全页为真时捕获超出视口的完整页面。",
+      "insertText": "CDP_截图($1, \"${2:screenshot.png}\", 假, &${3:截图完成})",
+      "returnType": "逻辑型",
+      "category": "截图",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_截图",
+        "runtimeName": "CDP_截图",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "文件路径",
+            "type": "wideString",
+            "description": "PNG 输出绝对或相对路径。"
+          },
+          {
+            "name": "全页",
+            "type": "bool",
+            "description": "真=整页截图，假=当前视口。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；写入完成或失败时在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_截图(示例值, \"screenshot.png\", 假, &截图完成)",
+        "description": "截图并保存为 PNG 文件；全页为真时捕获超出视口的完整页面。"
+      },
+      "demoInvocation": "CDP_截图(0, \"module-demo-temp.txt\", 真, &模块演示回调)"
+    },
+    {
+      "index": 49,
+      "name": "CDP_打印PDF",
+      "signature": "CDP_打印PDF(页面, 文件路径, 完成处理器)",
+      "description": "把页面打印为 PDF 文件。",
+      "insertText": "CDP_打印PDF($1, $2, &$3)",
+      "returnType": "逻辑型",
+      "category": "截图",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_打印PDF",
+        "runtimeName": "CDP_打印PDF",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "文件路径",
+            "type": "wideString",
+            "description": "PDF 输出绝对或相对路径。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；写入完成或失败时在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_打印PDF()",
+        "description": "把页面打印为 PDF 文件。"
+      },
+      "demoInvocation": "CDP_打印PDF(0, \"module-demo-temp.txt\", &模块演示回调)"
+    },
+    {
+      "index": 50,
+      "name": "CDP_绑定连接事件",
+      "signature": "CDP_绑定连接事件(连接, 处理器)",
+      "description": "订阅连接级事件：已就绪、连接失败、已断开、错误；处理器内用 CDP_取当前事件系列命令读取快照。",
+      "insertText": "CDP_绑定连接事件($1, &${2:连接事件})",
+      "returnType": "逻辑型",
+      "category": "事件",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_绑定连接事件",
+        "runtimeName": "CDP_绑定连接事件",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "CDP连接",
+            "description": "CDP_连接 返回的受管连接 ID；断开后失效。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；连接事件在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_绑定连接事件(示例值, &连接事件)",
+        "description": "订阅连接级事件：已就绪、连接失败、已断开、错误；处理器内用 CDP_取当前事件系列命令读取快照。"
+      },
+      "demoInvocation": "CDP_绑定连接事件(0, &模块演示回调)"
+    },
+    {
+      "index": 51,
+      "name": "CDP_绑定页面事件",
+      "signature": "CDP_绑定页面事件(页面, 处理器)",
+      "description": "订阅页面级事件：页面就绪、页面失败、加载完成、页面销毁；处理器内用 CDP_取当前事件系列命令读取快照。",
+      "insertText": "CDP_绑定页面事件($1, &$2)",
+      "returnType": "逻辑型",
+      "category": "事件",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_绑定页面事件",
+        "runtimeName": "CDP_绑定页面事件",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；页面事件在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_绑定页面事件()",
+        "description": "订阅页面级事件：页面就绪、页面失败、加载完成、页面销毁；处理器内用 CDP_取当前事件系列命令读取快照。"
+      },
+      "demoInvocation": "CDP_绑定页面事件(0, &模块演示回调)"
+    },
+    {
+      "index": 52,
+      "name": "CDP_设置命令超时",
+      "signature": "CDP_设置命令超时(连接, 超时毫秒)",
+      "description": "设置该连接全部异步命令、导航/就绪等待的超时上限；超时会以“命令失败”事件通知。导航与就绪等待使用该值的两倍。",
+      "insertText": "CDP_设置命令超时($1, 30000)",
+      "returnType": "逻辑型",
+      "category": "连接",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_设置命令超时",
+        "runtimeName": "CDP_设置命令超时",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "CDP连接",
+            "description": "CDP_连接 返回的受管连接 ID；断开后失效。"
+          },
+          {
+            "name": "超时毫秒",
+            "type": "int",
+            "description": "1000 到 600000，默认 30000。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "CDP_设置命令超时(示例值, 30000)",
+        "description": "设置该连接全部异步命令、导航/就绪等待的超时上限；超时会以“命令失败”事件通知。导航与就绪等待使用该值的两倍。"
+      },
+      "demoInvocation": "CDP_设置命令超时(0, 1)"
+    },
+    {
+      "index": 53,
+      "name": "CDP_拦截开始",
+      "signature": "CDP_拦截开始(页面, 网址模式, 处理器)",
+      "description": "开启 Fetch 域请求拦截：匹配网址模式（例如 *://api.example.com/*）的请求会暂停并触发“请求被拦截”事件。拦截期间浏览器网络挂起，处理器内必须尽快调用 CDP_拦截继续、CDP_拦截改写、CDP_拦截模拟响应或 CDP_拦截终止。",
+      "insertText": "CDP_拦截开始($1, \"${2:*://api.example.com/*}\", &${3:请求被拦截})",
+      "returnType": "逻辑型",
+      "category": "网络",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_拦截开始",
+        "runtimeName": "CDP_拦截开始",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "网址模式",
+            "type": "wideString",
+            "description": "CDP 网址通配模式，* 表示全部。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；拦截事件在 UI 线程执行，用 CDP_取当前连接 之外的网络快照命令读取网址、方法和请求编号，用返回的 CDP拦截 句柄裁决。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_拦截开始(示例值, \"*://api.example.com/*\", &请求被拦截)",
+        "description": "开启 Fetch 域请求拦截：匹配网址模式（例如 *://api.example.com/*）的请求会暂停并触发“请求被拦截”事件。拦截期间浏览器网络挂起，处理器内必须尽快调用 CDP_拦截继续、CDP_拦截改写、CDP_拦截模拟响应或 CDP_拦截终止。"
+      },
+      "demoInvocation": "CDP_拦截开始(0, \"https://example.com\", &模块演示回调)"
+    },
+    {
+      "index": 54,
+      "name": "CDP_拦截继续",
+      "signature": "CDP_拦截继续(拦截)",
+      "description": "原样放行被拦截的请求；每个拦截句柄只能裁决一次。",
+      "insertText": "CDP_拦截继续($1)",
+      "returnType": "逻辑型",
+      "category": "网络",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_拦截继续",
+        "runtimeName": "CDP_拦截继续",
+        "parameters": [
+          {
+            "name": "拦截",
+            "type": "CDP拦截",
+            "description": "“请求被拦截”事件携带的受管请求句柄；网络已挂起，必须在处理器内尽快继续、改写或终止。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "CDP_拦截继续()",
+        "description": "原样放行被拦截的请求；每个拦截句柄只能裁决一次。"
+      },
+      "demoInvocation": "CDP_拦截继续(0)"
+    },
+    {
+      "index": 55,
+      "name": "CDP_拦截改写",
+      "signature": "CDP_拦截改写(拦截, 网址, 头JSON)",
+      "description": "改写请求后放行：网址为空表示不改网址；头JSON 为空表示不改头，非空时必须是 [{名称, 值}] 形式的 JSON 数组并整体替换请求头。",
+      "insertText": "CDP_拦截改写($1, \"${2:https://mock.example.com/data}\", \"\")",
+      "returnType": "逻辑型",
+      "category": "网络",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_拦截改写",
+        "runtimeName": "CDP_拦截改写",
+        "parameters": [
+          {
+            "name": "拦截",
+            "type": "CDP拦截",
+            "description": "“请求被拦截”事件携带的受管请求句柄；网络已挂起，必须在处理器内尽快继续、改写或终止。"
+          },
+          {
+            "name": "网址",
+            "type": "wideString",
+            "description": "新网址，空文本表示不改。"
+          },
+          {
+            "name": "头JSON",
+            "type": "wideString",
+            "description": "例如 [{\"name\":\"X-Test\",\"value\":\"1\"}]，空文本表示不改。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_拦截改写(示例值, \"https://mock.example.com/data\", \"\")",
+        "description": "改写请求后放行：网址为空表示不改网址；头JSON 为空表示不改头，非空时必须是 [{名称, 值}] 形式的 JSON 数组并整体替换请求头。"
+      },
+      "demoInvocation": "CDP_拦截改写(0, \"https://example.com\", \"{}\")"
+    },
+    {
+      "index": 56,
+      "name": "CDP_拦截模拟响应",
+      "signature": "CDP_拦截模拟响应(拦截, 状态码, 头JSON, 响应体)",
+      "description": "不发往服务器，直接向被拦截请求返回模拟响应（mock）；响应体为 UTF-8 文本，不能超过 8MB。",
+      "insertText": "CDP_拦截模拟响应($1, 200, \"\", \"${2:mock}\")",
+      "returnType": "逻辑型",
+      "category": "网络",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_拦截模拟响应",
+        "runtimeName": "CDP_拦截模拟响应",
+        "parameters": [
+          {
+            "name": "拦截",
+            "type": "CDP拦截",
+            "description": "“请求被拦截”事件携带的受管请求句柄；网络已挂起，必须在处理器内尽快继续、改写或终止。"
+          },
+          {
+            "name": "状态码",
+            "type": "int",
+            "description": "100 到 599。"
+          },
+          {
+            "name": "头JSON",
+            "type": "wideString",
+            "description": "例如 [{\"name\":\"Content-Type\",\"value\":\"text/html; charset=utf-8\"}]，可为空。"
+          },
+          {
+            "name": "响应体",
+            "type": "wideString",
+            "description": "模拟响应正文，可为空。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_拦截模拟响应(示例值, 200, \"\", \"mock\")",
+        "description": "不发往服务器，直接向被拦截请求返回模拟响应（mock）；响应体为 UTF-8 文本，不能超过 8MB。"
+      },
+      "demoInvocation": "CDP_拦截模拟响应(0, 1, \"{}\", \"演示参数4\")"
+    },
+    {
+      "index": 57,
+      "name": "CDP_拦截终止",
+      "signature": "CDP_拦截终止(拦截, 失败原因)",
+      "description": "以网络错误终止被拦截的请求；失败原因必须是 CDP 枚举文本，如 Failed、Aborted、TimedOut、NameNotResolved、BlockedByClient。",
+      "insertText": "CDP_拦截终止($1, \"Aborted\")",
+      "returnType": "逻辑型",
+      "category": "网络",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_拦截终止",
+        "runtimeName": "CDP_拦截终止",
+        "parameters": [
+          {
+            "name": "拦截",
+            "type": "CDP拦截",
+            "description": "“请求被拦截”事件携带的受管请求句柄；网络已挂起，必须在处理器内尽快继续、改写或终止。"
+          },
+          {
+            "name": "失败原因",
+            "type": "wideString",
+            "description": "默认 Failed。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_拦截终止(示例值, \"Aborted\")",
+        "description": "以网络错误终止被拦截的请求；失败原因必须是 CDP 枚举文本，如 Failed、Aborted、TimedOut、NameNotResolved、BlockedByClient。"
+      },
+      "demoInvocation": "CDP_拦截终止(0, \"演示参数2\")"
+    },
+    {
+      "index": 58,
+      "name": "CDP_拦截应答认证",
+      "signature": "CDP_拦截应答认证(拦截, 用户名, 密码)",
+      "description": "应答“需要认证”事件：提供用户名密码继续请求；用户名为空表示取消认证。",
+      "insertText": "CDP_拦截应答认证($1, $2, $3)",
+      "returnType": "逻辑型",
+      "category": "网络",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_拦截应答认证",
+        "runtimeName": "CDP_拦截应答认证",
+        "parameters": [
+          {
+            "name": "拦截",
+            "type": "CDP拦截",
+            "description": "“请求被拦截”事件携带的受管请求句柄；网络已挂起，必须在处理器内尽快继续、改写或终止。"
+          },
+          {
+            "name": "用户名",
+            "type": "wideString",
+            "description": "为空表示取消认证。"
+          },
+          {
+            "name": "密码",
+            "type": "wideString",
+            "description": "认证密码文本。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_拦截应答认证()",
+        "description": "应答“需要认证”事件：提供用户名密码继续请求；用户名为空表示取消认证。"
+      },
+      "demoInvocation": "CDP_拦截应答认证(0, \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 59,
+      "name": "CDP_取拦截请求体",
+      "signature": "CDP_取拦截请求体(拦截, 完成处理器)",
+      "description": "读取被拦截请求的提交体文本；完成后用 CDP_取当前事件文本 读取结果。",
+      "insertText": "CDP_取拦截请求体($1, &$2)",
+      "returnType": "逻辑型",
+      "category": "网络",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取拦截请求体",
+        "runtimeName": "CDP_取拦截请求体",
+        "parameters": [
+          {
+            "name": "拦截",
+            "type": "CDP拦截",
+            "description": "“请求被拦截”事件携带的受管请求句柄；网络已挂起，必须在处理器内尽快继续、改写或终止。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；完成或失败时在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_取拦截请求体()",
+        "description": "读取被拦截请求的提交体文本；完成后用 CDP_取当前事件文本 读取结果。"
+      },
+      "demoInvocation": "CDP_取拦截请求体(0, &模块演示回调)"
+    },
+    {
+      "index": 60,
+      "name": "CDP_拦截停止",
+      "signature": "CDP_拦截停止(页面)",
+      "description": "停止该页面的请求拦截并放行后续网络。",
+      "insertText": "CDP_拦截停止($1)",
+      "returnType": "逻辑型",
+      "category": "网络",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_拦截停止",
+        "runtimeName": "CDP_拦截停止",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "CDP_拦截停止()",
+        "description": "停止该页面的请求拦截并放行后续网络。"
+      },
+      "demoInvocation": "CDP_拦截停止(0)"
+    },
+    {
+      "index": 61,
+      "name": "CDP_绑定对话框事件",
+      "signature": "CDP_绑定对话框事件(页面, 处理器)",
+      "description": "订阅 alert/confirm/prompt/beforeunload 对话框；对话框打开时页面脚本阻塞，处理器内必须尽快 CDP_应答对话框，未绑定时运行时自动拒绝。",
+      "insertText": "CDP_绑定对话框事件($1, &${2:对话框出现})",
+      "returnType": "逻辑型",
+      "category": "事件",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_绑定对话框事件",
+        "runtimeName": "CDP_绑定对话框事件",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；对话框事件在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_绑定对话框事件(示例值, &对话框出现)",
+        "description": "订阅 alert/confirm/prompt/beforeunload 对话框；对话框打开时页面脚本阻塞，处理器内必须尽快 CDP_应答对话框，未绑定时运行时自动拒绝。"
+      },
+      "demoInvocation": "CDP_绑定对话框事件(0, &模块演示回调)"
+    },
+    {
+      "index": 62,
+      "name": "CDP_应答对话框",
+      "signature": "CDP_应答对话框(页面, 接受, 提示文本)",
+      "description": "应答当前对话框：接受为真等于确认/确定，提示文本用于 prompt 应答输入。",
+      "insertText": "CDP_应答对话框($1, 真, \"\")",
+      "returnType": "逻辑型",
+      "category": "事件",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_应答对话框",
+        "runtimeName": "CDP_应答对话框",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "接受",
+            "type": "bool",
+            "description": "真=接受（确认）对话框，假=取消对话框。"
+          },
+          {
+            "name": "提示文本",
+            "type": "wideString",
+            "description": "prompt 对话框的应答文本，可为空。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_应答对话框(示例值, 真, \"\")",
+        "description": "应答当前对话框：接受为真等于确认/确定，提示文本用于 prompt 应答输入。"
+      },
+      "demoInvocation": "CDP_应答对话框(0, 真, \"演示参数3\")"
+    },
+    {
+      "index": 63,
+      "name": "CDP_设置下载目录",
+      "signature": "CDP_设置下载目录(连接, 目录, 允许)",
+      "description": "控制浏览器下载行为：允许为真时下载到指定目录（必须已存在），为假时拒绝全部下载。",
+      "insertText": "CDP_设置下载目录($1, \"${2:C:\\downloads}\", 真)",
+      "returnType": "逻辑型",
+      "category": "网络",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_设置下载目录",
+        "runtimeName": "CDP_设置下载目录",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "CDP连接",
+            "description": "CDP_连接 返回的受管连接 ID；断开后失效。"
+          },
+          {
+            "name": "目录",
+            "type": "wideString",
+            "description": "已存在的目录绝对路径。"
+          },
+          {
+            "name": "允许",
+            "type": "bool",
+            "description": "真=下载到指定目录（目录必须已存在），假=拒绝全部下载。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_设置下载目录(示例值, \"C:\\downloads\", 真)",
+        "description": "控制浏览器下载行为：允许为真时下载到指定目录（必须已存在），为假时拒绝全部下载。"
+      },
+      "demoInvocation": "CDP_设置下载目录(0, \".\", 真)"
+    },
+    {
+      "index": 64,
+      "name": "CDP_绑定下载事件",
+      "signature": "CDP_绑定下载事件(连接, 处理器)",
+      "description": "订阅下载事件：下载开始、下载进度、下载完成、下载取消；需先用 CDP_设置下载目录 允许下载。",
+      "insertText": "CDP_绑定下载事件($1, &${2:下载事件})",
+      "returnType": "逻辑型",
+      "category": "事件",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_绑定下载事件",
+        "runtimeName": "CDP_绑定下载事件",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "CDP连接",
+            "description": "CDP_连接 返回的受管连接 ID；断开后失效。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；下载事件在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_绑定下载事件(示例值, &下载事件)",
+        "description": "订阅下载事件：下载开始、下载进度、下载完成、下载取消；需先用 CDP_设置下载目录 允许下载。"
+      },
+      "demoInvocation": "CDP_绑定下载事件(0, &模块演示回调)"
+    },
+    {
+      "index": 65,
+      "name": "CDP_设置元素文件",
+      "signature": "CDP_设置元素文件(元素, 文件路径, 完成处理器)",
+      "description": "为文件选择控件元素设置上传文件（DOM.setFileInputFiles）；文件必须真实存在。",
+      "insertText": "CDP_设置元素文件($1, \"${2:C:\\upload.txt}\", &${3:上传完成})",
+      "returnType": "逻辑型",
+      "category": "元素",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_设置元素文件",
+        "runtimeName": "CDP_设置元素文件",
+        "parameters": [
+          {
+            "name": "元素",
+            "type": "CDP元素",
+            "description": "CDP_查询元素 返回的受管元素引用；页面导航后失效。"
+          },
+          {
+            "name": "文件路径",
+            "type": "wideString",
+            "description": "本机文件绝对路径。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；完成或失败时在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_设置元素文件(示例值, \"C:\\upload.txt\", &上传完成)",
+        "description": "为文件选择控件元素设置上传文件（DOM.setFileInputFiles）；文件必须真实存在。"
+      },
+      "demoInvocation": "CDP_设置元素文件(0, \"module-demo-temp.txt\", &模块演示回调)"
+    },
+    {
+      "index": 66,
+      "name": "CDP_等待加载",
+      "signature": "CDP_等待加载(页面, 事件类型, 超时秒, 完成处理器)",
+      "description": "等待页面生命周期事件：0=load、1=DOMContentLoaded、2=networkIdle（网络空闲）、3=networkAlmostIdle；到达后触发命令完成，超时触发命令失败。",
+      "insertText": "CDP_等待加载($1, 2, 30, &${2:等待完成})",
+      "returnType": "逻辑型",
+      "category": "导航",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_等待加载",
+        "runtimeName": "CDP_等待加载",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "事件类型",
+            "type": "int",
+            "description": "0=load，1=DOMContentLoaded，2=networkIdle，3=networkAlmostIdle。"
+          },
+          {
+            "name": "超时秒",
+            "type": "int",
+            "description": "1 到 600。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；完成或超时时在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_等待加载(示例值, 2, 30, &等待完成)",
+        "description": "等待页面生命周期事件：0=load、1=DOMContentLoaded、2=networkIdle（网络空闲）、3=networkAlmostIdle；到达后触发命令完成，超时触发命令失败。"
+      },
+      "demoInvocation": "CDP_等待加载(0, 1, 1, &模块演示回调)"
+    },
+    {
+      "index": 67,
+      "name": "CDP_设置视口",
+      "signature": "CDP_设置视口(页面, 宽度, 高度)",
+      "description": "覆盖页面视口尺寸；用 CDP_重置仿真 恢复。",
+      "insertText": "CDP_设置视口($1, 1280, 720)",
+      "returnType": "逻辑型",
+      "category": "输入",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_设置视口",
+        "runtimeName": "CDP_设置视口",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "宽度",
+            "type": "int",
+            "description": "新视口宽度（像素）。"
+          },
+          {
+            "name": "高度",
+            "type": "int",
+            "description": "新视口高度（像素）。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "CDP_设置视口(示例值, 1280, 720)",
+        "description": "覆盖页面视口尺寸；用 CDP_重置仿真 恢复。"
+      },
+      "demoInvocation": "CDP_设置视口(0, 1, 1)"
+    },
+    {
+      "index": 68,
+      "name": "CDP_设置UserAgent",
+      "signature": "CDP_设置UserAgent(页面, UserAgent)",
+      "description": "覆盖页面 User-Agent。",
+      "insertText": "CDP_设置UserAgent($1, $2)",
+      "returnType": "逻辑型",
+      "category": "输入",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_设置UserAgent",
+        "runtimeName": "CDP_设置UserAgent",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "UserAgent",
+            "type": "wideString",
+            "description": "要覆盖的 User-Agent 字符串。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_设置UserAgent()",
+        "description": "覆盖页面 User-Agent。"
+      },
+      "demoInvocation": "CDP_设置UserAgent(0, \"演示参数2\")"
+    },
+    {
+      "index": 69,
+      "name": "CDP_设置触摸",
+      "signature": "CDP_设置触摸(页面, 启用)",
+      "description": "启用或关闭触摸事件仿真。",
+      "insertText": "CDP_设置触摸($1, $2)",
+      "returnType": "逻辑型",
+      "category": "输入",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_设置触摸",
+        "runtimeName": "CDP_设置触摸",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "启用",
+            "type": "bool",
+            "description": "真=开启。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "CDP_设置触摸()",
+        "description": "启用或关闭触摸事件仿真。"
+      },
+      "demoInvocation": "CDP_设置触摸(0, 真)"
+    },
+    {
+      "index": 70,
+      "name": "CDP_设置地理位置",
+      "signature": "CDP_设置地理位置(页面, 纬度, 经度)",
+      "description": "覆盖 Geolocation API 返回的坐标；纬度 -90 到 90，经度 -180 到 180。",
+      "insertText": "CDP_设置地理位置($1, 31.23, 121.47)",
+      "returnType": "逻辑型",
+      "category": "输入",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_设置地理位置",
+        "runtimeName": "CDP_设置地理位置",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "纬度",
+            "type": "double",
+            "description": "纬度，-90 到 90。"
+          },
+          {
+            "name": "经度",
+            "type": "double",
+            "description": "经度，-180 到 180。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "CDP_设置地理位置(示例值, 31.23, 121.47)",
+        "description": "覆盖 Geolocation API 返回的坐标；纬度 -90 到 90，经度 -180 到 180。"
+      },
+      "demoInvocation": "CDP_设置地理位置(0, 1.0, 1.0)"
+    },
+    {
+      "index": 71,
+      "name": "CDP_设置时区",
+      "signature": "CDP_设置时区(页面, 时区)",
+      "description": "覆盖页面时区，例如 Asia/Shanghai。",
+      "insertText": "CDP_设置时区($1, $2)",
+      "returnType": "逻辑型",
+      "category": "输入",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_设置时区",
+        "runtimeName": "CDP_设置时区",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "时区",
+            "type": "wideString",
+            "description": "IANA 时区名称，如 \"Asia/Shanghai\"。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_设置时区()",
+        "description": "覆盖页面时区，例如 Asia/Shanghai。"
+      },
+      "demoInvocation": "CDP_设置时区(0, \"演示参数2\")"
+    },
+    {
+      "index": 72,
+      "name": "CDP_设置语言",
+      "signature": "CDP_设置语言(页面, 语言)",
+      "description": "覆盖页面语言区域，例如 zh-CN。",
+      "insertText": "CDP_设置语言($1, $2)",
+      "returnType": "逻辑型",
+      "category": "输入",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_设置语言",
+        "runtimeName": "CDP_设置语言",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "语言",
+            "type": "wideString",
+            "description": "语言标签，如 \"zh-CN\"。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_设置语言()",
+        "description": "覆盖页面语言区域，例如 zh-CN。"
+      },
+      "demoInvocation": "CDP_设置语言(0, \"演示参数2\")"
+    },
+    {
+      "index": 73,
+      "name": "CDP_设置暗色模式",
+      "signature": "CDP_设置暗色模式(页面, 启用)",
+      "description": "模拟 prefers-color-scheme 为 dark 或 light。",
+      "insertText": "CDP_设置暗色模式($1, $2)",
+      "returnType": "逻辑型",
+      "category": "输入",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_设置暗色模式",
+        "runtimeName": "CDP_设置暗色模式",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "启用",
+            "type": "bool",
+            "description": "真=开启。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "CDP_设置暗色模式()",
+        "description": "模拟 prefers-color-scheme 为 dark 或 light。"
+      },
+      "demoInvocation": "CDP_设置暗色模式(0, 真)"
+    },
+    {
+      "index": 74,
+      "name": "CDP_设置CPU节流",
+      "signature": "CDP_设置CPU节流(页面, 倍率)",
+      "description": "按倍率降低页面 CPU 速度（1=不节流，20=20 倍慢）。",
+      "insertText": "CDP_设置CPU节流($1, 4)",
+      "returnType": "逻辑型",
+      "category": "输入",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_设置CPU节流",
+        "runtimeName": "CDP_设置CPU节流",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "倍率",
+            "type": "int",
+            "description": "1 到 100。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "CDP_设置CPU节流(示例值, 4)",
+        "description": "按倍率降低页面 CPU 速度（1=不节流，20=20 倍慢）。"
+      },
+      "demoInvocation": "CDP_设置CPU节流(0, 1)"
+    },
+    {
+      "index": 75,
+      "name": "CDP_重置仿真",
+      "signature": "CDP_重置仿真(页面)",
+      "description": "清除视口、UserAgent、触摸、地理位置和媒体特性覆盖。",
+      "insertText": "CDP_重置仿真($1)",
+      "returnType": "逻辑型",
+      "category": "输入",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_重置仿真",
+        "runtimeName": "CDP_重置仿真",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "CDP_重置仿真()",
+        "description": "清除视口、UserAgent、触摸、地理位置和媒体特性覆盖。"
+      },
+      "demoInvocation": "CDP_重置仿真(0)"
+    },
+    {
+      "index": 76,
+      "name": "CDP_设置离线",
+      "signature": "CDP_设置离线(页面, 离线)",
+      "description": "模拟网络离线/恢复。",
+      "insertText": "CDP_设置离线($1, $2)",
+      "returnType": "逻辑型",
+      "category": "网络",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_设置离线",
+        "runtimeName": "CDP_设置离线",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "离线",
+            "type": "bool",
+            "description": "真=模拟断网。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "CDP_设置离线()",
+        "description": "模拟网络离线/恢复。"
+      },
+      "demoInvocation": "CDP_设置离线(0, 真)"
+    },
+    {
+      "index": 77,
+      "name": "CDP_设置限速",
+      "signature": "CDP_设置限速(页面, 延迟毫秒, 下行速率, 上行速率)",
+      "description": "模拟网络限速：速率为字节每秒，-1 表示不限。",
+      "insertText": "CDP_设置限速($1, 100, 65536, 16384)",
+      "returnType": "逻辑型",
+      "category": "网络",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_设置限速",
+        "runtimeName": "CDP_设置限速",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "延迟毫秒",
+            "type": "int",
+            "description": "模拟的额外网络延迟（毫秒）。"
+          },
+          {
+            "name": "下行速率",
+            "type": "longLong",
+            "description": "字节每秒，-1 不限。"
+          },
+          {
+            "name": "上行速率",
+            "type": "longLong",
+            "description": "字节每秒，-1 不限。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "CDP_设置限速(示例值, 100, 65536, 16384)",
+        "description": "模拟网络限速：速率为字节每秒，-1 表示不限。"
+      },
+      "demoInvocation": "CDP_设置限速(0, 1, 1, 1)"
+    },
+    {
+      "index": 78,
+      "name": "CDP_禁用缓存",
+      "signature": "CDP_禁用缓存(页面, 禁用)",
+      "description": "为后续请求禁用或恢复 HTTP 缓存。",
+      "insertText": "CDP_禁用缓存($1, $2)",
+      "returnType": "逻辑型",
+      "category": "网络",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_禁用缓存",
+        "runtimeName": "CDP_禁用缓存",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "禁用",
+            "type": "bool",
+            "description": "真=禁用 HTTP 缓存。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "CDP_禁用缓存()",
+        "description": "为后续请求禁用或恢复 HTTP 缓存。"
+      },
+      "demoInvocation": "CDP_禁用缓存(0, 真)"
+    },
+    {
+      "index": 79,
+      "name": "CDP_截图元素",
+      "signature": "CDP_截图元素(元素, 文件路径, 完成处理器)",
+      "description": "滚动元素进入视口并只截取元素区域保存为 PNG。",
+      "insertText": "CDP_截图元素($1, \"${2:element.png}\", &${3:截图完成})",
+      "returnType": "逻辑型",
+      "category": "截图",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_截图元素",
+        "runtimeName": "CDP_截图元素",
+        "parameters": [
+          {
+            "name": "元素",
+            "type": "CDP元素",
+            "description": "CDP_查询元素 返回的受管元素引用；页面导航后失效。"
+          },
+          {
+            "name": "文件路径",
+            "type": "wideString",
+            "description": "PNG 输出路径。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；写入完成或失败时在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_截图元素(示例值, \"element.png\", &截图完成)",
+        "description": "滚动元素进入视口并只截取元素区域保存为 PNG。"
+      },
+      "demoInvocation": "CDP_截图元素(0, \"module-demo-temp.txt\", &模块演示回调)"
+    },
+    {
+      "index": 80,
+      "name": "CDP_取窗口边界",
+      "signature": "CDP_取窗口边界(页面, 完成处理器)",
+      "description": "异步读取浏览器窗口边界；完成后用 CDP_取当前事件文本 读取 JSON 结果（左、上、宽、高、状态）。",
+      "insertText": "CDP_取窗口边界($1, &$2)",
+      "returnType": "逻辑型",
+      "category": "页面",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取窗口边界",
+        "runtimeName": "CDP_取窗口边界",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；完成或失败时在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_取窗口边界()",
+        "description": "异步读取浏览器窗口边界；完成后用 CDP_取当前事件文本 读取 JSON 结果（左、上、宽、高、状态）。"
+      },
+      "demoInvocation": "CDP_取窗口边界(0, &模块演示回调)"
+    },
+    {
+      "index": 81,
+      "name": "CDP_设置窗口边界",
+      "signature": "CDP_设置窗口边界(页面, 左, 上, 宽度, 高度)",
+      "description": "调整浏览器窗口位置和大小；宽高必须在 100 到 10000 之间。",
+      "insertText": "CDP_设置窗口边界($1, $2, $3, $4, $5)",
+      "returnType": "逻辑型",
+      "category": "页面",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_设置窗口边界",
+        "runtimeName": "CDP_设置窗口边界",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "左",
+            "type": "int",
+            "description": "窗口左边界 X 坐标。"
+          },
+          {
+            "name": "上",
+            "type": "int",
+            "description": "窗口上边界 Y 坐标。"
+          },
+          {
+            "name": "宽度",
+            "type": "int",
+            "description": "窗口宽度（像素），100~10000。"
+          },
+          {
+            "name": "高度",
+            "type": "int",
+            "description": "窗口高度（像素），100~10000。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "CDP_设置窗口边界()",
+        "description": "调整浏览器窗口位置和大小；宽高必须在 100 到 10000 之间。"
+      },
+      "demoInvocation": "CDP_设置窗口边界(0, 1, 1, 1, 1)"
+    },
+    {
+      "index": 82,
+      "name": "CDP_绑定新页面事件",
+      "signature": "CDP_绑定新页面事件(连接, 处理器)",
+      "description": "订阅浏览器新标签页/弹窗事件“新页面出现”；包括 CDP_新建页面 自己创建的页面，事件文本为网址、详情为目标编号，可用 CDP_附加页面 附加。",
+      "insertText": "CDP_绑定新页面事件($1, &${2:新页面出现})",
+      "returnType": "逻辑型",
+      "category": "事件",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_绑定新页面事件",
+        "runtimeName": "CDP_绑定新页面事件",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "CDP连接",
+            "description": "CDP_连接 返回的受管连接 ID；断开后失效。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；事件在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_绑定新页面事件(示例值, &新页面出现)",
+        "description": "订阅浏览器新标签页/弹窗事件“新页面出现”；包括 CDP_新建页面 自己创建的页面，事件文本为网址、详情为目标编号，可用 CDP_附加页面 附加。"
+      },
+      "demoInvocation": "CDP_绑定新页面事件(0, &模块演示回调)"
+    },
+    {
+      "index": 83,
+      "name": "CDP_鼠标拖拽",
+      "signature": "CDP_鼠标拖拽(页面, 起点横坐标, 起点纵坐标, 终点横坐标, 终点纵坐标, 步数)",
+      "description": "按住左键从起点拖拽到终点，中途按步数插值移动。",
+      "insertText": "CDP_鼠标拖拽($1, 100, 100, 300, 100, 10)",
+      "returnType": "逻辑型",
+      "category": "输入",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_鼠标拖拽",
+        "runtimeName": "CDP_鼠标拖拽",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "起点横坐标",
+            "type": "int",
+            "description": "拖拽起点的 X 坐标。"
+          },
+          {
+            "name": "起点纵坐标",
+            "type": "int",
+            "description": "拖拽起点的 Y 坐标。"
+          },
+          {
+            "name": "终点横坐标",
+            "type": "int",
+            "description": "拖拽终点的 X 坐标。"
+          },
+          {
+            "name": "终点纵坐标",
+            "type": "int",
+            "description": "拖拽终点的 Y 坐标。"
+          },
+          {
+            "name": "步数",
+            "type": "int",
+            "description": "1 到 100。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "CDP_鼠标拖拽(示例值, 100, 100, 300, 100, 10)",
+        "description": "按住左键从起点拖拽到终点，中途按步数插值移动。"
+      },
+      "demoInvocation": "CDP_鼠标拖拽(0, 1, 1, 1, 1, 1)"
+    },
+    {
+      "index": 84,
+      "name": "CDP_调用函数",
+      "signature": "CDP_调用函数(元素, 函数代码, 完成处理器)",
+      "description": "把元素作为唯一参数调用页面函数，例如 function(x){return x.value}；完成后用 CDP_取当前事件文本 读取返回值。",
+      "insertText": "CDP_调用函数($1, \"function(x){return x.value}\", &${2:调用完成})",
+      "returnType": "逻辑型",
+      "category": "元素",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_调用函数",
+        "runtimeName": "CDP_调用函数",
+        "parameters": [
+          {
+            "name": "元素",
+            "type": "CDP元素",
+            "description": "CDP_查询元素 返回的受管元素引用；页面导航后失效。"
+          },
+          {
+            "name": "函数代码",
+            "type": "wideString",
+            "description": "形如 function(x){...} 的函数表达式。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；完成或失败时在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_调用函数(示例值, \"function(x){return x.value}\", &调用完成)",
+        "description": "把元素作为唯一参数调用页面函数，例如 function(x){return x.value}；完成后用 CDP_取当前事件文本 读取返回值。"
+      },
+      "demoInvocation": "CDP_调用函数(0, \"演示参数2\", &模块演示回调)"
+    },
+    {
+      "index": 85,
+      "name": "CDP_设置自动附加",
+      "signature": "CDP_设置自动附加(连接, 启用, 启动时等待调试器, 完成处理器)",
+      "description": "开启或关闭 flatten Target 自动附加，用于 OOPIF、Dedicated/Shared/Service Worker；完成结果通过处理器通知。",
+      "insertText": "CDP_设置自动附加($1, $2, $3, &$4)",
+      "returnType": "逻辑型",
+      "category": "目标",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_设置自动附加",
+        "runtimeName": "CDP_设置自动附加",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "CDP连接",
+            "description": "CDP_连接 返回的受管连接 ID；断开后失效。"
+          },
+          {
+            "name": "启用",
+            "type": "bool",
+            "description": "真=开启。"
+          },
+          {
+            "name": "启动时等待调试器",
+            "type": "bool",
+            "description": "真=新目标启动时先暂停，等待调试器接入后再运行。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_设置自动附加()",
+        "description": "开启或关闭 flatten Target 自动附加，用于 OOPIF、Dedicated/Shared/Service Worker；完成结果通过处理器通知。"
+      },
+      "demoInvocation": "CDP_设置自动附加(0, 真, 真, &模块演示回调)"
+    },
+    {
+      "index": 86,
+      "name": "CDP_绑定目标事件",
+      "signature": "CDP_绑定目标事件(连接, 处理器)",
+      "description": "订阅目标附加、分离、创建、更新、销毁和崩溃事件。",
+      "insertText": "CDP_绑定目标事件($1, &$2)",
+      "returnType": "逻辑型",
+      "category": "目标",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_绑定目标事件",
+        "runtimeName": "CDP_绑定目标事件",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "CDP连接",
+            "description": "CDP_连接 返回的受管连接 ID；断开后失效。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_绑定目标事件()",
+        "description": "订阅目标附加、分离、创建、更新、销毁和崩溃事件。"
+      },
+      "demoInvocation": "CDP_绑定目标事件(0, &模块演示回调)"
+    },
+    {
+      "index": 87,
+      "name": "CDP_枚举目标JSON",
+      "signature": "CDP_枚举目标JSON(连接, 类型)",
+      "description": "返回当前连接已发现目标的 UTF-16 JSON 快照；类型为空时返回全部目标。",
+      "insertText": "CDP_枚举目标JSON($1, $2)",
+      "returnType": "文本型",
+      "category": "目标",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_枚举目标JSON",
+        "runtimeName": "CDP_枚举目标JSON",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "CDP连接",
+            "description": "CDP_连接 返回的受管连接 ID；断开后失效。"
+          },
+          {
+            "name": "类型",
+            "type": "wideString",
+            "description": "单步方式：0 越过、1 进入、2 跳出。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "CDP_枚举目标JSON()",
+        "description": "返回当前连接已发现目标的 UTF-16 JSON 快照；类型为空时返回全部目标。"
+      },
+      "demoInvocation": "CDP_枚举目标JSON(0, \"演示参数2\")"
+    },
+    {
+      "index": 88,
+      "name": "CDP_附加目标",
+      "signature": "CDP_附加目标(目标, 完成处理器)",
+      "description": "异步附加通用 Target，立即返回受管会话句柄；最终结果通过处理器通知。",
+      "insertText": "CDP_附加目标($1, &$2)",
+      "returnType": "CDP会话",
+      "category": "目标",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_附加目标",
+        "runtimeName": "CDP_附加目标",
+        "parameters": [
+          {
+            "name": "目标",
+            "type": "CDP目标",
+            "description": "目标标识，取自 CDP_枚举目标JSON 结果。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "CDP会话",
+        "encoding": "wide",
+        "example": "CDP_附加目标()",
+        "description": "异步附加通用 Target，立即返回受管会话句柄；最终结果通过处理器通知。"
+      },
+      "demoInvocation": "CDP_附加目标(0, &模块演示回调)"
+    },
+    {
+      "index": 89,
+      "name": "CDP_分离会话",
+      "signature": "CDP_分离会话(会话)",
+      "description": "分离 OOPIF 或 Worker flatten 会话，并使该会话的待处理命令与调用帧失效。",
+      "insertText": "CDP_分离会话($1)",
+      "returnType": "逻辑型",
+      "category": "会话",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_分离会话",
+        "runtimeName": "CDP_分离会话",
+        "parameters": [
+          {
+            "name": "会话",
+            "type": "CDP会话",
+            "description": "CDP_附加目标 返回的调试会话 ID。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "CDP_分离会话()",
+        "description": "分离 OOPIF 或 Worker flatten 会话，并使该会话的待处理命令与调用帧失效。"
+      },
+      "demoInvocation": "CDP_分离会话(0)"
+    },
+    {
+      "index": 90,
+      "name": "CDP_会话执行脚本",
+      "signature": "CDP_会话执行脚本(会话, 脚本代码, 完成处理器)",
+      "description": "在指定 OOPIF/Worker 会话执行脚本，完成后从当前事件文本读取结果。",
+      "insertText": "CDP_会话执行脚本($1, $2, &$3)",
+      "returnType": "逻辑型",
+      "category": "会话",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_会话执行脚本",
+        "runtimeName": "CDP_会话执行脚本",
+        "parameters": [
+          {
+            "name": "会话",
+            "type": "CDP会话",
+            "description": "CDP_附加目标 返回的调试会话 ID。"
+          },
+          {
+            "name": "脚本代码",
+            "type": "wideString",
+            "description": "要执行的 JavaScript 源码。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_会话执行脚本()",
+        "description": "在指定 OOPIF/Worker 会话执行脚本，完成后从当前事件文本读取结果。"
+      },
+      "demoInvocation": "CDP_会话执行脚本(0, \"演示参数2\", &模块演示回调)"
+    },
+    {
+      "index": 91,
+      "name": "CDP_取目标JSON",
+      "signature": "CDP_取目标JSON(目标)",
+      "description": "返回目标 ID、类型、URL 和关联会话等不可变 JSON 快照。",
+      "insertText": "CDP_取目标JSON($1)",
+      "returnType": "文本型",
+      "category": "目标",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取目标JSON",
+        "runtimeName": "CDP_取目标JSON",
+        "parameters": [
+          {
+            "name": "目标",
+            "type": "CDP目标",
+            "description": "目标标识，取自 CDP_枚举目标JSON 结果。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "CDP_取目标JSON()",
+        "description": "返回目标 ID、类型、URL 和关联会话等不可变 JSON 快照。"
+      },
+      "demoInvocation": "CDP_取目标JSON(0)"
+    },
+    {
+      "index": 92,
+      "name": "CDP_取会话JSON",
+      "signature": "CDP_取会话JSON(会话)",
+      "description": "返回会话所属连接、Target、页面和 attached 状态 JSON 快照。",
+      "insertText": "CDP_取会话JSON($1)",
+      "returnType": "文本型",
+      "category": "会话",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取会话JSON",
+        "runtimeName": "CDP_取会话JSON",
+        "parameters": [
+          {
+            "name": "会话",
+            "type": "CDP会话",
+            "description": "CDP_附加目标 返回的调试会话 ID。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "CDP_取会话JSON()",
+        "description": "返回会话所属连接、Target、页面和 attached 状态 JSON 快照。"
+      },
+      "demoInvocation": "CDP_取会话JSON(0)"
+    },
+    {
+      "index": 93,
+      "name": "CDP_枚举帧JSON",
+      "signature": "CDP_枚举帧JSON(页面)",
+      "description": "返回页面及 OOPIF 已知 Frame 的 JSON 数组。",
+      "insertText": "CDP_枚举帧JSON($1)",
+      "returnType": "文本型",
+      "category": "会话",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_枚举帧JSON",
+        "runtimeName": "CDP_枚举帧JSON",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "CDP_枚举帧JSON()",
+        "description": "返回页面及 OOPIF 已知 Frame 的 JSON 数组。"
+      },
+      "demoInvocation": "CDP_枚举帧JSON(0)"
+    },
+    {
+      "index": 94,
+      "name": "CDP_添加页面绑定",
+      "signature": "CDP_添加页面绑定(页面, 名称, 处理器)",
+      "description": "安装 Runtime.addBinding 双向绑定，新附加的 OOPIF/Worker 会话会自动重放绑定。",
+      "insertText": "CDP_添加页面绑定($1, $2, &$3)",
+      "returnType": "CDP绑定",
+      "category": "绑定",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_添加页面绑定",
+        "runtimeName": "CDP_添加页面绑定",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "名称",
+            "type": "wideString",
+            "description": "要安装的绑定名称，页面通过 window[名称] 调用。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；调用载荷通过当前事件文本读取。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "CDP绑定",
+        "encoding": "wide",
+        "example": "CDP_添加页面绑定()",
+        "description": "安装 Runtime.addBinding 双向绑定，新附加的 OOPIF/Worker 会话会自动重放绑定。"
+      },
+      "demoInvocation": "CDP_添加页面绑定(0, \"演示参数2\", &模块演示回调)"
+    },
+    {
+      "index": 95,
+      "name": "CDP_移除页面绑定",
+      "signature": "CDP_移除页面绑定(绑定)",
+      "description": "移除受管 Runtime binding。",
+      "insertText": "CDP_移除页面绑定($1)",
+      "returnType": "逻辑型",
+      "category": "绑定",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_移除页面绑定",
+        "runtimeName": "CDP_移除页面绑定",
+        "parameters": [
+          {
+            "name": "绑定",
+            "type": "CDP绑定",
+            "description": "已安装的页面绑定名称。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "CDP_移除页面绑定()",
+        "description": "移除受管 Runtime binding。"
+      },
+      "demoInvocation": "CDP_移除页面绑定(0)"
+    },
+    {
+      "index": 96,
+      "name": "CDP_高亮元素",
+      "signature": "CDP_高亮元素(元素, 填充颜色)",
+      "description": "通过 Overlay.highlightRect 高亮元素；当前颜色参数保留用于后续主题化。",
+      "insertText": "CDP_高亮元素($1, $2)",
+      "returnType": "逻辑型",
+      "category": "元素",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_高亮元素",
+        "runtimeName": "CDP_高亮元素",
+        "parameters": [
+          {
+            "name": "元素",
+            "type": "CDP元素",
+            "description": "CDP_查询元素 返回的受管元素引用；页面导航后失效。"
+          },
+          {
+            "name": "填充颜色",
+            "type": "wideString",
+            "description": "高亮填充颜色；当前版本保留该参数，暂不生效。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_高亮元素()",
+        "description": "通过 Overlay.highlightRect 高亮元素；当前颜色参数保留用于后续主题化。"
+      },
+      "demoInvocation": "CDP_高亮元素(0, \"演示参数2\")"
+    },
+    {
+      "index": 97,
+      "name": "CDP_隐藏高亮",
+      "signature": "CDP_隐藏高亮(页面)",
+      "description": "隐藏页面当前 Overlay 高亮。",
+      "insertText": "CDP_隐藏高亮($1)",
+      "returnType": "逻辑型",
+      "category": "元素",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_隐藏高亮",
+        "runtimeName": "CDP_隐藏高亮",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "CDP_隐藏高亮()",
+        "description": "隐藏页面当前 Overlay 高亮。"
+      },
+      "demoInvocation": "CDP_隐藏高亮(0)"
+    },
+    {
+      "index": 98,
+      "name": "CDP_派发触摸",
+      "signature": "CDP_派发触摸(页面, 类型, 触点JSON)",
+      "description": "派发严格 JSON 多点触控事件，类型为 touchStart、touchMove、touchEnd 或 touchCancel，最多 16 个触点。",
+      "insertText": "CDP_派发触摸($1, $2, $3)",
+      "returnType": "逻辑型",
+      "category": "输入",
+      "capabilityKind": "managed",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CDP_派发触摸",
+        "runtimeName": "CDP_派发触摸",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "类型",
+            "type": "wideString",
+            "description": "单步方式：0 越过、1 进入、2 跳出。"
+          },
+          {
+            "name": "触点JSON",
+            "type": "wideString",
+            "description": "触点描述 JSON 数组文本。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_派发触摸()",
+        "description": "派发严格 JSON 多点触控事件，类型为 touchStart、touchMove、touchEnd 或 touchCancel，最多 16 个触点。"
+      },
+      "demoInvocation": "CDP_派发触摸(0, \"演示参数2\", \"{}\")"
+    },
+    {
+      "index": 99,
+      "name": "CDP_启用调试器",
+      "signature": "CDP_启用调试器(页面, 完成处理器)",
+      "description": "发送 Debugger.enable；请求接受与最终暂停/恢复事件分开通知。",
+      "insertText": "CDP_启用调试器($1, &$2)",
+      "returnType": "逻辑型",
+      "category": "调试",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_启用调试器",
+        "runtimeName": "CDP_启用调试器",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_启用调试器()",
+        "description": "发送 Debugger.enable；请求接受与最终暂停/恢复事件分开通知。"
+      },
+      "demoInvocation": "CDP_启用调试器(0, &模块演示回调)"
+    },
+    {
+      "index": 100,
+      "name": "CDP_禁用调试器",
+      "signature": "CDP_禁用调试器(页面, 完成处理器)",
+      "description": "发送 Debugger.disable；请求接受与最终暂停/恢复事件分开通知。",
+      "insertText": "CDP_禁用调试器($1, &$2)",
+      "returnType": "逻辑型",
+      "category": "调试",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_禁用调试器",
+        "runtimeName": "CDP_禁用调试器",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_禁用调试器()",
+        "description": "发送 Debugger.disable；请求接受与最终暂停/恢复事件分开通知。"
+      },
+      "demoInvocation": "CDP_禁用调试器(0, &模块演示回调)"
+    },
+    {
+      "index": 101,
+      "name": "CDP_暂停调试",
+      "signature": "CDP_暂停调试(页面, 完成处理器)",
+      "description": "发送 Debugger.pause；请求接受与最终暂停/恢复事件分开通知。",
+      "insertText": "CDP_暂停调试($1, &$2)",
+      "returnType": "逻辑型",
+      "category": "调试",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_暂停调试",
+        "runtimeName": "CDP_暂停调试",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_暂停调试()",
+        "description": "发送 Debugger.pause；请求接受与最终暂停/恢复事件分开通知。"
+      },
+      "demoInvocation": "CDP_暂停调试(0, &模块演示回调)"
+    },
+    {
+      "index": 102,
+      "name": "CDP_恢复调试",
+      "signature": "CDP_恢复调试(页面, 完成处理器)",
+      "description": "发送 Debugger.resume；请求接受与最终暂停/恢复事件分开通知。",
+      "insertText": "CDP_恢复调试($1, &$2)",
+      "returnType": "逻辑型",
+      "category": "调试",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_恢复调试",
+        "runtimeName": "CDP_恢复调试",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_恢复调试()",
+        "description": "发送 Debugger.resume；请求接受与最终暂停/恢复事件分开通知。"
+      },
+      "demoInvocation": "CDP_恢复调试(0, &模块演示回调)"
+    },
+    {
+      "index": 103,
+      "name": "CDP_绑定调试事件",
+      "signature": "CDP_绑定调试事件(页面, 处理器)",
+      "description": "订阅调试暂停、恢复和断点解析事件。",
+      "insertText": "CDP_绑定调试事件($1, &$2)",
+      "returnType": "逻辑型",
+      "category": "调试",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_绑定调试事件",
+        "runtimeName": "CDP_绑定调试事件",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_绑定调试事件()",
+        "description": "订阅调试暂停、恢复和断点解析事件。"
+      },
+      "demoInvocation": "CDP_绑定调试事件(0, &模块演示回调)"
+    },
+    {
+      "index": 104,
+      "name": "CDP_设置断点",
+      "signature": "CDP_设置断点(页面, 网址, 行, 列, 条件, 完成处理器)",
+      "description": "按 URL 设置断点；行列从 1 开始，返回受管断点句柄。",
+      "insertText": "CDP_设置断点($1, $2, $3, $4, $5, &$6)",
+      "returnType": "CDP断点",
+      "category": "调试",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_设置断点",
+        "runtimeName": "CDP_设置断点",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "网址",
+            "type": "wideString",
+            "description": "断点所在脚本的 URL 匹配文本。"
+          },
+          {
+            "name": "行",
+            "type": "int",
+            "description": "断点行号，从 1 起。"
+          },
+          {
+            "name": "列",
+            "type": "int",
+            "description": "断点列号，从 1 起。"
+          },
+          {
+            "name": "条件",
+            "type": "wideString",
+            "description": "断点触发条件表达式；空表示无条件触发。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "CDP断点",
+        "encoding": "wide",
+        "example": "CDP_设置断点()",
+        "description": "按 URL 设置断点；行列从 1 开始，返回受管断点句柄。"
+      },
+      "demoInvocation": "CDP_设置断点(0, \"https://example.com\", 1, 1, \"演示参数5\", &模块演示回调)"
+    },
+    {
+      "index": 105,
+      "name": "CDP_移除断点",
+      "signature": "CDP_移除断点(断点, 完成处理器)",
+      "description": "移除已解析断点。",
+      "insertText": "CDP_移除断点($1, &$2)",
+      "returnType": "逻辑型",
+      "category": "调试",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_移除断点",
+        "runtimeName": "CDP_移除断点",
+        "parameters": [
+          {
+            "name": "断点",
+            "type": "CDP断点",
+            "description": "CDP_设置断点 返回的受管断点句柄。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_移除断点()",
+        "description": "移除已解析断点。"
+      },
+      "demoInvocation": "CDP_移除断点(0, &模块演示回调)"
+    },
+    {
+      "index": 106,
+      "name": "CDP_调试单步",
+      "signature": "CDP_调试单步(页面, 类型, 完成处理器)",
+      "description": "调试单步：0 越过、1 进入、2 跳出。",
+      "insertText": "CDP_调试单步($1, $2, &$3)",
+      "returnType": "逻辑型",
+      "category": "调试",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_调试单步",
+        "runtimeName": "CDP_调试单步",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "类型",
+            "type": "int",
+            "description": "单步方式：0 越过、1 进入、2 跳出。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_调试单步()",
+        "description": "调试单步：0 越过、1 进入、2 跳出。"
+      },
+      "demoInvocation": "CDP_调试单步(0, 1, &模块演示回调)"
+    },
+    {
+      "index": 107,
+      "name": "CDP_取当前调用帧数量",
+      "signature": "CDP_取当前调用帧数量()",
+      "description": "返回当前调试暂停事件中的调用帧数量。",
+      "insertText": "CDP_取当前调用帧数量()",
+      "returnType": "整数型",
+      "category": "调试",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取当前调用帧数量",
+        "runtimeName": "CDP_取当前调用帧数量",
+        "parameters": [],
+        "returnType": "int",
+        "encoding": "raw",
+        "example": "CDP_取当前调用帧数量()",
+        "description": "返回当前调试暂停事件中的调用帧数量。"
+      },
+      "demoInvocation": "CDP_取当前调用帧数量()"
+    },
+    {
+      "index": 108,
+      "name": "CDP_取当前调用帧",
+      "signature": "CDP_取当前调用帧(索引)",
+      "description": "按零基索引返回当前暂停 generation 内有效的调用帧句柄。",
+      "insertText": "CDP_取当前调用帧($1)",
+      "returnType": "CDP调用帧",
+      "category": "调试",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取当前调用帧",
+        "runtimeName": "CDP_取当前调用帧",
+        "parameters": [
+          {
+            "name": "索引",
+            "type": "int",
+            "description": "当前暂停 generation 内调用帧列表的零基下标。"
+          }
+        ],
+        "returnType": "CDP调用帧",
+        "encoding": "raw",
+        "example": "CDP_取当前调用帧()",
+        "description": "按零基索引返回当前暂停 generation 内有效的调用帧句柄。"
+      },
+      "demoInvocation": "CDP_取当前调用帧(1)"
+    },
+    {
+      "index": 109,
+      "name": "CDP_取调用帧JSON",
+      "signature": "CDP_取调用帧JSON(调用帧)",
+      "description": "返回调用帧不可变 JSON 快照。",
+      "insertText": "CDP_取调用帧JSON($1)",
+      "returnType": "文本型",
+      "category": "调试",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取调用帧JSON",
+        "runtimeName": "CDP_取调用帧JSON",
+        "parameters": [
+          {
+            "name": "调用帧",
+            "type": "CDP调用帧",
+            "description": "调试暂停时调用帧的标识（callFrameId）。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "CDP_取调用帧JSON()",
+        "description": "返回调用帧不可变 JSON 快照。"
+      },
+      "demoInvocation": "CDP_取调用帧JSON(0)"
+    },
+    {
+      "index": 110,
+      "name": "CDP_调用帧执行脚本",
+      "signature": "CDP_调用帧执行脚本(调用帧, 脚本代码, 完成处理器)",
+      "description": "在暂停调用帧求值；恢复后旧调用帧立即失效。",
+      "insertText": "CDP_调用帧执行脚本($1, $2, &$3)",
+      "returnType": "逻辑型",
+      "category": "调试",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_调用帧执行脚本",
+        "runtimeName": "CDP_调用帧执行脚本",
+        "parameters": [
+          {
+            "name": "调用帧",
+            "type": "CDP调用帧",
+            "description": "调试暂停时调用帧的标识（callFrameId）。"
+          },
+          {
+            "name": "脚本代码",
+            "type": "wideString",
+            "description": "要执行的 JavaScript 源码。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_调用帧执行脚本()",
+        "description": "在暂停调用帧求值；恢复后旧调用帧立即失效。"
+      },
+      "demoInvocation": "CDP_调用帧执行脚本(0, \"演示参数2\", &模块演示回调)"
+    },
+    {
+      "index": 111,
+      "name": "CDP_取作用域变量",
+      "signature": "CDP_取作用域变量(调用帧, 作用域索引, 最大数量, 完成处理器)",
+      "description": "读取调用帧作用域属性，最大数量限制为 5000。",
+      "insertText": "CDP_取作用域变量($1, $2, $3, &$4)",
+      "returnType": "逻辑型",
+      "category": "调试",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取作用域变量",
+        "runtimeName": "CDP_取作用域变量",
+        "parameters": [
+          {
+            "name": "调用帧",
+            "type": "CDP调用帧",
+            "description": "调试暂停时调用帧的标识（callFrameId）。"
+          },
+          {
+            "name": "作用域索引",
+            "type": "int",
+            "description": "作用域下标，从 0 起。"
+          },
+          {
+            "name": "最大数量",
+            "type": "int",
+            "description": "最多返回的变量数量。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_取作用域变量()",
+        "description": "读取调用帧作用域属性，最大数量限制为 5000。"
+      },
+      "demoInvocation": "CDP_取作用域变量(0, 1, 1, &模块演示回调)"
+    },
+    {
+      "index": 112,
+      "name": "CDP_取性能指标",
+      "signature": "CDP_取性能指标(页面, 完成处理器)",
+      "description": "启用 Performance 域并异步返回稳定 JSON 指标。",
+      "insertText": "CDP_取性能指标($1, &$2)",
+      "returnType": "逻辑型",
+      "category": "性能",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取性能指标",
+        "runtimeName": "CDP_取性能指标",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_取性能指标()",
+        "description": "启用 Performance 域并异步返回稳定 JSON 指标。"
+      },
+      "demoInvocation": "CDP_取性能指标(0, &模块演示回调)"
+    },
+    {
+      "index": 113,
+      "name": "CDP_取存储用量",
+      "signature": "CDP_取存储用量(连接, 来源, 完成处理器)",
+      "description": "查询 exact http/https origin 的 usage/quota。",
+      "insertText": "CDP_取存储用量($1, $2, &$3)",
+      "returnType": "逻辑型",
+      "category": "存储",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取存储用量",
+        "runtimeName": "CDP_取存储用量",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "CDP连接",
+            "description": "CDP_连接 返回的受管连接 ID；断开后失效。"
+          },
+          {
+            "name": "来源",
+            "type": "wideString",
+            "description": "精确来源（origin），如 \"https://example.com\"。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_取存储用量()",
+        "description": "查询 exact http/https origin 的 usage/quota。"
+      },
+      "demoInvocation": "CDP_取存储用量(0, \"演示参数2\", &模块演示回调)"
+    },
+    {
+      "index": 114,
+      "name": "CDP_清理来源数据",
+      "signature": "CDP_清理来源数据(连接, 来源, 存储类型, 已确认, 完成处理器)",
+      "description": "清理 exact origin 的 allowlist 存储类型；必须显式确认破坏性操作。",
+      "insertText": "CDP_清理来源数据($1, $2, $3, $4, &$5)",
+      "returnType": "逻辑型",
+      "category": "存储",
+      "capabilityKind": "managed",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CDP_清理来源数据",
+        "runtimeName": "CDP_清理来源数据",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "CDP连接",
+            "description": "CDP_连接 返回的受管连接 ID；断开后失效。"
+          },
+          {
+            "name": "来源",
+            "type": "wideString",
+            "description": "精确来源（origin），如 \"https://example.com\"。"
+          },
+          {
+            "name": "存储类型",
+            "type": "wideString",
+            "description": "存储类型文本（如 \"cookies\"、\"local_storage\"）。"
+          },
+          {
+            "name": "已确认",
+            "type": "bool",
+            "description": "必须传真；用于确认破坏性清理操作。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_清理来源数据()",
+        "description": "清理 exact origin 的 allowlist 存储类型；必须显式确认破坏性操作。"
+      },
+      "demoInvocation": "CDP_清理来源数据(0, \"演示参数2\", \"演示参数3\", 真, &模块演示回调)"
+    },
+    {
+      "index": 115,
+      "name": "CDP_开启证书错误接管",
+      "signature": "CDP_开启证书错误接管(连接, 来源白名单, 有效秒数, 处理器)",
+      "description": "高级安全命令：仅对逗号分隔的 exact http/https origin 白名单，在 1–600 秒内接管证书错误；每次错误仍需单独裁决。",
+      "insertText": "CDP_开启证书错误接管($1, $2, $3, &$4)",
+      "returnType": "逻辑型",
+      "category": "网络",
+      "capabilityKind": "managed",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CDP_开启证书错误接管",
+        "runtimeName": "CDP_开启证书错误接管",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "CDP连接",
+            "description": "CDP_连接 返回的受管连接 ID；断开后失效。"
+          },
+          {
+            "name": "来源白名单",
+            "type": "wideString",
+            "description": "允许忽略证书错误的来源列表文本。"
+          },
+          {
+            "name": "有效秒数",
+            "type": "int",
+            "description": "证书错误接管设置的有效期（秒）。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；未应答或超时自动取消。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_开启证书错误接管()",
+        "description": "高级安全命令：仅对逗号分隔的 exact http/https origin 白名单，在 1–600 秒内接管证书错误；每次错误仍需单独裁决。"
+      },
+      "demoInvocation": "CDP_开启证书错误接管(0, \"演示参数2\", 1, &模块演示回调)"
+    },
+    {
+      "index": 116,
+      "name": "CDP_裁决证书错误",
+      "signature": "CDP_裁决证书错误(证书错误, 允许)",
+      "description": "对一次证书错误显式继续或取消；句柄只能使用一次。",
+      "insertText": "CDP_裁决证书错误($1, $2)",
+      "returnType": "逻辑型",
+      "category": "网络",
+      "capabilityKind": "managed",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CDP_裁决证书错误",
+        "runtimeName": "CDP_裁决证书错误",
+        "parameters": [
+          {
+            "name": "证书错误",
+            "type": "CDP证书错误",
+            "description": "“证书错误”事件携带的错误标识。"
+          },
+          {
+            "name": "允许",
+            "type": "bool",
+            "description": "真=允许。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "CDP_裁决证书错误()",
+        "description": "对一次证书错误显式继续或取消；句柄只能使用一次。"
+      },
+      "demoInvocation": "CDP_裁决证书错误(0, 真)"
+    },
+    {
+      "index": 117,
+      "name": "CDP_关闭证书错误接管",
+      "signature": "CDP_关闭证书错误接管(连接)",
+      "description": "恢复浏览器默认证书校验并自动取消该连接所有未决证书错误。",
+      "insertText": "CDP_关闭证书错误接管($1)",
+      "returnType": "逻辑型",
+      "category": "网络",
+      "capabilityKind": "managed",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CDP_关闭证书错误接管",
+        "runtimeName": "CDP_关闭证书错误接管",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "CDP连接",
+            "description": "CDP_连接 返回的受管连接 ID；断开后失效。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "CDP_关闭证书错误接管()",
+        "description": "恢复浏览器默认证书校验并自动取消该连接所有未决证书错误。"
+      },
+      "demoInvocation": "CDP_关闭证书错误接管(0)"
+    },
+    {
+      "index": 118,
+      "name": "CDP_绑定安全状态事件",
+      "signature": "CDP_绑定安全状态事件(连接, 处理器)",
+      "description": "订阅只读安全状态事件；不启用任何证书绕过。",
+      "insertText": "CDP_绑定安全状态事件($1, &$2)",
+      "returnType": "逻辑型",
+      "category": "事件",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_绑定安全状态事件",
+        "runtimeName": "CDP_绑定安全状态事件",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "CDP连接",
+            "description": "CDP_连接 返回的受管连接 ID；断开后失效。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_绑定安全状态事件()",
+        "description": "订阅只读安全状态事件；不启用任何证书绕过。"
+      },
+      "demoInvocation": "CDP_绑定安全状态事件(0, &模块演示回调)"
+    },
+    {
+      "index": 119,
+      "name": "CDP_开始录制",
+      "signature": "CDP_开始录制(页面, 文件路径, 处理器)",
+      "description": "开始 schemaVersion 1 自动化录制并返回受管句柄。",
+      "insertText": "CDP_开始录制($1, $2, &$3)",
+      "returnType": "CDP录制",
+      "category": "录制",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_开始录制",
+        "runtimeName": "CDP_开始录制",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "文件路径",
+            "type": "wideString",
+            "description": "录制数据文件路径。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "CDP录制",
+        "encoding": "wide",
+        "example": "CDP_开始录制()",
+        "description": "开始 schemaVersion 1 自动化录制并返回受管句柄。"
+      },
+      "demoInvocation": "CDP_开始录制(0, \"module-demo-temp.txt\", &模块演示回调)"
+    },
+    {
+      "index": 120,
+      "name": "CDP_记录步骤",
+      "signature": "CDP_记录步骤(录制, 类型, 数据JSON)",
+      "description": "向录制追加结构化步骤；敏感字段会替换为 SECRET 占位符。",
+      "insertText": "CDP_记录步骤($1, $2, $3)",
+      "returnType": "逻辑型",
+      "category": "录制",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_记录步骤",
+        "runtimeName": "CDP_记录步骤",
+        "parameters": [
+          {
+            "name": "录制",
+            "type": "CDP录制",
+            "description": "CDP_开始录制 返回的录制会话 ID。"
+          },
+          {
+            "name": "类型",
+            "type": "wideString",
+            "description": "单步方式：0 越过、1 进入、2 跳出。"
+          },
+          {
+            "name": "数据JSON",
+            "type": "wideString",
+            "description": "录制步骤数据 JSON 文本。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_记录步骤()",
+        "description": "向录制追加结构化步骤；敏感字段会替换为 SECRET 占位符。"
+      },
+      "demoInvocation": "CDP_记录步骤(0, \"演示参数2\", \"{}\")"
+    },
+    {
+      "index": 121,
+      "name": "CDP_停止录制",
+      "signature": "CDP_停止录制(录制)",
+      "description": "停止录制并原子写入版本化 JSON 文件。",
+      "insertText": "CDP_停止录制($1)",
+      "returnType": "逻辑型",
+      "category": "录制",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_停止录制",
+        "runtimeName": "CDP_停止录制",
+        "parameters": [
+          {
+            "name": "录制",
+            "type": "CDP录制",
+            "description": "CDP_开始录制 返回的录制会话 ID。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "CDP_停止录制()",
+        "description": "停止录制并原子写入版本化 JSON 文件。"
+      },
+      "demoInvocation": "CDP_停止录制(0)"
+    },
+    {
+      "index": 122,
+      "name": "CDP_加载回放",
+      "signature": "CDP_加载回放(连接, 文件路径)",
+      "description": "加载录制文件并返回回放句柄；执行器将在后续阶段 3 增量中启用。",
+      "insertText": "CDP_加载回放($1, $2)",
+      "returnType": "CDP回放",
+      "category": "录制",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_加载回放",
+        "runtimeName": "CDP_加载回放",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "CDP连接",
+            "description": "CDP_连接 返回的受管连接 ID；断开后失效。"
+          },
+          {
+            "name": "文件路径",
+            "type": "wideString",
+            "description": "录制数据文件路径。"
+          }
+        ],
+        "returnType": "CDP回放",
+        "encoding": "wide",
+        "example": "CDP_加载回放()",
+        "description": "加载录制文件并返回回放句柄；执行器将在后续阶段 3 增量中启用。"
+      },
+      "demoInvocation": "CDP_加载回放(0, \"module-demo-temp.txt\")"
+    },
+    {
+      "index": 123,
+      "name": "CDP_取录制状态",
+      "signature": "CDP_取录制状态(录制)",
+      "description": "返回录制状态。",
+      "insertText": "CDP_取录制状态($1)",
+      "returnType": "文本型",
+      "category": "录制",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取录制状态",
+        "runtimeName": "CDP_取录制状态",
+        "parameters": [
+          {
+            "name": "录制",
+            "type": "CDP录制",
+            "description": "CDP_开始录制 返回的录制会话 ID。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "CDP_取录制状态()",
+        "description": "返回录制状态。"
+      },
+      "demoInvocation": "CDP_取录制状态(0)"
+    },
+    {
+      "index": 124,
+      "name": "CDP_取回放状态",
+      "signature": "CDP_取回放状态(回放)",
+      "description": "返回回放状态。",
+      "insertText": "CDP_取回放状态($1)",
+      "returnType": "文本型",
+      "category": "录制",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取回放状态",
+        "runtimeName": "CDP_取回放状态",
+        "parameters": [
+          {
+            "name": "回放",
+            "type": "CDP回放",
+            "description": "CDP_加载回放 返回的回放会话 ID。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "CDP_取回放状态()",
+        "description": "返回回放状态。"
+      },
+      "demoInvocation": "CDP_取回放状态(0)"
+    },
+    {
+      "index": 125,
+      "name": "CDP_取当前目标",
+      "signature": "CDP_取当前目标()",
+      "description": "返回当前 Target 事件对应的受管目标句柄。",
+      "insertText": "CDP_取当前目标()",
+      "returnType": "CDP目标",
+      "category": "快照",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取当前目标",
+        "runtimeName": "CDP_取当前目标",
+        "parameters": [],
+        "returnType": "CDP目标",
+        "encoding": "raw",
+        "example": "CDP_取当前目标()",
+        "description": "返回当前 Target 事件对应的受管目标句柄。"
+      },
+      "demoInvocation": "CDP_取当前目标()"
+    },
+    {
+      "index": 126,
+      "name": "CDP_取当前会话",
+      "signature": "CDP_取当前会话()",
+      "description": "返回当前 Target、Debugger 或 binding 事件对应的会话句柄。",
+      "insertText": "CDP_取当前会话()",
+      "returnType": "CDP会话",
+      "category": "快照",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取当前会话",
+        "runtimeName": "CDP_取当前会话",
+        "parameters": [],
+        "returnType": "CDP会话",
+        "encoding": "raw",
+        "example": "CDP_取当前会话()",
+        "description": "返回当前 Target、Debugger 或 binding 事件对应的会话句柄。"
+      },
+      "demoInvocation": "CDP_取当前会话()"
+    },
+    {
+      "index": 127,
+      "name": "CDP_取当前帧",
+      "signature": "CDP_取当前帧()",
+      "description": "返回当前 Frame 事件对应的帧句柄。",
+      "insertText": "CDP_取当前帧()",
+      "returnType": "CDP帧",
+      "category": "快照",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取当前帧",
+        "runtimeName": "CDP_取当前帧",
+        "parameters": [],
+        "returnType": "CDP帧",
+        "encoding": "raw",
+        "example": "CDP_取当前帧()",
+        "description": "返回当前 Frame 事件对应的帧句柄。"
+      },
+      "demoInvocation": "CDP_取当前帧()"
+    },
+    {
+      "index": 128,
+      "name": "CDP_取当前绑定",
+      "signature": "CDP_取当前绑定()",
+      "description": "返回当前 Runtime binding 事件对应的绑定句柄。",
+      "insertText": "CDP_取当前绑定()",
+      "returnType": "CDP绑定",
+      "category": "快照",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取当前绑定",
+        "runtimeName": "CDP_取当前绑定",
+        "parameters": [],
+        "returnType": "CDP绑定",
+        "encoding": "raw",
+        "example": "CDP_取当前绑定()",
+        "description": "返回当前 Runtime binding 事件对应的绑定句柄。"
+      },
+      "demoInvocation": "CDP_取当前绑定()"
+    },
+    {
+      "index": 129,
+      "name": "CDP_取当前任务",
+      "signature": "CDP_取当前任务()",
+      "description": "返回当前长任务事件对应的任务句柄。",
+      "insertText": "CDP_取当前任务()",
+      "returnType": "CDP任务",
+      "category": "快照",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取当前任务",
+        "runtimeName": "CDP_取当前任务",
+        "parameters": [],
+        "returnType": "CDP任务",
+        "encoding": "raw",
+        "example": "CDP_取当前任务()",
+        "description": "返回当前长任务事件对应的任务句柄。"
+      },
+      "demoInvocation": "CDP_取当前任务()"
+    },
+    {
+      "index": 130,
+      "name": "CDP_取当前断点",
+      "signature": "CDP_取当前断点()",
+      "description": "返回当前断点事件对应的断点句柄。",
+      "insertText": "CDP_取当前断点()",
+      "returnType": "CDP断点",
+      "category": "快照",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取当前断点",
+        "runtimeName": "CDP_取当前断点",
+        "parameters": [],
+        "returnType": "CDP断点",
+        "encoding": "raw",
+        "example": "CDP_取当前断点()",
+        "description": "返回当前断点事件对应的断点句柄。"
+      },
+      "demoInvocation": "CDP_取当前断点()"
+    },
+    {
+      "index": 131,
+      "name": "CDP_取当前证书错误",
+      "signature": "CDP_取当前证书错误()",
+      "description": "返回当前证书错误事件的一次性裁决句柄。",
+      "insertText": "CDP_取当前证书错误()",
+      "returnType": "CDP证书错误",
+      "category": "快照",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取当前证书错误",
+        "runtimeName": "CDP_取当前证书错误",
+        "parameters": [],
+        "returnType": "CDP证书错误",
+        "encoding": "raw",
+        "example": "CDP_取当前证书错误()",
+        "description": "返回当前证书错误事件的一次性裁决句柄。"
+      },
+      "demoInvocation": "CDP_取当前证书错误()"
+    },
+    {
+      "index": 132,
+      "name": "CDP_取当前事件类型",
+      "signature": "CDP_取当前事件类型()",
+      "description": "返回当前回调事件类型：已就绪、连接失败、已断开、页面就绪、页面失败、加载完成、页面销毁、命令完成、命令失败、网络请求、网络响应、网络完成、网络失败、请求被拦截、需要认证、对话框出现、下载开始、下载进度、下载完成、下载取消、新页面出现、控制台或页面异常。",
+      "insertText": "CDP_取当前事件类型()",
+      "returnType": "文本型",
+      "category": "快照",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取当前事件类型",
+        "runtimeName": "CDP_取当前事件类型",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "CDP_取当前事件类型()",
+        "description": "返回当前回调事件类型：已就绪、连接失败、已断开、页面就绪、页面失败、加载完成、页面销毁、命令完成、命令失败、网络请求、网络响应、网络完成、网络失败、请求被拦截、需要认证、对话框出现、下载开始、下载进度、下载完成、下载取消、新页面出现、控制台或页面异常。"
+      },
+      "demoInvocation": "CDP_取当前事件类型()"
+    },
+    {
+      "index": 133,
+      "name": "CDP_取当前事件文本",
+      "signature": "CDP_取当前事件文本()",
+      "description": "返回当前事件的结果文本、错误说明或 JSON 数据快照；拦截事件返回请求头 JSON。",
+      "insertText": "CDP_取当前事件文本()",
+      "returnType": "文本型",
+      "category": "快照",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取当前事件文本",
+        "runtimeName": "CDP_取当前事件文本",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "CDP_取当前事件文本()",
+        "description": "返回当前事件的结果文本、错误说明或 JSON 数据快照；拦截事件返回请求头 JSON。"
+      },
+      "demoInvocation": "CDP_取当前事件文本()"
+    },
+    {
+      "index": 134,
+      "name": "CDP_取当前事件详情",
+      "signature": "CDP_取当前事件详情()",
+      "description": "返回当前事件的补充信息，例如控制台级别、拦截阶段（请求/响应）、对话框类型或下载编号。",
+      "insertText": "CDP_取当前事件详情()",
+      "returnType": "文本型",
+      "category": "快照",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取当前事件详情",
+        "runtimeName": "CDP_取当前事件详情",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "CDP_取当前事件详情()",
+        "description": "返回当前事件的补充信息，例如控制台级别、拦截阶段（请求/响应）、对话框类型或下载编号。"
+      },
+      "demoInvocation": "CDP_取当前事件详情()"
+    },
+    {
+      "index": 135,
+      "name": "CDP_取当前错误",
+      "signature": "CDP_取当前错误()",
+      "description": "返回当前事件的中文错误说明；无错误返回空文本。",
+      "insertText": "CDP_取当前错误()",
+      "returnType": "文本型",
+      "category": "快照",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取当前错误",
+        "runtimeName": "CDP_取当前错误",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "CDP_取当前错误()",
+        "description": "返回当前事件的中文错误说明；无错误返回空文本。"
+      },
+      "demoInvocation": "CDP_取当前错误()"
+    },
+    {
+      "index": 136,
+      "name": "CDP_取最后错误",
+      "signature": "CDP_取最后错误()",
+      "description": "返回最近一次同步失败的中文原因（CDP_启动浏览器/CDP_连接/CDP_停止浏览器 返回 0 后立即读取）；异步错误请用 CDP_取当前错误。",
+      "insertText": "CDP_取最后错误()",
+      "returnType": "文本型",
+      "category": "快照",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取最后错误",
+        "runtimeName": "CDP_取最后错误",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "CDP_取最后错误()",
+        "description": "返回最近一次同步失败的中文原因（CDP_启动浏览器/CDP_连接/CDP_停止浏览器 返回 0 后立即读取）；异步错误请用 CDP_取当前错误。"
+      },
+      "demoInvocation": "CDP_取最后错误()"
+    },
+    {
+      "index": 137,
+      "name": "CDP_取当前网络网址",
+      "signature": "CDP_取当前网络网址()",
+      "description": "返回当前网络事件或拦截事件的请求网址。",
+      "insertText": "CDP_取当前网络网址()",
+      "returnType": "文本型",
+      "category": "快照",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取当前网络网址",
+        "runtimeName": "CDP_取当前网络网址",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "CDP_取当前网络网址()",
+        "description": "返回当前网络事件或拦截事件的请求网址。"
+      },
+      "demoInvocation": "CDP_取当前网络网址()"
+    },
+    {
+      "index": 138,
+      "name": "CDP_取当前网络方法",
+      "signature": "CDP_取当前网络方法()",
+      "description": "返回当前网络事件或拦截事件的 HTTP 方法。",
+      "insertText": "CDP_取当前网络方法()",
+      "returnType": "文本型",
+      "category": "快照",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取当前网络方法",
+        "runtimeName": "CDP_取当前网络方法",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "CDP_取当前网络方法()",
+        "description": "返回当前网络事件或拦截事件的 HTTP 方法。"
+      },
+      "demoInvocation": "CDP_取当前网络方法()"
+    },
+    {
+      "index": 139,
+      "name": "CDP_取当前网络编号",
+      "signature": "CDP_取当前网络编号()",
+      "description": "返回当前网络事件或拦截事件的请求编号，供 CDP_取网络响应体 使用。",
+      "insertText": "CDP_取当前网络编号()",
+      "returnType": "文本型",
+      "category": "快照",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取当前网络编号",
+        "runtimeName": "CDP_取当前网络编号",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "CDP_取当前网络编号()",
+        "description": "返回当前网络事件或拦截事件的请求编号，供 CDP_取网络响应体 使用。"
+      },
+      "demoInvocation": "CDP_取当前网络编号()"
+    },
+    {
+      "index": 140,
+      "name": "CDP_取当前对话框消息",
+      "signature": "CDP_取当前对话框消息()",
+      "description": "返回当前对话框事件的提示消息。",
+      "insertText": "CDP_取当前对话框消息()",
+      "returnType": "文本型",
+      "category": "快照",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取当前对话框消息",
+        "runtimeName": "CDP_取当前对话框消息",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "CDP_取当前对话框消息()",
+        "description": "返回当前对话框事件的提示消息。"
+      },
+      "demoInvocation": "CDP_取当前对话框消息()"
+    },
+    {
+      "index": 141,
+      "name": "CDP_取当前对话框类型",
+      "signature": "CDP_取当前对话框类型()",
+      "description": "返回当前对话框类型：alert、confirm、prompt 或 beforeunload。",
+      "insertText": "CDP_取当前对话框类型()",
+      "returnType": "文本型",
+      "category": "快照",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取当前对话框类型",
+        "runtimeName": "CDP_取当前对话框类型",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "CDP_取当前对话框类型()",
+        "description": "返回当前对话框类型：alert、confirm、prompt 或 beforeunload。"
+      },
+      "demoInvocation": "CDP_取当前对话框类型()"
+    },
+    {
+      "index": 142,
+      "name": "CDP_取当前对话框默认文本",
+      "signature": "CDP_取当前对话框默认文本()",
+      "description": "返回 prompt 对话框的默认输入文本。",
+      "insertText": "CDP_取当前对话框默认文本()",
+      "returnType": "文本型",
+      "category": "快照",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取当前对话框默认文本",
+        "runtimeName": "CDP_取当前对话框默认文本",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "CDP_取当前对话框默认文本()",
+        "description": "返回 prompt 对话框的默认输入文本。"
+      },
+      "demoInvocation": "CDP_取当前对话框默认文本()"
+    },
+    {
+      "index": 143,
+      "name": "CDP_取当前下载文件名",
+      "signature": "CDP_取当前下载文件名()",
+      "description": "返回当前下载事件对应的建议文件名。",
+      "insertText": "CDP_取当前下载文件名()",
+      "returnType": "文本型",
+      "category": "快照",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取当前下载文件名",
+        "runtimeName": "CDP_取当前下载文件名",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "CDP_取当前下载文件名()",
+        "description": "返回当前下载事件对应的建议文件名。"
+      },
+      "demoInvocation": "CDP_取当前下载文件名()"
+    },
+    {
+      "index": 144,
+      "name": "CDP_取当前网络状态",
+      "signature": "CDP_取当前网络状态()",
+      "description": "返回当前网络响应事件或响应阶段拦截的 HTTP 状态码；其它事件返回 0。",
+      "insertText": "CDP_取当前网络状态()",
+      "returnType": "整数型",
+      "category": "快照",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取当前网络状态",
+        "runtimeName": "CDP_取当前网络状态",
+        "parameters": [],
+        "returnType": "int",
+        "encoding": "raw",
+        "example": "CDP_取当前网络状态()",
+        "description": "返回当前网络响应事件或响应阶段拦截的 HTTP 状态码；其它事件返回 0。"
+      },
+      "demoInvocation": "CDP_取当前网络状态()"
+    },
+    {
+      "index": 145,
+      "name": "CDP_取当前下载进度",
+      "signature": "CDP_取当前下载进度()",
+      "description": "返回当前下载事件的百分比进度（0-100）。",
+      "insertText": "CDP_取当前下载进度()",
+      "returnType": "整数型",
+      "category": "快照",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取当前下载进度",
+        "runtimeName": "CDP_取当前下载进度",
+        "parameters": [],
+        "returnType": "int",
+        "encoding": "raw",
+        "example": "CDP_取当前下载进度()",
+        "description": "返回当前下载事件的百分比进度（0-100）。"
+      },
+      "demoInvocation": "CDP_取当前下载进度()"
+    },
+    {
+      "index": 146,
+      "name": "CDP_取当前拦截",
+      "signature": "CDP_取当前拦截()",
+      "description": "返回当前拦截事件对应的受管 CDP拦截 句柄，供 CDP_拦截继续、CDP_拦截改写、CDP_拦截模拟响应、CDP_拦截终止或 CDP_拦截应答认证 裁决。",
+      "insertText": "CDP_取当前拦截()",
+      "returnType": "CDP拦截",
+      "category": "快照",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取当前拦截",
+        "runtimeName": "CDP_取当前拦截",
+        "parameters": [],
+        "returnType": "CDP拦截",
+        "encoding": "raw",
+        "example": "CDP_取当前拦截()",
+        "description": "返回当前拦截事件对应的受管 CDP拦截 句柄，供 CDP_拦截继续、CDP_拦截改写、CDP_拦截模拟响应、CDP_拦截终止或 CDP_拦截应答认证 裁决。"
+      },
+      "demoInvocation": "CDP_取当前拦截()"
+    },
+    {
+      "index": 147,
+      "name": "CDP_取当前连接",
+      "signature": "CDP_取当前连接()",
+      "description": "返回当前事件对应的受管连接 ID。",
+      "insertText": "CDP_取当前连接()",
+      "returnType": "CDP连接",
+      "category": "快照",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取当前连接",
+        "runtimeName": "CDP_取当前连接",
+        "parameters": [],
+        "returnType": "CDP连接",
+        "encoding": "raw",
+        "example": "CDP_取当前连接()",
+        "description": "返回当前事件对应的受管连接 ID。"
+      },
+      "demoInvocation": "CDP_取当前连接()"
+    },
+    {
+      "index": 148,
+      "name": "CDP_取当前页面",
+      "signature": "CDP_取当前页面()",
+      "description": "返回当前事件对应的受管页面 ID；连接级事件返回 0。",
+      "insertText": "CDP_取当前页面()",
+      "returnType": "CDP页面",
+      "category": "快照",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取当前页面",
+        "runtimeName": "CDP_取当前页面",
+        "parameters": [],
+        "returnType": "CDP页面",
+        "encoding": "raw",
+        "example": "CDP_取当前页面()",
+        "description": "返回当前事件对应的受管页面 ID；连接级事件返回 0。"
+      },
+      "demoInvocation": "CDP_取当前页面()"
+    }
+  ]
+}

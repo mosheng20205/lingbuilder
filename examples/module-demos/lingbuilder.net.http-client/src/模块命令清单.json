@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.879Z",
+  "generatedAt": "2026-09-25T22:07:33.558Z",
   "module": {
     "id": "lingbuilder.net.http-client",
     "name": "HTTP 客户端模块",
-    "version": "2.0.0",
+    "version": "2.1.0",
     "description": "提供受管 WinHTTP HTTP/HTTPS 客户端、多请求并发、后台完成事件、代理与身份验证、TLS 证书策略、重定向、Cookie、压缩、文本/二进制/文件上传下载、资源限制和运行统计。"
   },
-  "commandCount": 74,
+  "commandCount": 79,
   "commands": [
     {
       "index": 1,
@@ -44,7 +44,8 @@
         "parameters": [
           {
             "name": "客户端",
-            "type": "HTTP客户端"
+            "type": "HTTP客户端",
+            "description": "HTTP客户端_创建客户端 返回的受管客户端 ID；ID 无效时命令返回失败值，配置类命令还要求该客户端当前没有活动请求。"
           }
         ],
         "returnType": "bool",
@@ -69,11 +70,13 @@
         "parameters": [
           {
             "name": "客户端",
-            "type": "HTTP客户端"
+            "type": "HTTP客户端",
+            "description": "HTTP客户端_创建客户端 返回的受管客户端 ID；ID 无效时命令返回失败值，配置类命令还要求该客户端当前没有活动请求。"
           },
           {
             "name": "UserAgent",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "该客户端后续请求使用的 User-Agent 文本，不能为空且不得含控制字符。"
           }
         ],
         "returnType": "bool",
@@ -98,23 +101,28 @@
         "parameters": [
           {
             "name": "客户端",
-            "type": "HTTP客户端"
+            "type": "HTTP客户端",
+            "description": "HTTP客户端_创建客户端 返回的受管客户端 ID；ID 无效时命令返回失败值，配置类命令还要求该客户端当前没有活动请求。"
           },
           {
             "name": "解析毫秒",
-            "type": "int"
+            "type": "int",
+            "description": "DNS 解析阶段超时毫秒数，100 到 3600000。"
           },
           {
             "name": "连接毫秒",
-            "type": "int"
+            "type": "int",
+            "description": "建立 TCP 连接阶段超时毫秒数，100 到 3600000。"
           },
           {
             "name": "发送毫秒",
-            "type": "int"
+            "type": "int",
+            "description": "发送请求头与正文阶段超时毫秒数，100 到 3600000。"
           },
           {
             "name": "接收毫秒",
-            "type": "int"
+            "type": "int",
+            "description": "接收响应阶段单次读取超时毫秒数，100 到 3600000。"
           }
         ],
         "returnType": "bool",
@@ -128,7 +136,7 @@
       "index": 5,
       "name": "HTTP客户端_设置资源限制",
       "signature": "HTTP客户端_设置资源限制(客户端, 响应头上限KB, 响应体上限MB, 上传上限MB, 最大重定向次数)",
-      "description": "限制响应头、内存或文件响应、上传和自动重定向，阻止不受控资源占用。",
+      "description": "限制响应头、内存响应、上传和自动重定向，阻止不受控资源占用；流式写入文件（设置响应文件/设置续传文件）的响应按盘落盘，不受响应体上限约束。",
       "insertText": "HTTP客户端_设置资源限制($1, 64, 64, 64, 10)",
       "returnType": "逻辑型",
       "category": "客户端",
@@ -139,29 +147,34 @@
         "parameters": [
           {
             "name": "客户端",
-            "type": "HTTP客户端"
+            "type": "HTTP客户端",
+            "description": "HTTP客户端_创建客户端 返回的受管客户端 ID；ID 无效时命令返回失败值，配置类命令还要求该客户端当前没有活动请求。"
           },
           {
             "name": "响应头上限KB",
-            "type": "int"
+            "type": "int",
+            "description": "响应头总大小上限，单位 KB，1 到 1024。"
           },
           {
             "name": "响应体上限MB",
-            "type": "int"
+            "type": "int",
+            "description": "内存中响应正文的大小上限，单位 MB，1 到 4096；流式写文件的响应不受此限。"
           },
           {
             "name": "上传上限MB",
-            "type": "int"
+            "type": "int",
+            "description": "上传正文或文件的大小上限，单位 MB，1 到 4096。"
           },
           {
             "name": "最大重定向次数",
-            "type": "int"
+            "type": "int",
+            "description": "自动跟随重定向的最大次数，0 到 100。"
           }
         ],
         "returnType": "bool",
         "encoding": "raw",
         "example": "HTTP客户端_设置资源限制(示例值, 64, 64, 64, 10)",
-        "description": "限制响应头、内存或文件响应、上传和自动重定向，阻止不受控资源占用。"
+        "description": "限制响应头、内存响应、上传和自动重定向，阻止不受控资源占用；流式写入文件（设置响应文件/设置续传文件）的响应按盘落盘，不受响应体上限约束。"
       },
       "demoInvocation": "HTTP客户端_设置资源限制(0, 1, 1, 1, 1)"
     },
@@ -180,15 +193,18 @@
         "parameters": [
           {
             "name": "客户端",
-            "type": "HTTP客户端"
+            "type": "HTTP客户端",
+            "description": "HTTP客户端_创建客户端 返回的受管客户端 ID；ID 无效时命令返回失败值，配置类命令还要求该客户端当前没有活动请求。"
           },
           {
             "name": "允许重定向",
-            "type": "bool"
+            "type": "bool",
+            "description": "传真自动跟随 3xx 重定向，传假把 3xx 原样交给调用方。"
           },
           {
             "name": "允许HTTPS降级HTTP",
-            "type": "bool"
+            "type": "bool",
+            "description": "传真才允许 HTTPS 请求被重定向到 HTTP；默认假，防止协议降级。"
           }
         ],
         "returnType": "bool",
@@ -213,19 +229,23 @@
         "parameters": [
           {
             "name": "客户端",
-            "type": "HTTP客户端"
+            "type": "HTTP客户端",
+            "description": "HTTP客户端_创建客户端 返回的受管客户端 ID；ID 无效时命令返回失败值，配置类命令还要求该客户端当前没有活动请求。"
           },
           {
             "name": "模式",
-            "type": "int"
+            "type": "int",
+            "description": "代理模式：0 使用系统默认配置，1 直连不经代理，2 固定代理地址。"
           },
           {
             "name": "代理地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "固定代理地址，模式为 2 时必须提供且不能含换行。"
           },
           {
             "name": "绕过列表",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "不走代理的域名或 IP 列表，格式遵循 WinHTTP；不需要时传空文本。"
           }
         ],
         "returnType": "bool",
@@ -250,15 +270,18 @@
         "parameters": [
           {
             "name": "客户端",
-            "type": "HTTP客户端"
+            "type": "HTTP客户端",
+            "description": "HTTP客户端_创建客户端 返回的受管客户端 ID；ID 无效时命令返回失败值，配置类命令还要求该客户端当前没有活动请求。"
           },
           {
             "name": "用户名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "HTTP Basic 服务器验证用户名，不得含控制字符。"
           },
           {
             "name": "密码",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "HTTP Basic 服务器验证密码，不得含控制字符；只保存在内存中，不写入日志。"
           }
         ],
         "returnType": "bool",
@@ -283,15 +306,18 @@
         "parameters": [
           {
             "name": "客户端",
-            "type": "HTTP客户端"
+            "type": "HTTP客户端",
+            "description": "HTTP客户端_创建客户端 返回的受管客户端 ID；ID 无效时命令返回失败值，配置类命令还要求该客户端当前没有活动请求。"
           },
           {
             "name": "用户名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "代理 Basic 验证用户名，不得含控制字符。"
           },
           {
             "name": "密码",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "代理 Basic 验证密码，不得含控制字符；只保存在内存中。"
           }
         ],
         "returnType": "bool",
@@ -316,15 +342,18 @@
         "parameters": [
           {
             "name": "客户端",
-            "type": "HTTP客户端"
+            "type": "HTTP客户端",
+            "description": "HTTP客户端_创建客户端 返回的受管客户端 ID；ID 无效时命令返回失败值，配置类命令还要求该客户端当前没有活动请求。"
           },
           {
             "name": "验证证书",
-            "type": "bool"
+            "type": "bool",
+            "description": "传真校验证书链、主机名、用途和有效期；传假属于高风险调试能力。"
           },
           {
             "name": "允许自签名",
-            "type": "bool"
+            "type": "bool",
+            "description": "传真额外接受自签名证书，其余校验保持不变。"
           }
         ],
         "returnType": "bool",
@@ -349,11 +378,13 @@
         "parameters": [
           {
             "name": "客户端",
-            "type": "HTTP客户端"
+            "type": "HTTP客户端",
+            "description": "HTTP客户端_创建客户端 返回的受管客户端 ID；ID 无效时命令返回失败值，配置类命令还要求该客户端当前没有活动请求。"
           },
           {
             "name": "SHA256指纹",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要固定的服务端证书 SHA-256 指纹，64 位十六进制，可含冒号或空格；空文本清除固定。"
           }
         ],
         "returnType": "bool",
@@ -378,11 +409,13 @@
         "parameters": [
           {
             "name": "客户端",
-            "type": "HTTP客户端"
+            "type": "HTTP客户端",
+            "description": "HTTP客户端_创建客户端 返回的受管客户端 ID；ID 无效时命令返回失败值，配置类命令还要求该客户端当前没有活动请求。"
           },
           {
             "name": "启用",
-            "type": "bool"
+            "type": "bool",
+            "description": "传真由 WinHTTP 自动解压 gzip 与 deflate 响应，默认启用。"
           }
         ],
         "returnType": "bool",
@@ -396,7 +429,7 @@
       "index": 13,
       "name": "HTTP客户端_设置Cookie",
       "signature": "HTTP客户端_设置Cookie(客户端, 启用)",
-      "description": "启用或关闭该受管客户端会话内的 Cookie 接收和回送；默认启用且不与浏览器共享。",
+      "description": "启用或关闭 WinHTTP 自动 Cookie 罐（接收 Set-Cookie 并对后续请求自动回送）；默认启用且不与浏览器共享。注意这只是自动罐开关，手工注入已有 Cookie 用 HTTP客户端_置Cookie 或 HTTP客户端_请求置Cookie。",
       "insertText": "HTTP客户端_设置Cookie($1, $2)",
       "returnType": "逻辑型",
       "category": "客户端",
@@ -407,22 +440,122 @@
         "parameters": [
           {
             "name": "客户端",
-            "type": "HTTP客户端"
+            "type": "HTTP客户端",
+            "description": "HTTP客户端_创建客户端 返回的受管客户端 ID；ID 无效时命令返回失败值，配置类命令还要求该客户端当前没有活动请求。"
           },
           {
             "name": "启用",
-            "type": "bool"
+            "type": "bool",
+            "description": "传真启用自动接收和回送 Cookie 的会话罐，默认启用，不与浏览器共享；传假整体关闭自动 Cookie 行为。"
           }
         ],
         "returnType": "bool",
         "encoding": "raw",
         "example": "HTTP客户端_设置Cookie()",
-        "description": "启用或关闭该受管客户端会话内的 Cookie 接收和回送；默认启用且不与浏览器共享。"
+        "description": "启用或关闭 WinHTTP 自动 Cookie 罐（接收 Set-Cookie 并对后续请求自动回送）；默认启用且不与浏览器共享。注意这只是自动罐开关，手工注入已有 Cookie 用 HTTP客户端_置Cookie 或 HTTP客户端_请求置Cookie。"
       },
       "demoInvocation": "HTTP客户端_设置Cookie(0, 真)"
     },
     {
       "index": 14,
+      "name": "HTTP客户端_置Cookie",
+      "signature": "HTTP客户端_置Cookie(客户端, 名称, 值, 域, 路径)",
+      "description": "向客户端手工注入一条 Cookie，随后续匹配的请求提交；同名同域同路径覆盖旧值；与 WinHTTP 自动罐独立保存。",
+      "insertText": "HTTP客户端_置Cookie($1, \"PASS_ID\", \"$2\", \".example.com\", \"/\")",
+      "returnType": "逻辑型",
+      "category": "客户端",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_置Cookie",
+        "runtimeName": "HTTP客户端_置Cookie",
+        "parameters": [
+          {
+            "name": "客户端",
+            "type": "HTTP客户端",
+            "description": "HTTP客户端_创建客户端 返回的受管客户端 ID；ID 无效时命令返回失败值，配置类命令还要求该客户端当前没有活动请求。"
+          },
+          {
+            "name": "名称",
+            "type": "wideString",
+            "description": "Cookie 名称，不能为空，不能包含等号或控制字符。"
+          },
+          {
+            "name": "值",
+            "type": "wideString",
+            "description": "Cookie 值，不得包含 CR、LF 等控制字符；允许空值。"
+          },
+          {
+            "name": "域",
+            "type": "wideString",
+            "description": "生效域名；空文本匹配任意主机，前导点（如 .example.com）匹配该域及其子域，否则匹配精确主机或其子域。"
+          },
+          {
+            "name": "路径",
+            "type": "wideString",
+            "description": "生效路径前缀；空文本按 /，仅当请求路径与该前缀按 Cookie 路径规则匹配时回送。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP客户端_置Cookie(客户端, \"PASS_ID\", \"windows_1-abc\", \".example.com\", \"/\")",
+        "description": "向客户端手工注入一条 Cookie，随后续匹配的请求提交；同名同域同路径覆盖旧值；与 WinHTTP 自动罐独立保存。"
+      },
+      "demoInvocation": "HTTP客户端_置Cookie(0, \"演示参数2\", \"演示参数3\", \"演示参数4\", \"module-demo-temp.txt\")"
+    },
+    {
+      "index": 15,
+      "name": "HTTP客户端_取CookieJSON",
+      "signature": "HTTP客户端_取CookieJSON(客户端)",
+      "description": "以 JSON 数组返回该客户端手工注入的 Cookie 列表（每项含 name、value、domain、path）；不包含 WinHTTP 自动罐内容。",
+      "insertText": "HTTP客户端_取CookieJSON($1)",
+      "returnType": "文本型",
+      "category": "客户端",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_取CookieJSON",
+        "runtimeName": "HTTP客户端_取CookieJSON",
+        "parameters": [
+          {
+            "name": "客户端",
+            "type": "HTTP客户端",
+            "description": "HTTP客户端_创建客户端 返回的受管客户端 ID；ID 无效时命令返回失败值，配置类命令还要求该客户端当前没有活动请求。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "HTTP客户端_取CookieJSON()",
+        "description": "以 JSON 数组返回该客户端手工注入的 Cookie 列表（每项含 name、value、domain、path）；不包含 WinHTTP 自动罐内容。"
+      },
+      "demoInvocation": "HTTP客户端_取CookieJSON(0)"
+    },
+    {
+      "index": 16,
+      "name": "HTTP客户端_删除全部Cookie",
+      "signature": "HTTP客户端_删除全部Cookie(客户端)",
+      "description": "清空该客户端全部手工注入的 Cookie；不影响 WinHTTP 自动罐，销毁客户端时两者都会清除。",
+      "insertText": "HTTP客户端_删除全部Cookie($1)",
+      "returnType": "逻辑型",
+      "category": "客户端",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_删除全部Cookie",
+        "runtimeName": "HTTP客户端_删除全部Cookie",
+        "parameters": [
+          {
+            "name": "客户端",
+            "type": "HTTP客户端",
+            "description": "HTTP客户端_创建客户端 返回的受管客户端 ID；ID 无效时命令返回失败值，配置类命令还要求该客户端当前没有活动请求。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "HTTP客户端_删除全部Cookie()",
+        "description": "清空该客户端全部手工注入的 Cookie；不影响 WinHTTP 自动罐，销毁客户端时两者都会清除。"
+      },
+      "demoInvocation": "HTTP客户端_删除全部Cookie(0)"
+    },
+    {
+      "index": 17,
       "name": "HTTP客户端_设置默认请求头",
       "signature": "HTTP客户端_设置默认请求头(客户端, 名称, 值)",
       "description": "设置或替换客户端默认请求头，拒绝非法名称、CR/LF 注入和受运行时管理的头。",
@@ -436,15 +569,18 @@
         "parameters": [
           {
             "name": "客户端",
-            "type": "HTTP客户端"
+            "type": "HTTP客户端",
+            "description": "HTTP客户端_创建客户端 返回的受管客户端 ID；ID 无效时命令返回失败值，配置类命令还要求该客户端当前没有活动请求。"
           },
           {
             "name": "名称",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "请求头名称，长度 1 到 256 的合法 token 且不含控制字符；Host、Content-Length、Connection、Transfer-Encoding、Cookie 和 Set-Cookie 由运行时管理，不能手工设置；提交 Cookie 必须改用 HTTP客户端_置Cookie 或 HTTP客户端_请求置Cookie。"
           },
           {
             "name": "值",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "请求头值，不得包含 CR、LF 或其它控制字符。同名头会被替换。"
           }
         ],
         "returnType": "bool",
@@ -455,7 +591,7 @@
       "demoInvocation": "HTTP客户端_设置默认请求头(0, \"演示参数2\", \"演示参数3\")"
     },
     {
-      "index": 15,
+      "index": 18,
       "name": "HTTP客户端_添加默认请求头",
       "signature": "HTTP客户端_添加默认请求头(客户端, 名称, 值)",
       "description": "追加客户端默认请求头；适合 Accept、Cache-Control 等可重复头。",
@@ -469,15 +605,18 @@
         "parameters": [
           {
             "name": "客户端",
-            "type": "HTTP客户端"
+            "type": "HTTP客户端",
+            "description": "HTTP客户端_创建客户端 返回的受管客户端 ID；ID 无效时命令返回失败值，配置类命令还要求该客户端当前没有活动请求。"
           },
           {
             "name": "名称",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "请求头名称，长度 1 到 256 的合法 token 且不含控制字符；Host、Content-Length、Connection、Transfer-Encoding、Cookie 和 Set-Cookie 由运行时管理，不能手工设置；提交 Cookie 必须改用 HTTP客户端_置Cookie 或 HTTP客户端_请求置Cookie。"
           },
           {
             "name": "值",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "请求头值，不得包含 CR、LF 或其它控制字符。追加到已有同名头之后，适合 Accept 等可重复头。"
           }
         ],
         "returnType": "bool",
@@ -488,7 +627,7 @@
       "demoInvocation": "HTTP客户端_添加默认请求头(0, \"演示参数2\", \"演示参数3\")"
     },
     {
-      "index": 16,
+      "index": 19,
       "name": "HTTP客户端_删除默认请求头",
       "signature": "HTTP客户端_删除默认请求头(客户端, 名称)",
       "description": "删除客户端中全部同名默认请求头。",
@@ -502,11 +641,13 @@
         "parameters": [
           {
             "name": "客户端",
-            "type": "HTTP客户端"
+            "type": "HTTP客户端",
+            "description": "HTTP客户端_创建客户端 返回的受管客户端 ID；ID 无效时命令返回失败值，配置类命令还要求该客户端当前没有活动请求。"
           },
           {
             "name": "名称",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要删除的客户端默认请求头名称，大小写不敏感，同名全部删除。"
           }
         ],
         "returnType": "bool",
@@ -517,7 +658,7 @@
       "demoInvocation": "HTTP客户端_删除默认请求头(0, \"演示参数2\")"
     },
     {
-      "index": 17,
+      "index": 20,
       "name": "HTTP客户端_清空默认请求头",
       "signature": "HTTP客户端_清空默认请求头(客户端)",
       "description": "清空客户端默认请求头。",
@@ -531,7 +672,8 @@
         "parameters": [
           {
             "name": "客户端",
-            "type": "HTTP客户端"
+            "type": "HTTP客户端",
+            "description": "HTTP客户端_创建客户端 返回的受管客户端 ID；ID 无效时命令返回失败值，配置类命令还要求该客户端当前没有活动请求。"
           }
         ],
         "returnType": "bool",
@@ -542,7 +684,7 @@
       "demoInvocation": "HTTP客户端_清空默认请求头(0)"
     },
     {
-      "index": 18,
+      "index": 21,
       "name": "HTTP客户端_取消全部请求",
       "signature": "HTTP客户端_取消全部请求(客户端)",
       "description": "取消客户端全部运行中请求并关闭对应 WinHTTP 请求句柄。",
@@ -556,7 +698,8 @@
         "parameters": [
           {
             "name": "客户端",
-            "type": "HTTP客户端"
+            "type": "HTTP客户端",
+            "description": "HTTP客户端_创建客户端 返回的受管客户端 ID；ID 无效时命令返回失败值，配置类命令还要求该客户端当前没有活动请求。"
           }
         ],
         "returnType": "int",
@@ -567,7 +710,7 @@
       "demoInvocation": "HTTP客户端_取消全部请求(0)"
     },
     {
-      "index": 19,
+      "index": 22,
       "name": "HTTP客户端_取活动请求数",
       "signature": "HTTP客户端_取活动请求数(客户端)",
       "description": "返回当前正在发送或接收的请求数量。",
@@ -581,7 +724,8 @@
         "parameters": [
           {
             "name": "客户端",
-            "type": "HTTP客户端"
+            "type": "HTTP客户端",
+            "description": "HTTP客户端_创建客户端 返回的受管客户端 ID；ID 无效时命令返回失败值，配置类命令还要求该客户端当前没有活动请求。"
           }
         ],
         "returnType": "int",
@@ -592,7 +736,7 @@
       "demoInvocation": "HTTP客户端_取活动请求数(0)"
     },
     {
-      "index": 20,
+      "index": 23,
       "name": "HTTP客户端_取累计请求数",
       "signature": "HTTP客户端_取累计请求数(客户端)",
       "description": "返回客户端已开始执行的累计请求数量。",
@@ -606,7 +750,8 @@
         "parameters": [
           {
             "name": "客户端",
-            "type": "HTTP客户端"
+            "type": "HTTP客户端",
+            "description": "HTTP客户端_创建客户端 返回的受管客户端 ID；ID 无效时命令返回失败值，配置类命令还要求该客户端当前没有活动请求。"
           }
         ],
         "returnType": "longLong",
@@ -617,7 +762,7 @@
       "demoInvocation": "HTTP客户端_取累计请求数(0)"
     },
     {
-      "index": 21,
+      "index": 24,
       "name": "HTTP客户端_取客户端错误",
       "signature": "HTTP客户端_取客户端错误(客户端)",
       "description": "返回客户端配置、会话创建或句柄操作的最近中文错误。",
@@ -631,7 +776,8 @@
         "parameters": [
           {
             "name": "客户端",
-            "type": "HTTP客户端"
+            "type": "HTTP客户端",
+            "description": "HTTP客户端_创建客户端 返回的受管客户端 ID；ID 无效时命令返回失败值，配置类命令还要求该客户端当前没有活动请求。"
           }
         ],
         "returnType": "wideString",
@@ -642,7 +788,7 @@
       "demoInvocation": "HTTP客户端_取客户端错误(0)"
     },
     {
-      "index": 22,
+      "index": 25,
       "name": "HTTP客户端_创建请求",
       "signature": "HTTP客户端_创建请求(客户端, 方法, 地址)",
       "description": "创建尚未执行的受管请求；仅接受 http:// 或 https:// 和合法 HTTP 方法。",
@@ -656,15 +802,18 @@
         "parameters": [
           {
             "name": "客户端",
-            "type": "HTTP客户端"
+            "type": "HTTP客户端",
+            "description": "HTTP客户端_创建客户端 返回的受管客户端 ID；ID 无效时命令返回失败值，配置类命令还要求该客户端当前没有活动请求。"
           },
           {
             "name": "方法",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "HTTP 方法文本，只接受合法方法名，内部按大写比较，例如 GET、POST。"
           },
           {
             "name": "地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "完整请求地址，必须以 http:// 或 https:// 开头，且不含控制字符。"
           }
         ],
         "returnType": "HTTP客户端请求",
@@ -675,7 +824,7 @@
       "demoInvocation": "HTTP客户端_创建请求(0, \"演示参数2\", \"https://example.com\")"
     },
     {
-      "index": 23,
+      "index": 26,
       "name": "HTTP客户端_设置请求头",
       "signature": "HTTP客户端_设置请求头(请求, 名称, 值)",
       "description": "在请求启动前设置或替换请求头。",
@@ -689,15 +838,18 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           },
           {
             "name": "名称",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "请求头名称，长度 1 到 256 的合法 token 且不含控制字符；Host、Content-Length、Connection、Transfer-Encoding、Cookie 和 Set-Cookie 由运行时管理，不能手工设置；提交 Cookie 必须改用 HTTP客户端_置Cookie 或 HTTP客户端_请求置Cookie。"
           },
           {
             "name": "值",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "请求头值，不得包含 CR、LF 或其它控制字符。同名头会被替换。"
           }
         ],
         "returnType": "bool",
@@ -708,7 +860,7 @@
       "demoInvocation": "HTTP客户端_设置请求头(0, \"演示参数2\", \"演示参数3\")"
     },
     {
-      "index": 24,
+      "index": 27,
       "name": "HTTP客户端_添加请求头",
       "signature": "HTTP客户端_添加请求头(请求, 名称, 值)",
       "description": "在请求启动前追加请求头。",
@@ -722,15 +874,18 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           },
           {
             "name": "名称",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "请求头名称，长度 1 到 256 的合法 token 且不含控制字符；Host、Content-Length、Connection、Transfer-Encoding、Cookie 和 Set-Cookie 由运行时管理，不能手工设置；提交 Cookie 必须改用 HTTP客户端_置Cookie 或 HTTP客户端_请求置Cookie。"
           },
           {
             "name": "值",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "请求头值，不得包含 CR、LF 或其它控制字符。追加到已有同名头之后。"
           }
         ],
         "returnType": "bool",
@@ -741,7 +896,7 @@
       "demoInvocation": "HTTP客户端_添加请求头(0, \"演示参数2\", \"演示参数3\")"
     },
     {
-      "index": 25,
+      "index": 28,
       "name": "HTTP客户端_删除请求头",
       "signature": "HTTP客户端_删除请求头(请求, 名称)",
       "description": "在请求启动前删除全部同名请求头。",
@@ -755,11 +910,13 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           },
           {
             "name": "名称",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要删除的请求头名称，大小写不敏感，同名全部删除。"
           }
         ],
         "returnType": "bool",
@@ -770,7 +927,7 @@
       "demoInvocation": "HTTP客户端_删除请求头(0, \"演示参数2\")"
     },
     {
-      "index": 26,
+      "index": 29,
       "name": "HTTP客户端_清空请求头",
       "signature": "HTTP客户端_清空请求头(请求)",
       "description": "在请求启动前清空请求级请求头，不影响客户端默认头。",
@@ -784,7 +941,8 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           }
         ],
         "returnType": "bool",
@@ -795,7 +953,38 @@
       "demoInvocation": "HTTP客户端_清空请求头(0)"
     },
     {
-      "index": 27,
+      "index": 30,
+      "name": "HTTP客户端_请求置Cookie",
+      "signature": "HTTP客户端_请求置Cookie(请求, Cookie)",
+      "description": "为单个请求指定完整 Cookie 请求头内容（如 name1=value1; name2=value2），用于把外部取得的已有 Cookie 原样提交；设置后该请求（含重定向）关闭自动罐回送，只发这份手工 Cookie；空文本恢复默认行为。",
+      "insertText": "HTTP客户端_请求置Cookie($1, \"$2\")",
+      "returnType": "逻辑型",
+      "category": "请求",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_请求置Cookie",
+        "runtimeName": "HTTP客户端_请求置Cookie",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
+          },
+          {
+            "name": "Cookie",
+            "type": "wideString",
+            "description": "完整 Cookie 头内容，形如 name1=value1; name2=value2，不得包含 CR、LF 等控制字符；空文本清除并恢复默认 Cookie 行为。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP客户端_请求置Cookie(请求, \"PASS_ID=windows_1-abc; user-extend-session=abc\")",
+        "description": "为单个请求指定完整 Cookie 请求头内容（如 name1=value1; name2=value2），用于把外部取得的已有 Cookie 原样提交；设置后该请求（含重定向）关闭自动罐回送，只发这份手工 Cookie；空文本恢复默认行为。"
+      },
+      "demoInvocation": "HTTP客户端_请求置Cookie(0, \"演示参数2\")"
+    },
+    {
+      "index": 31,
       "name": "HTTP客户端_设置文本正文",
       "signature": "HTTP客户端_设置文本正文(请求, 正文, 内容类型)",
       "description": "把文本编码为 UTF-8 请求正文并设置 Content-Type。",
@@ -809,15 +998,18 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           },
           {
             "name": "正文",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "作为请求正文的文本，按 UTF-8 编码，会清除之前的文件或二进制正文。"
           },
           {
             "name": "内容类型",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "请求正文的 Content-Type 文本；文本正文留空时按 text/plain; charset=utf-8 发送。"
           }
         ],
         "returnType": "bool",
@@ -828,7 +1020,7 @@
       "demoInvocation": "HTTP客户端_设置文本正文(0, \"演示参数2\", \"演示参数3\")"
     },
     {
-      "index": 28,
+      "index": 32,
       "name": "HTTP客户端_设置JSON正文",
       "signature": "HTTP客户端_设置JSON正文(请求, JSON)",
       "description": "把 UTF-8 JSON 文本设为请求正文并使用 application/json。",
@@ -842,11 +1034,13 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           },
           {
             "name": "JSON",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "完整的 JSON 文本，按 UTF-8 作为请求正文，运行时不校验语法。"
           }
         ],
         "returnType": "bool",
@@ -857,7 +1051,7 @@
       "demoInvocation": "HTTP客户端_设置JSON正文(0, \"{}\")"
     },
     {
-      "index": 29,
+      "index": 33,
       "name": "HTTP客户端_设置二进制正文",
       "signature": "HTTP客户端_设置二进制正文(请求, 数据, 内容类型)",
       "description": "设置独立复制的字节集请求正文。",
@@ -871,15 +1065,18 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           },
           {
             "name": "数据",
-            "type": "bytes"
+            "type": "bytes",
+            "description": "作为请求正文的字节集，运行时独立复制一份，受上传上限约束。"
           },
           {
             "name": "内容类型",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "请求正文的 Content-Type 文本，例如 application/octet-stream。"
           }
         ],
         "returnType": "bool",
@@ -890,7 +1087,7 @@
       "demoInvocation": "HTTP客户端_设置二进制正文(0, {}, \"演示参数3\")"
     },
     {
-      "index": 30,
+      "index": 34,
       "name": "HTTP客户端_设置十六进制正文",
       "signature": "HTTP客户端_设置十六进制正文(请求, 十六进制, 内容类型)",
       "description": "校验并解码偶数长度十六进制文本作为请求正文。",
@@ -904,15 +1101,18 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           },
           {
             "name": "十六进制",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "偶数长度的十六进制文本，只允许 0-9、a-f、A-F；解码后作为二进制正文，格式非法返回假。"
           },
           {
             "name": "内容类型",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "请求正文的 Content-Type 文本，例如 application/octet-stream。"
           }
         ],
         "returnType": "bool",
@@ -923,7 +1123,7 @@
       "demoInvocation": "HTTP客户端_设置十六进制正文(0, \"演示参数2\", \"演示参数3\")"
     },
     {
-      "index": 31,
+      "index": 35,
       "name": "HTTP客户端_设置文件正文",
       "signature": "HTTP客户端_设置文件正文(请求, 文件路径, 内容类型)",
       "description": "以 64KB 分块上传本机文件，不把整个文件载入内存。",
@@ -937,15 +1137,18 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           },
           {
             "name": "文件路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要上传的本机文件路径，不能为空；按 64KB 分块读取，不把整个文件载入内存。"
           },
           {
             "name": "内容类型",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "上传时的 Content-Type 文本，例如 application/octet-stream。"
           }
         ],
         "returnType": "bool",
@@ -956,10 +1159,10 @@
       "demoInvocation": "HTTP客户端_设置文件正文(0, \"module-demo-temp.txt\", \"演示参数3\")"
     },
     {
-      "index": 32,
+      "index": 36,
       "name": "HTTP客户端_设置响应文件",
       "signature": "HTTP客户端_设置响应文件(请求, 文件路径, 允许覆盖)",
-      "description": "把响应流式写入临时文件并原子替换目标文件，避免大响应驻留内存。",
+      "description": "把响应流式写入临时文件并原子替换目标文件，避免大响应驻留内存；流式文件响应不受响应体内存上限约束。",
       "insertText": "HTTP客户端_设置响应文件($1, $2, $3)",
       "returnType": "逻辑型",
       "category": "响应",
@@ -970,26 +1173,60 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           },
           {
             "name": "文件路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "保存响应的本机文件路径，不能为空；先写临时文件再原子替换到该路径。"
           },
           {
             "name": "允许覆盖",
-            "type": "bool"
+            "type": "bool",
+            "description": "传真时覆盖已存在的目标文件，传假时目标已存在会失败。"
           }
         ],
         "returnType": "bool",
         "encoding": "wide",
         "example": "HTTP客户端_设置响应文件()",
-        "description": "把响应流式写入临时文件并原子替换目标文件，避免大响应驻留内存。"
+        "description": "把响应流式写入临时文件并原子替换目标文件，避免大响应驻留内存；流式文件响应不受响应体内存上限约束。"
       },
       "demoInvocation": "HTTP客户端_设置响应文件(0, \"module-demo-temp.txt\", 真)"
     },
     {
-      "index": 33,
+      "index": 37,
+      "name": "HTTP客户端_设置续传文件",
+      "signature": "HTTP客户端_设置续传文件(请求, 文件路径)",
+      "description": "把响应流式追加写入目标文件，不清空已有内容，用于断点续传下载；中断时已写入字节保留，配合 Range 请求头（如 bytes=已有大小-）从断点继续，文件不存在时自动创建。",
+      "insertText": "HTTP客户端_设置续传文件($1, \"D:\\\\下载\\\\大文件.zip\")",
+      "returnType": "逻辑型",
+      "category": "响应",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_设置续传文件",
+        "runtimeName": "HTTP客户端_设置续传文件",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
+          },
+          {
+            "name": "文件路径",
+            "type": "wideString",
+            "description": "追加写入的本机文件路径，不能为空；文件不存在时自动创建，已存在时从文件尾继续追加。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP客户端_设置续传文件(示例值, \"D:\\\\下载\\\\大文件.zip\")",
+        "description": "把响应流式追加写入目标文件，不清空已有内容，用于断点续传下载；中断时已写入字节保留，配合 Range 请求头（如 bytes=已有大小-）从断点继续，文件不存在时自动创建。"
+      },
+      "demoInvocation": "HTTP客户端_设置续传文件(0, \"module-demo-temp.txt\")"
+    },
+    {
+      "index": 38,
       "name": "HTTP客户端_绑定完成处理器",
       "signature": "HTTP客户端_绑定完成处理器(请求, &处理器)",
       "description": "绑定请求完成后在创建窗口 UI 线程调用的无参数处理器。",
@@ -1003,7 +1240,8 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           },
           {
             "name": "处理器",
@@ -1023,7 +1261,7 @@
       "demoInvocation": "HTTP客户端_绑定完成处理器(0, &模块演示回调)"
     },
     {
-      "index": 34,
+      "index": 39,
       "name": "HTTP客户端_开始请求",
       "signature": "HTTP客户端_开始请求(请求)",
       "description": "在独立后台线程执行请求，完成后投递 UI 线程处理器。",
@@ -1037,7 +1275,8 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           }
         ],
         "returnType": "bool",
@@ -1048,7 +1287,7 @@
       "demoInvocation": "HTTP客户端_开始请求(0)"
     },
     {
-      "index": 35,
+      "index": 40,
       "name": "HTTP客户端_执行同步",
       "signature": "HTTP客户端_执行同步(请求)",
       "description": "在当前线程同步执行请求；主要用于命令行、测试或受控后台任务，UI 代码应使用异步。",
@@ -1063,7 +1302,8 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           }
         ],
         "returnType": "bool",
@@ -1074,7 +1314,7 @@
       "demoInvocation": "HTTP客户端_执行同步(0)"
     },
     {
-      "index": 36,
+      "index": 41,
       "name": "HTTP客户端_等待请求",
       "signature": "HTTP客户端_等待请求(请求, 超时毫秒)",
       "description": "等待异步请求完成；主要用于测试和后台任务，UI 线程不应长时间等待。",
@@ -1089,11 +1329,13 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           },
           {
             "name": "超时毫秒",
-            "type": "int"
+            "type": "int",
+            "description": "等待请求完成的超时毫秒数，0 到 3600000。"
           }
         ],
         "returnType": "bool",
@@ -1104,7 +1346,7 @@
       "demoInvocation": "HTTP客户端_等待请求(0, 1)"
     },
     {
-      "index": 37,
+      "index": 42,
       "name": "HTTP客户端_取消请求",
       "signature": "HTTP客户端_取消请求(请求)",
       "description": "请求取消并关闭活动 WinHTTP 句柄；已完成请求返回假。",
@@ -1118,7 +1360,8 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           }
         ],
         "returnType": "bool",
@@ -1129,7 +1372,7 @@
       "demoInvocation": "HTTP客户端_取消请求(0)"
     },
     {
-      "index": 38,
+      "index": 43,
       "name": "HTTP客户端_销毁请求",
       "signature": "HTTP客户端_销毁请求(请求)",
       "description": "取消、等待后台线程结束并永久释放请求 ID。",
@@ -1143,7 +1386,8 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           }
         ],
         "returnType": "bool",
@@ -1154,7 +1398,7 @@
       "demoInvocation": "HTTP客户端_销毁请求(0)"
     },
     {
-      "index": 39,
+      "index": 44,
       "name": "HTTP客户端_取请求客户端",
       "signature": "HTTP客户端_取请求客户端(请求)",
       "description": "返回请求所属的受管客户端 ID。",
@@ -1168,7 +1412,8 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           }
         ],
         "returnType": "HTTP客户端",
@@ -1179,7 +1424,7 @@
       "demoInvocation": "HTTP客户端_取请求客户端(0)"
     },
     {
-      "index": 40,
+      "index": 45,
       "name": "HTTP客户端_取请求方法",
       "signature": "HTTP客户端_取请求方法(请求)",
       "description": "返回请求的大写 HTTP 方法。",
@@ -1193,7 +1438,8 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           }
         ],
         "returnType": "wideString",
@@ -1204,7 +1450,7 @@
       "demoInvocation": "HTTP客户端_取请求方法(0)"
     },
     {
-      "index": 41,
+      "index": 46,
       "name": "HTTP客户端_取请求地址",
       "signature": "HTTP客户端_取请求地址(请求)",
       "description": "返回请求创建时的原始 URL。",
@@ -1218,7 +1464,8 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           }
         ],
         "returnType": "wideString",
@@ -1229,7 +1476,7 @@
       "demoInvocation": "HTTP客户端_取请求地址(0)"
     },
     {
-      "index": 42,
+      "index": 47,
       "name": "HTTP客户端_取请求状态",
       "signature": "HTTP客户端_取请求状态(请求)",
       "description": "返回未开始、运行中、已完成、已取消或错误。",
@@ -1243,7 +1490,8 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           }
         ],
         "returnType": "wideString",
@@ -1254,7 +1502,7 @@
       "demoInvocation": "HTTP客户端_取请求状态(0)"
     },
     {
-      "index": 43,
+      "index": 48,
       "name": "HTTP客户端_请求是否完成",
       "signature": "HTTP客户端_请求是否完成(请求)",
       "description": "判断请求是否已结束，包括成功、HTTP 非 2xx、错误或取消。",
@@ -1268,7 +1516,8 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           }
         ],
         "returnType": "bool",
@@ -1279,7 +1528,7 @@
       "demoInvocation": "HTTP客户端_请求是否完成(0)"
     },
     {
-      "index": 44,
+      "index": 49,
       "name": "HTTP客户端_请求是否成功",
       "signature": "HTTP客户端_请求是否成功(请求)",
       "description": "判断传输成功且 HTTP 状态码位于 200-299。",
@@ -1293,7 +1542,8 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           }
         ],
         "returnType": "bool",
@@ -1304,7 +1554,7 @@
       "demoInvocation": "HTTP客户端_请求是否成功(0)"
     },
     {
-      "index": 45,
+      "index": 50,
       "name": "HTTP客户端_取请求错误",
       "signature": "HTTP客户端_取请求错误(请求)",
       "description": "返回请求最近中文错误，不包含凭据或请求正文。",
@@ -1318,7 +1568,8 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           }
         ],
         "returnType": "wideString",
@@ -1329,7 +1580,7 @@
       "demoInvocation": "HTTP客户端_取请求错误(0)"
     },
     {
-      "index": 46,
+      "index": 51,
       "name": "HTTP客户端_取系统错误码",
       "signature": "HTTP客户端_取系统错误码(请求)",
       "description": "返回最近 WinHTTP 或 Win32 错误码；协议状态失败通常为 0。",
@@ -1343,7 +1594,8 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           }
         ],
         "returnType": "int",
@@ -1354,7 +1606,7 @@
       "demoInvocation": "HTTP客户端_取系统错误码(0)"
     },
     {
-      "index": 47,
+      "index": 52,
       "name": "HTTP客户端_取请求耗时",
       "signature": "HTTP客户端_取请求耗时(请求)",
       "description": "返回请求开始到结束的毫秒数。",
@@ -1368,7 +1620,8 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           }
         ],
         "returnType": "longLong",
@@ -1379,7 +1632,7 @@
       "demoInvocation": "HTTP客户端_取请求耗时(0)"
     },
     {
-      "index": 48,
+      "index": 53,
       "name": "HTTP客户端_取上传字节数",
       "signature": "HTTP客户端_取上传字节数(请求)",
       "description": "返回已经成功写入 WinHTTP 的请求正文字节数。",
@@ -1393,7 +1646,8 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           }
         ],
         "returnType": "longLong",
@@ -1404,7 +1658,7 @@
       "demoInvocation": "HTTP客户端_取上传字节数(0)"
     },
     {
-      "index": 49,
+      "index": 54,
       "name": "HTTP客户端_取下载字节数",
       "signature": "HTTP客户端_取下载字节数(请求)",
       "description": "返回已经读取并校验的响应正文字节数。",
@@ -1418,7 +1672,8 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           }
         ],
         "returnType": "longLong",
@@ -1429,7 +1684,7 @@
       "demoInvocation": "HTTP客户端_取下载字节数(0)"
     },
     {
-      "index": 50,
+      "index": 55,
       "name": "HTTP客户端_取响应状态码",
       "signature": "HTTP客户端_取响应状态码(请求)",
       "description": "返回 HTTP 响应状态码；传输失败且无响应时为 0。",
@@ -1443,7 +1698,8 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           }
         ],
         "returnType": "int",
@@ -1454,7 +1710,7 @@
       "demoInvocation": "HTTP客户端_取响应状态码(0)"
     },
     {
-      "index": 51,
+      "index": 56,
       "name": "HTTP客户端_取响应状态文本",
       "signature": "HTTP客户端_取响应状态文本(请求)",
       "description": "返回服务端状态文本，例如 OK 或 Not Found。",
@@ -1468,7 +1724,8 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           }
         ],
         "returnType": "wideString",
@@ -1479,7 +1736,7 @@
       "demoInvocation": "HTTP客户端_取响应状态文本(0)"
     },
     {
-      "index": 52,
+      "index": 57,
       "name": "HTTP客户端_取响应协议",
       "signature": "HTTP客户端_取响应协议(请求)",
       "description": "返回响应协议版本，例如 HTTP/1.1 或 HTTP/2。",
@@ -1493,7 +1750,8 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           }
         ],
         "returnType": "wideString",
@@ -1504,7 +1762,7 @@
       "demoInvocation": "HTTP客户端_取响应协议(0)"
     },
     {
-      "index": 53,
+      "index": 58,
       "name": "HTTP客户端_取最终地址",
       "signature": "HTTP客户端_取最终地址(请求)",
       "description": "返回自动重定向后的最终 URL。",
@@ -1518,7 +1776,8 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           }
         ],
         "returnType": "wideString",
@@ -1529,7 +1788,7 @@
       "demoInvocation": "HTTP客户端_取最终地址(0)"
     },
     {
-      "index": 54,
+      "index": 59,
       "name": "HTTP客户端_取全部响应头",
       "signature": "HTTP客户端_取全部响应头(请求)",
       "description": "返回 WinHTTP 提供的完整 CRLF 响应头文本。",
@@ -1543,7 +1802,8 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           }
         ],
         "returnType": "wideString",
@@ -1554,7 +1814,7 @@
       "demoInvocation": "HTTP客户端_取全部响应头(0)"
     },
     {
-      "index": 55,
+      "index": 60,
       "name": "HTTP客户端_取响应头JSON",
       "signature": "HTTP客户端_取响应头JSON(请求)",
       "description": "以 UTF-16 JSON 对象返回响应头；重复头合并为逗号分隔文本。",
@@ -1568,7 +1828,8 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           }
         ],
         "returnType": "wideString",
@@ -1579,7 +1840,7 @@
       "demoInvocation": "HTTP客户端_取响应头JSON(0)"
     },
     {
-      "index": 56,
+      "index": 61,
       "name": "HTTP客户端_取响应十六进制",
       "signature": "HTTP客户端_取响应十六进制(请求)",
       "description": "以小写十六进制返回内存响应正文。",
@@ -1593,7 +1854,8 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           }
         ],
         "returnType": "wideString",
@@ -1604,7 +1866,7 @@
       "demoInvocation": "HTTP客户端_取响应十六进制(0)"
     },
     {
-      "index": 57,
+      "index": 62,
       "name": "HTTP客户端_取响应大小",
       "signature": "HTTP客户端_取响应大小(请求)",
       "description": "返回响应正文总字节数，包括流式写入文件的响应。",
@@ -1618,7 +1880,8 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           }
         ],
         "returnType": "longLong",
@@ -1629,7 +1892,7 @@
       "demoInvocation": "HTTP客户端_取响应大小(0)"
     },
     {
-      "index": 58,
+      "index": 63,
       "name": "HTTP客户端_取响应文件",
       "signature": "HTTP客户端_取响应文件(请求)",
       "description": "返回成功流式保存后的目标文件路径。",
@@ -1643,7 +1906,8 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           }
         ],
         "returnType": "wideString",
@@ -1654,7 +1918,7 @@
       "demoInvocation": "HTTP客户端_取响应文件(0)"
     },
     {
-      "index": 59,
+      "index": 64,
       "name": "HTTP客户端_取内容类型",
       "signature": "HTTP客户端_取内容类型(请求)",
       "description": "返回响应 Content-Type。",
@@ -1668,7 +1932,8 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           }
         ],
         "returnType": "wideString",
@@ -1679,7 +1944,7 @@
       "demoInvocation": "HTTP客户端_取内容类型(0)"
     },
     {
-      "index": 60,
+      "index": 65,
       "name": "HTTP客户端_取服务器证书SHA256",
       "signature": "HTTP客户端_取服务器证书SHA256(请求)",
       "description": "返回最终 HTTPS 服务端证书 SHA-256 指纹；HTTP 请求为空。",
@@ -1693,7 +1958,8 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           }
         ],
         "returnType": "wideString",
@@ -1704,7 +1970,7 @@
       "demoInvocation": "HTTP客户端_取服务器证书SHA256(0)"
     },
     {
-      "index": 61,
+      "index": 66,
       "name": "HTTP客户端_取响应头",
       "signature": "HTTP客户端_取响应头(请求, 名称)",
       "description": "不区分大小写返回合并后的指定响应头。",
@@ -1718,11 +1984,13 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           },
           {
             "name": "名称",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要读取的响应头名称，大小写不敏感；重复头合并为逗号分隔文本。"
           }
         ],
         "returnType": "wideString",
@@ -1733,7 +2001,7 @@
       "demoInvocation": "HTTP客户端_取响应头(0, \"演示参数2\")"
     },
     {
-      "index": 62,
+      "index": 67,
       "name": "HTTP客户端_取响应字节集",
       "signature": "HTTP客户端_取响应字节集(请求)",
       "description": "返回内存响应正文的独立字节集副本；流式文件响应返回空字节集。",
@@ -1747,7 +2015,8 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           }
         ],
         "returnType": "bytes",
@@ -1758,7 +2027,7 @@
       "demoInvocation": "HTTP客户端_取响应字节集(0)"
     },
     {
-      "index": 63,
+      "index": 68,
       "name": "HTTP客户端_取响应文本编码",
       "signature": "HTTP客户端_取响应文本编码(请求, 编码)",
       "description": "按 auto、UTF-8、UTF-16LE、UTF-16BE、GBK、GB18030 或 ANSI 解码内存响应。",
@@ -1772,11 +2041,13 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           },
           {
             "name": "编码",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "解码字符集名称，支持 auto、UTF-8、UTF-16LE、UTF-16BE、GBK、GB18030 和 ANSI。"
           }
         ],
         "returnType": "wideString",
@@ -1787,7 +2058,7 @@
       "demoInvocation": "HTTP客户端_取响应文本编码(0, \"演示参数2\")"
     },
     {
-      "index": 64,
+      "index": 69,
       "name": "HTTP客户端_保存响应文件",
       "signature": "HTTP客户端_保存响应文件(请求, 文件路径, 允许覆盖)",
       "description": "把已缓冲的响应正文原子保存为文件；流式响应应使用设置响应文件。",
@@ -1801,15 +2072,18 @@
         "parameters": [
           {
             "name": "请求",
-            "type": "HTTP客户端请求"
+            "type": "HTTP客户端请求",
+            "description": "HTTP客户端_创建请求 或 GET异步 等命令返回的受管请求 ID；请求销毁后失效，配置与正文类命令要求请求尚未开始。"
           },
           {
             "name": "文件路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "保存响应正文的本机文件路径，不能为空。"
           },
           {
             "name": "允许覆盖",
-            "type": "bool"
+            "type": "bool",
+            "description": "传真时覆盖已存在的目标文件，传假时目标已存在会失败。"
           }
         ],
         "returnType": "bool",
@@ -1820,7 +2094,7 @@
       "demoInvocation": "HTTP客户端_保存响应文件(0, \"module-demo-temp.txt\", 真)"
     },
     {
-      "index": 65,
+      "index": 70,
       "name": "HTTP客户端_取当前请求",
       "signature": "HTTP客户端_取当前请求()",
       "description": "在完成处理器中返回当前请求 ID；其它上下文返回 0。",
@@ -1840,7 +2114,7 @@
       "demoInvocation": "HTTP客户端_取当前请求()"
     },
     {
-      "index": 66,
+      "index": 71,
       "name": "HTTP客户端_GET异步",
       "signature": "HTTP客户端_GET异步(客户端, 地址, &处理器)",
       "description": "创建并开始 GET 请求，返回请求 ID；完成后在 UI 线程调用处理器。",
@@ -1854,15 +2128,18 @@
         "parameters": [
           {
             "name": "客户端",
-            "type": "HTTP客户端"
+            "type": "HTTP客户端",
+            "description": "HTTP客户端_创建客户端 返回的受管客户端 ID；ID 无效时命令返回失败值，配置类命令还要求该客户端当前没有活动请求。"
           },
           {
             "name": "地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "完整请求地址，必须以 http:// 或 https:// 开头，且不含控制字符。"
           },
           {
             "name": "处理器",
             "type": "handler",
+            "description": "必须使用 &处理器名；处理器必须无参数，在创建请求的窗口 UI 线程执行，内部用 HTTP客户端_取当前请求 取回请求。",
             "handlerSignature": {
               "parameterTypes": [],
               "returnType": "空"
@@ -1877,7 +2154,7 @@
       "demoInvocation": "HTTP客户端_GET异步(0, \"https://example.com\", &模块演示回调)"
     },
     {
-      "index": 67,
+      "index": 72,
       "name": "HTTP客户端_POSTJSON异步",
       "signature": "HTTP客户端_POSTJSON异步(客户端, 地址, JSON, &处理器)",
       "description": "创建带 UTF-8 JSON 正文的 POST 请求并异步开始。",
@@ -1891,19 +2168,23 @@
         "parameters": [
           {
             "name": "客户端",
-            "type": "HTTP客户端"
+            "type": "HTTP客户端",
+            "description": "HTTP客户端_创建客户端 返回的受管客户端 ID；ID 无效时命令返回失败值，配置类命令还要求该客户端当前没有活动请求。"
           },
           {
             "name": "地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "完整请求地址，必须以 http:// 或 https:// 开头，且不含控制字符。"
           },
           {
             "name": "JSON",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "作为请求正文提交的完整 JSON 文本，按 UTF-8 编码。"
           },
           {
             "name": "处理器",
             "type": "handler",
+            "description": "必须使用 &处理器名；处理器必须无参数，在创建请求的窗口 UI 线程执行，内部用 HTTP客户端_取当前请求 取回请求。",
             "handlerSignature": {
               "parameterTypes": [],
               "returnType": "空"
@@ -1918,7 +2199,7 @@
       "demoInvocation": "HTTP客户端_POSTJSON异步(0, \"https://example.com\", \"{}\", &模块演示回调)"
     },
     {
-      "index": 68,
+      "index": 73,
       "name": "HTTP客户端_请求",
       "signature": "HTTP客户端_请求(方法, 地址, 正文, 超时毫秒)",
       "description": "旧版同步兼容入口；使用默认客户端发送 UTF-8 请求，新代码应使用受管客户端和请求。",
@@ -1933,19 +2214,23 @@
         "parameters": [
           {
             "name": "方法",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "HTTP 方法文本，例如 GET 或 POST。"
           },
           {
             "name": "地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "完整请求地址，必须以 http:// 或 https:// 开头，且不含控制字符。"
           },
           {
             "name": "正文",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "UTF-8 请求正文文本，GET 等无正文请求传空文本。"
           },
           {
             "name": "超时毫秒",
-            "type": "int"
+            "type": "int",
+            "description": "同步等待完成的最长毫秒数。"
           }
         ],
         "returnType": "bool",
@@ -1956,7 +2241,7 @@
       "demoInvocation": "HTTP客户端_请求(\"演示参数1\", \"https://example.com\", \"演示参数3\", 1)"
     },
     {
-      "index": 69,
+      "index": 74,
       "name": "HTTP客户端_GET",
       "signature": "HTTP客户端_GET(地址)",
       "description": "旧版同步 GET 兼容入口。",
@@ -1971,7 +2256,8 @@
         "parameters": [
           {
             "name": "地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "完整请求地址，必须以 http:// 或 https:// 开头，且不含控制字符。"
           }
         ],
         "returnType": "bool",
@@ -1982,7 +2268,7 @@
       "demoInvocation": "HTTP客户端_GET(\"https://example.com\")"
     },
     {
-      "index": 70,
+      "index": 75,
       "name": "HTTP客户端_POST",
       "signature": "HTTP客户端_POST(地址, 正文)",
       "description": "旧版同步 UTF-8 JSON POST 兼容入口。",
@@ -1997,11 +2283,13 @@
         "parameters": [
           {
             "name": "地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "完整请求地址，必须以 http:// 或 https:// 开头，且不含控制字符。"
           },
           {
             "name": "正文",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "作为 JSON 正文提交的文本，按 UTF-8 编码。"
           }
         ],
         "returnType": "bool",
@@ -2012,7 +2300,7 @@
       "demoInvocation": "HTTP客户端_POST(\"https://example.com\", \"演示参数2\")"
     },
     {
-      "index": 71,
+      "index": 76,
       "name": "HTTP客户端_取状态码",
       "signature": "HTTP客户端_取状态码()",
       "description": "旧版兼容入口；返回最近默认请求状态码。",
@@ -2033,7 +2321,7 @@
       "demoInvocation": "HTTP客户端_取状态码()"
     },
     {
-      "index": 72,
+      "index": 77,
       "name": "HTTP客户端_取响应文本",
       "signature": "HTTP客户端_取响应文本()",
       "description": "旧版兼容入口；按 UTF-8 返回最近默认请求正文。",
@@ -2054,7 +2342,7 @@
       "demoInvocation": "HTTP客户端_取响应文本()"
     },
     {
-      "index": 73,
+      "index": 78,
       "name": "HTTP客户端_取错误",
       "signature": "HTTP客户端_取错误()",
       "description": "旧版兼容入口；返回最近默认请求中文错误。",
@@ -2075,7 +2363,7 @@
       "demoInvocation": "HTTP客户端_取错误()"
     },
     {
-      "index": 74,
+      "index": 79,
       "name": "HTTP客户端_清空状态",
       "signature": "HTTP客户端_清空状态()",
       "description": "旧版兼容入口；清空最近默认请求状态。",

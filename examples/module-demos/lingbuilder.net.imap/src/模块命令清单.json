@@ -1,0 +1,304 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-25T22:05:22.328Z",
+  "module": {
+    "id": "lingbuilder.net.imap",
+    "name": "IMAP邮件接收模块",
+    "version": "1.0.0",
+    "description": "通过 IMAP 协议接收邮件：连接后选择文件夹、取回邮件并解析主题、发件人、日期、正文与附件，支持 SSL(TLS) 加密连接（不校验服务器证书）。"
+  },
+  "commandCount": 15,
+  "commands": [
+    {
+      "index": 1,
+      "name": "IMAP_连接",
+      "signature": "IMAP_连接(服务器, 端口, 用户名, 密码, 是否SSL)",
+      "description": "连接 IMAP 收信服务器并完成登录；失败返回假，用 IMAP_取错误 查看原因。",
+      "insertText": "IMAP_连接(\"$1\", 0, \"$3\", \"$4\", 假)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "IMAP_连接",
+        "runtimeName": "IMAP_连接",
+        "parameters": [
+          {
+            "name": "服务器",
+            "type": "wideString",
+            "description": "IMAP 服务器主机名或 IP。"
+          },
+          {
+            "name": "端口",
+            "type": "int",
+            "description": "服务端口：明文 143、SSL 993；1 到 65535。"
+          },
+          {
+            "name": "用户名",
+            "type": "wideString",
+            "description": "登录账号。"
+          },
+          {
+            "name": "密码",
+            "type": "wideString",
+            "description": "登录密码。"
+          },
+          {
+            "name": "是否SSL",
+            "type": "bool",
+            "description": "真使用 SSL/TLS 加密连接（不校验服务器证书），假使用明文。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "IMAP_连接(\"imap.example.com\", 993, \"user@example.com\", \"密码\", 真)"
+      },
+      "demoInvocation": "IMAP_连接(\"演示参数1\", 1, \"演示参数3\", \"演示参数4\", 真)"
+    },
+    {
+      "index": 2,
+      "name": "IMAP_断开",
+      "signature": "IMAP_断开()",
+      "description": "断开与收信服务器的连接。",
+      "insertText": "IMAP_断开()",
+      "returnType": "空",
+      "binding": {
+        "command": "IMAP_断开",
+        "runtimeName": "IMAP_断开",
+        "parameters": [],
+        "returnType": "void"
+      },
+      "demoInvocation": "IMAP_断开()"
+    },
+    {
+      "index": 3,
+      "name": "IMAP_是否已连接",
+      "signature": "IMAP_是否已连接()",
+      "description": "判断当前是否已连接收信服务器。",
+      "insertText": "IMAP_是否已连接()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "IMAP_是否已连接",
+        "runtimeName": "IMAP_是否已连接",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "IMAP_是否已连接()"
+    },
+    {
+      "index": 4,
+      "name": "IMAP_选择文件夹",
+      "signature": "IMAP_选择文件夹(文件夹名称)",
+      "description": "打开指定邮件文件夹；之后的取件命令都作用于该文件夹。",
+      "insertText": "IMAP_选择文件夹(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "IMAP_选择文件夹",
+        "runtimeName": "IMAP_选择文件夹",
+        "parameters": [
+          {
+            "name": "文件夹名称",
+            "type": "wideString",
+            "description": "要打开的文件夹名称，例如 INBOX。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "IMAP_选择文件夹(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 5,
+      "name": "IMAP_取邮件数量",
+      "signature": "IMAP_取邮件数量()",
+      "description": "返回当前文件夹中的邮件数量；未连接或未选择文件夹返回 -1。",
+      "insertText": "IMAP_取邮件数量()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "IMAP_取邮件数量",
+        "runtimeName": "IMAP_取邮件数量",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "IMAP_取邮件数量()"
+    },
+    {
+      "index": 6,
+      "name": "IMAP_接收邮件",
+      "signature": "IMAP_接收邮件(序号)",
+      "description": "取回指定邮件的完整内容并解析为当前邮件上下文，之后用 取主题/取发件人/取正文文本/附件族 命令读取。",
+      "insertText": "IMAP_接收邮件(0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "IMAP_接收邮件",
+        "runtimeName": "IMAP_接收邮件",
+        "parameters": [
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "邮件序号，从 1 起。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "IMAP_接收邮件(1)"
+    },
+    {
+      "index": 7,
+      "name": "IMAP_取主题",
+      "signature": "IMAP_取主题()",
+      "description": "返回已接收邮件的主题（自动解码编码字）。",
+      "insertText": "IMAP_取主题()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "IMAP_取主题",
+        "runtimeName": "IMAP_取主题",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "IMAP_取主题()"
+    },
+    {
+      "index": 8,
+      "name": "IMAP_取发件人",
+      "signature": "IMAP_取发件人()",
+      "description": "返回已接收邮件的发件人。",
+      "insertText": "IMAP_取发件人()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "IMAP_取发件人",
+        "runtimeName": "IMAP_取发件人",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "IMAP_取发件人()"
+    },
+    {
+      "index": 9,
+      "name": "IMAP_取日期",
+      "signature": "IMAP_取日期()",
+      "description": "返回已接收邮件的日期头。",
+      "insertText": "IMAP_取日期()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "IMAP_取日期",
+        "runtimeName": "IMAP_取日期",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "IMAP_取日期()"
+    },
+    {
+      "index": 10,
+      "name": "IMAP_取正文文本",
+      "signature": "IMAP_取正文文本()",
+      "description": "返回已接收邮件的纯文本正文。",
+      "insertText": "IMAP_取正文文本()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "IMAP_取正文文本",
+        "runtimeName": "IMAP_取正文文本",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "IMAP_取正文文本()"
+    },
+    {
+      "index": 11,
+      "name": "IMAP_取网页正文",
+      "signature": "IMAP_取网页正文()",
+      "description": "返回已接收邮件的 HTML 正文。",
+      "insertText": "IMAP_取网页正文()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "IMAP_取网页正文",
+        "runtimeName": "IMAP_取网页正文",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "IMAP_取网页正文()"
+    },
+    {
+      "index": 12,
+      "name": "IMAP_取附件个数",
+      "signature": "IMAP_取附件个数()",
+      "description": "返回已接收邮件的附件数量。",
+      "insertText": "IMAP_取附件个数()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "IMAP_取附件个数",
+        "runtimeName": "IMAP_取附件个数",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "IMAP_取附件个数()"
+    },
+    {
+      "index": 13,
+      "name": "IMAP_取附件名称",
+      "signature": "IMAP_取附件名称(附件序号)",
+      "description": "返回指定附件的文件名。",
+      "insertText": "IMAP_取附件名称(0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "IMAP_取附件名称",
+        "runtimeName": "IMAP_取附件名称",
+        "parameters": [
+          {
+            "name": "附件序号",
+            "type": "int",
+            "description": "附件序号，从 0 起。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "IMAP_取附件名称(1)"
+    },
+    {
+      "index": 14,
+      "name": "IMAP_保存附件",
+      "signature": "IMAP_保存附件(附件序号, 保存路径)",
+      "description": "把指定附件内容写入目标文件。",
+      "insertText": "IMAP_保存附件(0, \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "IMAP_保存附件",
+        "runtimeName": "IMAP_保存附件",
+        "parameters": [
+          {
+            "name": "附件序号",
+            "type": "int",
+            "description": "附件序号，从 0 起。"
+          },
+          {
+            "name": "保存路径",
+            "type": "wideString",
+            "description": "保存的完整文件路径，所在目录必须已存在。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "IMAP_保存附件(1, \"module-demo-temp.txt\")"
+    },
+    {
+      "index": 15,
+      "name": "IMAP_取错误",
+      "signature": "IMAP_取错误()",
+      "description": "返回最近一次 IMAP 错误或服务端响应。",
+      "insertText": "IMAP_取错误()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "IMAP_取错误",
+        "runtimeName": "IMAP_取错误",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "IMAP_取错误()"
+    }
+  ]
+}

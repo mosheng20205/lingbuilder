@@ -1,0 +1,198 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-25T22:05:22.063Z",
+  "module": {
+    "id": "lingbuilder.advanced.memorydll",
+    "name": "内存加载DLL模块",
+    "version": "1.0.0",
+    "description": "把 DLL 字节数据在内存中手工完成 PE 映射并解析导出函数，全程不向磁盘释放 DLL 文件；只支持与程序位数一致、未加壳的 Windows PE，依赖的系统 DLL 仍由 Windows 加载器从系统目录加载。"
+  },
+  "commandCount": 7,
+  "commands": [
+    {
+      "index": 1,
+      "name": "内存DLL_加载",
+      "signature": "内存DLL_加载(数据, 虚拟名, [虚拟目录], [过文件校验], [不执行入口])",
+      "description": "把 DLL 字节数据手工映射到内存并按需执行入口函数，返回模块地址（0 表示失败）；全程不创建磁盘文件，同一虚拟名重复调用直接返回已加载的模块地址。",
+      "insertText": "内存DLL_加载($1, \"$2\")",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "内存DLL_加载",
+        "runtimeName": "内存DLL_加载",
+        "parameters": [
+          {
+            "name": "数据",
+            "type": "bytes",
+            "description": "DLL 文件的完整字节集；可用 缓冲区_从文件(\"路径\") 配合 缓冲区_到字节集 读入，或由项目 DLL 命令声明的内嵌资源提供。DLL 必须与程序位数一致且未加壳。"
+          },
+          {
+            "name": "虚拟名",
+            "type": "wideString",
+            "description": "模块自称的库文件名，例如 \"sqlite3.dll\"；重复加载判断与错误提示都使用该名字。"
+          },
+          {
+            "name": "虚拟目录",
+            "type": "wideString",
+            "optional": true,
+            "defaultValue": "",
+            "description": "可选，缺省空文本表示运行目录；只作为模块来源信息记录，不参与寻址。"
+          },
+          {
+            "name": "过文件校验",
+            "type": "bool",
+            "optional": true,
+            "defaultValue": false,
+            "description": "可选，缺省假；传真时额外校验节区数据完整性与导出表结构，并识别常见加壳段名，遇到加壳 DLL 直接返回失败。"
+          },
+          {
+            "name": "不执行入口",
+            "type": "bool",
+            "optional": true,
+            "defaultValue": false,
+            "description": "可选，缺省假；传真时不调用 DLL 的入口函数（DllMain 的 DLL_PROCESS_ATTACH），适用于入口会重复初始化全局状态的 DLL。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide",
+        "example": "局部 长整数型 模块地址\n模块地址 = 内存DLL_加载(缓冲区_到字节集(缓冲区), \"sqlite3.dll\")"
+      },
+      "demoInvocation": "内存DLL_加载({}, \"演示参数2\", \".\", 真, 真)"
+    },
+    {
+      "index": 2,
+      "name": "内存DLL_取函数地址",
+      "signature": "内存DLL_取函数地址(模块地址, 函数名)",
+      "description": "在已内存加载的模块中按导出名取函数地址，返回 0 表示未找到；地址可传给其它接收函数指针的原生命令，中文代码不能直接调用裸地址。",
+      "insertText": "内存DLL_取函数地址($1, \"$2\")",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "内存DLL_取函数地址",
+        "runtimeName": "内存DLL_取函数地址",
+        "parameters": [
+          {
+            "name": "模块地址",
+            "type": "longLong",
+            "description": "内存DLL_加载 返回的模块地址；为 0 或模块已卸载时返回 0。"
+          },
+          {
+            "name": "函数名",
+            "type": "wideString",
+            "description": "DLL 导出表中的原始函数名（ASCII），不是中文命令名；转发导出会自动跟随到目标 DLL。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide",
+        "example": "函数地址 = 内存DLL_取函数地址(模块地址, \"sqlite3_libversion_number\")"
+      },
+      "demoInvocation": "内存DLL_取函数地址(1, \"演示参数2\")"
+    },
+    {
+      "index": 3,
+      "name": "内存DLL_取函数序号地址",
+      "signature": "内存DLL_取函数序号地址(模块地址, 序号)",
+      "description": "按导出序号取函数地址，适用于只按序号导出的 DLL；返回 0 表示序号不存在。",
+      "insertText": "内存DLL_取函数序号地址($1, $2)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "内存DLL_取函数序号地址",
+        "runtimeName": "内存DLL_取函数序号地址",
+        "parameters": [
+          {
+            "name": "模块地址",
+            "type": "longLong",
+            "description": "内存DLL_加载 返回的模块地址；为 0 或模块已卸载时返回 0。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "PE 导出表中的序号（含导出表基址偏移），1 到 65535；越界返回 0。"
+          }
+        ],
+        "returnType": "longLong",
+        "example": "函数地址 = 内存DLL_取函数序号地址(模块地址, 1)"
+      },
+      "demoInvocation": "内存DLL_取函数序号地址(1, 1)"
+    },
+    {
+      "index": 4,
+      "name": "内存DLL_取模块大小",
+      "signature": "内存DLL_取模块大小(模块地址)",
+      "description": "返回内存模块的映像大小（字节），模块地址无效时返回 0。",
+      "insertText": "内存DLL_取模块大小($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "内存DLL_取模块大小",
+        "runtimeName": "内存DLL_取模块大小",
+        "parameters": [
+          {
+            "name": "模块地址",
+            "type": "longLong",
+            "description": "内存DLL_加载 返回的模块地址；只统计本次映射占用的映像字节数，不含依赖 DLL。"
+          }
+        ],
+        "returnType": "int",
+        "example": "映像大小 = 内存DLL_取模块大小(模块地址)"
+      },
+      "demoInvocation": "内存DLL_取模块大小(1)"
+    },
+    {
+      "index": 5,
+      "name": "内存DLL_已加载",
+      "signature": "内存DLL_已加载(模块地址)",
+      "description": "判断模块地址是否仍是已加载的内存模块；模块已卸载或地址无效时返回假。",
+      "insertText": "内存DLL_已加载($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "内存DLL_已加载",
+        "runtimeName": "内存DLL_已加载",
+        "parameters": [
+          {
+            "name": "模块地址",
+            "type": "longLong",
+            "description": "要检查的模块地址；已卸载或从未加载过的地址返回假。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "内存DLL_已加载(1)"
+    },
+    {
+      "index": 6,
+      "name": "内存DLL_卸载",
+      "signature": "内存DLL_卸载(模块地址)",
+      "description": "注销内存模块（不调用入口函数的分离通知，也不释放映像内存）；注销后 取函数地址/已加载 都返回失败，同一虚拟名可以重新加载。",
+      "insertText": "内存DLL_卸载($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "内存DLL_卸载",
+        "runtimeName": "内存DLL_卸载",
+        "parameters": [
+          {
+            "name": "模块地址",
+            "type": "longLong",
+            "description": "内存DLL_加载 返回的模块地址；声明内嵌加载的模块返回假并给出中文原因。映像内存保留到进程退出：静态 CRT 登记的线程局部存储回调仍指向该映像，强行释放会让进程退出时崩溃。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "内存DLL_卸载(1)"
+    },
+    {
+      "index": 7,
+      "name": "内存DLL_取错误信息",
+      "signature": "内存DLL_取错误信息()",
+      "description": "返回最近一次内存加载操作的中文错误原因，例如位数不符、加壳、依赖缺失或导出不存在。",
+      "insertText": "内存DLL_取错误信息()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "内存DLL_取错误信息",
+        "runtimeName": "内存DLL_取错误信息",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "调试输出(内存DLL_取错误信息())"
+      },
+      "demoInvocation": "内存DLL_取错误信息()"
+    }
+  ]
+}

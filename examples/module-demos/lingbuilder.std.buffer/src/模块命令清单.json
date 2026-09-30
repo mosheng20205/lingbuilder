@@ -1,0 +1,435 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-25T22:05:22.449Z",
+  "module": {
+    "id": "lingbuilder.std.buffer",
+    "name": "缓冲区模块",
+    "version": "1.0.0",
+    "description": "提供句柄制可增长二进制缓冲区：顺序读写游标、字节集/文本/整数编解码与文件互转；单缓冲区上限 256 MiB，跨线程传递请先转为字节集。"
+  },
+  "commandCount": 17,
+  "commands": [
+    {
+      "index": 1,
+      "name": "缓冲区_创建",
+      "signature": "缓冲区_创建(初始容量)",
+      "description": "创建可增长二进制缓冲区；初始容量 0～268435456，返回缓冲区句柄（0 表示失败）。",
+      "insertText": "缓冲区_创建(1024)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "缓冲区_创建",
+        "runtimeName": "缓冲区_创建",
+        "parameters": [
+          {
+            "name": "初始容量",
+            "type": "int",
+            "description": "预分配的字节容量，0 到 268435456；负数表示创建失败并返回句柄 0。"
+          }
+        ],
+        "returnType": "longLong",
+        "example": "缓冲区_创建(1024)"
+      },
+      "demoInvocation": "缓冲区_创建(1)"
+    },
+    {
+      "index": 2,
+      "name": "缓冲区_销毁",
+      "signature": "缓冲区_销毁(缓冲区)",
+      "description": "销毁缓冲区并回收句柄；销毁后句柄不可再用。",
+      "insertText": "缓冲区_销毁($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "缓冲区_销毁",
+        "runtimeName": "缓冲区_销毁",
+        "parameters": [
+          {
+            "name": "缓冲区",
+            "type": "longLong",
+            "description": "缓冲区_创建等命令返回的缓冲区句柄；句柄不存在或已销毁时返回假。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "缓冲区_销毁(1)"
+    },
+    {
+      "index": 3,
+      "name": "缓冲区_取长度",
+      "signature": "缓冲区_取长度(缓冲区)",
+      "description": "返回缓冲区当前总字节数；句柄无效返回 -1。",
+      "insertText": "缓冲区_取长度($1)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "缓冲区_取长度",
+        "runtimeName": "缓冲区_取长度",
+        "parameters": [
+          {
+            "name": "缓冲区",
+            "type": "longLong",
+            "description": "缓冲区_创建等命令返回的缓冲区句柄；句柄无效时返回 -1。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "缓冲区_取长度(1)"
+    },
+    {
+      "index": 4,
+      "name": "缓冲区_写字节集",
+      "signature": "缓冲区_写字节集(缓冲区, 字节集)",
+      "description": "把字节集追加到缓冲区末尾；单个缓冲区上限 268435456 字节。",
+      "insertText": "缓冲区_写字节集($1, $2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "缓冲区_写字节集",
+        "runtimeName": "缓冲区_写字节集",
+        "parameters": [
+          {
+            "name": "缓冲区",
+            "type": "longLong",
+            "description": "缓冲区_创建、缓冲区_从字节集 或 缓冲区_从文件 返回的缓冲区句柄；句柄无效时命令按说明返回失败值。"
+          },
+          {
+            "name": "字节集",
+            "type": "bytes",
+            "description": "要追加到缓冲区末尾的字节集；与已有内容合计超过 268435456 字节时返回假且不写入。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "缓冲区_写字节集(1, {})"
+    },
+    {
+      "index": 5,
+      "name": "缓冲区_写文本",
+      "signature": "缓冲区_写文本(缓冲区, 文本)",
+      "description": "把文本按 UTF-8 编码追加到缓冲区末尾。",
+      "insertText": "缓冲区_写文本($1, \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "缓冲区_写文本",
+        "runtimeName": "缓冲区_写文本",
+        "parameters": [
+          {
+            "name": "缓冲区",
+            "type": "longLong",
+            "description": "缓冲区_创建、缓冲区_从字节集 或 缓冲区_从文件 返回的缓冲区句柄；句柄无效时命令按说明返回失败值。"
+          },
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要按 UTF-8 追加写入的文本；受单缓冲区 268435456 字节上限约束。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "缓冲区_写文本(1, \"演示参数2\")"
+    },
+    {
+      "index": 6,
+      "name": "缓冲区_写整数",
+      "signature": "缓冲区_写整数(缓冲区, 整数, 字节数, 大端)",
+      "description": "把整数按指定字节数（1/2/4/8）写入缓冲区末尾；超出范围的字节数返回假。",
+      "insertText": "缓冲区_写整数($1, $2, 4, 假)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "缓冲区_写整数",
+        "runtimeName": "缓冲区_写整数",
+        "parameters": [
+          {
+            "name": "缓冲区",
+            "type": "longLong",
+            "description": "缓冲区_创建、缓冲区_从字节集 或 缓冲区_从文件 返回的缓冲区句柄；句柄无效时命令按说明返回失败值。"
+          },
+          {
+            "name": "整数",
+            "type": "longLong",
+            "description": "要写入的整数值，只取指定位宽对应的低位字节。"
+          },
+          {
+            "name": "字节数",
+            "type": "int",
+            "description": "整数的字节宽度，只允许 1、2、4、8；其它值不写入也不读取。"
+          },
+          {
+            "name": "大端",
+            "type": "bool",
+            "description": "传真表示高位字节在前（大端），传假表示低位字节在前（小端）。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "缓冲区_写整数(1, 1, 1, 真)"
+    },
+    {
+      "index": 7,
+      "name": "缓冲区_读字节集",
+      "signature": "缓冲区_读字节集(缓冲区, 长度)",
+      "description": "从读取游标处取出字节集并前进游标；长度小于 0 表示读取全部剩余字节。",
+      "insertText": "缓冲区_读字节集($1, 4)",
+      "returnType": "字节集",
+      "binding": {
+        "command": "缓冲区_读字节集",
+        "runtimeName": "缓冲区_读字节集",
+        "parameters": [
+          {
+            "name": "缓冲区",
+            "type": "longLong",
+            "description": "缓冲区_创建、缓冲区_从字节集 或 缓冲区_从文件 返回的缓冲区句柄；句柄无效时命令按说明返回失败值。"
+          },
+          {
+            "name": "长度",
+            "type": "int",
+            "description": "要读取的字节数；小于 0 表示读取到缓冲区末尾，超出剩余时只取剩余部分，读取后游标前进。"
+          }
+        ],
+        "returnType": "bytes"
+      },
+      "demoInvocation": "缓冲区_读字节集(1, 1)"
+    },
+    {
+      "index": 8,
+      "name": "缓冲区_读文本",
+      "signature": "缓冲区_读文本(缓冲区, 长度)",
+      "description": "从读取游标处按 UTF-8 解码文本并前进游标；长度小于 0 表示读取全部剩余字节。",
+      "insertText": "缓冲区_读文本($1, -1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "缓冲区_读文本",
+        "runtimeName": "缓冲区_读文本",
+        "parameters": [
+          {
+            "name": "缓冲区",
+            "type": "longLong",
+            "description": "缓冲区_创建、缓冲区_从字节集 或 缓冲区_从文件 返回的缓冲区句柄；句柄无效时命令按说明返回失败值。"
+          },
+          {
+            "name": "长度",
+            "type": "int",
+            "description": "要读取的字节数，读出的字节按 UTF-8 解码为文本；小于 0 表示读取全部剩余字节。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "缓冲区_读文本(1, 1)"
+    },
+    {
+      "index": 9,
+      "name": "缓冲区_读整数",
+      "signature": "缓冲区_读整数(缓冲区, 字节数, 大端)",
+      "description": "从读取游标处按指定字节数（1/2/4/8）读取整数并前进游标；数据不足返回 0。",
+      "insertText": "缓冲区_读整数($1, 4, 假)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "缓冲区_读整数",
+        "runtimeName": "缓冲区_读整数",
+        "parameters": [
+          {
+            "name": "缓冲区",
+            "type": "longLong",
+            "description": "缓冲区_创建、缓冲区_从字节集 或 缓冲区_从文件 返回的缓冲区句柄；句柄无效时命令按说明返回失败值。"
+          },
+          {
+            "name": "字节数",
+            "type": "int",
+            "description": "整数的字节宽度，只允许 1、2、4、8；其它值返回 0。"
+          },
+          {
+            "name": "大端",
+            "type": "bool",
+            "description": "传真表示高位字节在前（大端），传假表示低位字节在前（小端）。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "缓冲区_读整数(1, 1, 真)"
+    },
+    {
+      "index": 10,
+      "name": "缓冲区_取剩余",
+      "signature": "缓冲区_取剩余(缓冲区)",
+      "description": "返回读取游标到缓冲区末尾的剩余字节数；句柄无效返回 -1。",
+      "insertText": "缓冲区_取剩余($1)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "缓冲区_取剩余",
+        "runtimeName": "缓冲区_取剩余",
+        "parameters": [
+          {
+            "name": "缓冲区",
+            "type": "longLong",
+            "description": "缓冲区_创建等命令返回的缓冲区句柄；句柄无效时返回 -1。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "缓冲区_取剩余(1)"
+    },
+    {
+      "index": 11,
+      "name": "缓冲区_重置读取",
+      "signature": "缓冲区_重置读取(缓冲区)",
+      "description": "把读取游标移回缓冲区开头。",
+      "insertText": "缓冲区_重置读取($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "缓冲区_重置读取",
+        "runtimeName": "缓冲区_重置读取",
+        "parameters": [
+          {
+            "name": "缓冲区",
+            "type": "longLong",
+            "description": "缓冲区_创建、缓冲区_从字节集 或 缓冲区_从文件 返回的缓冲区句柄；句柄无效时命令按说明返回失败值。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "缓冲区_重置读取(1)"
+    },
+    {
+      "index": 12,
+      "name": "缓冲区_到字节集",
+      "signature": "缓冲区_到字节集(缓冲区)",
+      "description": "把缓冲区全部内容复制为字节集。",
+      "insertText": "缓冲区_到字节集($1)",
+      "returnType": "字节集",
+      "binding": {
+        "command": "缓冲区_到字节集",
+        "runtimeName": "缓冲区_到字节集",
+        "parameters": [
+          {
+            "name": "缓冲区",
+            "type": "longLong",
+            "description": "缓冲区_创建等命令返回的缓冲区句柄；句柄无效时返回空字节集。"
+          }
+        ],
+        "returnType": "bytes"
+      },
+      "demoInvocation": "缓冲区_到字节集(1)"
+    },
+    {
+      "index": 13,
+      "name": "缓冲区_从字节集",
+      "signature": "缓冲区_从字节集(字节集)",
+      "description": "用字节集内容创建新缓冲区并返回句柄。",
+      "insertText": "缓冲区_从字节集($1)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "缓冲区_从字节集",
+        "runtimeName": "缓冲区_从字节集",
+        "parameters": [
+          {
+            "name": "字节集",
+            "type": "bytes",
+            "description": "用作缓冲区初始内容的字节集；超过 268435456 字节时返回句柄 0。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "缓冲区_从字节集({})"
+    },
+    {
+      "index": 14,
+      "name": "缓冲区_清空",
+      "signature": "缓冲区_清空(缓冲区)",
+      "description": "清空缓冲区内容并把读取游标归零。",
+      "insertText": "缓冲区_清空($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "缓冲区_清空",
+        "runtimeName": "缓冲区_清空",
+        "parameters": [
+          {
+            "name": "缓冲区",
+            "type": "longLong",
+            "description": "缓冲区_创建、缓冲区_从字节集 或 缓冲区_从文件 返回的缓冲区句柄；句柄无效时命令按说明返回失败值。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "缓冲区_清空(1)"
+    },
+    {
+      "index": 15,
+      "name": "缓冲区_保存文件",
+      "signature": "缓冲区_保存文件(缓冲区, 路径)",
+      "description": "把缓冲区全部内容写入目标文件（覆盖写入）。",
+      "insertText": "缓冲区_保存文件($1, \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "缓冲区_保存文件",
+        "runtimeName": "缓冲区_保存文件",
+        "parameters": [
+          {
+            "name": "缓冲区",
+            "type": "longLong",
+            "description": "缓冲区_创建、缓冲区_从字节集 或 缓冲区_从文件 返回的缓冲区句柄；句柄无效时命令按说明返回失败值。"
+          },
+          {
+            "name": "路径",
+            "type": "wideString",
+            "description": "目标文件路径，不能为空文本；以二进制方式整文件覆盖写入。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "缓冲区_保存文件(1, \"module-demo-temp.txt\")"
+    },
+    {
+      "index": 16,
+      "name": "缓冲区_从文件",
+      "signature": "缓冲区_从文件(路径)",
+      "description": "读取文件内容创建新缓冲区；失败或超过 268435456 字节返回 0。",
+      "insertText": "缓冲区_从文件(\"$1\")",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "缓冲区_从文件",
+        "runtimeName": "缓冲区_从文件",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString",
+            "description": "要读取的文件路径，不能为空文本；打不开或文件超过 268435456 字节时返回句柄 0。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "缓冲区_从文件(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 17,
+      "name": "缓冲区_寻找",
+      "signature": "缓冲区_寻找(缓冲区, 欲寻找, 起始位置)",
+      "description": "在缓冲区全部内容中从起始位置（从 0 起）查找字节集，返回内容中的位置；读取游标不动；未找到或句柄无效返回 -1。",
+      "insertText": "缓冲区_寻找($1, $2, 0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "缓冲区_寻找",
+        "runtimeName": "缓冲区_寻找",
+        "parameters": [
+          {
+            "name": "缓冲区",
+            "type": "longLong",
+            "description": "缓冲区_创建、缓冲区_从字节集 或 缓冲区_从文件 返回的缓冲区句柄；句柄无效时命令按说明返回失败值。"
+          },
+          {
+            "name": "欲寻找",
+            "type": "bytes",
+            "description": "要查找的目标字节集；为空时按命令说明返回 -1 或原样处理。"
+          },
+          {
+            "name": "起始位置",
+            "type": "int",
+            "description": "查找起始的字节索引，从 0 起；不影响读取游标。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "缓冲区_寻找(1, {}, 1)"
+    }
+  ]
+}

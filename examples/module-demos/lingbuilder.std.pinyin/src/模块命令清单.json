@@ -1,0 +1,216 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-25T22:05:22.479Z",
+  "module": {
+    "id": "lingbuilder.std.pinyin",
+    "name": "拼音处理模块",
+    "version": "1.0.0",
+    "description": "基于内置汉字码表（含多音字）提供全拼、首字母、声母韵母与发音比较能力，适合中文检索与排序场景。"
+  },
+  "commandCount": 8,
+  "commands": [
+    {
+      "index": 1,
+      "name": "拼音_取全拼",
+      "signature": "拼音_取全拼(文本, 分隔符)",
+      "description": "把文本中每个汉字转换为小写全拼（多音字取最常用读音），非汉字字符原样保留。",
+      "insertText": "拼音_取全拼(\"$1\", \"$2\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "拼音_取全拼",
+        "runtimeName": "拼音_取全拼",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要处理的文本；收录在码表中的汉字按拼音转换，其它字符原样保留。"
+          },
+          {
+            "name": "分隔符",
+            "type": "wideString",
+            "optional": true,
+            "defaultValue": "",
+            "description": "插入在每个汉字读音之间的文本；省略时各字读音连写。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "调试输出(拼音_取全拼(\"中文编程\", \"-\"))"
+      },
+      "demoInvocation": "拼音_取全拼(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 2,
+      "name": "拼音_取首字母",
+      "signature": "拼音_取首字母(文本)",
+      "description": "取每个汉字读音的首个小写字母，非汉字字符原样保留，常用于首字母检索。",
+      "insertText": "拼音_取首字母(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "拼音_取首字母",
+        "runtimeName": "拼音_取首字母",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要处理的文本；收录在码表中的汉字按拼音转换，其它字符原样保留。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "调试输出(拼音_取首字母(\"中文编程\"))"
+      },
+      "demoInvocation": "拼音_取首字母(\"演示参数1\")"
+    },
+    {
+      "index": 3,
+      "name": "拼音_取所有发音",
+      "signature": "拼音_取所有发音(汉字, 结果数组)",
+      "description": "取出单个汉字的全部读音（多音字返回多条，按常用度排序），返回读音数量。",
+      "insertText": "拼音_取所有发音($1, $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "拼音_取所有发音",
+        "runtimeName": "拼音_取所有发音",
+        "parameters": [
+          {
+            "name": "汉字",
+            "type": "wideString",
+            "description": "单个汉字；多音字返回全部读音，非汉字字符返回空结果。"
+          },
+          {
+            "name": "结果数组",
+            "type": "array",
+            "description": "接收读音的文本型数组变量，调用前会先清空原有内容。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "局部 文本型 读音[]\n拼音_取所有发音(\"重\", 读音)\n调试输出(数组_取成员数(读音))"
+      },
+      "demoInvocation": "拼音_取所有发音(\"演示参数1\", 0)"
+    },
+    {
+      "index": 4,
+      "name": "拼音_取发音数目",
+      "signature": "拼音_取发音数目(汉字)",
+      "description": "返回单个汉字的读音数量；非汉字字符返回 0。",
+      "insertText": "拼音_取发音数目($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "拼音_取发音数目",
+        "runtimeName": "拼音_取发音数目",
+        "parameters": [
+          {
+            "name": "汉字",
+            "type": "wideString",
+            "description": "单个汉字；多音字返回全部读音，非汉字字符返回空结果。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "拼音_取发音数目(\"演示参数1\")"
+    },
+    {
+      "index": 5,
+      "name": "拼音_取声母",
+      "signature": "拼音_取声母(文本)",
+      "description": "取每个汉字读音的声母（zh、ch、sh 算一个声母，无声母的音节输出空）；非汉字字符原样保留。",
+      "insertText": "拼音_取声母(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "拼音_取声母",
+        "runtimeName": "拼音_取声母",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要处理的文本；收录在码表中的汉字按拼音转换，其它字符原样保留。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "调试输出(拼音_取声母(\"中文编程\"))"
+      },
+      "demoInvocation": "拼音_取声母(\"演示参数1\")"
+    },
+    {
+      "index": 6,
+      "name": "拼音_取韵母",
+      "signature": "拼音_取韵母(文本)",
+      "description": "取每个汉字读音的韵母（去掉声母后的部分）；非汉字字符原样保留。",
+      "insertText": "拼音_取韵母(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "拼音_取韵母",
+        "runtimeName": "拼音_取韵母",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要处理的文本；收录在码表中的汉字按拼音转换，其它字符原样保留。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "拼音_取韵母(\"演示参数1\")"
+    },
+    {
+      "index": 7,
+      "name": "拼音_发音比较",
+      "signature": "拼音_发音比较(汉字一, 汉字二)",
+      "description": "按最常用读音比较两个汉字：小于返回 -1，相等返回 0，大于返回 1；非汉字按字符编码比较。",
+      "insertText": "拼音_发音比较($1, $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "拼音_发音比较",
+        "runtimeName": "拼音_发音比较",
+        "parameters": [
+          {
+            "name": "汉字一",
+            "type": "wideString",
+            "description": "参加比较的第一个汉字（取首字符）。"
+          },
+          {
+            "name": "汉字二",
+            "type": "wideString",
+            "description": "参加比较的第二个汉字（取首字符）。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "拼音_发音比较(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 8,
+      "name": "拼音_首字母匹配",
+      "signature": "拼音_首字母匹配(文本, 首字母序列)",
+      "description": "判断文本的拼音首字母序列是否以指定字母序列开头（不区分大小写），用于中文输入检索。",
+      "insertText": "拼音_首字母匹配(\"$1\", \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "拼音_首字母匹配",
+        "runtimeName": "拼音_首字母匹配",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "被检索的原始文本。"
+          },
+          {
+            "name": "首字母序列",
+            "type": "wideString",
+            "description": "要匹配的小写首字母序列，例如 nh 匹配 你好；空序列恒匹配。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "调试输出(拼音_首字母匹配(\"你好世界\", \"nhsj\"))"
+      },
+      "demoInvocation": "拼音_首字母匹配(\"演示参数1\", \"演示参数2\")"
+    }
+  ]
+}

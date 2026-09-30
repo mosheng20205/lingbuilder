@@ -1,0 +1,1120 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-25T22:05:22.199Z",
+  "module": {
+    "id": "lingbuilder.database.mysql",
+    "name": "MySQL 数据库模块",
+    "version": "1.0.0",
+    "description": "原生协议直连 MySQL/MariaDB 服务器：密码连接、utf8mb4 中文、参数化预编译语句、强类型结果读取、事务和中文错误诊断。"
+  },
+  "commandCount": 43,
+  "commands": [
+    {
+      "index": 1,
+      "name": "MySQL_加载运行库",
+      "signature": "MySQL_加载运行库(DLL路径)",
+      "description": "显式加载 MariaDB Connector/C 运行库并校验模块所需导出。存在活动连接或语句时拒绝切换 DLL。",
+      "insertText": "MySQL_加载运行库(\"$1\")",
+      "returnType": "逻辑型",
+      "returnDescription": "全部必要导出可用时返回真，否则返回假并记录中文错误。",
+      "category": "运行库",
+      "binding": {
+        "command": "MySQL_加载运行库",
+        "runtimeName": "MySQL_加载运行库",
+        "parameters": [
+          {
+            "name": "DLL路径",
+            "type": "wideString",
+            "description": "libmariadb.dll 的绝对或相对路径；空文本按系统 DLL 搜索规则加载。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "MySQL_加载运行库(\"libmariadb.dll\")"
+      },
+      "demoInvocation": "MySQL_加载运行库(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 2,
+      "name": "MySQL_卸载运行库",
+      "signature": "MySQL_卸载运行库()",
+      "description": "在没有活动连接和语句时卸载 libmariadb.dll。",
+      "insertText": "MySQL_卸载运行库()",
+      "returnType": "逻辑型",
+      "category": "运行库",
+      "binding": {
+        "command": "MySQL_卸载运行库",
+        "runtimeName": "MySQL_卸载运行库",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "MySQL_卸载运行库()"
+    },
+    {
+      "index": 3,
+      "name": "MySQL_取运行库版本",
+      "signature": "MySQL_取运行库版本()",
+      "description": "返回当前已加载 MySQL 客户端运行库的版本文本。",
+      "insertText": "MySQL_取运行库版本()",
+      "returnType": "文本型",
+      "category": "运行库",
+      "binding": {
+        "command": "MySQL_取运行库版本",
+        "runtimeName": "MySQL_取运行库版本",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "MySQL_取运行库版本()"
+    },
+    {
+      "index": 4,
+      "name": "MySQL_取客户端版本",
+      "signature": "MySQL_取客户端版本()",
+      "description": "返回客户端运行库的数字版本号，例如 30410 表示 3.4.10。",
+      "insertText": "MySQL_取客户端版本()",
+      "returnType": "整数型",
+      "category": "运行库",
+      "binding": {
+        "command": "MySQL_取客户端版本",
+        "runtimeName": "MySQL_取客户端版本",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "MySQL_取客户端版本()"
+    },
+    {
+      "index": 5,
+      "name": "MySQL_连接",
+      "signature": "MySQL_连接(主机, 端口, 用户名, 密码, 数据库)",
+      "description": "用原生协议连接 MySQL/MariaDB 服务器并校验密码；成功后自动把字符集协商为 utf8mb4。",
+      "insertText": "MySQL_连接(\"$1\", 0, \"$3\", \"$4\", \"$5\")",
+      "returnType": "MySQL连接",
+      "returnDescription": "成功返回非 0 的 MySQL连接，失败返回 0，可通过 MySQL_取错误 查看原因。",
+      "category": "连接",
+      "binding": {
+        "command": "MySQL_连接",
+        "runtimeName": "MySQL_连接",
+        "parameters": [
+          {
+            "name": "主机",
+            "type": "wideString",
+            "description": "服务器地址或域名。"
+          },
+          {
+            "name": "端口",
+            "type": "int",
+            "description": "服务器端口，默认 3306。"
+          },
+          {
+            "name": "用户名",
+            "type": "wideString",
+            "description": "MySQL 登录账号名，账号权限决定后续可访问的数据库和表。"
+          },
+          {
+            "name": "密码",
+            "type": "wideString",
+            "description": "账号密码；连接失败时不会写日志或诊断输出该密码。"
+          },
+          {
+            "name": "数据库",
+            "type": "wideString",
+            "description": "连接后选用的数据库；空文本表示暂不选择。"
+          }
+        ],
+        "returnType": "MySQL连接",
+        "encoding": "wide",
+        "example": "MySQL_连接(\"127.0.0.1\", 3306, \"root\", \"密码\", \"test\")"
+      },
+      "demoInvocation": "MySQL_连接(\"演示参数1\", 1, \"演示参数3\", \"演示参数4\", \"演示参数5\")"
+    },
+    {
+      "index": 6,
+      "name": "MySQL_连接扩展",
+      "signature": "MySQL_连接扩展(主机, 端口, 用户名, 密码, 数据库, 连接超时秒, 启用SSL)",
+      "description": "带超时和 TLS 开关的扩展连接；其余行为与 MySQL_连接 一致。",
+      "insertText": "MySQL_连接扩展(\"$1\", 0, \"$3\", \"$4\", \"$5\", 0, 假)",
+      "returnType": "MySQL连接",
+      "returnDescription": "成功返回非 0 的 MySQL连接，失败返回 0。",
+      "category": "连接",
+      "binding": {
+        "command": "MySQL_连接扩展",
+        "runtimeName": "MySQL_连接扩展",
+        "parameters": [
+          {
+            "name": "主机",
+            "type": "wideString",
+            "description": "MySQL 服务器主机名或 IP 文本，例如 127.0.0.1；解析失败或服务器不可达时返回 0 并记录中文错误。"
+          },
+          {
+            "name": "端口",
+            "type": "int",
+            "description": "服务器端口，默认 3306。"
+          },
+          {
+            "name": "用户名",
+            "type": "wideString",
+            "description": "MySQL 登录账号名，账号权限决定后续可访问的数据库和表。"
+          },
+          {
+            "name": "密码",
+            "type": "wideString",
+            "description": "登录密码，只在连接期间使用，不写入日志或诊断输出。"
+          },
+          {
+            "name": "数据库",
+            "type": "wideString",
+            "description": "连接后选用的数据库；空文本表示暂不选择。"
+          },
+          {
+            "name": "连接超时秒",
+            "type": "int",
+            "description": "TCP 连接与读写超时秒数，范围 1～86400。"
+          },
+          {
+            "name": "启用SSL",
+            "type": "bool",
+            "description": "真表示使用 TLS 加密连接（Schannel）；服务器不支持时回退行为由服务器配置决定。"
+          }
+        ],
+        "returnType": "MySQL连接",
+        "encoding": "wide",
+        "example": "MySQL_连接扩展(\"127.0.0.1\", 3306, \"root\", \"密码\", \"test\", 10, 假)"
+      },
+      "demoInvocation": "MySQL_连接扩展(\"演示参数1\", 1, \"演示参数3\", \"演示参数4\", \"演示参数5\", 1, 真)"
+    },
+    {
+      "index": 7,
+      "name": "MySQL_关闭连接",
+      "signature": "MySQL_关闭连接(连接)",
+      "description": "释放连接所属全部语句后关闭连接。失效句柄返回假。",
+      "insertText": "MySQL_关闭连接(0)",
+      "returnType": "逻辑型",
+      "category": "连接",
+      "binding": {
+        "command": "MySQL_关闭连接",
+        "runtimeName": "MySQL_关闭连接",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "MySQL连接",
+            "description": "由 MySQL_连接 或 MySQL_连接扩展 返回的受管连接。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "MySQL_关闭连接(0)"
+    },
+    {
+      "index": 8,
+      "name": "MySQL_关闭全部",
+      "signature": "MySQL_关闭全部()",
+      "description": "释放所有语句、关闭所有连接并卸载运行库。",
+      "insertText": "MySQL_关闭全部()",
+      "returnType": "空",
+      "category": "连接",
+      "binding": {
+        "command": "MySQL_关闭全部",
+        "runtimeName": "MySQL_关闭全部",
+        "parameters": [],
+        "returnType": "void"
+      },
+      "demoInvocation": "MySQL_关闭全部()"
+    },
+    {
+      "index": 9,
+      "name": "MySQL_连接是否有效",
+      "signature": "MySQL_连接是否有效(连接)",
+      "description": "检查受管连接 ID 当前是否仍然有效。",
+      "insertText": "MySQL_连接是否有效(0)",
+      "returnType": "逻辑型",
+      "category": "连接",
+      "binding": {
+        "command": "MySQL_连接是否有效",
+        "runtimeName": "MySQL_连接是否有效",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "MySQL连接",
+            "description": "由 MySQL_连接 或 MySQL_连接扩展 返回的受管连接。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "MySQL_连接是否有效(0)"
+    },
+    {
+      "index": 10,
+      "name": "MySQL_切换数据库",
+      "signature": "MySQL_切换数据库(连接, 数据库名)",
+      "description": "切换当前连接使用的数据库。",
+      "insertText": "MySQL_切换数据库(0, \"$2\")",
+      "returnType": "逻辑型",
+      "category": "连接",
+      "binding": {
+        "command": "MySQL_切换数据库",
+        "runtimeName": "MySQL_切换数据库",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "MySQL连接",
+            "description": "由 MySQL_连接 或 MySQL_连接扩展 返回的受管连接。"
+          },
+          {
+            "name": "数据库名",
+            "type": "wideString",
+            "description": "要切换到的数据库名，不能为空文本，当前账号必须有权访问。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "MySQL_切换数据库(0, \"演示参数2\")"
+    },
+    {
+      "index": 11,
+      "name": "MySQL_设置字符集",
+      "signature": "MySQL_设置字符集(连接, 字符集)",
+      "description": "修改连接字符集；默认已在连接时设置为 utf8mb4。",
+      "insertText": "MySQL_设置字符集(0, \"$2\")",
+      "returnType": "逻辑型",
+      "category": "连接",
+      "binding": {
+        "command": "MySQL_设置字符集",
+        "runtimeName": "MySQL_设置字符集",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "MySQL连接",
+            "description": "由 MySQL_连接 或 MySQL_连接扩展 返回的受管连接。"
+          },
+          {
+            "name": "字符集",
+            "type": "wideString",
+            "description": "例如 utf8mb4、gbk、latin1。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "MySQL_设置字符集(0, \"演示参数2\")"
+    },
+    {
+      "index": 12,
+      "name": "MySQL_取服务器信息",
+      "signature": "MySQL_取服务器信息(连接)",
+      "description": "返回服务器版本描述文本，失败返回空文本。",
+      "insertText": "MySQL_取服务器信息(0)",
+      "returnType": "文本型",
+      "category": "连接",
+      "binding": {
+        "command": "MySQL_取服务器信息",
+        "runtimeName": "MySQL_取服务器信息",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "MySQL连接",
+            "description": "由 MySQL_连接 或 MySQL_连接扩展 返回的受管连接。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "MySQL_取服务器信息(0)"
+    },
+    {
+      "index": 13,
+      "name": "MySQL_执行",
+      "signature": "MySQL_执行(连接, SQL语句)",
+      "description": "直接执行一条 SQL 并返回受影响行数，失败返回 -1。",
+      "insertText": "MySQL_执行(0, \"$2\")",
+      "returnType": "长整数型",
+      "returnDescription": "返回受影响行数；失败返回 -1。",
+      "category": "执行",
+      "binding": {
+        "command": "MySQL_执行",
+        "runtimeName": "MySQL_执行",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "MySQL连接",
+            "description": "由 MySQL_连接 或 MySQL_连接扩展 返回的受管连接。"
+          },
+          {
+            "name": "SQL语句",
+            "type": "wideString",
+            "description": "单条无参数 SQL；处理外部输入时应使用预编译语句。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide",
+        "example": "MySQL_执行(数据库, \"DELETE FROM users WHERE score < 0\")"
+      },
+      "demoInvocation": "MySQL_执行(0, \"演示参数2\")"
+    },
+    {
+      "index": 14,
+      "name": "MySQL_查询首值",
+      "signature": "MySQL_查询首值(连接, SQL语句)",
+      "description": "执行查询并返回首行首列的文本表示；NULL、无行或失败返回空文本，应结合错误码判断。",
+      "insertText": "MySQL_查询首值(0, \"$2\")",
+      "returnType": "文本型",
+      "category": "执行",
+      "binding": {
+        "command": "MySQL_查询首值",
+        "runtimeName": "MySQL_查询首值",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "MySQL连接",
+            "description": "由 MySQL_连接 或 MySQL_连接扩展 返回的受管连接。"
+          },
+          {
+            "name": "SQL语句",
+            "type": "wideString",
+            "description": "单条 SELECT 语句文本；含参数时请改用准备语句。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "MySQL_查询首值(0, \"演示参数2\")"
+    },
+    {
+      "index": 15,
+      "name": "MySQL_取最后插入ID",
+      "signature": "MySQL_取最后插入ID(连接)",
+      "description": "返回连接最近一次成功 INSERT 生成的自增主键值。",
+      "insertText": "MySQL_取最后插入ID(0)",
+      "returnType": "长整数型",
+      "category": "执行",
+      "binding": {
+        "command": "MySQL_取最后插入ID",
+        "runtimeName": "MySQL_取最后插入ID",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "MySQL连接",
+            "description": "由 MySQL_连接 或 MySQL_连接扩展 返回的受管连接。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "MySQL_取最后插入ID(0)"
+    },
+    {
+      "index": 16,
+      "name": "MySQL_准备",
+      "signature": "MySQL_准备(连接, SQL语句)",
+      "description": "在服务器端创建参数化预编译语句，用于安全执行和逐行读取。",
+      "insertText": "MySQL_准备(0, \"$2\")",
+      "returnType": "MySQL语句",
+      "returnDescription": "成功返回非 0 的 MySQL语句，失败返回 0。",
+      "category": "预编译语句",
+      "binding": {
+        "command": "MySQL_准备",
+        "runtimeName": "MySQL_准备",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "MySQL连接",
+            "description": "由 MySQL_连接 或 MySQL_连接扩展 返回的受管连接。"
+          },
+          {
+            "name": "SQL语句",
+            "type": "wideString",
+            "description": "只允许一条 SQL，用 ? 作为参数占位符。"
+          }
+        ],
+        "returnType": "MySQL语句",
+        "encoding": "wide",
+        "example": "MySQL_准备(数据库, \"SELECT id, name FROM users WHERE score >= ?\")"
+      },
+      "demoInvocation": "MySQL_准备(0, \"演示参数2\")"
+    },
+    {
+      "index": 17,
+      "name": "MySQL_语句是否有效",
+      "signature": "MySQL_语句是否有效(语句)",
+      "description": "检查预编译语句 ID 当前是否仍然有效。",
+      "insertText": "MySQL_语句是否有效(0)",
+      "returnType": "逻辑型",
+      "category": "预编译语句",
+      "binding": {
+        "command": "MySQL_语句是否有效",
+        "runtimeName": "MySQL_语句是否有效",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "MySQL语句",
+            "description": "由 MySQL_准备 返回的受管预编译语句。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "MySQL_语句是否有效(0)"
+    },
+    {
+      "index": 18,
+      "name": "MySQL_语句执行",
+      "signature": "MySQL_语句执行(语句)",
+      "description": "执行 INSERT/UPDATE/DELETE 等非查询语句并返回受影响行数，失败返回 -1。",
+      "insertText": "MySQL_语句执行(0)",
+      "returnType": "长整数型",
+      "category": "预编译语句",
+      "binding": {
+        "command": "MySQL_语句执行",
+        "runtimeName": "MySQL_语句执行",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "MySQL语句",
+            "description": "由 MySQL_准备 返回的受管预编译语句。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "MySQL_语句执行(0)"
+    },
+    {
+      "index": 19,
+      "name": "MySQL_语句步进",
+      "signature": "MySQL_语句步进(语句)",
+      "description": "读取下一行：1=得到一行，0=没有更多行，-1=失败；首次调用会自动执行查询语句。",
+      "insertText": "MySQL_语句步进(0)",
+      "returnType": "整数型",
+      "returnDescription": "1 表示当前行可读，0 表示完成，-1 表示失败。",
+      "category": "预编译语句",
+      "binding": {
+        "command": "MySQL_语句步进",
+        "runtimeName": "MySQL_语句步进",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "MySQL语句",
+            "description": "由 MySQL_准备 返回的受管预编译语句。"
+          }
+        ],
+        "returnType": "int",
+        "example": "当 MySQL_语句步进(查询) == 1"
+      },
+      "demoInvocation": "MySQL_语句步进(0)"
+    },
+    {
+      "index": 20,
+      "name": "MySQL_语句重置",
+      "signature": "MySQL_语句重置(语句)",
+      "description": "把语句复位到可重新绑定和执行的状态，不清空已绑定的参数。",
+      "insertText": "MySQL_语句重置(0)",
+      "returnType": "逻辑型",
+      "category": "预编译语句",
+      "binding": {
+        "command": "MySQL_语句重置",
+        "runtimeName": "MySQL_语句重置",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "MySQL语句",
+            "description": "由 MySQL_准备 返回的受管预编译语句。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "MySQL_语句重置(0)"
+    },
+    {
+      "index": 21,
+      "name": "MySQL_语句清空绑定",
+      "signature": "MySQL_语句清空绑定(语句)",
+      "description": "把语句的全部参数恢复为 NULL。",
+      "insertText": "MySQL_语句清空绑定(0)",
+      "returnType": "逻辑型",
+      "category": "预编译语句",
+      "binding": {
+        "command": "MySQL_语句清空绑定",
+        "runtimeName": "MySQL_语句清空绑定",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "MySQL语句",
+            "description": "由 MySQL_准备 返回的受管预编译语句。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "MySQL_语句清空绑定(0)"
+    },
+    {
+      "index": 22,
+      "name": "MySQL_语句释放",
+      "signature": "MySQL_语句释放(语句)",
+      "description": "立即释放预编译语句；连接关闭时也会兜底释放。",
+      "insertText": "MySQL_语句释放(0)",
+      "returnType": "逻辑型",
+      "category": "预编译语句",
+      "binding": {
+        "command": "MySQL_语句释放",
+        "runtimeName": "MySQL_语句释放",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "MySQL语句",
+            "description": "由 MySQL_准备 返回的受管预编译语句。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "MySQL_语句释放(0)"
+    },
+    {
+      "index": 23,
+      "name": "MySQL_绑定空值",
+      "signature": "MySQL_绑定空值(语句, 参数索引)",
+      "description": "把参数绑定为 SQL NULL。",
+      "insertText": "MySQL_绑定空值(0, 0)",
+      "returnType": "逻辑型",
+      "category": "参数绑定",
+      "binding": {
+        "command": "MySQL_绑定空值",
+        "runtimeName": "MySQL_绑定空值",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "MySQL语句",
+            "description": "由 MySQL_准备 返回的受管预编译语句。"
+          },
+          {
+            "name": "参数索引",
+            "type": "int",
+            "description": "从 1 开始的参数索引。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "MySQL_绑定空值(0, 1)"
+    },
+    {
+      "index": 24,
+      "name": "MySQL_绑定整数",
+      "signature": "MySQL_绑定整数(语句, 参数索引, 数值)",
+      "description": "把参数绑定为 32 位整数。",
+      "insertText": "MySQL_绑定整数(0, 0, 0)",
+      "returnType": "逻辑型",
+      "category": "参数绑定",
+      "binding": {
+        "command": "MySQL_绑定整数",
+        "runtimeName": "MySQL_绑定整数",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "MySQL语句",
+            "description": "由 MySQL_准备 返回的受管预编译语句。"
+          },
+          {
+            "name": "参数索引",
+            "type": "int",
+            "description": "从 1 开始的参数索引。"
+          },
+          {
+            "name": "数值",
+            "type": "int",
+            "description": "绑定到占位符的 32 位整数值。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "MySQL_绑定整数(0, 1, 1)"
+    },
+    {
+      "index": 25,
+      "name": "MySQL_绑定长整数",
+      "signature": "MySQL_绑定长整数(语句, 参数索引, 数值)",
+      "description": "把参数绑定为 64 位整数。",
+      "insertText": "MySQL_绑定长整数(0, 0, 0)",
+      "returnType": "逻辑型",
+      "category": "参数绑定",
+      "binding": {
+        "command": "MySQL_绑定长整数",
+        "runtimeName": "MySQL_绑定长整数",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "MySQL语句",
+            "description": "由 MySQL_准备 返回的受管预编译语句。"
+          },
+          {
+            "name": "参数索引",
+            "type": "int",
+            "description": "从 1 开始的参数索引。"
+          },
+          {
+            "name": "数值",
+            "type": "longLong",
+            "description": "绑定到占位符的 64 位整数值。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "MySQL_绑定长整数(0, 1, 1)"
+    },
+    {
+      "index": 26,
+      "name": "MySQL_绑定小数",
+      "signature": "MySQL_绑定小数(语句, 参数索引, 数值)",
+      "description": "把参数绑定为双精度小数。",
+      "insertText": "MySQL_绑定小数(0, 0, 0)",
+      "returnType": "逻辑型",
+      "category": "参数绑定",
+      "binding": {
+        "command": "MySQL_绑定小数",
+        "runtimeName": "MySQL_绑定小数",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "MySQL语句",
+            "description": "由 MySQL_准备 返回的受管预编译语句。"
+          },
+          {
+            "name": "参数索引",
+            "type": "int",
+            "description": "从 1 开始的参数索引。"
+          },
+          {
+            "name": "数值",
+            "type": "double",
+            "description": "绑定到占位符的双精度小数值。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "MySQL_绑定小数(0, 1, 1.0)"
+    },
+    {
+      "index": 27,
+      "name": "MySQL_绑定文本",
+      "signature": "MySQL_绑定文本(语句, 参数索引, 文本)",
+      "description": "把参数安全绑定为文本，防止 SQL 注入。",
+      "insertText": "MySQL_绑定文本(0, 0, \"$3\")",
+      "returnType": "逻辑型",
+      "category": "参数绑定",
+      "binding": {
+        "command": "MySQL_绑定文本",
+        "runtimeName": "MySQL_绑定文本",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "MySQL语句",
+            "description": "由 MySQL_准备 返回的受管预编译语句。"
+          },
+          {
+            "name": "参数索引",
+            "type": "int",
+            "description": "从 1 开始的参数索引。"
+          },
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "按 UTF-8 编码传给服务器。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "MySQL_绑定文本(0, 1, \"演示参数3\")"
+    },
+    {
+      "index": 28,
+      "name": "MySQL_绑定字节集",
+      "signature": "MySQL_绑定字节集(语句, 参数索引, 数据)",
+      "description": "把参数安全绑定为二进制数据。",
+      "insertText": "MySQL_绑定字节集(0, 0, $3)",
+      "returnType": "逻辑型",
+      "category": "参数绑定",
+      "binding": {
+        "command": "MySQL_绑定字节集",
+        "runtimeName": "MySQL_绑定字节集",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "MySQL语句",
+            "description": "由 MySQL_准备 返回的受管预编译语句。"
+          },
+          {
+            "name": "参数索引",
+            "type": "int",
+            "description": "从 1 开始的参数索引。"
+          },
+          {
+            "name": "数据",
+            "type": "bytes",
+            "description": "绑定到占位符的二进制字节集，作为 BLOB 写入。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "MySQL_绑定字节集(0, 1, {})"
+    },
+    {
+      "index": 29,
+      "name": "MySQL_取列数量",
+      "signature": "MySQL_取列数量(语句)",
+      "description": "返回结果集列数量；非查询语句返回 0。",
+      "insertText": "MySQL_取列数量(0)",
+      "returnType": "整数型",
+      "category": "结果读取",
+      "binding": {
+        "command": "MySQL_取列数量",
+        "runtimeName": "MySQL_取列数量",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "MySQL语句",
+            "description": "由 MySQL_准备 返回的受管预编译语句。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "MySQL_取列数量(0)"
+    },
+    {
+      "index": 30,
+      "name": "MySQL_取列名称",
+      "signature": "MySQL_取列名称(语句, 列索引)",
+      "description": "返回结果列名。",
+      "insertText": "MySQL_取列名称(0, 0)",
+      "returnType": "文本型",
+      "category": "结果读取",
+      "binding": {
+        "command": "MySQL_取列名称",
+        "runtimeName": "MySQL_取列名称",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "MySQL语句",
+            "description": "由 MySQL_准备 返回的受管预编译语句。"
+          },
+          {
+            "name": "列索引",
+            "type": "int",
+            "description": "从 0 开始的结果列索引。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "MySQL_取列名称(0, 1)"
+    },
+    {
+      "index": 31,
+      "name": "MySQL_取列是否为空",
+      "signature": "MySQL_取列是否为空(语句, 列索引)",
+      "description": "判断当前行指定列是否为 SQL NULL。",
+      "insertText": "MySQL_取列是否为空(0, 0)",
+      "returnType": "逻辑型",
+      "category": "结果读取",
+      "binding": {
+        "command": "MySQL_取列是否为空",
+        "runtimeName": "MySQL_取列是否为空",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "MySQL语句",
+            "description": "由 MySQL_准备 返回的受管预编译语句。"
+          },
+          {
+            "name": "列索引",
+            "type": "int",
+            "description": "从 0 开始的结果列索引。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "MySQL_取列是否为空(0, 1)"
+    },
+    {
+      "index": 32,
+      "name": "MySQL_取列整数",
+      "signature": "MySQL_取列整数(语句, 列索引)",
+      "description": "按服务器转换规则读取 32 位整数。",
+      "insertText": "MySQL_取列整数(0, 0)",
+      "returnType": "整数型",
+      "category": "结果读取",
+      "binding": {
+        "command": "MySQL_取列整数",
+        "runtimeName": "MySQL_取列整数",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "MySQL语句",
+            "description": "由 MySQL_准备 返回的受管预编译语句。"
+          },
+          {
+            "name": "列索引",
+            "type": "int",
+            "description": "从 0 开始的结果列索引。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "MySQL_取列整数(0, 1)"
+    },
+    {
+      "index": 33,
+      "name": "MySQL_取列长整数",
+      "signature": "MySQL_取列长整数(语句, 列索引)",
+      "description": "按服务器转换规则读取 64 位整数。",
+      "insertText": "MySQL_取列长整数(0, 0)",
+      "returnType": "长整数型",
+      "category": "结果读取",
+      "binding": {
+        "command": "MySQL_取列长整数",
+        "runtimeName": "MySQL_取列长整数",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "MySQL语句",
+            "description": "由 MySQL_准备 返回的受管预编译语句。"
+          },
+          {
+            "name": "列索引",
+            "type": "int",
+            "description": "从 0 开始的结果列索引。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "MySQL_取列长整数(0, 1)"
+    },
+    {
+      "index": 34,
+      "name": "MySQL_取列小数",
+      "signature": "MySQL_取列小数(语句, 列索引)",
+      "description": "按服务器转换规则读取双精度小数。",
+      "insertText": "MySQL_取列小数(0, 0)",
+      "returnType": "双精度小数型",
+      "category": "结果读取",
+      "binding": {
+        "command": "MySQL_取列小数",
+        "runtimeName": "MySQL_取列小数",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "MySQL语句",
+            "description": "由 MySQL_准备 返回的受管预编译语句。"
+          },
+          {
+            "name": "列索引",
+            "type": "int",
+            "description": "从 0 开始的结果列索引。"
+          }
+        ],
+        "returnType": "double"
+      },
+      "demoInvocation": "MySQL_取列小数(0, 1)"
+    },
+    {
+      "index": 35,
+      "name": "MySQL_取列文本",
+      "signature": "MySQL_取列文本(语句, 列索引)",
+      "description": "读取 UTF-8 文本并转换为中文文本；SQL NULL 返回空文本，应先检查列是否为空。",
+      "insertText": "MySQL_取列文本(0, 0)",
+      "returnType": "文本型",
+      "category": "结果读取",
+      "binding": {
+        "command": "MySQL_取列文本",
+        "runtimeName": "MySQL_取列文本",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "MySQL语句",
+            "description": "由 MySQL_准备 返回的受管预编译语句。"
+          },
+          {
+            "name": "列索引",
+            "type": "int",
+            "description": "从 0 开始的结果列索引。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "MySQL_取列文本(0, 1)"
+    },
+    {
+      "index": 36,
+      "name": "MySQL_取列字节集",
+      "signature": "MySQL_取列字节集(语句, 列索引)",
+      "description": "读取二进制列的独立副本；SQL NULL 返回空字节集。",
+      "insertText": "MySQL_取列字节集(0, 0)",
+      "returnType": "字节集",
+      "category": "结果读取",
+      "binding": {
+        "command": "MySQL_取列字节集",
+        "runtimeName": "MySQL_取列字节集",
+        "parameters": [
+          {
+            "name": "语句",
+            "type": "MySQL语句",
+            "description": "由 MySQL_准备 返回的受管预编译语句。"
+          },
+          {
+            "name": "列索引",
+            "type": "int",
+            "description": "从 0 开始的结果列索引。"
+          }
+        ],
+        "returnType": "bytes"
+      },
+      "demoInvocation": "MySQL_取列字节集(0, 1)"
+    },
+    {
+      "index": 37,
+      "name": "MySQL_开始事务",
+      "signature": "MySQL_开始事务(连接)",
+      "description": "在连接上开始显式事务（START TRANSACTION）。",
+      "insertText": "MySQL_开始事务(0)",
+      "returnType": "逻辑型",
+      "category": "事务",
+      "binding": {
+        "command": "MySQL_开始事务",
+        "runtimeName": "MySQL_开始事务",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "MySQL连接",
+            "description": "由 MySQL_连接 或 MySQL_连接扩展 返回的受管连接。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "MySQL_开始事务(0)"
+    },
+    {
+      "index": 38,
+      "name": "MySQL_提交",
+      "signature": "MySQL_提交(连接)",
+      "description": "提交当前事务。",
+      "insertText": "MySQL_提交(0)",
+      "returnType": "逻辑型",
+      "category": "事务",
+      "binding": {
+        "command": "MySQL_提交",
+        "runtimeName": "MySQL_提交",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "MySQL连接",
+            "description": "由 MySQL_连接 或 MySQL_连接扩展 返回的受管连接。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "MySQL_提交(0)"
+    },
+    {
+      "index": 39,
+      "name": "MySQL_回滚",
+      "signature": "MySQL_回滚(连接)",
+      "description": "回滚当前事务。",
+      "insertText": "MySQL_回滚(0)",
+      "returnType": "逻辑型",
+      "category": "事务",
+      "binding": {
+        "command": "MySQL_回滚",
+        "runtimeName": "MySQL_回滚",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "MySQL连接",
+            "description": "由 MySQL_连接 或 MySQL_连接扩展 返回的受管连接。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "MySQL_回滚(0)"
+    },
+    {
+      "index": 40,
+      "name": "MySQL_设置自动提交",
+      "signature": "MySQL_设置自动提交(连接, 启用)",
+      "description": "启用或禁用连接的自动提交模式。",
+      "insertText": "MySQL_设置自动提交(0, 假)",
+      "returnType": "逻辑型",
+      "category": "事务",
+      "binding": {
+        "command": "MySQL_设置自动提交",
+        "runtimeName": "MySQL_设置自动提交",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "MySQL连接",
+            "description": "由 MySQL_连接 或 MySQL_连接扩展 返回的受管连接。"
+          },
+          {
+            "name": "启用",
+            "type": "bool",
+            "description": "传真恢复逐语句自动提交，传假进入显式事务模式。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "MySQL_设置自动提交(0, 真)"
+    },
+    {
+      "index": 41,
+      "name": "MySQL_取错误",
+      "signature": "MySQL_取错误()",
+      "description": "返回本线程最近一次 MySQL 模块错误的中文描述与原始服务器错误，连接失败时也可读取。",
+      "insertText": "MySQL_取错误()",
+      "returnType": "文本型",
+      "category": "错误诊断",
+      "binding": {
+        "command": "MySQL_取错误",
+        "runtimeName": "MySQL_取错误",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "MySQL_取错误()"
+    },
+    {
+      "index": 42,
+      "name": "MySQL_取错误码",
+      "signature": "MySQL_取错误码()",
+      "description": "返回本线程最近一次 MySQL 错误码；0 表示没有错误。",
+      "insertText": "MySQL_取错误码()",
+      "returnType": "整数型",
+      "category": "错误诊断",
+      "binding": {
+        "command": "MySQL_取错误码",
+        "runtimeName": "MySQL_取错误码",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "MySQL_取错误码()"
+    },
+    {
+      "index": 43,
+      "name": "MySQL_取连接错误",
+      "signature": "MySQL_取连接错误(连接)",
+      "description": "读取指定连接上最近一次服务器错误的原始文本。",
+      "insertText": "MySQL_取连接错误(0)",
+      "returnType": "文本型",
+      "category": "错误诊断",
+      "binding": {
+        "command": "MySQL_取连接错误",
+        "runtimeName": "MySQL_取连接错误",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "MySQL连接",
+            "description": "由 MySQL_连接 或 MySQL_连接扩展 返回的受管连接。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "MySQL_取连接错误(0)"
+    }
+  ]
+}

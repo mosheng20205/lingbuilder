@@ -1,0 +1,348 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-25T22:05:22.438Z",
+  "module": {
+    "id": "lingbuilder.std.array",
+    "name": "数组操作模块",
+    "version": "1.0.0",
+    "description": "为 LingCpp 数组提供成员数、增删改查、排序和重定义能力。命令对元素类型透明，索引统一从 0 开始，越界一律安全返回而不崩溃。"
+  },
+  "commandCount": 13,
+  "commands": [
+    {
+      "index": 1,
+      "name": "数组_取成员数",
+      "signature": "数组_取成员数(数组)",
+      "description": "返回数组当前成员数量。",
+      "insertText": "数组_取成员数($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "数组_取成员数",
+        "runtimeName": "数组_取成员数",
+        "parameters": [
+          {
+            "name": "数组",
+            "type": "array",
+            "description": "要操作的目标数组变量，元素类型不限；位置参数一律按成员索引从 0 计数。"
+          }
+        ],
+        "returnType": "int",
+        "example": "数组_取成员数(名单)"
+      },
+      "demoInvocation": "数组_取成员数(0)"
+    },
+    {
+      "index": 2,
+      "name": "数组_是否为空",
+      "signature": "数组_是否为空(数组)",
+      "description": "判断数组是否没有任何成员。",
+      "insertText": "数组_是否为空($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "数组_是否为空",
+        "runtimeName": "数组_是否为空",
+        "parameters": [
+          {
+            "name": "数组",
+            "type": "array",
+            "description": "要操作的目标数组变量，元素类型不限；位置参数一律按成员索引从 0 计数。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "数组_是否为空(0)"
+    },
+    {
+      "index": 3,
+      "name": "数组_取成员",
+      "signature": "数组_取成员(数组, 索引)",
+      "description": "按从 0 开始的索引读取成员；索引越界时返回元素类型的默认值。",
+      "insertText": "数组_取成员($1, 0)",
+      "returnType": "数组成员",
+      "returnDescription": "与数组元素类型一致的值。",
+      "binding": {
+        "command": "数组_取成员",
+        "runtimeName": "数组_取成员",
+        "parameters": [
+          {
+            "name": "数组",
+            "type": "array",
+            "description": "要操作的目标数组变量，元素类型不限；位置参数一律按成员索引从 0 计数。"
+          },
+          {
+            "name": "索引",
+            "type": "int",
+            "description": "要读取的成员索引，从 0 起；越界返回元素类型的默认值，文本为空文本、数值为 0。"
+          }
+        ],
+        "returnType": "arrayElement",
+        "example": "数组_取成员(名单, 0)"
+      },
+      "demoInvocation": "数组_取成员(0, 1)"
+    },
+    {
+      "index": 4,
+      "name": "数组_置成员",
+      "signature": "数组_置成员(数组, 索引, 值)",
+      "description": "覆盖指定索引的成员；索引越界时返回假且不修改数组。",
+      "insertText": "数组_置成员($1, 0, $2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "数组_置成员",
+        "runtimeName": "数组_置成员",
+        "parameters": [
+          {
+            "name": "数组",
+            "type": "array",
+            "description": "要操作的目标数组变量，元素类型不限；位置参数一律按成员索引从 0 计数。"
+          },
+          {
+            "name": "索引",
+            "type": "int",
+            "description": "要覆盖的成员索引，从 0 起；越界返回假且不改动数组。"
+          },
+          {
+            "name": "值",
+            "type": "arrayElement",
+            "description": "要写入或比较的成员值，类型必须与数组元素类型一致。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "数组_置成员(0, 1, 0)"
+    },
+    {
+      "index": 5,
+      "name": "数组_加入成员",
+      "signature": "数组_加入成员(数组, 值)",
+      "description": "在数组末尾追加一个成员，返回追加后的成员数。",
+      "insertText": "数组_加入成员($1, $2)",
+      "returnType": "整数型",
+      "returnDescription": "追加后的成员数量。",
+      "binding": {
+        "command": "数组_加入成员",
+        "runtimeName": "数组_加入成员",
+        "parameters": [
+          {
+            "name": "数组",
+            "type": "array",
+            "description": "要操作的目标数组变量，元素类型不限；位置参数一律按成员索引从 0 计数。"
+          },
+          {
+            "name": "值",
+            "type": "arrayElement",
+            "description": "要写入或比较的成员值，类型必须与数组元素类型一致。"
+          }
+        ],
+        "returnType": "int",
+        "example": "数组_加入成员(名单, \"张三\")"
+      },
+      "demoInvocation": "数组_加入成员(0, 0)"
+    },
+    {
+      "index": 6,
+      "name": "数组_插入成员",
+      "signature": "数组_插入成员(数组, 索引, 值)",
+      "description": "在指定索引前插入成员；索引等于成员数时等价于追加，越界时返回假。",
+      "insertText": "数组_插入成员($1, 0, $2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "数组_插入成员",
+        "runtimeName": "数组_插入成员",
+        "parameters": [
+          {
+            "name": "数组",
+            "type": "array",
+            "description": "要操作的目标数组变量，元素类型不限；位置参数一律按成员索引从 0 计数。"
+          },
+          {
+            "name": "索引",
+            "type": "int",
+            "description": "插入位置的成员索引，从 0 起，等于成员数时等价于追加；为负或更大时返回假。"
+          },
+          {
+            "name": "值",
+            "type": "arrayElement",
+            "description": "要写入或比较的成员值，类型必须与数组元素类型一致。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "数组_插入成员(0, 1, 0)"
+    },
+    {
+      "index": 7,
+      "name": "数组_删除成员",
+      "signature": "数组_删除成员(数组, 索引)",
+      "description": "删除指定索引的成员，后续成员依次前移；索引越界时返回假。",
+      "insertText": "数组_删除成员($1, 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "数组_删除成员",
+        "runtimeName": "数组_删除成员",
+        "parameters": [
+          {
+            "name": "数组",
+            "type": "array",
+            "description": "要操作的目标数组变量，元素类型不限；位置参数一律按成员索引从 0 计数。"
+          },
+          {
+            "name": "索引",
+            "type": "int",
+            "description": "要删除的成员索引，从 0 起；越界返回假。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "数组_删除成员(0, 1)"
+    },
+    {
+      "index": 8,
+      "name": "数组_清空",
+      "signature": "数组_清空(数组)",
+      "description": "删除数组全部成员。",
+      "insertText": "数组_清空($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "数组_清空",
+        "runtimeName": "数组_清空",
+        "parameters": [
+          {
+            "name": "数组",
+            "type": "array",
+            "description": "要操作的目标数组变量，元素类型不限；位置参数一律按成员索引从 0 计数。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "数组_清空(0)"
+    },
+    {
+      "index": 9,
+      "name": "数组_查找",
+      "signature": "数组_查找(数组, 值)",
+      "description": "返回首个相等成员的从 0 开始索引；未找到或元素类型不支持相等比较时返回 -1。",
+      "insertText": "数组_查找($1, $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "数组_查找",
+        "runtimeName": "数组_查找",
+        "parameters": [
+          {
+            "name": "数组",
+            "type": "array",
+            "description": "要操作的目标数组变量，元素类型不限；位置参数一律按成员索引从 0 计数。"
+          },
+          {
+            "name": "值",
+            "type": "arrayElement",
+            "description": "要比较的成员值；元素类型不支持相等比较时返回 -1。"
+          }
+        ],
+        "returnType": "int",
+        "example": "数组_查找(名单, \"张三\")"
+      },
+      "demoInvocation": "数组_查找(0, 0)"
+    },
+    {
+      "index": 10,
+      "name": "数组_是否包含",
+      "signature": "数组_是否包含(数组, 值)",
+      "description": "判断数组是否包含相等成员；元素类型不支持相等比较时返回假。",
+      "insertText": "数组_是否包含($1, $2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "数组_是否包含",
+        "runtimeName": "数组_是否包含",
+        "parameters": [
+          {
+            "name": "数组",
+            "type": "array",
+            "description": "要操作的目标数组变量，元素类型不限；位置参数一律按成员索引从 0 计数。"
+          },
+          {
+            "name": "值",
+            "type": "arrayElement",
+            "description": "要比较的成员值；元素类型不支持相等比较时返回假。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "数组_是否包含(0, 0)"
+    },
+    {
+      "index": 11,
+      "name": "数组_排序",
+      "signature": "数组_排序(数组, 升序)",
+      "description": "按元素自身顺序稳定排序；元素类型不支持大小比较时返回假且不改动数组。",
+      "insertText": "数组_排序($1, 真)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "数组_排序",
+        "runtimeName": "数组_排序",
+        "parameters": [
+          {
+            "name": "数组",
+            "type": "array",
+            "description": "要操作的目标数组变量，元素类型不限；位置参数一律按成员索引从 0 计数。"
+          },
+          {
+            "name": "升序",
+            "type": "bool",
+            "description": "传真按从小到大排序，传假按从大到小；采用稳定排序，元素类型不支持大小比较时返回假且不改动数组。"
+          }
+        ],
+        "returnType": "bool",
+        "example": "数组_排序(名单, 真)"
+      },
+      "demoInvocation": "数组_排序(0, 真)"
+    },
+    {
+      "index": 12,
+      "name": "数组_倒序",
+      "signature": "数组_倒序(数组)",
+      "description": "把数组成员按当前顺序整体反转。",
+      "insertText": "数组_倒序($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "数组_倒序",
+        "runtimeName": "数组_倒序",
+        "parameters": [
+          {
+            "name": "数组",
+            "type": "array",
+            "description": "要操作的目标数组变量，元素类型不限；位置参数一律按成员索引从 0 计数。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "数组_倒序(0)"
+    },
+    {
+      "index": 13,
+      "name": "数组_重定义",
+      "signature": "数组_重定义(数组, 新成员数)",
+      "description": "调整数组成员数：变小时截断，变大时用元素类型默认值补齐；新成员数为负时返回假。",
+      "insertText": "数组_重定义($1, 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "数组_重定义",
+        "runtimeName": "数组_重定义",
+        "parameters": [
+          {
+            "name": "数组",
+            "type": "array",
+            "description": "要操作的目标数组变量，元素类型不限；位置参数一律按成员索引从 0 计数。"
+          },
+          {
+            "name": "新成员数",
+            "type": "int",
+            "description": "调整后的成员数量，不能为负；变小时截断，变大时用元素类型默认值补齐。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "数组_重定义(0, 1)"
+    }
+  ]
+}

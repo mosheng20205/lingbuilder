@@ -1,0 +1,250 @@
+包 MySQL数据库模块完整演示
+使用 Win32窗口基础模块
+使用 MySQL数据库模块
+
+// 本项目由模块清单自动生成；每条 binding 命令都在下方具有真实调用语句。
+// 为避免误删文件、启动进程、访问网络或操作设备，必须先勾选“允许实际执行”才会进入命令调用区。
+类 MainWindow : 公开 窗口
+    事件 _MainWindow_创建完毕()
+        控件_设置选择项(命令分组选项卡, 0)
+        控件_设置文本(演示状态, "MySQL 数据库模块：43 条命令，默认处于安全预览模式。")
+        调试输出("已加载模块演示：lingbuilder.database.mysql")
+    结束
+
+    事件 _运行第01组_被单击()
+        控件_设置文本(演示状态, "命令 1–15：MySQL_加载运行库 至 MySQL_取最后插入ID；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
+            // 命令ID：MySQL_加载运行库
+            // [1] MySQL_加载运行库(DLL路径)
+            // 功能：显式加载 MariaDB Connector/C 运行库并校验模块所需导出。存在活动连接或语句时拒绝切换 DLL。
+            // 参数：DLL路径:wideString；返回：bool；可见性：default
+            MySQL_加载运行库("module-demo-temp.txt")
+            // 命令ID：MySQL_卸载运行库
+            // [2] MySQL_卸载运行库()
+            // 功能：在没有活动连接和语句时卸载 libmariadb.dll。
+            // 参数：无；返回：bool；可见性：default
+            MySQL_卸载运行库()
+            // 命令ID：MySQL_取运行库版本
+            // [3] MySQL_取运行库版本()
+            // 功能：返回当前已加载 MySQL 客户端运行库的版本文本。
+            // 参数：无；返回：wideString；可见性：default
+            MySQL_取运行库版本()
+            // 命令ID：MySQL_取客户端版本
+            // [4] MySQL_取客户端版本()
+            // 功能：返回客户端运行库的数字版本号，例如 30410 表示 3.4.10。
+            // 参数：无；返回：int；可见性：default
+            MySQL_取客户端版本()
+            // 命令ID：MySQL_连接
+            // [5] MySQL_连接(主机, 端口, 用户名, 密码, 数据库)
+            // 功能：用原生协议连接 MySQL/MariaDB 服务器并校验密码；成功后自动把字符集协商为 utf8mb4。
+            // 参数：主机:wideString，端口:int，用户名:wideString，密码:wideString，数据库:wideString；返回：MySQL连接；可见性：default
+            MySQL_连接("演示参数1", 1, "演示参数3", "演示参数4", "演示参数5")
+            // 命令ID：MySQL_连接扩展
+            // [6] MySQL_连接扩展(主机, 端口, 用户名, 密码, 数据库, 连接超时秒, 启用SSL)
+            // 功能：带超时和 TLS 开关的扩展连接；其余行为与 MySQL_连接 一致。
+            // 参数：主机:wideString，端口:int，用户名:wideString，密码:wideString，数据库:wideString，连接超时秒:int，启用SSL:bool；返回：MySQL连接；可见性：default
+            MySQL_连接扩展("演示参数1", 1, "演示参数3", "演示参数4", "演示参数5", 1, 真)
+            // 命令ID：MySQL_关闭连接
+            // [7] MySQL_关闭连接(连接)
+            // 功能：释放连接所属全部语句后关闭连接。失效句柄返回假。
+            // 参数：连接:MySQL连接；返回：bool；可见性：default
+            MySQL_关闭连接(0)
+            // 命令ID：MySQL_关闭全部
+            // [8] MySQL_关闭全部()
+            // 功能：释放所有语句、关闭所有连接并卸载运行库。
+            // 参数：无；返回：void；可见性：default
+            MySQL_关闭全部()
+            // 命令ID：MySQL_连接是否有效
+            // [9] MySQL_连接是否有效(连接)
+            // 功能：检查受管连接 ID 当前是否仍然有效。
+            // 参数：连接:MySQL连接；返回：bool；可见性：default
+            MySQL_连接是否有效(0)
+            // 命令ID：MySQL_切换数据库
+            // [10] MySQL_切换数据库(连接, 数据库名)
+            // 功能：切换当前连接使用的数据库。
+            // 参数：连接:MySQL连接，数据库名:wideString；返回：bool；可见性：default
+            MySQL_切换数据库(0, "演示参数2")
+            // 命令ID：MySQL_设置字符集
+            // [11] MySQL_设置字符集(连接, 字符集)
+            // 功能：修改连接字符集；默认已在连接时设置为 utf8mb4。
+            // 参数：连接:MySQL连接，字符集:wideString；返回：bool；可见性：default
+            MySQL_设置字符集(0, "演示参数2")
+            // 命令ID：MySQL_取服务器信息
+            // [12] MySQL_取服务器信息(连接)
+            // 功能：返回服务器版本描述文本，失败返回空文本。
+            // 参数：连接:MySQL连接；返回：wideString；可见性：default
+            MySQL_取服务器信息(0)
+            // 命令ID：MySQL_执行
+            // [13] MySQL_执行(连接, SQL语句)
+            // 功能：直接执行一条 SQL 并返回受影响行数，失败返回 -1。
+            // 参数：连接:MySQL连接，SQL语句:wideString；返回：longLong；可见性：default
+            MySQL_执行(0, "演示参数2")
+            // 命令ID：MySQL_查询首值
+            // [14] MySQL_查询首值(连接, SQL语句)
+            // 功能：执行查询并返回首行首列的文本表示；NULL、无行或失败返回空文本，应结合错误码判断。
+            // 参数：连接:MySQL连接，SQL语句:wideString；返回：wideString；可见性：default
+            MySQL_查询首值(0, "演示参数2")
+            // 命令ID：MySQL_取最后插入ID
+            // [15] MySQL_取最后插入ID(连接)
+            // 功能：返回连接最近一次成功 INSERT 生成的自增主键值。
+            // 参数：连接:MySQL连接；返回：longLong；可见性：default
+            MySQL_取最后插入ID(0)
+        如果结束
+        调试输出("已查看 命令 1–15：MySQL_加载运行库 至 MySQL_取最后插入ID；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第02组_被单击()
+        控件_设置文本(演示状态, "命令 16–30：MySQL_准备 至 MySQL_取列名称；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
+            // 命令ID：MySQL_准备
+            // [16] MySQL_准备(连接, SQL语句)
+            // 功能：在服务器端创建参数化预编译语句，用于安全执行和逐行读取。
+            // 参数：连接:MySQL连接，SQL语句:wideString；返回：MySQL语句；可见性：default
+            MySQL_准备(0, "演示参数2")
+            // 命令ID：MySQL_语句是否有效
+            // [17] MySQL_语句是否有效(语句)
+            // 功能：检查预编译语句 ID 当前是否仍然有效。
+            // 参数：语句:MySQL语句；返回：bool；可见性：default
+            MySQL_语句是否有效(0)
+            // 命令ID：MySQL_语句执行
+            // [18] MySQL_语句执行(语句)
+            // 功能：执行 INSERT/UPDATE/DELETE 等非查询语句并返回受影响行数，失败返回 -1。
+            // 参数：语句:MySQL语句；返回：longLong；可见性：default
+            MySQL_语句执行(0)
+            // 命令ID：MySQL_语句步进
+            // [19] MySQL_语句步进(语句)
+            // 功能：读取下一行：1=得到一行，0=没有更多行，-1=失败；首次调用会自动执行查询语句。
+            // 参数：语句:MySQL语句；返回：int；可见性：default
+            MySQL_语句步进(0)
+            // 命令ID：MySQL_语句重置
+            // [20] MySQL_语句重置(语句)
+            // 功能：把语句复位到可重新绑定和执行的状态，不清空已绑定的参数。
+            // 参数：语句:MySQL语句；返回：bool；可见性：default
+            MySQL_语句重置(0)
+            // 命令ID：MySQL_语句清空绑定
+            // [21] MySQL_语句清空绑定(语句)
+            // 功能：把语句的全部参数恢复为 NULL。
+            // 参数：语句:MySQL语句；返回：bool；可见性：default
+            MySQL_语句清空绑定(0)
+            // 命令ID：MySQL_语句释放
+            // [22] MySQL_语句释放(语句)
+            // 功能：立即释放预编译语句；连接关闭时也会兜底释放。
+            // 参数：语句:MySQL语句；返回：bool；可见性：default
+            MySQL_语句释放(0)
+            // 命令ID：MySQL_绑定空值
+            // [23] MySQL_绑定空值(语句, 参数索引)
+            // 功能：把参数绑定为 SQL NULL。
+            // 参数：语句:MySQL语句，参数索引:int；返回：bool；可见性：default
+            MySQL_绑定空值(0, 1)
+            // 命令ID：MySQL_绑定整数
+            // [24] MySQL_绑定整数(语句, 参数索引, 数值)
+            // 功能：把参数绑定为 32 位整数。
+            // 参数：语句:MySQL语句，参数索引:int，数值:int；返回：bool；可见性：default
+            MySQL_绑定整数(0, 1, 1)
+            // 命令ID：MySQL_绑定长整数
+            // [25] MySQL_绑定长整数(语句, 参数索引, 数值)
+            // 功能：把参数绑定为 64 位整数。
+            // 参数：语句:MySQL语句，参数索引:int，数值:longLong；返回：bool；可见性：default
+            MySQL_绑定长整数(0, 1, 1)
+            // 命令ID：MySQL_绑定小数
+            // [26] MySQL_绑定小数(语句, 参数索引, 数值)
+            // 功能：把参数绑定为双精度小数。
+            // 参数：语句:MySQL语句，参数索引:int，数值:double；返回：bool；可见性：default
+            MySQL_绑定小数(0, 1, 1.0)
+            // 命令ID：MySQL_绑定文本
+            // [27] MySQL_绑定文本(语句, 参数索引, 文本)
+            // 功能：把参数安全绑定为文本，防止 SQL 注入。
+            // 参数：语句:MySQL语句，参数索引:int，文本:wideString；返回：bool；可见性：default
+            MySQL_绑定文本(0, 1, "演示参数3")
+            // 命令ID：MySQL_绑定字节集
+            // [28] MySQL_绑定字节集(语句, 参数索引, 数据)
+            // 功能：把参数安全绑定为二进制数据。
+            // 参数：语句:MySQL语句，参数索引:int，数据:bytes；返回：bool；可见性：default
+            MySQL_绑定字节集(0, 1, {})
+            // 命令ID：MySQL_取列数量
+            // [29] MySQL_取列数量(语句)
+            // 功能：返回结果集列数量；非查询语句返回 0。
+            // 参数：语句:MySQL语句；返回：int；可见性：default
+            MySQL_取列数量(0)
+            // 命令ID：MySQL_取列名称
+            // [30] MySQL_取列名称(语句, 列索引)
+            // 功能：返回结果列名。
+            // 参数：语句:MySQL语句，列索引:int；返回：wideString；可见性：default
+            MySQL_取列名称(0, 1)
+        如果结束
+        调试输出("已查看 命令 16–30：MySQL_准备 至 MySQL_取列名称；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第03组_被单击()
+        控件_设置文本(演示状态, "命令 31–43：MySQL_取列是否为空 至 MySQL_取连接错误；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
+            // 命令ID：MySQL_取列是否为空
+            // [31] MySQL_取列是否为空(语句, 列索引)
+            // 功能：判断当前行指定列是否为 SQL NULL。
+            // 参数：语句:MySQL语句，列索引:int；返回：bool；可见性：default
+            MySQL_取列是否为空(0, 1)
+            // 命令ID：MySQL_取列整数
+            // [32] MySQL_取列整数(语句, 列索引)
+            // 功能：按服务器转换规则读取 32 位整数。
+            // 参数：语句:MySQL语句，列索引:int；返回：int；可见性：default
+            MySQL_取列整数(0, 1)
+            // 命令ID：MySQL_取列长整数
+            // [33] MySQL_取列长整数(语句, 列索引)
+            // 功能：按服务器转换规则读取 64 位整数。
+            // 参数：语句:MySQL语句，列索引:int；返回：longLong；可见性：default
+            MySQL_取列长整数(0, 1)
+            // 命令ID：MySQL_取列小数
+            // [34] MySQL_取列小数(语句, 列索引)
+            // 功能：按服务器转换规则读取双精度小数。
+            // 参数：语句:MySQL语句，列索引:int；返回：double；可见性：default
+            MySQL_取列小数(0, 1)
+            // 命令ID：MySQL_取列文本
+            // [35] MySQL_取列文本(语句, 列索引)
+            // 功能：读取 UTF-8 文本并转换为中文文本；SQL NULL 返回空文本，应先检查列是否为空。
+            // 参数：语句:MySQL语句，列索引:int；返回：wideString；可见性：default
+            MySQL_取列文本(0, 1)
+            // 命令ID：MySQL_取列字节集
+            // [36] MySQL_取列字节集(语句, 列索引)
+            // 功能：读取二进制列的独立副本；SQL NULL 返回空字节集。
+            // 参数：语句:MySQL语句，列索引:int；返回：bytes；可见性：default
+            MySQL_取列字节集(0, 1)
+            // 命令ID：MySQL_开始事务
+            // [37] MySQL_开始事务(连接)
+            // 功能：在连接上开始显式事务（START TRANSACTION）。
+            // 参数：连接:MySQL连接；返回：bool；可见性：default
+            MySQL_开始事务(0)
+            // 命令ID：MySQL_提交
+            // [38] MySQL_提交(连接)
+            // 功能：提交当前事务。
+            // 参数：连接:MySQL连接；返回：bool；可见性：default
+            MySQL_提交(0)
+            // 命令ID：MySQL_回滚
+            // [39] MySQL_回滚(连接)
+            // 功能：回滚当前事务。
+            // 参数：连接:MySQL连接；返回：bool；可见性：default
+            MySQL_回滚(0)
+            // 命令ID：MySQL_设置自动提交
+            // [40] MySQL_设置自动提交(连接, 启用)
+            // 功能：启用或禁用连接的自动提交模式。
+            // 参数：连接:MySQL连接，启用:bool；返回：bool；可见性：default
+            MySQL_设置自动提交(0, 真)
+            // 命令ID：MySQL_取错误
+            // [41] MySQL_取错误()
+            // 功能：返回本线程最近一次 MySQL 模块错误的中文描述与原始服务器错误，连接失败时也可读取。
+            // 参数：无；返回：wideString；可见性：default
+            MySQL_取错误()
+            // 命令ID：MySQL_取错误码
+            // [42] MySQL_取错误码()
+            // 功能：返回本线程最近一次 MySQL 错误码；0 表示没有错误。
+            // 参数：无；返回：int；可见性：default
+            MySQL_取错误码()
+            // 命令ID：MySQL_取连接错误
+            // [43] MySQL_取连接错误(连接)
+            // 功能：读取指定连接上最近一次服务器错误的原始文本。
+            // 参数：连接:MySQL连接；返回：wideString；可见性：default
+            MySQL_取连接错误(0)
+        如果结束
+        调试输出("已查看 命令 31–43：MySQL_取列是否为空 至 MySQL_取连接错误；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+结束类

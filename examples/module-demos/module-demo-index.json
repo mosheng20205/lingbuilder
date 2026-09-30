@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-20T16:11:18.828Z",
+  "generatedAt": "2026-09-25T22:07:34.201Z",
   "modules": [
     {
       "moduleId": "lingbuilder.advanced.assembly",
@@ -635,12 +635,13 @@
       "moduleId": "lingbuilder.net.http-client",
       "moduleName": "HTTP 客户端模块",
       "projectId": "module-demo-lingbuilder.net.http-client",
-      "commandCount": 74,
+      "commandCount": 79,
       "controlCount": 0,
       "groupCount": 4,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.net.http-client/src",
-      "packageName": "HTTP客户端模块完整演示.lcpppkg"
+      "packageName": "HTTP客户端模块完整演示.lcpppkg",
+      "packageBytes": 28770
     },
     {
       "moduleId": "lingbuilder.net.mail",
@@ -668,12 +669,13 @@
       "moduleId": "lingbuilder.net.udp",
       "moduleName": "UDP通信模块",
       "projectId": "module-demo-lingbuilder.net.udp",
-      "commandCount": 7,
+      "commandCount": 9,
       "controlCount": 0,
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.net.udp/src",
-      "packageName": "UDP通信模块完整演示.lcpppkg"
+      "packageName": "UDP通信模块完整演示.lcpppkg",
+      "packageBytes": 10424
     },
     {
       "moduleId": "lingbuilder.net.url",

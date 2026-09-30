@@ -1,0 +1,343 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-25T22:05:22.465Z",
+  "module": {
+    "id": "lingbuilder.std.lunar",
+    "name": "农历日期模块",
+    "version": "1.0.0",
+    "description": "提供公历农历互转、闰月与月天数查询、属相干支六十甲子、二十四节气（天文算法，精确到分钟）与四柱（生辰八字）计算。"
+  },
+  "commandCount": 14,
+  "commands": [
+    {
+      "index": 1,
+      "name": "农历_公历转农历年",
+      "signature": "农历_公历转农历年(时间)",
+      "description": "返回公历日期时间对应的农历年份；无效时间返回 0。",
+      "insertText": "农历_公历转农历年($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "农历_公历转农历年",
+        "runtimeName": "农历_公历转农历年",
+        "parameters": [
+          {
+            "name": "时间",
+            "type": "longLong",
+            "description": "要转换的日期时间值；无效值返回 0。"
+          }
+        ],
+        "returnType": "int",
+        "example": "局部 日期时间 当前时间\n当前时间 = 时间_取现行()\n调试输出(农历_公历转农历年(当前时间))"
+      },
+      "demoInvocation": "农历_公历转农历年(1)"
+    },
+    {
+      "index": 2,
+      "name": "农历_公历转农历月",
+      "signature": "农历_公历转农历月(时间)",
+      "description": "返回农历月份（1～12），闰月返回负数（如闰六月得 -6）；无效时间返回 0。",
+      "insertText": "农历_公历转农历月($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "农历_公历转农历月",
+        "runtimeName": "农历_公历转农历月",
+        "parameters": [
+          {
+            "name": "时间",
+            "type": "longLong",
+            "description": "要转换的日期时间值；无效值返回 0。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "农历_公历转农历月(1)"
+    },
+    {
+      "index": 3,
+      "name": "农历_公历转农历日",
+      "signature": "农历_公历转农历日(时间)",
+      "description": "返回农历日（1～30）；无效时间返回 0。",
+      "insertText": "农历_公历转农历日($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "农历_公历转农历日",
+        "runtimeName": "农历_公历转农历日",
+        "parameters": [
+          {
+            "name": "时间",
+            "type": "longLong",
+            "description": "要转换的日期时间值；无效值返回 0。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "农历_公历转农历日(1)"
+    },
+    {
+      "index": 4,
+      "name": "农历_农历转公历",
+      "signature": "农历_农历转公历(农历年, 农历月, 农历日)",
+      "description": "把农历日期转为公历日期时间；农历月传负数表示闰月，超出年历表范围或日期不存在返回 0。",
+      "insertText": "农历_农历转公历(2026, 1, 1)",
+      "returnType": "日期时间",
+      "binding": {
+        "command": "农历_农历转公历",
+        "runtimeName": "农历_农历转公历",
+        "parameters": [
+          {
+            "name": "农历年",
+            "type": "int",
+            "description": "农历年份，如 2026。"
+          },
+          {
+            "name": "农历月",
+            "type": "int",
+            "description": "农历月份 1～12；闰月传负数，如 -6 表示闰六月。"
+          },
+          {
+            "name": "农历日",
+            "type": "int",
+            "description": "农历日 1～30，不能超过该月天数。"
+          }
+        ],
+        "returnType": "longLong",
+        "example": "局部 日期时间 春节\n春节 = 农历_农历转公历(2026, 1, 1)\n调试输出(时间_到文本(春节, 1))"
+      },
+      "demoInvocation": "农历_农历转公历(1, 1, 1)"
+    },
+    {
+      "index": 5,
+      "name": "农历_公历转农历文本",
+      "signature": "农历_公历转农历文本(时间, 是否含属相)",
+      "description": "把公历日期时间转为“丙午年七月初五”风格的中文农历文本。",
+      "insertText": "农历_公历转农历文本($1, 真)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "农历_公历转农历文本",
+        "runtimeName": "农历_公历转农历文本",
+        "parameters": [
+          {
+            "name": "时间",
+            "type": "longLong",
+            "description": "要转换的日期时间值；无效值返回空文本。"
+          },
+          {
+            "name": "是否含属相",
+            "type": "bool",
+            "description": "传真在年份干支后追加属相，如 丙午（马）年。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "农历_公历转农历文本(1, 真)"
+    },
+    {
+      "index": 6,
+      "name": "农历_取闰月月份",
+      "signature": "农历_取闰月月份(公历年)",
+      "description": "返回指定公历年份的农历闰月月份（1～12）；无闰月返回 0。",
+      "insertText": "农历_取闰月月份(2025)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "农历_取闰月月份",
+        "runtimeName": "农历_取闰月月份",
+        "parameters": [
+          {
+            "name": "公历年",
+            "type": "int",
+            "description": "公历年份；年历表覆盖 1900-3000，节气表覆盖 1901-2100。"
+          }
+        ],
+        "returnType": "int",
+        "example": "调试输出(农历_取闰月月份(2025))"
+      },
+      "demoInvocation": "农历_取闰月月份(1)"
+    },
+    {
+      "index": 7,
+      "name": "农历_取月天数",
+      "signature": "农历_取月天数(公历年, 农历月)",
+      "description": "返回农历某月的天数（29 或 30）；农历月传负数表示闰月。",
+      "insertText": "农历_取月天数(2025, 6)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "农历_取月天数",
+        "runtimeName": "农历_取月天数",
+        "parameters": [
+          {
+            "name": "公历年",
+            "type": "int",
+            "description": "公历年份；年历表覆盖 1900-3000，节气表覆盖 1901-2100。"
+          },
+          {
+            "name": "农历月",
+            "type": "int",
+            "description": "农历月份 1～12；闰月传负数。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "农历_取月天数(1, 1)"
+    },
+    {
+      "index": 8,
+      "name": "农历_取年天数",
+      "signature": "农历_取年天数(公历年)",
+      "description": "返回农历全年天数（353～355 天，含闰月）。",
+      "insertText": "农历_取年天数(2025)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "农历_取年天数",
+        "runtimeName": "农历_取年天数",
+        "parameters": [
+          {
+            "name": "公历年",
+            "type": "int",
+            "description": "公历年份；年历表覆盖 1900-3000，节气表覆盖 1901-2100。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "农历_取年天数(1)"
+    },
+    {
+      "index": 9,
+      "name": "农历_取属相",
+      "signature": "农历_取属相(公历年)",
+      "description": "返回年份对应的属相名称。",
+      "insertText": "农历_取属相(2026)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "农历_取属相",
+        "runtimeName": "农历_取属相",
+        "parameters": [
+          {
+            "name": "公历年",
+            "type": "int",
+            "description": "公历年份；年历表覆盖 1900-3000，节气表覆盖 1901-2100。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "调试输出(农历_取属相(2026))"
+      },
+      "demoInvocation": "农历_取属相(1)"
+    },
+    {
+      "index": 10,
+      "name": "农历_取天干地支",
+      "signature": "农历_取天干地支(公历年)",
+      "description": "返回年份的干支文本（如 丙午），按立春分界。",
+      "insertText": "农历_取天干地支(2026)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "农历_取天干地支",
+        "runtimeName": "农历_取天干地支",
+        "parameters": [
+          {
+            "name": "公历年",
+            "type": "int",
+            "description": "公历年份；年历表覆盖 1900-3000，节气表覆盖 1901-2100。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "农历_取天干地支(1)"
+    },
+    {
+      "index": 11,
+      "name": "农历_取六十甲子",
+      "signature": "农历_取六十甲子(公历年)",
+      "description": "返回年份在六十甲子中的序位（1～60，如 第41甲辰），按立春分界。",
+      "insertText": "农历_取六十甲子(2024)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "农历_取六十甲子",
+        "runtimeName": "农历_取六十甲子",
+        "parameters": [
+          {
+            "name": "公历年",
+            "type": "int",
+            "description": "公历年份；年历表覆盖 1900-3000，节气表覆盖 1901-2100。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "农历_取六十甲子(1)"
+    },
+    {
+      "index": 12,
+      "name": "农历_取节气",
+      "signature": "农历_取节气(公历年, 节气序号)",
+      "description": "返回指定节气的日期时间（北京时间，精确到分钟）；序号 1～24 依次为小寒、大寒、立春……冬至。",
+      "insertText": "农历_取节气(2026, 3)",
+      "returnType": "日期时间",
+      "binding": {
+        "command": "农历_取节气",
+        "runtimeName": "农历_取节气",
+        "parameters": [
+          {
+            "name": "公历年",
+            "type": "int",
+            "description": "公历年份；年历表覆盖 1900-3000，节气表覆盖 1901-2100。"
+          },
+          {
+            "name": "节气序号",
+            "type": "int",
+            "description": "1 小寒、2 大寒、3 立春、4 雨水、5 惊蛰、6 春分、7 清明、8 谷雨、9 立夏、10 小满、11 芒种、12 夏至、13 小暑、14 大暑、15 立秋、16 处暑、17 白露、18 秋分、19 寒露、20 霜降、21 立冬、22 小雪、23 大雪、24 冬至。"
+          }
+        ],
+        "returnType": "longLong",
+        "example": "局部 日期时间 立春\n立春 = 农历_取节气(2026, 3)\n调试输出(时间_到文本(立春, 0))"
+      },
+      "demoInvocation": "农历_取节气(1, 1)"
+    },
+    {
+      "index": 13,
+      "name": "农历_取节气名称",
+      "signature": "农历_取节气名称(节气序号)",
+      "description": "返回节气序号对应的中文名称；序号超出 1～24 返回空文本。",
+      "insertText": "农历_取节气名称(3)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "农历_取节气名称",
+        "runtimeName": "农历_取节气名称",
+        "parameters": [
+          {
+            "name": "节气序号",
+            "type": "int",
+            "description": "1～24，含义同 农历_取节气。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "农历_取节气名称(1)"
+    },
+    {
+      "index": 14,
+      "name": "农历_取四柱",
+      "signature": "农历_取四柱(时间)",
+      "description": "返回日期时间的四柱（生辰八字）文本，如 甲子年 丙寅月 戊午日 庚子时；年柱月柱按节气分界。",
+      "insertText": "农历_取四柱($1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "农历_取四柱",
+        "runtimeName": "农历_取四柱",
+        "parameters": [
+          {
+            "name": "时间",
+            "type": "longLong",
+            "description": "要计算的日期时间值；无效值返回空文本。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "农历_取四柱(1)"
+    }
+  ]
+}

@@ -1,0 +1,383 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-25T22:05:22.442Z",
+  "module": {
+    "id": "lingbuilder.std.bigint",
+    "name": "大数运算模块",
+    "version": "1.0.0",
+    "description": "提供任意长度整数的精确四则、求余与比较运算，突破 64 位整数范围限制；十进制存储，除法向零取整。"
+  },
+  "commandCount": 15,
+  "commands": [
+    {
+      "index": 1,
+      "name": "大数_创建",
+      "signature": "大数_创建(十进制文本)",
+      "description": "把十进制整数字符串解析为大数；格式非法返回句柄 0。",
+      "insertText": "大数_创建(\"$1\")",
+      "returnType": "大数",
+      "binding": {
+        "command": "大数_创建",
+        "runtimeName": "大数_创建",
+        "parameters": [
+          {
+            "name": "十进制文本",
+            "type": "wideString",
+            "description": "十进制整数文本，允许开头一个正负号和任意多位数字；其余字符视为格式非法。空文本按 0 处理。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide",
+        "example": "局部 大数 天文数字\n天文数字 = 大数_创建(\"123456789012345678901234567890\")"
+      },
+      "demoInvocation": "大数_创建(\"演示参数1\")"
+    },
+    {
+      "index": 2,
+      "name": "大数_从整数",
+      "signature": "大数_从整数(整数)",
+      "description": "把 64 位整数转为大数。",
+      "insertText": "大数_从整数($1)",
+      "returnType": "大数",
+      "binding": {
+        "command": "大数_从整数",
+        "runtimeName": "大数_从整数",
+        "parameters": [
+          {
+            "name": "整数",
+            "type": "longLong",
+            "description": "要转换的 64 位整数。"
+          }
+        ],
+        "returnType": "longLong",
+        "example": "局部 大数 基数\n基数 = 大数_从整数(1)"
+      },
+      "demoInvocation": "大数_从整数(1)"
+    },
+    {
+      "index": 3,
+      "name": "大数_到文本",
+      "signature": "大数_到文本(大数)",
+      "description": "把大数转为十进制文本；句柄无效返回空文本。",
+      "insertText": "大数_到文本($1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "大数_到文本",
+        "runtimeName": "大数_到文本",
+        "parameters": [
+          {
+            "name": "大数",
+            "type": "longLong",
+            "description": "大数_创建 或 大数_从整数 返回的大数句柄；句柄无效或已销毁时命令按说明返回失败值。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "大数_到文本(1)"
+    },
+    {
+      "index": 4,
+      "name": "大数_销毁",
+      "signature": "大数_销毁(大数)",
+      "description": "销毁大数并回收句柄；销毁后句柄不可再用。",
+      "insertText": "大数_销毁($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "大数_销毁",
+        "runtimeName": "大数_销毁",
+        "parameters": [
+          {
+            "name": "大数",
+            "type": "longLong",
+            "description": "大数_创建 或 大数_从整数 返回的大数句柄；句柄无效或已销毁时命令按说明返回失败值。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "大数_销毁(1)"
+    },
+    {
+      "index": 5,
+      "name": "大数_加",
+      "signature": "大数_加(左值, 右值)",
+      "description": "返回两个大数之和的新大数；任一操作数无效返回句柄 0。",
+      "insertText": "大数_加($1, $2)",
+      "returnType": "大数",
+      "binding": {
+        "command": "大数_加",
+        "runtimeName": "大数_加",
+        "parameters": [
+          {
+            "name": "左值",
+            "type": "longLong",
+            "description": "参与运算的大数句柄，运算不修改两个操作数本身。"
+          },
+          {
+            "name": "右值",
+            "type": "longLong",
+            "description": "参与运算的大数句柄，运算不修改两个操作数本身。"
+          }
+        ],
+        "returnType": "longLong",
+        "example": "局部 大数 天文数字\n天文数字 = 大数_创建(\"99999999999999999999\")\n调试输出(大数_到文本(大数_加(天文数字, 大数_从整数(1))))"
+      },
+      "demoInvocation": "大数_加(1, 1)"
+    },
+    {
+      "index": 6,
+      "name": "大数_减",
+      "signature": "大数_减(左值, 右值)",
+      "description": "返回左值减右值之差的新大数；任一操作数无效返回句柄 0。",
+      "insertText": "大数_减($1, $2)",
+      "returnType": "大数",
+      "binding": {
+        "command": "大数_减",
+        "runtimeName": "大数_减",
+        "parameters": [
+          {
+            "name": "左值",
+            "type": "longLong",
+            "description": "参与运算的大数句柄，运算不修改两个操作数本身。"
+          },
+          {
+            "name": "右值",
+            "type": "longLong",
+            "description": "参与运算的大数句柄，运算不修改两个操作数本身。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "大数_减(1, 1)"
+    },
+    {
+      "index": 7,
+      "name": "大数_乘",
+      "signature": "大数_乘(左值, 右值)",
+      "description": "返回两个大数之积的新大数；任一操作数无效返回句柄 0。",
+      "insertText": "大数_乘($1, $2)",
+      "returnType": "大数",
+      "binding": {
+        "command": "大数_乘",
+        "runtimeName": "大数_乘",
+        "parameters": [
+          {
+            "name": "左值",
+            "type": "longLong",
+            "description": "参与运算的大数句柄，运算不修改两个操作数本身。"
+          },
+          {
+            "name": "右值",
+            "type": "longLong",
+            "description": "参与运算的大数句柄，运算不修改两个操作数本身。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "大数_乘(1, 1)"
+    },
+    {
+      "index": 8,
+      "name": "大数_除",
+      "signature": "大数_除(被除数, 除数)",
+      "description": "返回被除数除以除数之商的新大数，向零取整；除数为 0 时返回句柄 0。",
+      "insertText": "大数_除($1, $2)",
+      "returnType": "大数",
+      "binding": {
+        "command": "大数_除",
+        "runtimeName": "大数_除",
+        "parameters": [
+          {
+            "name": "被除数",
+            "type": "longLong",
+            "description": "参与运算的大数句柄，运算不修改两个操作数本身。"
+          },
+          {
+            "name": "除数",
+            "type": "longLong",
+            "description": "作除数的大数句柄；为 0 或无效时返回句柄 0。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "大数_除(1, 1)"
+    },
+    {
+      "index": 9,
+      "name": "大数_求余",
+      "signature": "大数_求余(被除数, 除数)",
+      "description": "返回被除数对除数求余的新大数，余数符号与被除数一致；除数为 0 时返回句柄 0。",
+      "insertText": "大数_求余($1, $2)",
+      "returnType": "大数",
+      "binding": {
+        "command": "大数_求余",
+        "runtimeName": "大数_求余",
+        "parameters": [
+          {
+            "name": "被除数",
+            "type": "longLong",
+            "description": "参与运算的大数句柄，运算不修改两个操作数本身。"
+          },
+          {
+            "name": "除数",
+            "type": "longLong",
+            "description": "作除数的大数句柄；为 0 或无效时返回句柄 0。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "大数_求余(1, 1)"
+    },
+    {
+      "index": 10,
+      "name": "大数_取符号",
+      "signature": "大数_取符号(大数)",
+      "description": "返回大数的符号：正数得 1，零得 0，负数得 -1；句柄无效返回 -2。",
+      "insertText": "大数_取符号($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "大数_取符号",
+        "runtimeName": "大数_取符号",
+        "parameters": [
+          {
+            "name": "大数",
+            "type": "longLong",
+            "description": "大数_创建 或 大数_从整数 返回的大数句柄；句柄无效或已销毁时命令按说明返回失败值。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "大数_取符号(1)"
+    },
+    {
+      "index": 11,
+      "name": "大数_是否等于",
+      "signature": "大数_是否等于(左值, 右值)",
+      "description": "比较两个大数是否相等；任一操作数无效返回假。",
+      "insertText": "大数_是否等于($1, $2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "大数_是否等于",
+        "runtimeName": "大数_是否等于",
+        "parameters": [
+          {
+            "name": "左值",
+            "type": "longLong",
+            "description": "参与运算的大数句柄，运算不修改两个操作数本身。"
+          },
+          {
+            "name": "右值",
+            "type": "longLong",
+            "description": "参与运算的大数句柄，运算不修改两个操作数本身。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "大数_是否等于(1, 1)"
+    },
+    {
+      "index": 12,
+      "name": "大数_是否大于",
+      "signature": "大数_是否大于(左值, 右值)",
+      "description": "比较左值是否严格大于右值；任一操作数无效返回假。",
+      "insertText": "大数_是否大于($1, $2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "大数_是否大于",
+        "runtimeName": "大数_是否大于",
+        "parameters": [
+          {
+            "name": "左值",
+            "type": "longLong",
+            "description": "参与运算的大数句柄，运算不修改两个操作数本身。"
+          },
+          {
+            "name": "右值",
+            "type": "longLong",
+            "description": "参与运算的大数句柄，运算不修改两个操作数本身。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "大数_是否大于(1, 1)"
+    },
+    {
+      "index": 13,
+      "name": "大数_是否小于",
+      "signature": "大数_是否小于(左值, 右值)",
+      "description": "比较左值是否严格小于右值；任一操作数无效返回假。",
+      "insertText": "大数_是否小于($1, $2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "大数_是否小于",
+        "runtimeName": "大数_是否小于",
+        "parameters": [
+          {
+            "name": "左值",
+            "type": "longLong",
+            "description": "参与运算的大数句柄，运算不修改两个操作数本身。"
+          },
+          {
+            "name": "右值",
+            "type": "longLong",
+            "description": "参与运算的大数句柄，运算不修改两个操作数本身。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "大数_是否小于(1, 1)"
+    },
+    {
+      "index": 14,
+      "name": "大数_是否大于等于",
+      "signature": "大数_是否大于等于(左值, 右值)",
+      "description": "比较左值是否大于或等于右值；任一操作数无效返回假。",
+      "insertText": "大数_是否大于等于($1, $2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "大数_是否大于等于",
+        "runtimeName": "大数_是否大于等于",
+        "parameters": [
+          {
+            "name": "左值",
+            "type": "longLong",
+            "description": "参与运算的大数句柄，运算不修改两个操作数本身。"
+          },
+          {
+            "name": "右值",
+            "type": "longLong",
+            "description": "参与运算的大数句柄，运算不修改两个操作数本身。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "大数_是否大于等于(1, 1)"
+    },
+    {
+      "index": 15,
+      "name": "大数_是否小于等于",
+      "signature": "大数_是否小于等于(左值, 右值)",
+      "description": "比较左值是否小于或等于右值；任一操作数无效返回假。",
+      "insertText": "大数_是否小于等于($1, $2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "大数_是否小于等于",
+        "runtimeName": "大数_是否小于等于",
+        "parameters": [
+          {
+            "name": "左值",
+            "type": "longLong",
+            "description": "参与运算的大数句柄，运算不修改两个操作数本身。"
+          },
+          {
+            "name": "右值",
+            "type": "longLong",
+            "description": "参与运算的大数句柄，运算不修改两个操作数本身。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "大数_是否小于等于(1, 1)"
+    }
+  ]
+}

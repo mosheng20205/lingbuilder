@@ -1,0 +1,1260 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-25T22:05:22.182Z",
+  "module": {
+    "id": "lingbuilder.data.excel",
+    "name": "Excel 表格模块",
+    "version": "1.0.0",
+    "description": "读写 .xlsx 工作簿：多工作表、按单元格坐标读写、公式、日期、追加行、常用格式和插入删除行列，无需安装 Microsoft Excel。创建模式支持全部格式能力，打开模式可保真修改既有报表数值。"
+  },
+  "commandCount": 45,
+  "commands": [
+    {
+      "index": 1,
+      "name": "Excel_创建工作簿",
+      "signature": "Excel_创建工作簿(文件路径)",
+      "description": "新建一个仅存在于内存的 .xlsx 工作簿（默认含 Sheet1），全部格式能力可用；调用 Excel_保存 才写出文件。",
+      "insertText": "Excel_创建工作簿(\"$1\")",
+      "returnType": "Excel工作簿",
+      "returnDescription": "成功返回非 0 的 Excel工作簿，失败返回 0。",
+      "category": "工作簿",
+      "binding": {
+        "command": "Excel_创建工作簿",
+        "runtimeName": "Excel_创建工作簿",
+        "parameters": [
+          {
+            "name": "文件路径",
+            "type": "wideString",
+            "description": "要生成的 .xlsx 文件路径；保存时写出。"
+          }
+        ],
+        "returnType": "Excel工作簿",
+        "encoding": "wide",
+        "example": "Excel_创建工作簿(\"报表/月度报表.xlsx\")"
+      },
+      "demoInvocation": "Excel_创建工作簿(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 2,
+      "name": "Excel_打开工作簿",
+      "signature": "Excel_打开工作簿(文件路径)",
+      "description": "打开既有 .xlsx 工作簿；修改后保存会保真保留原有样式、列宽和公式结构。打开模式不支持格式与结构类命令。",
+      "insertText": "Excel_打开工作簿(\"$1\")",
+      "returnType": "Excel工作簿",
+      "returnDescription": "成功返回非 0 的 Excel工作簿，失败返回 0。",
+      "category": "工作簿",
+      "binding": {
+        "command": "Excel_打开工作簿",
+        "runtimeName": "Excel_打开工作簿",
+        "parameters": [
+          {
+            "name": "文件路径",
+            "type": "wideString",
+            "description": "既有 .xlsx 文件路径。"
+          }
+        ],
+        "returnType": "Excel工作簿",
+        "encoding": "wide",
+        "example": "Excel_打开工作簿(\"报表/月度报表.xlsx\")"
+      },
+      "demoInvocation": "Excel_打开工作簿(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 3,
+      "name": "Excel_保存",
+      "signature": "Excel_保存(工作簿)",
+      "description": "把工作簿写出当前文件；创建模式可反复修改后再次保存，打开模式原地写回。",
+      "insertText": "Excel_保存(0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "Excel_保存",
+        "runtimeName": "Excel_保存",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "Excel_保存(0)"
+    },
+    {
+      "index": 4,
+      "name": "Excel_另存为",
+      "signature": "Excel_另存为(工作簿, 文件路径)",
+      "description": "把工作簿写出到新路径，之后的 Excel_保存 也会写向新路径。",
+      "insertText": "Excel_另存为(0, \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "Excel_另存为",
+        "runtimeName": "Excel_另存为",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          },
+          {
+            "name": "文件路径",
+            "type": "wideString",
+            "description": "新的 .xlsx 文件路径；保存目标随之切换。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Excel_另存为(0, \"module-demo-temp.txt\")"
+    },
+    {
+      "index": 5,
+      "name": "Excel_关闭",
+      "signature": "Excel_关闭(工作簿)",
+      "description": "关闭并释放工作簿；未保存的修改会丢失。失效句柄返回假。",
+      "insertText": "Excel_关闭(0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "Excel_关闭",
+        "runtimeName": "Excel_关闭",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "Excel_关闭(0)"
+    },
+    {
+      "index": 6,
+      "name": "Excel_取工作表数量",
+      "signature": "Excel_取工作表数量(工作簿)",
+      "description": "返回工作簿内工作表数量。",
+      "insertText": "Excel_取工作表数量(0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "Excel_取工作表数量",
+        "runtimeName": "Excel_取工作表数量",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "Excel_取工作表数量(0)"
+    },
+    {
+      "index": 7,
+      "name": "Excel_取工作表名",
+      "signature": "Excel_取工作表名(工作簿, 序号)",
+      "description": "返回指定序号的工作表名称；越界返回空文本并记录错误。",
+      "insertText": "Excel_取工作表名(0, 0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "Excel_取工作表名",
+        "runtimeName": "Excel_取工作表名",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "从 1 开始的工作表序号。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Excel_取工作表名(0, 1)"
+    },
+    {
+      "index": 8,
+      "name": "Excel_取当前工作表",
+      "signature": "Excel_取当前工作表(工作簿)",
+      "description": "返回当前读写操作所用的工作表名称。",
+      "insertText": "Excel_取当前工作表(0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "Excel_取当前工作表",
+        "runtimeName": "Excel_取当前工作表",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Excel_取当前工作表(0)"
+    },
+    {
+      "index": 9,
+      "name": "Excel_置当前工作表",
+      "signature": "Excel_置当前工作表(工作簿, 名称)",
+      "description": "切换当前读写操作所用的工作表；找不到同名工作表返回假。",
+      "insertText": "Excel_置当前工作表(0, \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "Excel_置当前工作表",
+        "runtimeName": "Excel_置当前工作表",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          },
+          {
+            "name": "名称",
+            "type": "wideString",
+            "description": "工作表名称。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Excel_置当前工作表(0, \"演示参数2\")"
+    },
+    {
+      "index": 10,
+      "name": "Excel_添加工作表",
+      "signature": "Excel_添加工作表(工作簿, 名称)",
+      "description": "在工作簿末尾追加一个空工作表。",
+      "insertText": "Excel_添加工作表(0, \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "Excel_添加工作表",
+        "runtimeName": "Excel_添加工作表",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          },
+          {
+            "name": "名称",
+            "type": "wideString",
+            "description": "新工作表名称，不能与现有名称重复。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Excel_添加工作表(0, \"演示参数2\")"
+    },
+    {
+      "index": 11,
+      "name": "Excel_删除工作表",
+      "signature": "Excel_删除工作表(工作簿, 名称)",
+      "description": "删除指定工作表；工作簿至少保留一个工作表。",
+      "insertText": "Excel_删除工作表(0, \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "Excel_删除工作表",
+        "runtimeName": "Excel_删除工作表",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          },
+          {
+            "name": "名称",
+            "type": "wideString",
+            "description": "要删除的工作表名称，必须与表签完全一致；不能删除最后一个可见工作表。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Excel_删除工作表(0, \"演示参数2\")"
+    },
+    {
+      "index": 12,
+      "name": "Excel_写文本",
+      "signature": "Excel_写文本(工作簿, 单元格, 内容)",
+      "description": "把文本写入单元格。",
+      "insertText": "Excel_写文本(0, \"$2\", \"$3\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "Excel_写文本",
+        "runtimeName": "Excel_写文本",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          },
+          {
+            "name": "单元格",
+            "type": "wideString",
+            "description": "单元格地址，例如 \"A1\" 或 \"AB12\"。"
+          },
+          {
+            "name": "内容",
+            "type": "wideString",
+            "description": "写入单元格的文本内容，按字符串类型保存。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Excel_写文本(0, \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 13,
+      "name": "Excel_写数值",
+      "signature": "Excel_写数值(工作簿, 单元格, 数值)",
+      "description": "把数值写入单元格。",
+      "insertText": "Excel_写数值(0, \"$2\", 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "Excel_写数值",
+        "runtimeName": "Excel_写数值",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          },
+          {
+            "name": "单元格",
+            "type": "wideString",
+            "description": "单元格地址，例如 \"A1\" 或 \"AB12\"。"
+          },
+          {
+            "name": "数值",
+            "type": "double",
+            "description": "写入单元格的数值，按数字类型保存。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Excel_写数值(0, \"演示参数2\", 1.0)"
+    },
+    {
+      "index": 14,
+      "name": "Excel_写布尔",
+      "signature": "Excel_写布尔(工作簿, 单元格, 值)",
+      "description": "把布尔值写入单元格。",
+      "insertText": "Excel_写布尔(0, \"$2\", 假)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "Excel_写布尔",
+        "runtimeName": "Excel_写布尔",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          },
+          {
+            "name": "单元格",
+            "type": "wideString",
+            "description": "单元格地址，例如 \"A1\" 或 \"AB12\"。"
+          },
+          {
+            "name": "值",
+            "type": "bool",
+            "description": "写入单元格的逻辑值，Excel 中显示为 TRUE 或 FALSE。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Excel_写布尔(0, \"演示参数2\", 真)"
+    },
+    {
+      "index": 15,
+      "name": "Excel_写公式",
+      "signature": "Excel_写公式(工作簿, 单元格, 公式)",
+      "description": "写入公式；Excel/WPS 打开文件时自动计算。创建模式公式没有缓存值。",
+      "insertText": "Excel_写公式(0, \"$2\", \"$3\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "Excel_写公式",
+        "runtimeName": "Excel_写公式",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          },
+          {
+            "name": "单元格",
+            "type": "wideString",
+            "description": "单元格地址，例如 \"A1\" 或 \"AB12\"。"
+          },
+          {
+            "name": "公式",
+            "type": "wideString",
+            "description": "可带或不带等号，例如 \"SUM(B1:B9)\"。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Excel_写公式(0, \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 16,
+      "name": "Excel_写日期",
+      "signature": "Excel_写日期(工作簿, 单元格, 日期时间)",
+      "description": "把日期时间写入单元格：自动换算为日期序列值；创建模式会同时套用日期显示格式，打开模式只写序列值。",
+      "insertText": "Excel_写日期(0, \"$2\", \"$3\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "Excel_写日期",
+        "runtimeName": "Excel_写日期",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          },
+          {
+            "name": "单元格",
+            "type": "wideString",
+            "description": "单元格地址，例如 \"A1\" 或 \"AB12\"。"
+          },
+          {
+            "name": "日期时间",
+            "type": "wideString",
+            "description": "形如 \"2026-01-31\" 或 \"2026-01-31 08:30:00\"。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Excel_写日期(0, \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 17,
+      "name": "Excel_清除单元格",
+      "signature": "Excel_清除单元格(工作簿, 单元格)",
+      "description": "清空单元格内容和格式。",
+      "insertText": "Excel_清除单元格(0, \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "Excel_清除单元格",
+        "runtimeName": "Excel_清除单元格",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          },
+          {
+            "name": "单元格",
+            "type": "wideString",
+            "description": "单元格地址，例如 \"A1\" 或 \"AB12\"。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Excel_清除单元格(0, \"演示参数2\")"
+    },
+    {
+      "index": 18,
+      "name": "Excel_读单元格文本",
+      "signature": "Excel_读单元格文本(工作簿, 单元格)",
+      "description": "读取单元格文本表示；数值、布尔与公式缓存值都会转成文本，空单元格返回空文本。",
+      "insertText": "Excel_读单元格文本(0, \"$2\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "Excel_读单元格文本",
+        "runtimeName": "Excel_读单元格文本",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          },
+          {
+            "name": "单元格",
+            "type": "wideString",
+            "description": "单元格地址，例如 \"A1\" 或 \"AB12\"。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Excel_读单元格文本(0, \"演示参数2\")"
+    },
+    {
+      "index": 19,
+      "name": "Excel_读单元格数值",
+      "signature": "Excel_读单元格数值(工作簿, 单元格)",
+      "description": "读取单元格数值；内容不是数值时返回 0 并记录错误。",
+      "insertText": "Excel_读单元格数值(0, \"$2\")",
+      "returnType": "双精度小数型",
+      "binding": {
+        "command": "Excel_读单元格数值",
+        "runtimeName": "Excel_读单元格数值",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          },
+          {
+            "name": "单元格",
+            "type": "wideString",
+            "description": "单元格地址，例如 \"A1\" 或 \"AB12\"。"
+          }
+        ],
+        "returnType": "double",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Excel_读单元格数值(0, \"演示参数2\")"
+    },
+    {
+      "index": 20,
+      "name": "Excel_读单元格公式",
+      "signature": "Excel_读单元格公式(工作簿, 单元格)",
+      "description": "读取公式内容（不带等号）；不是公式单元格时返回空文本并记录错误。",
+      "insertText": "Excel_读单元格公式(0, \"$2\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "Excel_读单元格公式",
+        "runtimeName": "Excel_读单元格公式",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          },
+          {
+            "name": "单元格",
+            "type": "wideString",
+            "description": "单元格地址，例如 \"A1\" 或 \"AB12\"。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Excel_读单元格公式(0, \"演示参数2\")"
+    },
+    {
+      "index": 21,
+      "name": "Excel_取单元格类型",
+      "signature": "Excel_取单元格类型(工作簿, 单元格)",
+      "description": "返回单元格类型：0=空，1=文本，2=数值，3=布尔，4=公式。",
+      "insertText": "Excel_取单元格类型(0, \"$2\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "Excel_取单元格类型",
+        "runtimeName": "Excel_取单元格类型",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          },
+          {
+            "name": "单元格",
+            "type": "wideString",
+            "description": "单元格地址，例如 \"A1\" 或 \"AB12\"。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Excel_取单元格类型(0, \"演示参数2\")"
+    },
+    {
+      "index": 22,
+      "name": "Excel_是否为空单元格",
+      "signature": "Excel_是否为空单元格(工作簿, 单元格)",
+      "description": "判断单元格是否为空。",
+      "insertText": "Excel_是否为空单元格(0, \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "Excel_是否为空单元格",
+        "runtimeName": "Excel_是否为空单元格",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          },
+          {
+            "name": "单元格",
+            "type": "wideString",
+            "description": "单元格地址，例如 \"A1\" 或 \"AB12\"。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Excel_是否为空单元格(0, \"演示参数2\")"
+    },
+    {
+      "index": 23,
+      "name": "Excel_写一行",
+      "signature": "Excel_写一行(工作簿, 起始单元格, 行内容, 分隔符)",
+      "description": "从起始单元格开始横向写入一整行；纯数字片段自动写成数值，空片段跳过不写。",
+      "insertText": "Excel_写一行(0, \"$2\", \"$3\", \"$4\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "Excel_写一行",
+        "runtimeName": "Excel_写一行",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          },
+          {
+            "name": "起始单元格",
+            "type": "wideString",
+            "description": "本行第一个值写入的位置。"
+          },
+          {
+            "name": "行内容",
+            "type": "wideString",
+            "description": "用分隔符拼接的一行数据，例如 \"张三\\t25\\t北京\"。"
+          },
+          {
+            "name": "分隔符",
+            "type": "wideString",
+            "description": "值之间的分隔文本；空文本按制表符处理。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Excel_写一行(0, \"演示参数2\", \"演示参数3\", \"演示参数4\")"
+    },
+    {
+      "index": 24,
+      "name": "Excel_追加行",
+      "signature": "Excel_追加行(工作簿, 行内容, 分隔符)",
+      "description": "在当前工作表最后一个非空行的下一行追加数据；返回写入的行号（从 1 开始），失败返回 -1。",
+      "insertText": "Excel_追加行(0, \"$2\", \"$3\")",
+      "returnType": "整数型",
+      "returnDescription": "写入的 1 起始行号，失败返回 -1。",
+      "binding": {
+        "command": "Excel_追加行",
+        "runtimeName": "Excel_追加行",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          },
+          {
+            "name": "行内容",
+            "type": "wideString",
+            "description": "用分隔符拼接的一行数据。"
+          },
+          {
+            "name": "分隔符",
+            "type": "wideString",
+            "description": "值之间的分隔文本；空文本按制表符处理。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Excel_追加行(0, \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 25,
+      "name": "Excel_读区域",
+      "signature": "Excel_读区域(工作簿, 范围, 分隔符)",
+      "description": "读取一个矩形区域：行之间用换行分隔、单元格之间用指定分隔符拼接；可直接逐行解析或配合 CSV/JSON 模块加工。",
+      "insertText": "Excel_读区域(0, \"$2\", \"$3\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "Excel_读区域",
+        "runtimeName": "Excel_读区域",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          },
+          {
+            "name": "范围",
+            "type": "wideString",
+            "description": "区域地址，例如 \"A1:C10\"。"
+          },
+          {
+            "name": "分隔符",
+            "type": "wideString",
+            "description": "同行单元格之间的拼接文本；空文本按制表符处理。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Excel_读区域(0, \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 26,
+      "name": "Excel_取已用范围",
+      "signature": "Excel_取已用范围(工作簿)",
+      "description": "返回当前工作表已使用区域，例如 \"A1:F20\"；空表返回空文本。",
+      "insertText": "Excel_取已用范围(0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "Excel_取已用范围",
+        "runtimeName": "Excel_取已用范围",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Excel_取已用范围(0)"
+    },
+    {
+      "index": 27,
+      "name": "Excel_置列宽",
+      "signature": "Excel_置列宽(工作簿, 列标, 宽度)",
+      "description": "设置当前工作表列宽。",
+      "insertText": "Excel_置列宽(0, \"$2\", 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "Excel_置列宽",
+        "runtimeName": "Excel_置列宽",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          },
+          {
+            "name": "列标",
+            "type": "wideString",
+            "description": "列字母，例如 \"A\" 或 \"AB\"。"
+          },
+          {
+            "name": "宽度",
+            "type": "double",
+            "description": "以字符数为单位的列宽，0～255。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Excel_置列宽(0, \"演示参数2\", 1.0)"
+    },
+    {
+      "index": 28,
+      "name": "Excel_置行高",
+      "signature": "Excel_置行高(工作簿, 行号, 高度)",
+      "description": "设置当前工作表行高。",
+      "insertText": "Excel_置行高(0, 0, 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "Excel_置行高",
+        "runtimeName": "Excel_置行高",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          },
+          {
+            "name": "行号",
+            "type": "int",
+            "description": "从 1 开始的行号。"
+          },
+          {
+            "name": "高度",
+            "type": "double",
+            "description": "以磅为单位的行高，0～409。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "Excel_置行高(0, 1, 1.0)"
+    },
+    {
+      "index": 29,
+      "name": "Excel_合并单元格",
+      "signature": "Excel_合并单元格(工作簿, 范围)",
+      "description": "合并一个矩形区域；左上角单元格的值作为合并后内容。",
+      "insertText": "Excel_合并单元格(0, \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "Excel_合并单元格",
+        "runtimeName": "Excel_合并单元格",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          },
+          {
+            "name": "范围",
+            "type": "wideString",
+            "description": "矩形区域，例如 \"A1:C3\"。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Excel_合并单元格(0, \"演示参数2\")"
+    },
+    {
+      "index": 30,
+      "name": "Excel_冻结窗格",
+      "signature": "Excel_冻结窗格(工作簿, 行数, 列数)",
+      "description": "冻结当前工作表首部行与左侧列，滚动时保持表头可见。",
+      "insertText": "Excel_冻结窗格(0, 0, 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "Excel_冻结窗格",
+        "runtimeName": "Excel_冻结窗格",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          },
+          {
+            "name": "行数",
+            "type": "int",
+            "description": "冻结的首部行数。"
+          },
+          {
+            "name": "列数",
+            "type": "int",
+            "description": "冻结的左侧列数。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "Excel_冻结窗格(0, 1, 1)"
+    },
+    {
+      "index": 31,
+      "name": "Excel_置数字格式",
+      "signature": "Excel_置数字格式(工作簿, 单元格, 格式索引)",
+      "description": "设置单元格数字显示格式。",
+      "insertText": "Excel_置数字格式(0, \"$2\", 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "Excel_置数字格式",
+        "runtimeName": "Excel_置数字格式",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          },
+          {
+            "name": "单元格",
+            "type": "wideString",
+            "description": "单元格地址，例如 \"A1\" 或 \"AB12\"。"
+          },
+          {
+            "name": "格式索引",
+            "type": "int",
+            "description": "0=文本，1=整数，2=两位小数，3=百分比，4=日期时间。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Excel_置数字格式(0, \"演示参数2\", 1)"
+    },
+    {
+      "index": 32,
+      "name": "Excel_置加粗",
+      "signature": "Excel_置加粗(工作簿, 单元格, 启用)",
+      "description": "设置单元格字体加粗。",
+      "insertText": "Excel_置加粗(0, \"$2\", 假)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "Excel_置加粗",
+        "runtimeName": "Excel_置加粗",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          },
+          {
+            "name": "单元格",
+            "type": "wideString",
+            "description": "单元格地址，例如 \"A1\" 或 \"AB12\"。"
+          },
+          {
+            "name": "启用",
+            "type": "bool",
+            "description": "传真把该单元格字体设为加粗，传假取消加粗。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Excel_置加粗(0, \"演示参数2\", 真)"
+    },
+    {
+      "index": 33,
+      "name": "Excel_置字号",
+      "signature": "Excel_置字号(工作簿, 单元格, 字号)",
+      "description": "设置单元格字号。",
+      "insertText": "Excel_置字号(0, \"$2\", 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "Excel_置字号",
+        "runtimeName": "Excel_置字号",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          },
+          {
+            "name": "单元格",
+            "type": "wideString",
+            "description": "单元格地址，例如 \"A1\" 或 \"AB12\"。"
+          },
+          {
+            "name": "字号",
+            "type": "double",
+            "description": "1～409 的字号。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Excel_置字号(0, \"演示参数2\", 1.0)"
+    },
+    {
+      "index": 34,
+      "name": "Excel_置字体颜色",
+      "signature": "Excel_置字体颜色(工作簿, 单元格, 颜色值)",
+      "description": "设置单元格字体颜色。",
+      "insertText": "Excel_置字体颜色(0, \"$2\", 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "Excel_置字体颜色",
+        "runtimeName": "Excel_置字体颜色",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          },
+          {
+            "name": "单元格",
+            "type": "wideString",
+            "description": "单元格地址，例如 \"A1\" 或 \"AB12\"。"
+          },
+          {
+            "name": "颜色值",
+            "type": "int",
+            "description": "0xRRGGBB 颜色值，例如 0xFF0000 表示红色；十进制 16711680 等价。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Excel_置字体颜色(0, \"演示参数2\", 1)"
+    },
+    {
+      "index": 35,
+      "name": "Excel_置背景色",
+      "signature": "Excel_置背景色(工作簿, 单元格, 颜色值)",
+      "description": "设置单元格背景填充色。",
+      "insertText": "Excel_置背景色(0, \"$2\", 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "Excel_置背景色",
+        "runtimeName": "Excel_置背景色",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          },
+          {
+            "name": "单元格",
+            "type": "wideString",
+            "description": "单元格地址，例如 \"A1\" 或 \"AB12\"。"
+          },
+          {
+            "name": "颜色值",
+            "type": "int",
+            "description": "0xRRGGBB 颜色值。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Excel_置背景色(0, \"演示参数2\", 1)"
+    },
+    {
+      "index": 36,
+      "name": "Excel_置水平对齐",
+      "signature": "Excel_置水平对齐(工作簿, 单元格, 对齐方式)",
+      "description": "设置单元格水平对齐方式。",
+      "insertText": "Excel_置水平对齐(0, \"$2\", 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "Excel_置水平对齐",
+        "runtimeName": "Excel_置水平对齐",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          },
+          {
+            "name": "单元格",
+            "type": "wideString",
+            "description": "单元格地址，例如 \"A1\" 或 \"AB12\"。"
+          },
+          {
+            "name": "对齐方式",
+            "type": "int",
+            "description": "0=左对齐，1=居中，2=右对齐。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Excel_置水平对齐(0, \"演示参数2\", 1)"
+    },
+    {
+      "index": 37,
+      "name": "Excel_插入行",
+      "signature": "Excel_插入行(工作簿, 行号, 数量)",
+      "description": "在指定行前插入空行，已有内容整体下移。",
+      "insertText": "Excel_插入行(0, 0, 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "Excel_插入行",
+        "runtimeName": "Excel_插入行",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          },
+          {
+            "name": "行号",
+            "type": "int",
+            "description": "从该行（1 起始）开始下移。"
+          },
+          {
+            "name": "数量",
+            "type": "int",
+            "description": "要在该行之前插入的行数量，必须大于 0。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "Excel_插入行(0, 1, 1)"
+    },
+    {
+      "index": 38,
+      "name": "Excel_删除行",
+      "signature": "Excel_删除行(工作簿, 行号, 数量)",
+      "description": "删除指定起点的若干行，后续内容上移补位。",
+      "insertText": "Excel_删除行(0, 0, 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "Excel_删除行",
+        "runtimeName": "Excel_删除行",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          },
+          {
+            "name": "行号",
+            "type": "int",
+            "description": "从 1 开始的起始行号。"
+          },
+          {
+            "name": "数量",
+            "type": "int",
+            "description": "要从该行开始删除的行数量，必须大于 0。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "Excel_删除行(0, 1, 1)"
+    },
+    {
+      "index": 39,
+      "name": "Excel_插入列",
+      "signature": "Excel_插入列(工作簿, 列号, 数量)",
+      "description": "在指定列前插入空列，已有内容整体右移。",
+      "insertText": "Excel_插入列(0, 0, 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "Excel_插入列",
+        "runtimeName": "Excel_插入列",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          },
+          {
+            "name": "列号",
+            "type": "int",
+            "description": "从该列（1 起始，A=1）开始右移。"
+          },
+          {
+            "name": "数量",
+            "type": "int",
+            "description": "要在该列之前插入的列数量，必须大于 0。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "Excel_插入列(0, 1, 1)"
+    },
+    {
+      "index": 40,
+      "name": "Excel_删除列",
+      "signature": "Excel_删除列(工作簿, 列号, 数量)",
+      "description": "删除指定起点的若干列，后续内容左移补位。",
+      "insertText": "Excel_删除列(0, 0, 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "Excel_删除列",
+        "runtimeName": "Excel_删除列",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          },
+          {
+            "name": "列号",
+            "type": "int",
+            "description": "从 1 开始的起始列号（A=1）。"
+          },
+          {
+            "name": "数量",
+            "type": "int",
+            "description": "要从该列开始删除的列数量，必须大于 0。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "Excel_删除列(0, 1, 1)"
+    },
+    {
+      "index": 41,
+      "name": "Excel_日期转序列",
+      "signature": "Excel_日期转序列(日期时间)",
+      "description": "把日期时间换算为 Excel 序列值；格式无效返回 -1。1900-03-01 之前的日期与 Excel 相差 1（Excel 1900 年闰年历史缺陷）。",
+      "insertText": "Excel_日期转序列(\"$1\")",
+      "returnType": "双精度小数型",
+      "binding": {
+        "command": "Excel_日期转序列",
+        "runtimeName": "Excel_日期转序列",
+        "parameters": [
+          {
+            "name": "日期时间",
+            "type": "wideString",
+            "description": "形如 \"2026-01-31\" 或 \"2026-01-31 08:30:00\"。"
+          }
+        ],
+        "returnType": "double",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Excel_日期转序列(\"演示参数1\")"
+    },
+    {
+      "index": 42,
+      "name": "Excel_序列转日期",
+      "signature": "Excel_序列转日期(序列值)",
+      "description": "把 Excel 序列值换算为 \"YYYY-MM-DD[ HH:MM:SS]\" 文本；超出范围返回空文本。",
+      "insertText": "Excel_序列转日期(0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "Excel_序列转日期",
+        "runtimeName": "Excel_序列转日期",
+        "parameters": [
+          {
+            "name": "序列值",
+            "type": "double",
+            "description": "Excel 日期序列值，0～2958465。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Excel_序列转日期(1.0)"
+    },
+    {
+      "index": 43,
+      "name": "Excel_取错误",
+      "signature": "Excel_取错误()",
+      "description": "返回当前线程最近一次 Excel 模块错误的中文说明。",
+      "insertText": "Excel_取错误()",
+      "returnType": "文本型",
+      "category": "诊断",
+      "binding": {
+        "command": "Excel_取错误",
+        "runtimeName": "Excel_取错误",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Excel_取错误()"
+    },
+    {
+      "index": 44,
+      "name": "Excel_取版本",
+      "signature": "Excel_取版本()",
+      "description": "返回随附运行桥版本与内置库信息。",
+      "insertText": "Excel_取版本()",
+      "returnType": "文本型",
+      "category": "诊断",
+      "binding": {
+        "command": "Excel_取版本",
+        "runtimeName": "Excel_取版本",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Excel_取版本()"
+    },
+    {
+      "index": 45,
+      "name": "Excel_是否可用",
+      "signature": "Excel_是否可用()",
+      "description": "检查随附运行桥 LingBuilderExcel.dll 是否可以加载且全部导出可用。",
+      "insertText": "Excel_是否可用()",
+      "returnType": "逻辑型",
+      "category": "诊断",
+      "binding": {
+        "command": "Excel_是否可用",
+        "runtimeName": "Excel_是否可用",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "Excel_是否可用()"
+    }
+  ]
+}
