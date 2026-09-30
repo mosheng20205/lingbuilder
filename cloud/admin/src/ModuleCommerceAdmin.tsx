@@ -54,12 +54,13 @@ export function ModuleCommerceAdmin({ data, request, reload }: Props) {
           <button className="primary" disabled={busy}>新增报价</button>
         </form>
         {product?.offers?.length > 0 && <div className="offer-chips" aria-label="当前商品报价">{product.offers.map((offer: any) => <span key={offer.id} className={offer.enabled ? 'badge ok' : 'badge off'}>{offer.name} · ¥{(Number(offer.priceMinor) / 100).toFixed(2)}{offer.kind === 'FIXED_TERM' && offer.durationDays ? ` · ${offer.durationDays} 天` : offer.kind === 'PERPETUAL' ? ' · 永久' : ''}</span>)}</div>}
-        <form className="commerce-form" onSubmit={event => { event.preventDefault(); const name = String(new FormData(event.currentTarget).get('name') || '模块限时免费'); void act(() => request(`/v1/admin/modules/products/${encodeURIComponent(productId)}/free-windows`, { method: 'POST', body: JSON.stringify({ name, startsAt: new Date(start).toISOString(), endsAt: new Date(end).toISOString(), timezone: 'Asia/Shanghai', enabled: true }) }), '限免时段已创建。'); }}>
+        <form className="commerce-form" onSubmit={event => { event.preventDefault(); const name = String(new FormData(event.currentTarget).get('name') || '模块限时免费'); void act(async () => { await request(`/v1/admin/modules/products/${encodeURIComponent(productId)}/free-windows`, { method: 'POST', body: JSON.stringify({ name, startsAt: new Date(start).toISOString(), endsAt: new Date(end).toISOString(), timezone: 'Asia/Shanghai', enabled: true }) }); setStart(''); setEnd(''); }, '限免时段已创建。'); }}>
           <Field label="限免活动名称"><input name="name" required defaultValue="模块免费体验日"/></Field>
           <Field label="开始时间"><input type="datetime-local" required value={start} onChange={event => schedule24Hours(event.target.value)}/></Field>
           <Field label="结束时间"><input type="datetime-local" required value={end} onChange={event => setEnd(event.target.value)}/></Field>
           <button className="primary" disabled={busy || !start || !end}>保存限免</button>
         </form>
+        <FreeWindows rows={product?.freeWindows || []} busy={busy} onToggle={(id, enabled) => act(() => request(`/v1/admin/modules/free-windows/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ enabled }) }), enabled ? '限免活动已启用。' : '限免活动已停用。')}/>
       </>}
     </section>
 
@@ -101,6 +102,11 @@ function ArtifactUpload({ products, busy, onUpload }: { products: any[]; busy: b
   </form>;
 }
 
+function FreeWindows({ rows, busy, onToggle }: { rows: any[]; busy: boolean; onToggle: (id: string, enabled: boolean) => Promise<void> }) {
+  const [query, setQuery] = useState(''); const filtered = useFiltered(rows, query);
+  const status = (row: any) => !row.enabled ? { label: '已停用', kind: 'off' } : Date.now() < new Date(row.startsAt).getTime() ? { label: '未开始', kind: 'warn' } : Date.now() > new Date(row.endsAt).getTime() ? { label: '已结束', kind: 'off' } : { label: '进行中', kind: 'ok' };
+  return <Table title="限免活动记录" query={query} setQuery={setQuery}><table><thead><tr><th>活动名称</th><th>开始时间</th><th>结束时间</th><th>状态</th><th>操作</th></tr></thead><tbody>{filtered.map(row => { const badge = status(row); return <tr key={row.id}><td>{row.name}</td><td>{format(row.startsAt)}</td><td>{format(row.endsAt)}</td><td><span className={`badge ${badge.kind}`}>{badge.label}</span></td><td><button className="table-action" disabled={busy} onClick={() => void onToggle(row.id, !row.enabled)}>{row.enabled ? <CircleOff size={14}/> : <PackageCheck size={14}/>} {row.enabled ? '停用' : '启用'}</button></td></tr>; })}</tbody></table>{!filtered.length && <Empty text="尚未创建限免活动"/>}</Table>;
+}
 function Entitlements({ rows, busy, onRevoke }: { rows: any[]; busy: boolean; onRevoke: (id: string, reason: string) => Promise<void> }) {
   const [query, setQuery] = useState(''); const [reason, setReason] = useState<Record<string, string>>({}); const filtered = useFiltered(rows, query);
   return <Table title="权益记录" query={query} setQuery={setQuery}><table><thead><tr><th>用户</th><th>模块</th><th>来源</th><th>到期</th><th>状态</th><th>撤销操作</th></tr></thead><tbody>{filtered.map(row => <tr key={row.id}><td>{row.user?.email}</td><td>{row.product?.moduleId}</td><td>{row.source}</td><td>{format(row.endsAt) || '永久'}</td><td>{row.revokedAt ? '已撤销' : '有效'}</td><td>{row.revokedAt ? '—' : <div className="inline-action"><input value={reason[row.id] || ''} onChange={event => setReason(value => ({ ...value, [row.id]: event.target.value }))} aria-label="撤销原因" placeholder="至少 3 个字"/><button disabled={busy || (reason[row.id] || '').trim().length < 3} onClick={() => void onRevoke(row.id, reason[row.id])}><CircleOff size={14}/>撤销</button></div>}</td></tr>)}</tbody></table>{!filtered.length && <Empty text="尚无权益记录"/>}</Table>;
