@@ -1,13 +1,19 @@
 # AI 编辑链统一架构（面板与 AI Bridge）
 
 > 状态：2026-09-18 收口落地（方案 A，经批复）。提交：`f5b0f19`（项目质量结构修）、`5ced438`（面板编辑链收口）。
+> **2026-10-02 更新：IDE AI 面板与内嵌 Agent 运行时已整体退场**——`panelAiBridgeService`、
+> `/api/lingcpp/edit/*` 面板路由、系统 AI planner（`planLingCppEditWithGemini`）、
+> `agentProposalStore` 工作区交接、`/api/ai/chat`、`/api/ai/conversations*`、`aiProviderService`
+> 均已物理删除；本文档中关于「面板入口」「planner」「面板专用实例」的段落仅作历史存档，
+> **当前唯一入口是外部 AI（MCP / REST / CLI）**，唯一事务实现 `AiBridgeService` 与其全部
+> 校验红线（路径/形态/深比较/控件门禁/编码/审计）不变且继续生效。
 > 本文档是「AI 改代码」这条链的**维护边界契约**：新增或修改编辑类功能前必读，禁止绕开本契约再造第二套实现。
 
 ## 一句话结论
 
-IDE AI 面板与外部 AI（MCP / REST / CLI）的**编辑事务与校验**已统一为唯一实现 `AiBridgeService`；
-以后改「怎么校验、怎么写盘」只需要改这一处，两边同时生效。
-未统一的部分只剩两类：**AI 草稿怎么生成（planner）** 和 **面板 UI 交互**。
+外部 AI（MCP / REST / CLI）的**编辑事务与校验**统一为唯一实现 `AiBridgeService`；
+以后改「怎么校验、怎么写盘」只需要改这一处。
+IDE 自 2026-10-02 起不再自带任何 AI 引擎与面板入口，AI 能力一律经 AI Bridge 由外部 AI 客户端完成。
 
 ## 唯一实现：AiBridgeService
 
@@ -401,8 +407,9 @@ aiConnectionSessionService.ts`（面板重挂时的连接态缓存）随之下�
   实现、云端系统 AI 网关与点数计费全部原样保留——CLI、外部宿主与打包冒烟测试仍会调用；
   `/api/ai/models` 与 `/api/ai/connect` 还是面板「模型通道」表单的探测通道（主进程代调，密钥不回传）。
 - 账号与点数 UI **整体移出面板**（用户 2026-09-22 追加要求：面板用不到账号系统，登录注册块太占位）：
-  面板不再出现登录/注册/忘记密码/点数/充值，`cloudAccount*` 的导入与 state 全部摘掉；这些入口由标题栏
-  `CloudAccountTitleBarEntry`、设置「账号」分类、欢迎页与帮助菜单命令出口继续常驻（表单仍只有一份）。
+  面板不再出现登录/注册/忘记密码/点数/充值，`cloudAccount*` 的导入与 state 全部摘掉；账号登录/注册/退出入口由
+  设置「账号」分类、欢迎页与帮助菜单命令出口继续常驻（表单仍只有一份）。2026-10-01 起 AI 编程助手不再消耗
+  点数，标题栏点数徽标 `CloudAccountTitleBarEntry` 与全部充值链路已整体退场（云端 /v1/credits 接口保留）。
 - 提案预览 / Diff / 应用 / 拒绝 / 控件引用门禁 / 交接目录清理：一字未改。
 
 **模块「AI 生成模块」改挂本机 Agent**：面板不再自带模型通道，改为经

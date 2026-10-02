@@ -2,7 +2,7 @@
 
 更新时间：2026-09-29
 
-本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **101 个内置模块、4026 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
+本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **102 个内置模块、4068 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
 
 - `schemaVersion: 2`。
 - `contributes.commands` 与 `bindings.commands` 一一对应。
@@ -118,6 +118,7 @@ MySQL 数据库模块 1.0 通过原生客户端/服务器协议直连 MySQL/Mari
 | 已封装 | `lingbuilder.image.icon` | 图标处理模块 | 3 |
 | 已封装 | `lingbuilder.image.recognition` | 基础识图模块 | 5 |
 | 已封装（OpenCV 4.14.0 x64） | `lingbuilder.opencv` | OpenCV 图像处理与单/双缺口候选模块 | 33 |
+| 已封装（2026-10-01，纯本地 C++ 运行时注入） | `lingbuilder.qrcode` | 二维码模块（生成+识别+闭环自检） | 31 |
 | 已封装 | `lingbuilder.media.audio` | 基础音频模块 | 7 |
 | 已封装 | `lingbuilder.net.pop3` | 邮件接收模块 | 18 |
 | 已封装 | `lingbuilder.net.imap` | IMAP邮件接收模块 | 15 |

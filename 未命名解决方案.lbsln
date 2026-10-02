@@ -969,10 +969,24 @@
       "references": []
     },
     {
-      "id": "tmp-vip-popuptab",
-      "name": "新窗口转标签页验证",
+      "id": "qrcode-workbench",
+      "name": "二维码工作台",
       "type": "visual-cpp",
-      "sourceRoot": "src/tmp-vip-popuptab",
+      "sourceRoot": "AI 视频自主生产/进阶方案/二维码工作台/src",
+      "references": []
+    },
+    {
+      "id": "mmkv",
+      "name": "MMKV读写对拍验证",
+      "type": "windows-console",
+      "sourceRoot": "src/mmkv",
+      "references": []
+    },
+    {
+      "id": "mmkv-workbench",
+      "name": "MMKV键值工作台",
+      "type": "visual-cpp",
+      "sourceRoot": "AI 视频自主生产/进阶方案/MMKV键值工作台/src",
       "references": []
     }
   ]

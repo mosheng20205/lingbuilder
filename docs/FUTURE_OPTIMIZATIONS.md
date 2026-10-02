@@ -1,5 +1,11 @@
 # LingBuilder 后期优化事项
 
+- 已修复（2026-10-02）：**窗口源码串写守卫误伤旧命名主源码根治 + 旧命名主源码一键迁移（用户实测：DLL命令声明演示 工作区 F5 报「检测到 src/DLL命令声明演示.lcpp 的内容是窗口『项目 DLL 命令声明演示』的源码，而不是它绑定的窗口；已阻止写入磁盘」，点击窗口又凭空出现 `src/声明演示窗口.lcpp` 模板页签）**。该项目 9 月中旬由脚本按当时惯例把主源码命名为 `src/DLL命令声明演示.lcpp`，9 月下旬窗口主源码绑定规则改为 `src/<窗口类名>.lcpp`（`windowDesignerService.getLingWindowSourceFileName`）后未迁移：① App 载入/侧栏点击窗口按绑定路径找不到源码就在内存合成同类模板（一旦保存落盘，与旧命名文件构成窗口类重复定义）；② F5 构建前保存守卫的内联版比 `describeWindowSourceClobber` 助手少「文件本身是某窗口绑定源码」前提，把合法旧命名主源码判成串写、永远无法保存（两套守卫口径分裂是直接根因；磁盘零损坏——当天除模块缓存外无落盘，9-21 构建暂存区 `声明演示窗口.lcpp` 与真实源码逐字节同内容证明构建侧一直按内容识别窗口源码）。修复：数据侧把该文件重命名到 `src/声明演示窗口.lcpp`（字节不动，sha256 前后一致）；代码侧 `saveWorkspaceCore` 内联守卫改为直接调用下沉到 `services/windowDesigner/windowSourceClobber.ts` 的 `describeWindowSourceClobber`（非绑定文件一律不拦），新增 `services/windowDesigner/legacyWindowSource.ts` 的 `findLegacyWindowSourceFile`（绑定路径缺失且恰好一个其它源码文件声明该窗口类时返回迁移目标；绑定已满足/多声明者/零声明者返回 null 维持原行为），侧栏点击窗口检测到旧命名主源码时不再合成模板，改派 `legacy-window-source-found` 由 App `migrateLegacyWindowSource` 经通用 `/api/window-designer/files/rename` 一键重命名到绑定路径（内容原样保留，`applyProjectFileRename` 前剔除目标路径的内存幻影模板条目并弃用其文本模型；不经过解决方案树「绑定窗口禁止改名」的 UI 拦截——该操作正是把脱钩的文件名与窗口类名重新挂钩）。回归：`tests/windowDesigner.test.ts` 新增 3 用例（真串写报告、旧命名/自类/无关类不拦、迁移四分支），181/186 绿（5 红为本机缺演示夹具存量，与本批零交集）；projectFileMutation/projectFileState 9/9；lint（双 tsc）与 build 全绿。规则手册第 4 节补「窗口主源码绑定规则」条。**后续可做**：迁移目前只在点击窗口时触发，可再做启动期批量扫描旧命名项目并一次性引导迁移；已发布的 0.8.6 安装包不含本修复，老项目在旧包里仍会误拦，随下一版重打包解决。**续案（同日晚）：守卫放行后暴露第二层存量回归——项目 DLL 命令被误报「未知的命令」阻断 F5 生成**。根因：`aggregateLingCppProjectSources` 在聚合内部执行语义诊断（含未知命令门禁），而「项目 DLL 命令」虚拟模块（`lingbuilder.project.dll`）在聚合之后才由生成器合成并入 enabledModules——先诊断后并入，声明命令全部误报（DLL命令声明演示 无头复现：5 条未知命令；9-21 该项目最后成功构建时门禁尚未上线，故潜伏）。修复：虚拟模块合成挪进聚合期、诊断前并入 `diagnosticModules`，聚合结果携带 `projectDllModule` 回传、生成器复用同一实例（不再二次合成）；与 AI Bridge 诊断路径（`createProjectDllDeclarationModuleFromSources` 先并入再诊断）同口径。验证：无头复现清零 + 独立 ai-server REST `build/run` 真实 MSVC 编译链接成功 exe 产出 + `tests/windowDesigner.test.ts` 新增回归用例 + lingcpp 套件 HEAD 基线对照零新增红 + `dist/cli.cjs` 重建。
+
+- 已完成（2026-10-02）：**AI 助手面板与内嵌 Agent 运行时（DeepSeek Harness）整体退场——IDE 不再自带任何 AI 引擎，AI 能力一律经 AI Bridge MCP 由外部 AI 客户端完成（用户拍板：内置引擎不好用且撑大安装包）**。物理删除清单：① 渲染层 `AiAssistant.tsx`（1513 行）与 App.tsx 右面板（`showRightPanel`/`aiPanelWidth`/拖拽调宽/`workbench.aiPanel.visible|width` 配置键/`workbench.action.toggleAiPanel` 命令/`view.aiPanelVisible` 上下文）——工具栏星形图标改为直接打开「AI Bridge 连接中心」（复用 `workbench.action.help.openCliGuide`，aria-label 同名）；② 主进程 `electron/electron/agentRuntime/` 五文件、9 个 `agent-runtime:*` IPC、preload/api.d.ts 的 agentRuntime 面；③ 随包 349MB `agent-runtime.tar`（prepare/verify 脚本、extraResources 块、`.gitignore` 条目、磁盘 650MB 产物一并移除——安装包预计瘦身 100MB+ 量级、首启省约 8.5 秒解压）；④ server.ts 面板专用链 -990 行：`panelAiBridgeService`、`/api/lingcpp/edit/propose|from-system-draft|agent-proposal|apply|reject`、`agentProposalStore` 交接目录（`agentProposalHandoff` 选项删除，提案只存进程内 store）、`/api/ai/chat`、`/api/ai/conversations*`、`/api/ai/connect|models`、系统 AI planner `planLingCppEditWithGemini` 及其提示词机器、启动时「规则手册为空拒启」守卫保留（现为打包完整性校验）；⑤ cli/mcp `--mcp-toolset`（`AGENT_MASKED_TOOLS`/`AGENT_TOOLSET_NOTICE` 删除，MCP 恒为完整 23 工具面）；⑥ 模块面板「交给本机 Agent」通道（`agentRequestBus`/`agentTurnContext`），「AI 生成模块」只剩「复制规范给外部 AI + 粘贴导入」；⑦ `aiProviderService`/`aiConversationService`/`proposalPreviewDiff`。老安装残留由新增 `electron/electron/agentRuntimeLegacyCleanup.ts` 启动 30 秒后一次性静默清理（resources 归档+散文件树、`<userData>\agent-runtime`、`agent-runtime-bundle`、`credentials/agent-provider-settings.json`；安装器严禁做这类删除——杀软逐文件拦截冻结进度条，0.7.9 首包真机教训）。`workbench.aiPanel.*` 旧设置键无需迁移：configurationService 读到未知键按「已忽略」诊断处理。唯一写盘出口仍是 `AiBridgeService.applyEdit`（MCP `edit.apply`）。回归：`tests/agentRuntimeLegacyCleanup.test.ts`（新增，进 test:lingcpp）、`tests/aiBridge.test.ts`（agent 工具集/交接三用例删除，68/68 绿）、`tests/cloudAccount.test.ts`（面板退场钉子：server.ts 不得残留 panelAiBridgeService/面板路由）、`tests/cloudAccountEntry.test.tsx`（AiAssistant.tsx 必须不存在）；`tests/agentRuntime.test.ts`/`aiAgentPanel.test.ts`/`aiConversationService.test.ts`/`aiProviderChat.test.ts` 删除并移出 test:lingcpp。验收：双 tsc lint、vite+esbuild build 全绿；test:lingcpp 主列表除 1 条并行会话在途红（workbenchDialogs DLL 构建属性对话框，与本批零交集）外全绿。遗留观察点：dsh 依赖树、`agent-runtime/` staging 目录与 `scripts/cdp-ai-chat-dial.mjs` 拨测脚本已删；若未来要恢复内置 AI，从 git 历史捞回 `aiProviderService` 比重做便宜（云端/CLI 服务端当时零依赖它）。
+
+- 已修复（2026-09-30）：**新建项目后设计器双击窗口产生两个「创建完毕」处理器根治（用户实测：灵码1 工作区新建项目→可视化窗口双击一次，`MainWindow.lcpp` 同时出现裸 `创建完毕` 与 `_MainWindow_创建完毕` 两个事件，日志还谎报「已升级为强类型参数并定位」）**。根因是同一链路上两个「处理器是否已存在」判定口径分裂：① 新建项目模板（`solutionService.createTemplateLingCppSource`）生成的初始源码是裸 `事件 创建完毕()`，窗口模型也不带 `events.Loaded`；② 双击画布按强名 `_MainWindow_创建完毕` 定位（`WpfDesigner.handleCanvasDoubleClick` → `App.handleOpenControlEventCode`），其中 `ensureLingCppControlEventHandler` 的追加前置判定只认**精确正则**——裸名匹配不上于是追加出第二个处理器；③ 紧随其后的存在性判定 `hasLingCppEventHandler`（`controlEventTargetFile.ts`）是「正则 **或** parser」，而 `findLingCppMethod` 的 `类名_方法` 前缀等价规则把 `_MainWindow_创建完毕` 容错解析到裸 `创建完毕` 上，误报「已存在」→ 走进「已存在」分支且 `signatureUpgraded` 用「内容是否变化」冒充「签名是否升级」，追加桩也被计成升级，产出那句自相矛盾的日志。运行行为无害但误导强：`findWindowCreatedHandler` 优先绑强名，裸名退化为死代码。修复两件：**（1）存在性判定收口**——`ensureLingCppControlEventHandler` 连同桩构造（`createLingCppControlEventBlock`/`sanitizeLingCppText`）从 App.tsx 下沉到 `controlEventCodeService.ts`，追加前置判定改用与 `hasLingCppEventHandler` 完全同源的「精确正则 + parser 容错」双级判定，容错命中时不再追加、返回 `matchedHandlerName`（源码里真实命中的处理器名），`signatureUpgraded` 改由 `migration.changed` 如实驱动；App.tsx 的日志与 `focusLingCppHandler` 消费 `matchedHandlerName`——裸名项目双击直接定位到裸 `创建完毕` 块（`DiffViewer` 的 pendingHandlerFocus 本就做同样的类名前缀容错，定位链无需改动）。**（2）模板强名化**——blank-window/hello-window/sqlite-crud 三个窗口模板源码统一生成 `事件 _MainWindow_创建完毕()`，`createDesignerProject` 给窗口模型显式写入 `events.Loaded = _MainWindow_创建完毕`（browserShell 模板既有的硬编码事件字面量改为经 `getWindowEventHandlerName` 同一出口派生，输出不变；windows-console 模板的窗口只是「启动()」生成宿主、不携带事件绑定），从源头消除双名并存；`findWindowCreatedHandler` 的裸名 fallback 保留服务旧项目/外部导入项目。回归：`tests/windowDesigner.test.ts` 新增 4 用例（裸名容错命中不追加+matchedHandlerName 回指、缺失追加强名桩且不算升级、KeyDown 零参升级强类型如实标记、精确名已存在原样返回）、`tests/solution.test.ts` 新增「三模板强名 + events.Loaded + 控制台无事件」用例；`tests/modules.test.ts` 裸「创建完毕」生成器接线哨兵复跑仍绿（旧项目兼容未破坏）。验收：lint（双 tsc）与 build 全绿；三模板 create → `generateLingCppNativeWin32Project` 全链脚本验证 blockingDiagnostics 零 error 且 `Loaded=_MainWindow_创建完毕` 接线成功。`tests/windowDesigner.test.ts` 本机另有 5 条缺本机夹具的存量红（datagrid-api-demo 等 ENOENT）、projectDataTypes 等 6 条存量红（2026-09-28 记录的在途红），与本批无关（失败用例导入链与本批改动文件零交集，已核实）。
+
 - 已完成（2026-09-29）：**new_emoji 窗口外观颜色生效修复（外部用户报障：背景颜色改浅色 #EFEAFC 运行仍深色）**。根因三层叠加：① 生成器（`lingCppWin32Project.ts`）只用 `window.background` 做深/浅二分选 `NE_创建窗口`/`NE_创建深色窗口`，背景/标题栏/标题文字三个外观字段的具体色值从不进入生成的 C++；② 引擎随包 DLL `EU_CreateWindow` 从不设置浅色主题（`WindowState::theme_mode` 默认 `THEME_MODE_DARK`，`WM_CREATE` 直接以其初始化），`NE_创建窗口` 与 `NE_创建深色窗口` 行为完全相同、永远深色（panel_bg #1E1E2E）；③ 桥接层把标题栏色硬编码 0xFF202020，且标题栏绘制优先读创建期快照 `st->titlebar_color`、图标/文字走 `readable_on(条色)` 自动对比色，标题栏令牌与用户标题文字颜色被架空；设计画布窗口体也用固定主题色而非用户所选色。修复：**生成器**新增 `windowThemeSetup`——窗口创建并判空后显式 `EU_SetThemeMode(g_newEmojiWindow, 明/暗)` + 自包含 lambda 直调 `EU_SetThemeToken` 逐字下发 `panel_bg`/`titlebar_bg`/`titlebar_text` 三个令牌（0xAARRGGBB；browserShell 预设跳过保留其 chrome.* 主题链）；设计画布（`WpfDesigner.tsx`）窗口体与标题栏 mock 改用真实所选色，控件配色仍按明暗主题。**引擎（上游 T:\github\new_emoji）**：`EU_CreateWindow` 创建成功后显式 `EU_SetThemeMode(THEME_MODE_LIGHT)`（`EU_CreateWindowEx` 自定义框架维持默认深色不变）；`set_window_theme_color` 收到 `titlebar_bg` 时同步 `st->titlebar_color` 快照；自定义主题下标题文字与窗口控制按钮图标直接消费 `titlebar_text` 令牌。x64+Win32 Release（v145）双位数重编通过，`generate-new-emoji-module.cjs --install` 重装模块与 `new_emoji.lbmod`（最终 x64 DLL SHA256 前缀 26b6f709）。回归：`tests/windowDesigner.test.ts` 深色令牌断言扩展 + 新增「浅色窗口显式切浅色主题并逐字下发外观颜色令牌」用例；新增真机冒烟 `npm run smoke:new-emoji-window-theme`（浅色工程生成→MSVC→运行→PrintWindow 逐像素断言背景/标题栏命中，已全绿）；`LingBuilder AI 规则手册.md` new_emoji 外观条目与上游 CHANGELOG/AGENTS 同步。
 - 已完成（2026-09-29）：**收费模块权益 402「报错即死」根治——构建链路接共享授权恢复流、启动显性化过期 Permit、错误文案带修法（用户实测：F5 构建启用 new_emoji.ui 的项目被「模块限时免费活动已经结束。（HTTP 402）」拦下，既不知道是授权过期也没被引导登录）**。根因链：① 报「限时免费已结束」说明本地缓存着活动期签发的 free_window Permit 且 `expiresAt` 已过（`moduleAccessService.verify` 对过期 Permit 抛 `MODULE_FREE_WINDOW_ENDED`），它与「未登录」（`MODULE_PAYMENT_REQUIRED`「请先登录并购买」）是两种状态——登录动作本身不换发 Permit，换发只在 IDE 启动恢复（已登录才联网刷新）或模块面板「启用收费模块」时发生；② 「弹登录框+自动重试」只接在 `ModuleInspector.ensurePaidModuleAccess`（启用链路）上，F5 `/api/window-designer/build-run` 与 `/api/solution/build` 的 402 直接把错误文本写进输出面板，无任何可动作引导；③ 402 错误对象不带 moduleId，渲染层就算想恢复也不知道该给哪个模块换发。三件修复：**（1）共享授权恢复流 + 构建链路接入**——新增 `src/services/modules/paidModuleAccessRecovery.ts`（`recoverPaidModuleAccess`：未登录弹全局登录框 → 登录/已登录 `authorizeModule` 换发 Permit 并同步本地服务；返回 recovered/cancelled/message，购买下单仍留在模块面板不复制第二套），`ModuleAccessService.assertAccess` 抛错时附 `moduleId`，`/api/window-designer/build-run` 与 `/api/solution/build`、`/api/solution/rebuild` 的 catch 把 `code`/`moduleId`/`error.status` 一起回传；渲染层唯一恢复出口收在 `fetchWithSdkDependencies`（SDK 依赖恢复的同款先例，F5 与 DiffViewer/WpfDesigner 的构建请求全走它）：命中四类权益错误码（`MODULE_PAYMENT_REQUIRED`/`MODULE_FREE_WINDOW_ENDED`/`MODULE_ENTITLEMENT_EXPIRED`/`MODULE_PERMIT_ANCHOR_UNKNOWN`）且带 moduleId 时先走恢复流、成功自动重试原请求一次；`solutionClient` 的 buildSolution/rebuildSolution 同法包裹；`ModuleInspector.ensurePaidModuleAccess` 的登录+换发段重构为调用同一恢复流（购买引导保留原地），不再各写一套。**（2）启动显性化**——`modulePermitRestoreService` 恢复结果新增 `staleNotices`：缓存 Permit 已过期且本次未能换发（未登录无换发通道 / 换发抛错）时生成中文提示（含过期时间与修法），主进程记 `[module-access]` 日志；渲染层进入工作台后查 `GET /api/module-access/status`（不带 moduleId 返回 `listStatuses()` 全量缓存 Permit 状态），把不可用条目以【模块授权】行写进输出面板——用户在 F5 之前就知道授权过期。**（3）文案带修法**——`MODULE_FREE_WINDOW_ENDED`/`MODULE_ENTITLEMENT_EXPIRED`/无 Permit 的 `MODULE_PAYMENT_REQUIRED` 三段 reason 均补「登录后在模块面板重新启用以刷新授权/重新构建自动换发/购买」指引（旧文案前缀保留，`tests/moduleAccess.test.ts` 的前缀断言不破）。回归：`tests/paidModuleAccessRecovery.test.ts` 新增 7 用例（错误码全集、登录框取消/完成两条路径、authorize 拒绝、包装器恢复成功重试/取消不重试/缺 moduleId 不触发）+ `tests/modulePermitRestore.test.ts` 新增 3 用例（未登录过期提示、换发失败带原因、换发成功不提示）+ `tests/moduleAccess.test.ts` 扩展（assertAccess 附 moduleId/status、listStatuses、free_window 过期文案）+ `tests/cloudAccount.test.ts` 门禁断言改锁共享流形态，全部登记进 `test:lingcpp`；lint/build 通过。**遗留**：恢复流失败（取消登录/无权益）时 F5 仍以 402 原文案收场（文案已带修法）；购买后的自动续构建未做（付款完成需回模块面板刷新）；debug/start 等次要构建入口只受益于新文案、未接恢复重试。
 - 已完成（2026-09-29）：**收费模块 Permit 运行期自动续期（长驻会话不再「不重启就永远过期」，上一条 402 恢复流批次的直接后续）**。云端 Permit 离线有效期 72 小时不变，但换发此前只发生在启动恢复/模块启用/F5 402 三个被动时机，长驻会话里 Permit 过期后没有任何自动续期机制；未登录实例的过期文案还断言「限时免费活动已经结束」，与限免活动实况（只有云端知道）可能矛盾。新增 `electron/electron/modulePermitMaintenanceService.ts`（纯 Node 可测）：30 分钟巡检安全缓存，对「已过期或剩余 < 12 小时」的 Permit 经 `cloudAccountService.modulePermit`（唯一换发出口，无第二套实现）换发，`POST /api/module-access/sync` 同步渲染层并原子更新缓存；「网络恢复在线」（渲染层 window online → `cloud-modules:network-restored` IPC）与「登录成功」（`cloud-account:login` 处理器）两个时机立即触发一轮；失败静默指数退避（1 分钟起步、翻倍、封顶 2 小时，任一换发成功即复位回常规节奏），绝不弹窗。状态翻转可见性：仅当某模块 Permit 从「不可用/过期」翻转为「可用」时，经既有 `webContents.send` 事件通道（`module-access:notice`，preload `cloudAccount.onModuleAccessNotice`）向输出面板补「【模块授权】模块 X 的授权已自动续期，有效期至 Y」，并按 `cloud-modules:authorize` 既有语义重启运行中的 AI Bridge（rotateToken 同款 stop→start，带新 Permit 快照与持久化自定义 Token）；临期预续期与授权无变化时静默，不重启 Bridge 不刷屏。生命周期：启动仅已登录时 `start()`，登出（`cloud-account:logout`）与退出（`shutdownAndExit`）`stop()`，未登录/无缓存/在途/基础设施异常全部安全降级为主进程日志。文案如实化：`ModuleAccessService` free_window 过期 reason 整体替换为「本地限时免费授权已于 X 过期（限免活动可能仍在进行）。登录 LingBuilder 账号后 IDE 会自动换发授权…」（启动检查、F5 402 恢复流与 AI Bridge 门禁同源透出，禁止再出现「活动已经结束」式与活动实况可能矛盾的表述；上一条批次的 free_window 前缀断言随之换新）。回归：`tests/modulePermitMaintenance.test.ts` 新增 12 用例（阈值/翻转/退避封顶复位/退避自动重试/登出停表/未登录跳过/在途保护/异常降级/同步失败不阻断/仅翻转标记 restored），已登记进 `test:lingcpp` 与 `test:module-access`；`tests/moduleAccess.test.ts`、`tests/moduleAccessGate.test.ts` 文案断言同步换新。lint/build 通过；test:lingcpp 剩余 4 红均为在途存量（designerProfessionalUi 的 TabControl 外观断言、aiSecurityAccessibility 对 AiAssistant 旧形态的两条源码扫描、sdkDependencyService 缺本机 CEF3 归档），与本批无关。云端零改动。
@@ -615,6 +621,8 @@
 
 - 抽象为 `TaskService`，区分构建、运行、调试和环境检查。
 - 输出结构化日志，包括阶段、耗时、生成目录、编译器、错误位置和中文解释。
+- 已完成（2026-10-01）：构建/运行日志全面精简。清理阶段每项目两行目录合并为「已清理 N 个项目的构建目录…」单行汇总，EBUSY/EPERM/ENOTEMPTY 翻译成中文占用提示并给出修法（`solutionService.cleanProjects`）；解决方案批量构建单阶段单项目不再输出「构建计划/开始构建阶段」，多项目单阶段压成一行「并行生成：A、B」，删除逐项目「正在生成项目 X (id)...」与任务通道「正在生成项目。/任务完成。」播报，收尾行带用时；每项目 9 行路径块压缩为 3 行（生成目录锚点+编译器/构建配置括注、可复制 Visual Studio 工程、产物输出目录），唯一实现 `buildOutputLabel.formatBuildPathSummaryLines`，F5 路由、`runControlledWindowDesignerBuild`、AI Bridge `build.run` 三处共用；编译成功路径经 `buildOutputLabel.formatSuccessCompileChannel` 过滤 `stdout:\nmain.cpp` 式纯回显（含警告/错误关键字的中英文输出保留），资源编译日志移到「编译成功。」之前；失败路径日志与响应结构化字段不受影响。AI Bridge `build.run` 日志同步去掉「C++ 源码目录/可复制生成目录/构建目录内 sln/中间文件目录」派生行。
+- 已完成（2026-10-01 第二批）：构建成功摘要补齐关键路径。`formatBuildPathSummaryLines` 新增可选 `solutionPath`，首行播报「解决方案：<工作区 .lbsln 完整路径>」（经 `solutionEntryFile.findSolutionEntryPath` 解析，解决方案尚未建立时省略该行），三个消费点同步；编译成功后的产物文件路径不再依赖 run 播报——DLL 项目无条件输出「DLL 产物：<.dll 完整路径>」「导入库：<.lib 完整路径>」，exe/控制台项目对称输出「程序产物：<exe 完整路径>」（此前「DLL 产物/导入库」被 `run && outputType==='dll'` 门住，「生成动态库」按钮 run=false 永远看不到产物路径）。同批根治纯逻辑 DLL 拆分形态编译失败：`lingCppWin32Project.ts` 的 `LINGBUILDER_PURE_LOGIC_DLL` 第二对守卫闭合原先内嵌在 `rtSegCefClient` 段尾，而该段只在单文件形态拼接，拆分形态下闭守卫随段消失，runtime.h 带未闭合 `#ifndef` 必现 C1004「发现意外的文件尾」；现闭守卫移到两条装配路径显式拼接（单文件在 CEF3 客户端段后、拆分在 runtime.h 的 windowBaseText 后），黄金基线 `golden:write` 重新生成（diff 仅新增该 `#endif`，其余 8 夹具字节不变）。工具栏「生成 C++」按钮（App.tsx `handleGenerateCpp`）原先写死三行「解析 DSL→生成完毕」假日志且无任何服务端调用，DLL 项目亦显示，纯误导；现 DLL 项目隐藏该按钮与「生成 C++ 宏定义类」菜单项，其余项目改为如实单行提示（真实生成只在 F5/生成解决方案链路发生）。
 - 已完成（B04）：MSVC/GCC/Clang 与链接器输出已结构化解析；生成 C++ 位置按 source map 映射回 `.lcpp`，问题面板可显示错误码、行列并跳转，无法映射时保留原始生成文件位置。
 - 已修复：错误列表跳转同时覆盖专业 Monaco 与中文结构编辑器；点击映射到 `.lcpp` 的构建诊断会打开对应文件，并在新手模式滚动到结构化源码行，路径分隔符差异不会再导致跳转失效。
 - 已修复：设计器已绑定但源码尚缺失的事件不再错误归位到 `.lcpp` 类声明行，也不再用原始文本行号冒充新手结构编辑器的可视行号；问题面板明确标注“待生成事件（类末尾）”，避免给尚不存在的事件显示虚假源码位置。
@@ -2065,5 +2073,88 @@ ew_emoji` 控件绘制层修复后重出 DLL 双架构产物并重装模块、�
 
 - **已落地**：`lingbuilder.net.http-client` 2.3.0 `HTTP客户端_设置TLS指纹/取TLS指纹`——生成器运行时内动态加载随包 `libcurl-impersonate.dll`（lexiforest v2.2.3，4MB，SHA-256 钉死 `c1470f28…`），仿真执行路径与 WinHTTP 路径共用 Request 状态与响应解析；DLL/CA 包经 extraResources + nativeDependencyService 物化（仅 x64）。真机对照同机同刻小红书 explore：chrome131 指纹客户端 HTTP/2 200 直达 193KB 正文，WinHTTP 302 验证码页。
 - **实现要点（改代码前必读）**：仿真入口是函数导出 `curl_easy_impersonate(handle, target, 1)`（CURLOPT_IMPERSONATE=10099 在该构建返回 48 未知选项，勿用）；必须设 `CURLOPT_ACCEPT_ENCODING("")` 才会自动解压；必须设 `CURLOPT_CAINFO` 指向随包 cacert.pem（BoringSSL 无 Windows 证书库）；选项常量与随包 curl.h 核对；libcurl 选项串会复制、slist 字符串须保活到 perform 之后；lambda 捕获静态局部变量会 C3495。
-- **后续项**：①响应体>内存上限时流式落盘（现按上限缓冲，超限中文阻断）；②文件上传/断点续传在指纹路径的支持；③运行中取消（progress callback 接 cancelRequested）；④指纹档案随 libcurl-impersonate 升级更新的发布流程（换 DLL → 更新 SHA-256 常量 → 版本号递增）。
+- **后续项**：①响应体>内存上限时流式落盘（现按上限缓冲，超限中文阻断）；②文件上传/断点续传在指纹路径的支持；③运行中取消真中断（2026-10-02 起指纹路径取消为「软取消」：标记作废、传输跑到接收超时上限才置已取消；真中断需给 curl 挂 progress callback 接 cancelRequested 并把 NOPROGRESS 关掉）；④指纹档案随 libcurl-impersonate 升级更新的发布流程（换 DLL → 更新 SHA-256 常量 → 版本号递增）。
 - **已知边界**：tls.peet.ws 从本机不可达（连接超时），指纹判定用小红书对照完成；「系统默认代理」在指纹路径按环境变量语义（与 WinHTTP 的系统代理配置不同源）。
+
+## 生成器产物拆分与按族裁剪（2026-09-30 落地 + 后续项）
+
+**已落地**（详见当天更新记录）：`generateMainCpp` 的 1.9 万行单模板切分为 13 个段常量（阶段A，产物逐字节一致，黄金基线钉住），随后拆分产物形态并按「族」裁剪（阶段B）：
+
+- **拆分形态**：窗口项目生成 `main.cpp`（仅用户窗口/事件代码 + 入口，百行级）+ `lingbuilder_runtime.h`（运行时基座）。两文件仍是**单一翻译单元**（main.cpp `#include` 头文件），137 个文件级 `static` 无需改 `inline`、零 ODR 风险；CEF3 browser 模块项目保持单文件形态（`createBridgeOnlyCef3Source` 作用于整份文档）。`LINGBUILDER_PURE_LOGIC_DLL` 的三对 `#ifndef/#endif` 已核验各自完整落在同一侧。
+- **按族裁剪**：`class LingWindowBase` 内的 EdgeView/FBro/CEF3 三个浏览器族切成 53 个带标签片段（`windowBaseParts`），按模块 ID **前缀**门控（`lingbuilder.cef3.*`/`lingbuilder.fbro.*`/`lingbuilder.edgeview*`——browser 之外的 platform/automation/objects 等子模块同样携带家族运行时，等值匹配会误裁）；`rtSegCefClient`（LingCefClient 类）随 CEF3 族门控。`OnWindowCreated` 调用列表与布局 else-if 浏览器分支均按族拆片段，任意裁剪组合语法完整。浏览器管理器回退 stub（`fbroBrowserManagerRuntime.methods` 插值）归 core 恒保留（模块未启用时它就是安全网）。实测 button-only 项目：25,643 行 → main.cpp 290 + 头 11.5k 行（-54%），浏览器文本零携带。
+- **联动改造**：sourceMap 按目标文件定位（数据类型/全局/功能库 → `lingbuilder_runtime.h`，窗口类/事件 → `main.cpp`；单文件形态全部 `main.cpp`）；`collectUntranslatableExpressionDiagnostics` 扫描两份文档；vcxproj 新增 `ClInclude` 组与「头文件」筛选器；manifest.files 声明头文件；MSVC 编译缓存指纹纳入生成目录顶层头文件（裁剪只改头文件时正确失效 obj）。
+- **验证体系**：黄金基线 9 夹具逐字节门（`npm run golden:write|golden:check`，快照在 `electron/.golden/` 已 gitignore）；裁剪矩阵 7 组合 × x64/x86 真 MSVC 编译（`scripts/compile-trim-matrix.mjs`，FBro/CEF3 按 x64-only 设计在 x86 跳过）；新形态契约测试 `tests/runtimeSplitLayout.test.ts`。真机验收：lingbuilder-3（一窗一按钮）CLI 生成编译 + MSBuild VS 解决方案 + 运行 exe 点击按钮弹出信息框，全通。
+
+**后续项（按收益/风险排序）**：
+- **~~通用控件族的细粒度裁剪~~（2026-10-01 已落地）**：LingWindowBase 内 13 个控件/命令族（数据表格/列表视图/选项卡/日期月历/IP 地址框/工具栏状态栏/动画视频/颜色选择器方法/树形框/查找替换/打印/属性页/任务对话框）已按「设计器控件类型 ∪ 用户代码命令调用」门控（字节空间 walker + 分段族合并行），一窗一按钮项目头文件 11,577 → 10,338 行；34 控件厨具槽全启用编译验证通过。残余大头是 40+ 控件的创建分支与 WindowProc 消息分支（恒保留 core，全启用约 10.9k 行）——进一步裁剪需把创建 switch 与消息分支也按族切片，机制同现批。另：DataGrid 类内辅助函数组（ResolveDataGrid/DataGridEncodeCell/DataGridParseTable 等 ~40 行）位于 core 未随 datagrid 族裁剪（2026-10-01 验包实测），属同批遗留，可与创建分支一并处理。
+- **链接库按需化**：`WINDOWS_MSVC_SYSTEM_LIBRARIES` 固定 24 个系统库全量链接（mfplat/winhttp/odbc32 等与多数项目无关）。Release `/OPT:REF` 已剔未引用库的实际开销，剩余收益是 Debug 体积与链接时间；需先建立「段 → 库」映射表再改 `createWindowsMsvcLinkLibraries`。
+- **pragma 按需化**：`rtSegHead` 尾部的 winspool include 与部分 `#pragma comment(lib,…)` 仍无条件生成（文本级死代码，编译期无害）；可随控件族裁剪一并处理。
+- **CEF3 任务类段裁剪**：`rtSegForwardAndProjectData` 里的 CEF3 Task/Handler 类有 `#if LINGBUILDER_CEF3_AVAILABLE` 内守卫（编译期零展开），仅剩文本可裁；优先级低。
+- **new_emoji 后端拆分**：`generateNewEmojiMainCpp` 独立模板未参与本批（单文件形态保留）；如需同等形态可复用段机制，属独立工程。
+
+## .lcpp 字符串字面量的转义缺陷（2026-10-01 发现，同日根治落地）
+
+外部项目 `T:\逆向\小红书` 接阅读量上报时踩到：`.lcpp` 里写「两个反斜杠 + runtime +
+两个反斜杠 + 运行日志.txt」形式的字面量，生成的 C++ 里开头变成了**三个**反斜杠。
+C++ 解析时前两个合成一个字面反斜杠，第三个与后面的字母 r 结合成回车转义，路径于是成了
+「反斜杠 + CR + untime + 反斜杠 + 运行日志.txt」。`文件_追加文本` 返回假但无人检查返回值，
+表现是「日志文件根本没创建」，界面侧一切正常，极难归因。
+
+边界（端到端实跑生成器实测）：会坏的是「两个反斜杠紧跟 t / n / r」，**不分串首还是串中**
+（`"日志\\name"` → 值混入 LF、`"前缀\\temp"` → 值混入 TAB）；x b f a v 0 实测不坏——生成器
+只解释 `\t` `\n` `\r` 三种字母转义。`"runtime\\代理配置.txt"`（不含「双反斜杠 + 引导字母」
+相邻对）与 `"\\笔记详情响应.txt"`（反斜杠后是中文，不构成转义序列）都正常，所以项目里大量
+既有路径拼接从未暴露这个洞。
+
+**已根治（2026-10-01）**，全部落在 `electron/src/services/windowDesigner/lingCppWin32Project.ts`：
+
+- **根因**：`interpretLingCppStringEscapes` 是 replace 链，先处理 `\t` `\n` `\r`、最后才折叠
+  `\\`——`\\` 的第二个反斜杠与后续字母被字母转义规则抢先匹配成控制字符，`escapeWideString`
+  再把「残留反斜杠 + 控制字符」重新转义，产出「三反斜杠 + 引导字母」形态。
+- **修复 ①**：`interpretLingCppStringEscapes` 重写为单趟扫描，`\\` 配对先于字母转义消费；
+  解释表 `\\` → 一个反斜杠、`\"` → 引号、`\t/\n/\r` → 制表/换行/回车，**其余 `\X` 原样保留
+  两个字符**（`\0` `\x` 等不再被 C++ 二次解释成控制字符）。`\"` 加入解释表是语义修正：此前
+  「内容含引号」会生成「反斜杠+引号」（在册已知风险①），现与 `stringLiteralRegions` 词法
+  扫描器「`\"` 不结束字符串」口径对齐。
+- **修复 ②（两套语义并存收敛）**：新增唯一出口 `toCppWideStringLiteral`（先解释再转义），
+  五类发射点全部收敛：通用表达式（赋值/拼接/`translateLingCppExpression`）、`调试输出` 单实参
+  快速路径（原为「原文直出」，`\n` 曾是字面反斜杠+n 不是换行）、`信息框` 文本/标题实参、
+  `打开窗口` 目标、模块 wideString 纯字面量实参（原为 `L`+原文透传，真实控制字符会裸进生成
+  源码）。修复后同一字面量经任一路径生成相同的 C++ 字面量；模块实参里的真实 TAB/换行现在
+  确定性转义为 `\t`/`\n` 序列（编译值不变，生成源码不再含裸控制字符）。多行文本块按手册
+  约定原样直出，不在此出口，属设计内。
+- **回归**：`tests/stringLiteralRegions.test.ts` 新增两用例——「串首/串中 `\\`+t/n/r 矩阵 +
+  x/0/b 反例 + `\\\\`/`\"`/单个 `\t\n` 语义 + 禁止三反斜杠接引导字母 + 信息框/模块实参路径」
+  与「同一字面量经调试输出与赋值两条路径生成相同 C++ 字面量」；并随拆分把 LBFL 断言面改为
+  main.cpp + lingbuilder_runtime.h 拼接。既有断言同步两处：`\"` 期望由 `q\\\"uote` 改为
+  `q\"uote`（语义修正），`tests/modules.test.ts` Excel 用例真实 TAB 期望改为 `\t` 序列。
+  黄金基线 9/9 通过（夹具无转义字面量，输出零变化）；`lingcpp.test.ts` 等 35/45/20 失败为
+  运行时拆分工程（并行会话）在途红，名单级对比确认与本修复无关。lint 通过；`dist/cli.cjs`
+  已重打。
+
+## 二维码模块（lingbuilder.qrcode，2026-10-01 一期落地 + 二期项）
+
+**已落地**：生成侧全量（模式自动择短/版本自动选/L-M-Q-H/RS/BCH/8 掩码罚分）+ 识别 Tier A（网格直读）+ Tier B（真实图像定位：游程定位/三点配对/对齐图形精化单应/±1 版容差/双阈值二值化/三级网格阈值/小模块放大重试）+ 闭环自检 + 内置注册（qrcodeModules.ts → builtinModules.ts 聚合 → qrCodeRuntime String.raw 注入生成器，双站点接线）。双架构 x64/win32 验收全绿（自检/已知答案/回读 48 项/扰动 12 项/四退化），CLI 端到端（MCP stdio 建项目→写源码→编译→运行→回读）通过。
+
+**二期候选（按优先级）**：
+1. 设计器控件「二维码框」（属性 内容/纠错级别/边长像素/前景色/背景色，改动即重绘）——需 designerControls 贡献 + 属性桥接命令 + NE/Win32 后端绘制支持，参考 new_emoji 属性桥接（`propertyBridgeCommands`）模式。
+2. `二维码_识别屏幕` 的 DPI 感知口径：当前依赖进程 DPI 意识，DPI 不感知进程按虚拟化坐标解释；可在生成器入口统一 SetProcessDpiAwareness 后按物理像素声明参数口径（需回归 F5 全链截图类模块）。
+3. 结构化附加（Structured Append）拼合与 ECI 码页切换识别。
+4. PNG 隔行（Adam7）解码与 JPEG 渐进式解码（当前中文拒绝）。
+5. 识别多码图：一次返回全部候选（当前取最可信一个，外接四边形已按索引预留数组位）。
+6. 模块演示项目（examples/module-demos/lingbuilder.qrcode + demoExample 语料）与 module:web-sync 官网同步。
+
+**已知工程事实**：
+- 运行时唯一事实来源 `electron/native/qrcode/*.cpp`，经 `scripts/generate-qrcode-runtime.ts` 生成 `qrCodeRuntime.ts`（String.raw 注入，反引号/插值序列注入安全红线有校验）；改 C++ 必须重跑 `npm run qrcode:runtime`，漂移由 `--check` 门禁（接入 tests/qrcodeModule.test.ts）拦截。
+- 控制台项目模板的 CEF3 回收口无条件调用（`LingBuilder_CEF3_创建无头资源/退出回收`），临时工作区若仅启用非 CEF3 模块会撞 SDK 门禁——e2e 用 junction `.lingbuilder/cef3-sdk` 指向已装 SDK 解决；这与二维码模块无关，属控制台模板的既有依赖形态。
+- 仓库参考实现 `T:\逆向\小红书\tools\qr-encode.mjs` 的 toCodewords 存在位/字节混淆（比特数组被按码字切片），其矩阵数据区非法（jsQR 解出空文本）；本模块矩阵对拍以 jsQR 逐字节还原替代。
+- build.run 启动的 exe 工作目录=bin 目录，`.lcpp` 相对路径按此解析（e2e 已实证；示例与文档已标注）。
+
+## 连续赋值语句与数组元素左值（2026-10-01 落地，后续候选）
+
+已落地：语言级语句 `连续赋值(值, 目标1, ...)`（一值多目标、值只求值一次，`lingCpp/consecutiveAssignment.ts` 单一解析出口）、普通赋值行下标左值（`a[1] = x`）、`lingcpp-consecutive-assignment-*` 中文诊断族、补全/高亮、MCP_INSTRUCTIONS 第 12 条口径。后续候选：
+
+1. 下标链扩展：当前 `连续赋值` 与普通赋值行只支持链尾单个下标（`名单[1]`），`a[i][j]` 多维、`a[b[i]]` 嵌套下标未支持（会安全降级为「暂不支持」注释）。
+2. 控件属性目标：`连续赋值("x", 标签1.内容)` 一期不支持（生成端中文注释降级、诊断层交控件命令通道）；若高频再评估专开通道。
+3. 程序集变量表初始值（新手紧凑表列/回车追加/类型适配）主体已在工作区实现，待真机 CDP 冒烟后随包；`examples/` 不随安装包分发导致 ui-recipes 语料缺位的既有边界仍适用。
+4. 「新手程序集变量表」死草稿行已删；`startAddStructuredItem('add-member')` 目前零调用点，属结构视图遗留入口，后续要么接线要么随结构视图重构一并清理。

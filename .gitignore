@@ -172,9 +172,6 @@ examples/array-operations-demo/src/.lingbuilder/projects/
 .tmp-installer-check-*/
 COMPONENT_CARDS_PLAN.md
 
-# 内嵌 Agent 运行时随包内容（Node 与 dsh），由 scripts/prepare-agent-runtime.cjs 生成
-agent-runtime/
-
 # 本机排查/演示工作区与临时产物（不入库）
 /.attack-tmp/
 /AI/
@@ -185,3 +182,17 @@ agent-runtime/
 /electron/find-bar.png
 /electron/src/emoji-2/.lingbuilder-skill-check/
 /electron/.tmp-*
+
+# 生成器拆分黄金基线产物（由 split-runtime-*.mjs 本地生成）
+/electron/.golden/
+
+# 本机排查探针与一次性诊断脚本（不入库）
+/electron/.cef3-src-dump.cpp
+/electron/.region-a.cpp
+/electron/.region-b.cpp
+/electron/diag.tmp.mjs
+/electron/probe-beg.mjs
+/electron/stdio-smoke-tmp.mjs
+/electron/dev/
+/electron/scripts/tmp-print-generated.ts
+/electron/scripts/verify-agent-exit-live.mjs

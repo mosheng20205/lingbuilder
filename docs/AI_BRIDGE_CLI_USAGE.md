@@ -1,6 +1,6 @@
 # LingBuilder AI Bridge 使用手册
 
-本手册面向已安装 LingBuilder 桌面版的用户，说明如何让 Cursor、ChatGPT/Codex 桌面版、Codex CLI、Claude Code、Gemini CLI 以及其它支持 MCP 的 AI 客户端安全地使用你的 LingBuilder 项目。
+本手册面向已安装 LingBuilder 桌面版的用户，说明如何让任意支持 MCP 的 AI 客户端（Cursor、ChatGPT/Codex、Claude Code、Gemini CLI 等）安全地使用你的 LingBuilder 项目。
 
 AI Bridge 让外部 AI 可以：
 
@@ -16,35 +16,33 @@ AI Bridge 让外部 AI 可以：
 
 | 方式 | 适合谁 | 需要手动配置吗 |
 | --- | --- | --- |
-| IDE 一键连接 | ChatGPT/Codex 桌面版、Codex CLI、Claude Code、Gemini CLI | 否，点一下即可 |
-| 手动配置 MCP | Cursor 等其它 AI 客户端 | 是，见第 4 节 |
+| 连接中心复制通用 MCP 配置（HTTP，推荐） | 任意支持 MCP 的 AI 客户端 | 复制粘贴一次，长期有效 |
+| stdio MCP（客户端自动拉起） | 单一客户端、不想管 Token | 是，见第 4.2 节 |
 | 把本手册交给 AI 代配置 | 不熟悉配置文件的用户 | 让 AI 按第 6 节的提示词完成 |
+
+> Bridge 会随 LingBuilder 启动自动运行（2026-10-02 起）；Token 首次启动时自动生成并永久保存。配置一次，之后打开 LingBuilder 就能用，无需回到连接中心。
 
 ## 2. 准备：启动 Bridge 并获取地址与 Token
 
 1. 打开 LingBuilder，进入菜单 **帮助 → AI Bridge 连接中心**。
-2. 在"连接"页确认权限模式（默认 `preview`，推荐保持），点击 **启动 AI Bridge**。
-3. 启动成功后，卡片下方会出现三行信息，每行右侧都有复制按钮：
-   - **MCP（推荐）**：形如 `http://127.0.0.1:17860/api/ai-bridge/mcp`，这是给 AI 客户端用的 MCP 地址
-   - **HTTP API**：形如 `http://127.0.0.1:17860/api/ai-bridge`，这是给脚本或自研程序用的接口地址
-   - **临时 Token**：一串掩码，点击复制按钮会把完整 Token 复制到剪贴板
-4. 需要调整端口、权限、生命周期或自定义 Token 时，点击卡片中的 **调整启动设置** 链接，或切换到"高级设置"页。
+2. 正常情况下 Bridge 已随 IDE 自动启动，状态徽标显示"运行中"。若显示"未启动"（例如手动停止过或端口被占用），点一次 **启动 AI Bridge** 即可。
+3. 点击 **复制连接配置**，得到一段已内嵌本机地址与 Token 的 MCP 配置，粘贴到 AI 客户端的 MCP 服务器设置里即可。
+4. 运行中还可以看到 MCP 地址、HTTP API、掩码 Token 与已连接客户端数；需要调整端口、权限或自定义 Token 时，展开 **高级设置**。
 
 注意：
 
+- Token 首次启动时自动生成并保存到本机加密存储，之后每次启动复用——所以客户端里的连接配置一次长期有效。
 - 关闭连接中心窗口不会停止 Bridge；在连接中心点"停止 Bridge"才会。
 - "重新生成 Token"会让旧 Token 立即失效，所有已连接客户端需要更新配置后重连。
 - Bridge 只监听本机回环地址，其它电脑无法连接你本机的 Bridge。
 
-## 3. IDE 一键连接（内置客户端）
+## 3. 在连接中心复制通用连接配置
 
-在连接中心"连接"页：
+连接中心"连接"页的 **连接配置（通用 MCP）** 卡片是给 AI 客户端用的唯一入口：
 
-- **ChatGPT/Codex 桌面版**：点击"配置并打开桌面版"，LingBuilder 会向当前工作区写入项目级 MCP 配置并启动桌面客户端。首次配置后如果桌面客户端已经在运行，需要完全退出（包括后台进程）再重新打开才能生效。
-- **Codex CLI / Claude Code / Gemini CLI**：点击对应卡片上的"连接并打开"，LingBuilder 会在 IDE 集成终端中启动该客户端，并自动注入连接所需的地址和临时 Token。Token 只存在于该终端进程，不会写入任何配置文件。
-- **通用终端**：点击"打开 Bridge 终端"可获得一个已注入地址和 Token 环境变量的 PowerShell，供其它命令行工具使用。
-
-这些方式都无需手动拼接命令或复制 Token。
+- 点击 **复制连接配置**，把 JSON 粘贴到任意支持 MCP 的客户端（ChatGPT/Codex、Claude Code、Cursor 等）。
+- 配置已内嵌真实 Token（仅监听 127.0.0.1，本机自用）；换工作区、重启 LingBuilder 都不需要改。
+- 若卡片提示"还没有本机 Token"，点一次「启动 AI Bridge」即可自动生成并永久保存。
 
 ## 4. 在 Cursor 等其它 AI 客户端中手动配置
 
@@ -81,7 +79,7 @@ C:\Users\<你的用户名>\.cursor\mcp.json
 
 - Token 写入的是本机配置文件，请确认该文件不会被同步或分享到外部。
 - 在 LingBuilder 连接中心"重新生成 Token"后，记得同步更新这里的 Token。
-- 每次使用前 Bridge 必须处于运行状态（连接中心可查看）。
+- Bridge 随 LingBuilder 自动运行；若在连接中心手动停止过，需重新启动。
 
 ### 4.2 方式二：stdio MCP（客户端自动拉起，无需 Token）
 
@@ -168,8 +166,8 @@ stdio 形式（客户端自动拉起，无需 Token）：
 3. 我希望的权限模式是：preview（推荐；只读选 readonly，全自动选 yolo）
 
 配置要求：
-- 方式一（HTTP MCP）：我会在 LingBuilder 的"帮助 → AI Bridge 连接中心"启动 Bridge，
-  并把 MCP 地址（形如 http://127.0.0.1:17860/api/ai-bridge/mcp）和临时 Token 发给你。
+- 方式一（HTTP MCP，推荐）：我在 LingBuilder 的"帮助 → AI Bridge 连接中心"点击"复制连接配置"，
+  把完整配置（含 MCP 地址与 Token）发给你，请原样写入本客户端的 MCP 配置文件。
   请把它写入本客户端的 MCP 配置文件，格式为：
   {"mcpServers":{"lingbuilder":{"url":"<MCP地址>","headers":{"Authorization":"Bearer <Token>"}}}}
 - 方式二（stdio MCP，无需 Token）：若我未提供 Token，请改用命令方式：
@@ -342,9 +340,9 @@ lingbuilder project build --request <文件> --yes   按请求文件构建项目
 
 说明安装时未勾选 PATH 选项。可重新运行安装程序勾选，或直接使用完整路径：`"C:\Program Files\LingBuilder\lingbuilder.cmd"`。
 
-### 12.6 ChatGPT/Codex 桌面版配置后没有生效
+### 12.6 旧版本"一键适配/连接并打开"入口去哪了
 
-桌面客户端在配置写入前已启动时不会自动加载新配置。请完全退出 ChatGPT/Codex（包括后台进程），重新打开，再回到 LingBuilder 连接中心点"重新检测"。
+2026-10-02 起连接中心收敛为「通用 MCP 配置」一条路，ChatGPT/Codex 桌面版一键适配与 CLI 一键连接已移除。旧版本写入客户端配置文件的 stdio MCP 配置仍然有效；新配置请用连接中心的「复制连接配置」。
 
 ### 12.7 构建失败
 
