@@ -413,7 +413,7 @@ test('Win32 generator emits independent DataGrid HWND, virtualization, editors a
   const source = '类 主窗口 : 公开 窗体\n事件 _订单表格_单元格按钮被单击()\n调试输出(表格_取事件按钮ID("订单表格"))\n结束\n结束类';
   const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source });
   assert.deepEqual(generated.blockingDiagnostics, []);
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  const cpp = generated.files.find(file => file.relativePath === 'lingbuilder_runtime.h')!.content;
   assert.match(cpp, /RegisterLingBuilderDataGridClass/u);
   assert.match(cpp, /className = L"LingBuilderDataGrid"/u);
   assert.match(cpp, /CreateCompatibleBitmap/u);
@@ -499,7 +499,7 @@ test('workspace DataGrid demo covers every API and event and generates native C+
     .map(manifest => ({ manifest, installPath: `builtin://${manifest.id}`, isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] }));
   const generated = generateLingCppNativeWin32Project(project, { enabledModules, lingCppSourceCode: source });
   assert.deepEqual(generated.blockingDiagnostics, []);
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  const cpp = generated.files.find(file => file.relativePath === 'lingbuilder_runtime.h')!.content;
   DATA_GRID_API.forEach(item => assert.ok(cpp.includes(`${item.name}(`), `示例生成结果缺少 ${item.name}`));
   assert.match(cpp, /LingCppWideArg\(虚拟行键\)/u);
   assert.match(cpp, /1000000/u);

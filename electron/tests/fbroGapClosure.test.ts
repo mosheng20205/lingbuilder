@@ -231,7 +231,7 @@ test('缺口命令生成真实 C++ wrapper、桥接调用与调用点', async ()
 结束类`;
   const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: fbroModules });
   assert.deepEqual(generated.blockingDiagnostics, []);
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.find(file => file.relativePath === 'lingbuilder_runtime.h')?.content || '';
   // wrapper 定义（static 与成员双版本全量生成，至少各出现一次）
   assert.match(cpp, /long long FBro框架_遍历DOM\(long long frame, int maxDepth, int maxNodes\)/);
   assert.match(cpp, /int FBro页面_发送文本\(const wchar_t\* (?:name|controlName), const wchar_t\* channel, const wchar_t\* text\)/);

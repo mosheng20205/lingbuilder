@@ -142,7 +142,7 @@ test('Win32 生成器输出隐藏功能库方法并翻译限定调用', () => {
     { filePath: libraryPath, sourceCode: librarySource },
     { filePath: 'src/主窗口.lcpp', sourceCode: '类 主窗口\n  事件 创建完毕()\n    调试输出(文本工具.合并("A", "B"))\n  结束\n结束类\n' }
   ] });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.find(file => file.relativePath === 'lingbuilder_runtime.h')?.content || '';
   assert.match(cpp, /std::wstring LBFL_文本工具_合并\(std::wstring 前缀, std::wstring 内容\)/u);
   assert.match(cpp, /调试输出\(LBFL_文本工具_合并\(L"A", L"B"\)\)/u);
   assert.equal(generated.blockingDiagnostics.length, 0, generated.blockingDiagnostics.join('\n'));

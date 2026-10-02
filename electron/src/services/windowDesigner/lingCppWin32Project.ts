@@ -1,3 +1,4 @@
+import * as fs0 from 'node:fs';
 import { LingCefHeadlessResource, LingClockResource, LingControl, LingDesignerResource, LingEdgeViewHeadlessResource, LingFileDialogResource, LingFbroHeadlessResource, LingMenuResource, LingPropertySheetResource, LingToolTipResource, LingWindowModel, LingWindowProject } from './types';
 import {
   getLingWindowSourceFileName,
@@ -55,6 +56,7 @@ import { BUILTIN_LIBRARY_COMMON_RUNTIME, generateStandardLibraryRuntime } from '
 import { generateSystemLibraryRuntime } from './systemLibraryRuntime';
 import { generateNetworkLibraryRuntime } from './networkLibraryRuntime';
 import { generateDataMediaRuntime } from './dataMediaRuntime';
+import { generateQrCodeRuntime } from './qrCodeRuntime';
 import { generateSharedTableRuntime } from './tabularSourceRuntime';
 import { generateComWindowMethods, generateComWndProcCase, generatePlatformAdvancedRuntime } from './platformAdvancedRuntime';
 import { MEMORY_DLL_MODULE_ID, MEMORY_DLL_REQUIRED_MODULE_HINT } from './memoryDllRuntime';
@@ -126,6 +128,7 @@ import {
   splitEplBinaryExpression
 } from './eplToCppRules';
 import { buildLingCppStringLiteralMask } from '../lingCpp/stringLiteralRegions';
+import { parseLingCppAssignmentTarget, parseLingCppConsecutiveAssignmentStatement, type LingCppAssignmentTargetParts, type LingCppConsecutiveAssignmentStatement } from '../lingCpp/consecutiveAssignment';
 import { generateWindowsExecutableResourceFile, getSafeCustomWindowIconPath, getWindowEmbeddedSiteHost, getWindowEmbeddedSiteResourceSpecs, type WindowsEmbeddedSiteResourceSpec } from './windowsExecutableIconService';
 import { generateFbroBrowserManagerRuntime } from './fbroBrowserManagerRuntime';
 
@@ -334,6 +337,8 @@ interface AggregatedLingCppProjectSources {
   functionLibrarySourceFiles: Map<string, string>;
   globalSourceFile?: string;
   dataTypeSourceFile?: string;
+  /** 项目级 DLL 命令声明的虚拟模块：聚合期合成（语义诊断与生成器共用同一实例）。 */
+  projectDllModule?: InstalledModule;
 }
 
 interface OpenWindowCommand {
@@ -365,9 +370,9 @@ export function generateLingCppNativeWin32Project(
     ? withConsoleStartupWindow(project, consoleStartup.entry.className)
     : project;
   const aggregate = aggregateLingCppProjectSources(projectSources, enabledModules, consoleAlignedProject);
-  // 项目级 DLL 命令声明：合成虚拟模块并入启用模块，诊断/补全/C++ 生成/构建自动复用模块链路。
-  const projectDllModule = createProjectDllDeclarationModule(aggregate.program.dllLibraries || [], project.id);
-  if (projectDllModule) enabledModules = [...enabledModules, projectDllModule];
+  // 项目级 DLL 命令声明：虚拟模块已在聚合期合成并供语义诊断消费，这里并入启用模块供
+  // 补全/C++ 生成/构建物化复用同一实例。
+  if (aggregate.projectDllModule) enabledModules = [...enabledModules, aggregate.projectDllModule];
   // 动态库模式：设计器模型缺失或为零窗口（windows-dll 模板项目按设计无窗口）时，合成一个
   // 无控件的名义宿主窗口，类名对准源码第一个类——DLL 导出面正是从「设计器窗口类名 ↔ 源码类」
   // 匹配产生的，零窗口会静默导出空表。与 withConsoleStartupWindow 同口径：只调整本次生成的
@@ -404,9 +409,11 @@ export function generateLingCppNativeWin32Project(
   const consoleEntry = outputKind === 'console-application' && consoleStartup?.entry
     ? generateConsoleEntrySection(effectiveProject, aggregate.program, { ...consoleStartup, entry: consoleStartup.entry })
     : undefined;
-  const mainCppContent = usesNewEmojiDesigner
-    ? generateNewEmojiMainCpp(effectiveProject, selectedWindow, aggregate.program, enabledModules)
+  const nativeMainSource: LingCppNativeMainCppSource = usesNewEmojiDesigner
+    ? { layout: 'single', source: generateNewEmojiMainCpp(effectiveProject, selectedWindow, aggregate.program, enabledModules) }
     : generateMainCpp(effectiveProject, selectedWindow, { ...aggregate.baseAst, program: aggregate.program }, enabledModules, dynamicLibraryEntry?.section, consoleEntry, pureLogicDll);
+  const mainCppContent = nativeMainSource.layout === 'split' ? nativeMainSource.mainCpp! : nativeMainSource.source!;
+  const runtimeHeaderContent = nativeMainSource.layout === 'split' ? nativeMainSource.runtimeHeader! : '';
   const backendModuleDiagnostics = usesNewEmojiDesigner && !newEmojiModuleEnabled
     ? ['当前窗口使用 new_emoji 后端，但项目尚未启用 lingbuilder.new_emoji.ui 模块。']
     : [];
@@ -465,9 +472,13 @@ export function generateLingCppNativeWin32Project(
   const backendGeneratorDiagnostics = hasNativeLayoutGenerator
     ? []
     : [`UI 后端“${selectedBackendId}”尚未注册原生 C++ 布局生成器，已阻止回退到错误的 Win32 实现。`];
-  const sourceMap = generateLingCppNativeSourceMap(mainCppContent, project, aggregate.program, sourceFilePath, aggregate.classSourceFiles, aggregate.functionLibrarySourceFiles, aggregate.globalSourceFile, aggregate.dataTypeSourceFile, enabledModules);
-  const untranslatableExpressionDiagnostics = collectUntranslatableExpressionDiagnostics(mainCppContent, sourceMap, sourceFilePath);
-  const manifestContent = generateNativeManifest(project, selectedWindow, enabledModules, sourceFilePath, sourceMap, edgeViewApiUsage);
+  const nativeSourceDocs = [
+    { file: 'main.cpp', content: mainCppContent },
+    ...(runtimeHeaderContent ? [{ file: LINGBUILDER_RUNTIME_HEADER_FILE_NAME, content: runtimeHeaderContent }] : [])
+  ];
+  const sourceMap = generateLingCppNativeSourceMap(nativeSourceDocs, project, aggregate.program, sourceFilePath, aggregate.classSourceFiles, aggregate.functionLibrarySourceFiles, aggregate.globalSourceFile, aggregate.dataTypeSourceFile, enabledModules);
+  const untranslatableExpressionDiagnostics = collectUntranslatableExpressionDiagnostics(nativeSourceDocs, sourceMap, sourceFilePath);
+  const manifestContent = generateNativeManifest(project, selectedWindow, enabledModules, sourceFilePath, sourceMap, edgeViewApiUsage, Boolean(runtimeHeaderContent));
   const moduleTargetDiagnostics = enabledModules
     .filter(module => !module.isBuiltin)
     .map(module => getUnsupportedModuleTargetDiagnostic(module))
@@ -512,7 +523,7 @@ export function generateLingCppNativeWin32Project(
   const dynamicLibraryMismatchDiagnostics = dynamicLibraryRequested && usesNewEmojiDesigner
     ? ['动态库输出当前仅支持标准 Win32 后端；new_emoji 窗口请使用 EXE 应用模式。']
     : [];
-  const projectDllBackendDiagnostics = projectDllModule && usesNewEmojiDesigner
+  const projectDllBackendDiagnostics = aggregate.projectDllModule && usesNewEmojiDesigner
     ? ['项目 DLL 命令声明当前仅支持标准 Win32 与控制台后端；new_emoji 窗口项目不支持。']
     : [];
   const customIconDiagnostics = project.windows.flatMap(window => {
@@ -641,6 +652,10 @@ export function generateLingCppNativeWin32Project(
         relativePath: 'main.cpp',
         content: mainCppContent
       },
+      ...(runtimeHeaderContent ? [{
+        relativePath: LINGBUILDER_RUNTIME_HEADER_FILE_NAME,
+        content: runtimeHeaderContent
+      }] : []),
       {
         relativePath: 'layout.json',
         content: JSON.stringify(project, null, 2)
@@ -659,7 +674,10 @@ export function generateLingCppNativeWin32Project(
           `Window count: ${project.windows.length}`,
           '',
           'This folder is generated from .lcpp source and the visual designer model.',
-          'The generated main.cpp uses C++ classes for windows and dispatches UI events to class methods.'
+          'main.cpp contains the generated window/event classes and the program entry;',
+          runtimeHeaderContent
+            ? 'lingbuilder_runtime.h carries the Win32 runtime base that this project actually uses.'
+            : 'The generated main.cpp uses C++ classes for windows and dispatches UI events to class methods.'
         ].join('\n')
       },
       {
@@ -710,6 +728,15 @@ function aggregateLingCppProjectSources(
   })));
   const diagnostics: string[] = [];
   const blockingDiagnostics: string[] = [];
+  // 项目级 DLL 命令声明的虚拟模块必须在语义诊断前并入：未知命令门禁按 enabledModules 查命令表，
+  // 而 DLL 命令只有聚合解析后才可知——先诊断后并入会把全部声明命令误报为「未知的命令」并阻断
+  // 构建（DLL命令声明演示 实测：声明齐全仍被 5 条未知命令拦截）。与 aiBridgeService 诊断路径
+  // （createProjectDllDeclarationModuleFromSources 先并入再诊断）同口径。
+  const projectDllModule = createProjectDllDeclarationModule(
+    parsedSources.flatMap(item => item.parsed.program.dllLibraries || []),
+    designerProject?.id || ''
+  );
+  const diagnosticModules = projectDllModule ? [...enabledModules, projectDllModule] : enabledModules;
   const classSourceFiles = new Map<string, string>();
   const classNames = new Map<string, string>();
   const functionLibrarySourceFiles = new Map<string, string>();
@@ -731,19 +758,19 @@ function aggregateLingCppProjectSources(
       diagnostics.push(message);
       if (diagnostic.level === 'error') blockingDiagnostics.push(message);
     });
-    getLingCppSemanticDiagnostics(source.sourceCode, designerProject, source.filePath, { availableModules: enabledModules, enabledModules }, projectGlobals, projectTypes, projectFunctions, { enableUnknownCommandAdmission: true })
+    getLingCppSemanticDiagnostics(source.sourceCode, designerProject, source.filePath, { availableModules: diagnosticModules, enabledModules: diagnosticModules }, projectGlobals, projectTypes, projectFunctions, { enableUnknownCommandAdmission: true })
       .forEach(diagnostic => {
         const message = `${source.filePath} 第 ${diagnostic.line} 行：${diagnostic.message}`;
         diagnostics.push(message);
         if (diagnostic.level === 'error') blockingDiagnostics.push(message);
       });
-    getProjectGlobalDiagnostics(source.sourceCode, source.filePath, { availableModules: enabledModules, enabledModules }, dataTypesSource?.parsed.program.dataTypes.map(dataType => dataType.name) || [])
+    getProjectGlobalDiagnostics(source.sourceCode, source.filePath, { availableModules: diagnosticModules, enabledModules: diagnosticModules }, dataTypesSource?.parsed.program.dataTypes.map(dataType => dataType.name) || [])
       .forEach(diagnostic => {
         const message = `${source.filePath} 第 ${diagnostic.line} 行：${diagnostic.message}`;
         diagnostics.push(message);
         if (diagnostic.level === 'error') blockingDiagnostics.push(message);
       });
-    getProjectDataTypeDiagnostics(source.sourceCode, source.filePath, { availableModules: enabledModules, enabledModules }, parsedSources.flatMap(item => item.parsed.program.classes.map(cls => cls.name)))
+    getProjectDataTypeDiagnostics(source.sourceCode, source.filePath, { availableModules: diagnosticModules, enabledModules: diagnosticModules }, parsedSources.flatMap(item => item.parsed.program.classes.map(cls => cls.name)))
       .forEach(diagnostic => {
         const message = `${source.filePath} 第 ${diagnostic.line} 行：${diagnostic.message}`;
         diagnostics.push(message);
@@ -816,7 +843,8 @@ function aggregateLingCppProjectSources(
     classSourceFiles,
     functionLibrarySourceFiles,
     globalSourceFile: globalsSource?.source.filePath,
-    dataTypeSourceFile: dataTypesSource?.source.filePath
+    dataTypeSourceFile: dataTypesSource?.source.filePath,
+    projectDllModule: projectDllModule || undefined
   };
 }
 
@@ -2520,6 +2548,7 @@ function generateNewEmojiMainCpp(
     generateSystemLibraryRuntime(enabledModules),
     generateNetworkLibraryRuntime(enabledModules),
     generateDataMediaRuntime(enabledModules),
+    generateQrCodeRuntime(enabledModules),
     generatePlatformAdvancedRuntime(enabledModules),
     generateEmbeddedResourceRuntime(enabledModules, getEmbeddedResourceSpecsOrEmpty(project), project.id),
     protobufRuntime,
@@ -4206,6 +4235,7 @@ function createBridgeOnlyCef3Source(source: string): string {
 }
 
 function selectKnownCef3Branches(source: string): string {
+  if (process.env.LB_DUMP_CEF3_SRC) fs0.writeFileSync(process.env.LB_DUMP_CEF3_SRC, source);
   type ConditionalFrame = {
     parentActive: boolean;
     active: boolean;
@@ -4278,7 +4308,7 @@ function selectKnownCef3Branches(source: string): string {
     }
     if (/^\s*#endif\b/u.test(line)) {
       const frame = stack.pop();
-      if (!frame) throw new Error('CEF3 Bridge-only 生成失败：发现孤立的 #endif。');
+      if (!frame) throw new Error('CEF3 Bridge-only 生成失败：发现孤立的 #endif（第 ' + (lineIndex + 1) + ' 行：' + (lines[lineIndex - 1] || '').slice(0, 60) + ' / 前一行：' + (lines[lineIndex - 2] || '').slice(0, 60) + '）。');
       if (!frame.known && frame.parentActive) output.push(line);
       continue;
     }
@@ -6329,13 +6359,19 @@ static long long FBro缓冲_取大小(long long buffer) {
 #endif
 }
 static std::wstring FBro缓冲_转十六进制(long long buffer) {
-    wchar_t result[32768] = {};
 #if LINGBUILDER_NE_FBRO_AVAILABLE
-    LB_FBro_BufferToHex(static_cast<LB_FBRO_BUFFER_HANDLE>(buffer), result, 32768);
+    // 按缓冲字节数分配 hex 容量（每字节 2 字符 + NUL）；固定 32768 缓冲会把
+    // 大于 16383 字节的块静默截断（纯协议响应读取族真机实锤）。
+    uint64_t hexBufferSize = 0;
+    if (LB_FBro_BufferGetSize(static_cast<LB_FBRO_BUFFER_HANDLE>(buffer), &hexBufferSize) != LB_FBRO_OK || hexBufferSize == 0) return L"";
+    if (hexBufferSize > 256ull * 1024ull * 1024ull) return L"";
+    std::vector<wchar_t> result(static_cast<size_t>(hexBufferSize) * 2 + 1, static_cast<wchar_t>(0));
+    LB_FBro_BufferToHex(static_cast<LB_FBRO_BUFFER_HANDLE>(buffer), result.data(), result.size());
+    return std::wstring(result.data());
 #else
     (void)buffer;
+    return L"";
 #endif
-    return result;
 }
 static int FBro缓冲_保存文件(long long buffer, const wchar_t* path) {
 #if LINGBUILDER_NE_FBRO_AVAILABLE
@@ -10621,7 +10657,10 @@ int main(int argc, char* argv[]) {
     }
     // 设计器「CEF3无头浏览器」资源：控制台没有「窗口创建完毕」事件，自动启动在这里做，
     // 用户“启动”子程序里按实例编号的 CEF3无头_* 命令即可直接用（与窗口项目 OnWindowCreated 同语义）。
+    // 成员定义在 #if LINGBUILDER_CEF3_AVAILABLE 段内（CEF3 不可用时被裁剪），调用必须同样守卫。
+#if LINGBUILDER_CEF3_AVAILABLE
     consoleApp.LingBuilder_CEF3_创建无头资源();
+#endif
     // 退出统一经 LingWindowBase::LingBuilder_CEF3_退出回收 回收 CEF（含无头实例），再返回退出码。
     // “空 启动()”形态把调用与 return 0; 收进同一个立即调用的 lambda：语句形状保持
     // 「consoleApp.启动(); 换行 return 0;」不变，退出回收仍在程序体之后执行。
@@ -10631,10 +10670,42 @@ ${startup.entry.returnType === '整数型' && startupMethod
     : `        consoleApp.${toCppIdentifier(startupMethod?.name || '启动')}();
         return 0;`}
     }();
+#if LINGBUILDER_CEF3_AVAILABLE
     consoleApp.LingBuilder_CEF3_退出回收();
+#endif
     return lingbuilder_退出码;
 }`;
 }
+
+/**
+ * 生成的 Win32 原生源码形态：
+ * - single：整份文档在 main.cpp（new_emoji 后端、CEF3 桥接后处理项目）。
+ * - split：运行时基座独立为 lingbuilder_runtime.h，main.cpp 只含用户窗口/事件代码与程序入口；
+ *   两个文件仍编译为单一翻译单元（main.cpp #include 头文件），运行期语义与旧单文件形态完全一致。
+ */
+export interface LingCppNativeMainCppSource {
+  layout: 'single' | 'split';
+  source?: string;
+  mainCpp?: string;
+  runtimeHeader?: string;
+}
+
+/** 运行时基座头文件名：与 main.cpp 同目录，随生成文件清单一起落盘。 */
+export const LINGBUILDER_RUNTIME_HEADER_FILE_NAME = 'lingbuilder_runtime.h';
+
+const LINGBUILDER_RUNTIME_HEADER_BANNER = [
+  '// 由 LingBuilder 生成的 Win32 运行时基座。',
+  '// 本文件由生成器按项目实际使用的控件与模块拼装，请勿手工修改；重新构建会整份覆盖。',
+  '',
+  ''
+].join('\n');
+
+const LINGBUILDER_MAIN_CPP_BANNER = [
+  '// 由 LingBuilder 生成：本文件只包含窗口/事件代码与程序入口。',
+  '// Win32 运行时基座在同目录 lingbuilder_runtime.h，请勿手工修改这两个文件；重新构建会整份覆盖。',
+  '',
+  ''
+].join('\n');
 
 function generateMainCpp(
   project: LingWindowProject,
@@ -10644,7 +10715,7 @@ function generateMainCpp(
   dynamicLibrarySection?: string,
   consoleEntrySection?: string,
   pureLogicDll = false
-): string {
+): LingCppNativeMainCppSource {
   const program = ast.program;
   const projectDataTypesDefinition = generateProjectDataTypesDefinition(program, enabledModules);
   const projectGlobalsDefinition = generateProjectGlobalsDefinition(program, enabledModules);
@@ -10703,6 +10774,7 @@ function generateMainCpp(
     generateSystemLibraryRuntime(enabledModules),
     generateNetworkLibraryRuntime(enabledModules),
     generateDataMediaRuntime(enabledModules),
+    generateQrCodeRuntime(enabledModules),
     generatePlatformAdvancedRuntime(enabledModules),
     generateEmbeddedResourceRuntime(enabledModules, getEmbeddedResourceSpecsOrEmpty(project), project.id),
     protobufRuntime,
@@ -10818,7 +10890,7 @@ function generateMainCpp(
     ? 'RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN | RDW_UPDATENOW'
     : 'RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW';
 
-  const generatedSource = `#ifndef UNICODE
+    const rtSegHead = `#ifndef UNICODE
 #define UNICODE
 #endif
 #ifndef _UNICODE
@@ -10958,7 +11030,8 @@ enum LB_FBRO_FALLBACK_EVENT_CODE {
 #include <unordered_map>
 #include <vector>
 
-class LingFinallyGuard {
+`;
+  const rtSegFinallyGuard = `class LingFinallyGuard {
 public:
     explicit LingFinallyGuard(std::function<void()> action) : action_(std::move(action)) {}
     ~LingFinallyGuard() { if (action_) action_(); }
@@ -11008,7 +11081,8 @@ static std::wstring LingCppUtf8ToWide(const char* value) {
 #pragma comment(lib, "odbc32.lib")
 
 #include <winspool.h>
-// ===== 打印机信息命令（winspool） =====
+`;
+  const rtSegPrinter = `// ===== 打印机信息命令（winspool） =====
 int 打印机_取列表(std::vector<std::wstring>& out) {
     out.clear();
     unsigned long needed = 0, returned = 0;
@@ -11053,7 +11127,8 @@ bool 打印机_是否在线(const wchar_t* name) {
     ClosePrinter(handle);
     return online;
 }
-#pragma comment(lib, "winmm.lib")
+`;
+  const rtSegPrinterCore = `#pragma comment(lib, "winmm.lib")
 #pragma comment(lib, "oleacc.lib")
 #pragma comment(lib, "oleaut32.lib")
 #pragma comment(lib, "uxtheme.lib")
@@ -11158,7 +11233,8 @@ static HICON CreateLingBuilderWindowIcon(int size) {
     return icon;
 }
 
-struct ControlSpec {
+`;
+  const rtSegCoreStructs = `struct ControlSpec {
     int id;
     int parentId;
     const wchar_t* type;
@@ -11409,7 +11485,8 @@ static std::wstring FBro_读取JSON字段(const std::wstring& json, const std::w
     return value;
 }
 
-class LingVideoPlayerCallback final : public IMFPMediaPlayerCallback {
+`;
+  const rtSegVideoCallback = `class LingVideoPlayerCallback final : public IMFPMediaPlayerCallback {
 public:
     LingVideoPlayerCallback(HWND notificationWindow, int controlId)
         : notificationWindow_(notificationWindow), controlId_(controlId) {}
@@ -11446,7 +11523,8 @@ private:
 
 ${DATA_GRID_NATIVE_GLOBALS}
 
-struct RuntimeControl {
+`;
+  const rtSegRuntimeControl = `struct RuntimeControl {
     int id;
     HWND hwnd;
     HWND frameHwnd;
@@ -11500,7 +11578,8 @@ struct RuntimeTabPage {
     RECT contentRect;
 };
 
-struct ModernColorPickerState {
+`;
+    const rtSegColorPickerDialog = `struct ModernColorPickerState {
     HWND hwnd = nullptr;
     HWND owner = nullptr;
     HWND hexEdit = nullptr;
@@ -11822,7 +11901,8 @@ static bool ShowModernColorPickerDialog(HWND owner, const wchar_t* title, COLORR
     return state.accepted;
 }
 
-static int g_openWindowCount = 0;
+`;
+  const rtSegInfraMiscTail = `static int g_openWindowCount = 0;
 static const wchar_t* GENERATED_WINDOW_CLASS = L"LingBuilderChineseCppWindowClass";
 // 窗口创建完成事件的延迟派发消息：OnWindowCreated 会同步创建 FBro/CEF3 等浏览器控件，
 // CEF 在 CrBrowserMain 线程完成创建时需要对主窗口做跨线程窗口操作（SetWindowLong 等），
@@ -11830,7 +11910,8 @@ static const wchar_t* GENERATED_WINDOW_CLASS = L"LingBuilderChineseCppWindowClas
 // 会与持锁的 CEF 线程形成互等死锁，因此延迟到消息循环开始后派发。
 static constexpr UINT WM_LINGBUILDER_WINDOW_CREATED = WM_APP + 0x59;
 
-class LingWindowBase;
+`;;
+    const rtSegForwardAndProjectData = `class LingWindowBase;
 struct LingControlLifetimeState {
     LingWindowBase* owner = nullptr;
 };
@@ -11859,7 +11940,8 @@ struct LingCefAsyncState {
 #endif
 };
 
-#if LINGBUILDER_CEF3_AVAILABLE
+`;
+  const rtSegCefTasks = `#if LINGBUILDER_CEF3_AVAILABLE
 class LingCefClient;
 CefRefPtr<CefClient> LingCreateCefClient(LingWindowBase* owner, int controlId);
 
@@ -12132,7 +12214,8 @@ static bool LingCefHasDevTools(CefRefPtr<CefBrowser> browser) {
     return state->changed.wait_for(lock, std::chrono::seconds(2), [&] { return state->done; }) && state->value;
 }
 #endif
-
+`;
+  const rtSegForwardAndProjectDataTail = `
 ${imageListSpecs}
 ${propertySheetSpecs}
 ${fileDialogSpecs}
@@ -12514,7 +12597,8 @@ static bool TextEquals(const wchar_t* value, const wchar_t* expected) {
     return value && expected && std::wcscmp(value, expected) == 0;
 }
 
-struct RichEditStreamState { std::string bytes; size_t offset = 0; };
+`;;
+  const rtSegRichEditAndMisc = `struct RichEditStreamState { std::string bytes; size_t offset = 0; };
 static DWORD CALLBACK StreamRichEditData(DWORD_PTR cookie, LPBYTE buffer, LONG count, LONG* written) {
     RichEditStreamState* state = reinterpret_cast<RichEditStreamState*>(cookie);
     if (!state || !buffer || !written) return 1;
@@ -12640,7 +12724,9 @@ ${fbroModuleEnabled ? generateFbroInProcessInitSnippet(fbroInProcessDebuggingEna
 ${projectGlobalsDefinition}
 ${pureLogicDll ? '#ifndef LINGBUILDER_PURE_LOGIC_DLL' : ''}
 
-class LingWindowBase {
+`;
+  const windowBaseParts: Array<{ family: string; text: string }> = [
+    { family: 'core', text: `class LingWindowBase {
 public:
     explicit LingWindowBase(const WindowSpec& spec)
         : spec_(spec),
@@ -12693,9 +12779,12 @@ ${webSocketClientShutdown}
 ${cdpClientShutdown}
 ${webSocketServerShutdown}
 ${comCleanupLine}
-        EdgeView_关闭();
-        FBro_关闭全部();
-        if (menuFont_) {
+` },
+    { family: 'edgeview', text: `        EdgeView_关闭();
+` },
+    { family: 'fbro', text: `        FBro_关闭全部();
+` },
+    { family: 'core', text: `        if (menuFont_) {
             DeleteObject(menuFont_);
             menuFont_ = nullptr;
         }
@@ -12755,8 +12844,10 @@ ${comCleanupLine}
         const UINT actualDpi = GetDpiForWindow(hwnd_);
         if (actualDpi && actualDpi != dpi_) {
             dpi_ = actualDpi;
-            EdgeView_关闭设计器控件();
-            DestroyControls();
+` },
+    { family: 'edgeview', text: `            EdgeView_关闭设计器控件();
+` },
+    { family: 'core', text: `            DestroyControls();
             CreateImageLists();
             RebuildControls();
         }
@@ -13156,8 +13247,16 @@ ${webSocketServerWindowField}
     std::vector<LB_FBRO_HANDLE> fbroStandaloneChromeUiPopups_;
 ${fbroBrowserManagerRuntime.members}
 
-    virtual void OnWindowCreated() { EdgeView_创建控件(nullptr); CEF3_创建(nullptr); FBro_创建(nullptr); FBro_创建无头资源(); EdgeView_创建无头资源(); LingBuilder_CEF3_创建无头资源(); 时钟_启动默认组件(); WarnUnboundControlEvents(); DispatchWindowEvent(L"Loaded"); WireCompositeControls(); }
-    // WireCompositeControls 补一次的原因：WM_CREATE 里那次跑在「创建完毕」之前，用户在
+` },
+    { family: 'core', text: `    virtual void OnWindowCreated() { ` },
+    { family: 'edgeview', text: `EdgeView_创建控件(nullptr); ` },
+    { family: 'cef3', text: `CEF3_创建(nullptr); ` },
+    { family: 'fbro', text: `FBro_创建(nullptr); FBro_创建无头资源(); ` },
+    { family: 'edgeview', text: `EdgeView_创建无头资源(); ` },
+    { family: 'cef3', text: `LingBuilder_CEF3_创建无头资源(); ` },
+    { family: 'core', text: `时钟_启动默认组件(); WarnUnboundControlEvents(); DispatchWindowEvent(L"Loaded"); WireCompositeControls(); }
+` },
+    { family: 'core', text: `    // WireCompositeControls 补一次的原因：WM_CREATE 里那次跑在「创建完毕」之前，用户在
     // 创建完毕 里动态加页/调整选项卡后页窗口不会亮（实踩：TabControl 启动空白，点一次页签才出现）。
     // 该函数幂等（重连 UpDown buddy + UpdateTabChildren），在 Loaded 派发后重跑是安全的。
     virtual void WarnUnboundControlEvents() {}
@@ -13456,7 +13555,8 @@ ${fbroBrowserManagerRuntime.members}
         return 信息框(text.c_str(), flags, title);
     }
 
-    // 旧单实例实现保留在生成模板中但不参与编译，便于旧产物差异审查。
+` },
+    { family: 'edgeview', text: `    // 旧单实例实现保留在生成模板中但不参与编译，便于旧产物差异审查。
 #if 0
     int EdgeView_创建(long long parentHandle, const wchar_t* address) {
 #if LINGBUILDER_EDGEVIEW_AVAILABLE
@@ -13897,7 +13997,7 @@ ${edgeViewEventIdCases}
         if (instanceId <= 0) { 调试输出(L"EdgeView 创建失败：无头实例编号必须为正整数。"); return 0; }
         EdgeView_关闭实例(instanceId);
         if (!EdgeView_确保弹窗窗口类()) return 0;
-        // 宿主保留真实尺寸（默认 1280×720 DIP 客户区），保证控制器 bounds 非空、页面布局正常。
+        // 宿主保留真实尺寸（默认 1280\xD7720 DIP 客户区），保证控制器 bounds 非空、页面布局正常。
         const UINT hostDpi = hwnd_ ? GetDpiForWindow(hwnd_) : dpi_;
         const UINT effectiveHostDpi = hostDpi ? hostDpi : 96;
         const RECT windowRect = { 0, 0, ScaleForDpi(1280, effectiveHostDpi), ScaleForDpi(720, effectiveHostDpi) };
@@ -14038,7 +14138,7 @@ ${edgeViewEventIdCases}
     bool EdgeView_代理有效(const wchar_t* proxyServer) const {
         if (!proxyServer || !proxyServer[0]) return true;
         std::wstring value(proxyServer);
-        if (value.find_first_of(L" \\t\\r\\n\\\"") != std::wstring::npos) return false;
+        if (value.find_first_of(L" \\t\\r\\n\\"") != std::wstring::npos) return false;
         return value.rfind(L"http://", 0) == 0 || value.rfind(L"https://", 0) == 0 || value.rfind(L"socks5://", 0) == 0;
     }
     int EdgeView_设置全局代理(const wchar_t* proxyServer) {
@@ -14714,8 +14814,10 @@ ${EDGEVIEW_SAFE_API_NATIVE_MEMBERS}
 
 ${embeddedSiteRuntimeSection}
 
-${fbroBrowserManagerRuntime.methods}
-
+` },
+    { family: 'core', text: `${fbroBrowserManagerRuntime.methods}
+` },
+    { family: 'fbro', text: `
     // ================= FBro 指纹浏览器模块运行时 =================
     FbroBrowserInstance* FBro_查找实例(const wchar_t* controlName) {
         if (!controlName) return nullptr;
@@ -14998,7 +15100,7 @@ ${fbroBrowserManagerRuntime.methods}
         (void)switchesJson;
 #if LINGBUILDER_FBRO_AVAILABLE
         if (g_lingFbroStartupSwitchesBaked) return 1;
-        调试输出(L"FBro 启动开关未生效：参数必须是写在调用处的字面 JSON 文本（如 {\\\"enableCrossFrame\\\":true}），开关在程序启动前烘焙，运行期调用不会改变进程状态。");
+        调试输出(L"FBro 启动开关未生效：参数必须是写在调用处的字面 JSON 文本（如 {\\"enableCrossFrame\\":true}），开关在程序启动前烘焙，运行期调用不会改变进程状态。");
         return 0;
 #else
         return 0;
@@ -15554,13 +15656,19 @@ ${fbroBrowserManagerRuntime.methods}
 #endif
     }
     std::wstring FBro缓冲_转十六进制(long long buffer) {
-        wchar_t result[32768] = {};
 #if LINGBUILDER_FBRO_AVAILABLE
-        LB_FBro_BufferToHex(static_cast<LB_FBRO_BUFFER_HANDLE>(buffer), result, 32768);
+        // 按缓冲字节数分配 hex 容量（每字节 2 字符 + NUL）；固定 32768 缓冲会把
+        // 大于 16383 字节的块静默截断（纯协议响应读取族真机实锤）。
+        uint64_t hexBufferSize = 0;
+        if (LB_FBro_BufferGetSize(static_cast<LB_FBRO_BUFFER_HANDLE>(buffer), &hexBufferSize) != LB_FBRO_OK || hexBufferSize == 0) return L"";
+        if (hexBufferSize > 256ull * 1024ull * 1024ull) return L"";
+        std::vector<wchar_t> result(static_cast<size_t>(hexBufferSize) * 2 + 1, static_cast<wchar_t>(0));
+        LB_FBro_BufferToHex(static_cast<LB_FBRO_BUFFER_HANDLE>(buffer), result.data(), result.size());
+        return std::wstring(result.data());
 #else
         (void)buffer;
+        return L"";
 #endif
-        return result;
     }
     int FBro缓冲_保存文件(long long buffer, const wchar_t* path) {
 #if LINGBUILDER_FBRO_AVAILABLE
@@ -15576,7 +15684,7 @@ ${fbroBrowserManagerRuntime.methods}
         (void)buffer; return 0;
 #endif
     }
-${generateFbroObjectRuntime('LINGBUILDER_FBRO_AVAILABLE', false)}
+${generateFbroObjectRuntime("LINGBUILDER_FBRO_AVAILABLE", false)}
     std::wstring FBro_取标题(const wchar_t* controlName) { return FBro_读取文本(controlName, 1); }
     std::wstring FBro_取地址(const wchar_t* controlName) { return FBro_读取文本(controlName, 2); }
     std::wstring FBro_取最近事件(const wchar_t* controlName) { return FBro_读取文本(controlName, 3); }
@@ -16185,7 +16293,7 @@ ${embeddedSiteFbroSection}
         auto task = LB_FBro_ServerCreateAsync(instance->handle, address, port, maxConnections, nullptr, nullptr);
         if (!task) return 0;
         LB_FBro_TaskWait(task, 30000); LB_FBro_TaskGetResult(task, value, 4096); LB_FBro_TaskRelease(task);
-        return static_cast<long long>(wcstoll(wcsstr(value, L"\\\"server\\\":") ? wcsstr(value, L"\\\"server\\\":") + 9 : L"0", nullptr, 10));
+        return static_cast<long long>(wcstoll(wcsstr(value, L"\\"server\\":") ? wcsstr(value, L"\\"server\\":") + 9 : L"0", nullptr, 10));
 #else
         (void)address; (void)port; (void)maxConnections; return 0;
 #endif
@@ -16238,7 +16346,7 @@ ${embeddedSiteFbroSection}
         if (task) LB_FBro_TaskGetError(task, error, 1024);
         LB_FBro_TaskRelease(task);
         if (!completed || error[0]) { 写入调试输出((std::wstring(L"FBro框架_遍历DOM失败：waitStatus=") + std::to_wstring(waitStatus) + L" " + (error[0] ? error : L"任务未在时限内完成")).c_str()); return 0; }
-        const wchar_t* marker = wcsstr(value, L"\\\"snapshot\\\":");
+        const wchar_t* marker = wcsstr(value, L"\\"snapshot\\":");
         if (!marker) { 写入调试输出((std::wstring(L"FBro框架_遍历DOM返回异常：") + value).c_str()); return 0; }
         return static_cast<long long>(wcstoll(marker + 11, nullptr, 10));
 #else
@@ -16287,7 +16395,7 @@ ${embeddedSiteFbroSection}
         if (task) LB_FBro_TaskGetError(task, contextError, 1024);
         LB_FBro_TaskRelease(task);
         if (contextError[0]) { 写入调试输出((std::wstring(L"FBro会话_创建上下文失败：") + contextError).c_str()); return 0; }
-        const wchar_t* marker = wcsstr(value, L"\\\"context\\\":");
+        const wchar_t* marker = wcsstr(value, L"\\"context\\":");
         if (!marker) { 写入调试输出((std::wstring(L"FBro会话_创建上下文返回异常：") + value).c_str()); return 0; }
         return static_cast<long long>(wcstoll(marker + 10, nullptr, 10));
 #else
@@ -16683,8 +16791,8 @@ ${generateFbroVipIndividualRuntime(false)}
         }
     }
 #endif
-
-    virtual void DispatchFbroBrowserEvent(const wchar_t* handler, int controlId, LB_FBRO_HANDLE instanceId,
+` },
+    { family: 'core', text: `    virtual void DispatchFbroBrowserEvent(const wchar_t* handler, int controlId, LB_FBRO_HANDLE instanceId,
                                           const wchar_t* eventName, const wchar_t* data) {
         std::wstring message = L"FBro 事件未绑定到中文处理器：";
         message += handler ? handler : L"";
@@ -16694,7 +16802,8 @@ ${generateFbroVipIndividualRuntime(false)}
         (void)controlId; (void)instanceId; (void)data;
     }
 
-    // ================= CEF3 浏览器模块运行时 =================
+` },
+    { family: 'cef3', text: `    // ================= CEF3 浏览器模块运行时 =================
 #if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
     static void LB_CEF3_CALL CEF3_Bridge事件回调(const LB_CEF3_EVENT_PACKET_V3* packet,
                                                  LB_CEF3_EVENT_RESPONSE_V3* response,
@@ -17063,9 +17172,9 @@ ${generateFbroVipIndividualRuntime(false)}
         if (!username || !username[0]) {
             status = LB_CEF3_ContinuationCancelV4(continuation) == LB_CEF3_OK ? 0 : -1;
         } else {
-            const std::wstring payload = L"{\\\"username\\\":\\\""
-                + CEF3网络_认证JSON转义(username) + L"\\\",\\\"password\\\":\\\""
-                + CEF3网络_认证JSON转义(password ? password : L"") + L"\\\"}";
+            const std::wstring payload = L"{\\"username\\":\\""
+                + CEF3网络_认证JSON转义(username) + L"\\",\\"password\\":\\""
+                + CEF3网络_认证JSON转义(password ? password : L"") + L"\\"}";
             status = LB_CEF3_ContinuationCompleteV4(continuation, 1, payload.c_str()) == LB_CEF3_OK ? 1 : -1;
         }
         LB_CEF3_ContinuationReleaseV4(continuation);
@@ -17079,9 +17188,9 @@ ${generateFbroVipIndividualRuntime(false)}
         auto skip = [&]() { while (*cursor && iswspace(*cursor)) ++cursor; };
         auto quoted = [&]() {
             std::wstring value;
-            if (*cursor != L'\"') return value;
+            if (*cursor != L'"') return value;
             ++cursor;
-            while (*cursor && *cursor != L'\"') {
+            while (*cursor && *cursor != L'"') {
                 if (*cursor == L'\\\\' && cursor[1]) {
                     ++cursor;
                     if (*cursor == L'n') value += L'\\n';
@@ -17091,7 +17200,7 @@ ${generateFbroVipIndividualRuntime(false)}
                 } else value += *cursor;
                 ++cursor;
             }
-            if (*cursor == L'\"') ++cursor;
+            if (*cursor == L'"') ++cursor;
             return value;
         };
         skip(); if (*cursor == L'{') ++cursor;
@@ -17100,7 +17209,7 @@ ${generateFbroVipIndividualRuntime(false)}
             std::wstring key = quoted();
             skip(); if (*cursor != L':') break; ++cursor; skip();
             std::wstring value;
-            if (*cursor == L'\"') value = quoted();
+            if (*cursor == L'"') value = quoted();
             else {
                 const wchar_t* start = cursor;
                 while (*cursor && *cursor != L',' && *cursor != L'}') ++cursor;
@@ -17159,7 +17268,7 @@ ${generateFbroVipIndividualRuntime(false)}
         CefBrowserInstance& instance = *found->second;
         const wchar_t* eventName = CEF3_归一化Bridge事件名(packet.event_name ? packet.event_name : L"");
         const wchar_t* fieldsJson = packet.fields_json ? packet.fields_json : L"{}";
-        if (TextEquals(eventName, L"加载状态改变")) instance.isLoading = std::wcsstr(fieldsJson, L"\\\"loading\\\":true") != nullptr;
+        if (TextEquals(eventName, L"加载状态改变")) instance.isLoading = std::wcsstr(fieldsJson, L"\\"loading\\":true") != nullptr;
         // 桥接层把 CefBrowserHost::CreateBrowser 投递到 CEF UI 线程执行，LB_CEF3_BrowserCreate 立刻返回句柄，
         // 但此刻 state->browser 仍为空，LB_CEF3_BrowserLoadUrl 会以「CEF3浏览器尚未创建完成」失败。
         // 桥接层在发出本事件前已写入 state_->browser，所以这里是补发排队导航的最早安全时机；
@@ -17570,7 +17679,7 @@ ${generateFbroVipIndividualRuntime(false)}
 #if LINGBUILDER_CEF3_AVAILABLE
         if (instanceId <= 0) { 调试输出(L"CEF3 创建无头浏览器失败：实例编号必须为正整数。"); return 0; }
         if (viewWidth <= 0 || viewHeight <= 0) {
-            调试输出(L"CEF3 创建无头浏览器失败：视口宽高必须为正整数（默认 1280×720）。");
+            调试输出(L"CEF3 创建无头浏览器失败：视口宽高必须为正整数（默认 1280\xD7720）。");
             return 0;
         }
 #if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
@@ -18034,7 +18143,7 @@ ${generateFbroVipIndividualRuntime(false)}
     int CEF3无头_设置视口(int instanceId, int viewWidth, int viewHeight) {
         CefBrowserInstance* instance = CEF3_查找无头实例(instanceId);
         if (!instance || !instance->bridgeHandle) { 调试输出(L"CEF3 设置视口失败：该实例编号不存在或浏览器尚未创建。"); return 0; }
-        if (viewWidth <= 0 || viewHeight <= 0) { 调试输出(L"CEF3 设置视口失败：视口宽高必须为正整数（默认 1280×720）。"); return 0; }
+        if (viewWidth <= 0 || viewHeight <= 0) { 调试输出(L"CEF3 设置视口失败：视口宽高必须为正整数（默认 1280\xD7720）。"); return 0; }
 #if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
         const int status = LB_CEF3_BrowserSetOsrViewport(instance->bridgeHandle,
             static_cast<uint32_t>(viewWidth), static_cast<uint32_t>(viewHeight));
@@ -22720,8 +22829,8 @@ ${generateFbroVipIndividualRuntime(false)}
         packet->fields = std::move(fields);
         if (!PostMessageW(hwnd_, WM_LINGBUILDER_CEF_EVENT, 0, reinterpret_cast<LPARAM>(packet))) delete packet;
     }
-
-    virtual void DispatchCefBrowserEvent(const wchar_t* handler, int controlId, const wchar_t* eventName, const wchar_t* data) {
+` },
+    { family: 'core', text: `    virtual void DispatchCefBrowserEvent(const wchar_t* handler, int controlId, const wchar_t* eventName, const wchar_t* data) {
         std::wstring message = L"CEF3 事件未绑定到中文处理器：";
         message += handler ? handler : L"";
         message += L" / ";
@@ -22730,7 +22839,8 @@ ${generateFbroVipIndividualRuntime(false)}
         (void)controlId; (void)data;
     }
 
-    void CEF3_调整全部大小() {
+` },
+    { family: 'cef3', text: `    void CEF3_调整全部大小() {
 #if LINGBUILDER_CEF3_AVAILABLE
         for (auto& item : cefBrowsers_) {
             if (!item.second->created || !item.second->host) continue;
@@ -22922,7 +23032,8 @@ protected:
         if (isPrimary) CEF3_调整全部大小();
     }
 #endif
-
+` },
+    { family: 'core', text: `
     std::wstring 选择系统项目(const wchar_t* title, const wchar_t* filter, bool save, bool folder) {
         lastDialogStatus_ = -1;
         IFileDialog* dialog = nullptr;
@@ -23471,7 +23582,7 @@ protected:
     }
 
 public:
-    // 无头宿主泵窗口：控制台/无界面程序创建 2×2 离屏工具窗口并把 hwnd_ 指向它，
+    // 无头宿主泵窗口：控制台/无界面程序创建 2\xD72 离屏工具窗口并把 hwnd_ 指向它，
     // 使线程完成处理器、CDP/HTTP/WS/网页异步等 PostMessage 派发链路全部可用。
     // 窗口过程与主窗口共用（WM_CREATE 内按 pumpWindowMode_ 跳过控件与事件副作用）。
     // 返回值：true=泵窗口就绪（含已存在主窗口的情况）。
@@ -23688,6 +23799,12 @@ protected:
         std::lock_guard<std::mutex> lock(asyncWebMutex_);
         auto found = asyncWebResults_.find(requestId);
         return found == asyncWebResults_.end() ? L"请求编号不存在。" : found->second.error;
+    }
+
+    std::wstring 网页_异步取返回协议头(int requestId) {
+        std::lock_guard<std::mutex> lock(asyncWebMutex_);
+        auto found = asyncWebResults_.find(requestId);
+        return found == asyncWebResults_.end() ? L"" : found->second.headers;
     }
 
     int 网页_异步取当前请求编号() const {
@@ -24667,12 +24784,16 @@ ${comWindowMethods}
         HWND target = runtime->frameHwnd ? runtime->frameHwnd : runtime->hwnd;
         const BOOL moved = MoveWindow(target, x, y, width, height, TRUE);
         const ControlSpec* control = FindControl(runtime->id);
-        if (control && IsType(*control, L"FBroBrowser")) FBro_调整全部大小();
-        if (control && IsType(*control, L"CefBrowser")) CEF3_调整全部大小();
-#if LINGBUILDER_EDGEVIEW_AVAILABLE
+` },
+    { family: 'fbro', text: `        if (control && IsType(*control, L"FBroBrowser")) FBro_调整全部大小();
+` },
+    { family: 'cef3', text: `        if (control && IsType(*control, L"CefBrowser")) CEF3_调整全部大小();
+` },
+    { family: 'edgeview', text: `#if LINGBUILDER_EDGEVIEW_AVAILABLE
         if (control && IsType(*control, L"EdgeBrowser")) EdgeView_调整全部大小();
 #endif
-        return moved != FALSE;
+` },
+    { family: 'core', text: `        return moved != FALSE;
     }
     bool 控件_设置勾选(const wchar_t* controlName, bool checked) { RuntimeControl* runtime = FindRuntimeControlByName(controlName); if (!runtime) return false; SendMessageW(runtime->hwnd, BM_SETCHECK, checked ? BST_CHECKED : BST_UNCHECKED, 0); return true; }
     bool 控件_取勾选(const wchar_t* controlName) { RuntimeControl* runtime = FindRuntimeControlByName(controlName); return runtime && SendMessageW(runtime->hwnd, BM_GETCHECK, 0, 0) != BST_UNCHECKED; }
@@ -25528,13 +25649,23 @@ private:
         return control.backgroundTransparent ? GetSysColor(COLOR_WINDOW) : control.background;
     }
 
+    // 页内兄弟的排除区间必须从「选项卡之后创建的控件」开始。选项卡控件本身是页的父窗口，
+    // 矩形完整覆盖页客户区；若把它当成遮挡兄弟一起 ExcludeClipRect，整页会被裁空，
+    // FillRect 一笔不落地画不出页背景。历史上这个洞靠一块与页同色的底板 Label 盖住，
+    // 而底板是 STATIC（CS_PARENTDC），它的绘制校验会连带吞掉其矩形内所有兄弟控件的更新
+    // 区域，于是页内控件全部退化成「鼠标悬停才显示」。设计器数组里页内控件恒排在选项卡
+    // 之后（排在前面会因父运行时控件尚未创建而创建失败），故 +1 恰好跳过选项卡本身。
+    int TabPageSiblingPaintOrder(RuntimeControl* tabRuntime) const {
+        return tabRuntime ? RuntimeControlPaintOrder(tabRuntime->hwnd) + 1 : -1;
+    }
+
     void PaintTabPage(HWND hwnd, HDC hdc) {
         RuntimeTabPage* page = FindTabPageByHwnd(hwnd);
         const ControlSpec* control = page ? FindControl(page->tabControlId) : nullptr;
         RuntimeControl* tabRuntime = page ? FindRuntimeControl(page->tabControlId) : nullptr;
         RECT clientRect = {};
         GetClientRect(hwnd, &clientRect);
-        ExcludeOverlappingControlsFromPaintDC(hwnd, hdc, tabRuntime ? RuntimeControlPaintOrder(tabRuntime->hwnd) : -1);
+        ExcludeOverlappingControlsFromPaintDC(hwnd, hdc, TabPageSiblingPaintOrder(tabRuntime));
         HBRUSH brush = control && !control->backgroundTransparent
             ? CreateSolidBrush(control->background)
             : GetSysColorBrush(COLOR_WINDOW);
@@ -25565,7 +25696,7 @@ private:
             EndPaint(hwnd, &paint);
             RuntimeTabPage* paintedPage = self->FindTabPageByHwnd(hwnd);
             RuntimeControl* paintedTab = paintedPage ? self->FindRuntimeControl(paintedPage->tabControlId) : nullptr;
-            self->InvalidateOverlappingControls(hwnd, paintedTab ? self->RuntimeControlPaintOrder(paintedTab->hwnd) : -1);
+            self->InvalidateOverlappingControls(hwnd, self->TabPageSiblingPaintOrder(paintedTab));
             return 0;
         }
         if (self && (
@@ -28380,8 +28511,8 @@ private:
             }
             SendMessageW(child, CB_SETCURSEL, control.selectedIndex, 0);
         } else if (IsType(control, L"SysLink") && control.data && control.data[0]) {
-            std::wstring markup = L"<a href=\\\"";
-            markup += control.data; markup += L"\\\">"; markup += control.text; markup += L"</a>";
+            std::wstring markup = L"<a href=\\"";
+            markup += control.data; markup += L"\\">"; markup += control.text; markup += L"</a>";
             SetWindowTextW(child, markup.c_str());
         } else if (IsType(control, L"IPAddress")) {
             RuntimeControl& runtime = runtimeControls_.back();
@@ -28625,8 +28756,11 @@ private:
             SetWindowPos(child, nullptr, childX, childY, childWidth, childHeight, SWP_NOZORDER | SWP_NOACTIVATE);
         } else if ((IsType(control, L"Animation") || IsType(control, L"VideoPlayer")) && control.data && control.data[0]) {
             InitializeVideoPlayer(runtimeControls_.back(), control, control.data, (control.flags & CF_AUTO_PLAY) != 0);
-        } else if (IsType(control, L"CefBrowser")) {
-            CefBrowserInstance* instance = CEF3_确保实例(control.id);
+` },
+    { family: 'core', text: `        }` },
+    { family: 'cef3', text: ` else if (IsType(control, L"CefBrowser")) {
+` },
+    { family: 'cef3', text: `            CefBrowserInstance* instance = CEF3_确保实例(control.id);
             instance->host = child;
             if (control.data && control.data[0]) instance->url = control.data;
             if (control.data2 && control.data2[0]) {
@@ -28645,8 +28779,11 @@ private:
             instance->enableWebGL = (control.value & 4) != 0;
             instance->muteAudio = (control.value & 8) != 0;
             instance->enableDevTools = (control.value & 16) != 0;
-        } else if (IsType(control, L"FBroBrowser")) {
-            FbroBrowserInstance* instance = FBro_确保实例(control.id);
+` },
+    { family: 'cef3', text: `        }` },
+    { family: 'fbro', text: ` else if (IsType(control, L"FBroBrowser")) {
+` },
+    { family: 'fbro', text: `            FbroBrowserInstance* instance = FBro_确保实例(control.id);
             instance->host = child;
             instance->processInstanceId = L"win32:" + std::to_wstring(reinterpret_cast<uintptr_t>(hwnd_))
                 + L":" + std::to_wstring(control.id);
@@ -28667,7 +28804,8 @@ private:
                 }
             }
         }
-        return true;
+` },
+    { family: 'core', text: `        return true;
     }
 
     void RebuildControls() {
@@ -28787,7 +28925,7 @@ ${aria2Runtime ? `        case LingAria2::ProgressMessage: {
 #endif
             return 0;
         }
-` : ''}        case WM_LINGBUILDER_HTTP_CLIENT_EVENT: {
+` : ""}        case WM_LINGBUILDER_HTTP_CLIENT_EVENT: {
 #ifdef LINGBUILDER_HTTP_CLIENT_MODULE
             httpClientRuntime_.DispatchEvent(static_cast<long long>(wParam), [this](const wchar_t* handler) {
                 DispatchHttpClientEvent(handler);
@@ -28889,14 +29027,16 @@ ${aria2Runtime ? `        case LingAria2::ProgressMessage: {
             return 0;
         }
 ${comWndProcCase}
-        case WM_LINGBUILDER_CEF_EVENT: {
+` },
+    { family: 'cef3', text: `        case WM_LINGBUILDER_CEF_EVENT: {
             auto* packet = reinterpret_cast<LingCefEventPacket*>(lParam);
             if (!packet) return 0;
             CEF3_处理事件包(*packet);
             if (!packet->synchronous) delete packet;
             return 0;
         }
-        case WM_LINGBUILDER_FBRO_EVENT: {
+` },
+    { family: 'fbro', text: `        case WM_LINGBUILDER_FBRO_EVENT: {
             auto* packet = reinterpret_cast<LingFbroEventPacket*>(lParam);
             if (!packet) return 0;
             FBro_处理事件包(*packet);
@@ -28908,14 +29048,16 @@ ${comWndProcCase}
             }
             return 0;
         }
-#if LINGBUILDER_FBRO_AVAILABLE
+` },
+    { family: 'fbro', text: `#if LINGBUILDER_FBRO_AVAILABLE
         case WM_LINGBUILDER_FBRO_PROCESS_EVENT: {
             std::unique_ptr<LingFbroProcessEventPacket> packet(reinterpret_cast<LingFbroProcessEventPacket*>(lParam));
             if (packet) FBro_处理独立进程事件(*packet);
             return 0;
         }
 #endif
-        case WM_LINGBUILDER_LAYOUT_DATE_PICKER: {
+` },
+    { family: 'core', text: `        case WM_LINGBUILDER_LAYOUT_DATE_PICKER: {
             const ControlSpec* control = FindControl(static_cast<int>(wParam));
             RuntimeControl* runtime = control ? FindRuntimeControl(control->id) : nullptr;
             if (control && runtime && IsType(*control, L"DateTimePicker")) {
@@ -29014,6 +29156,14 @@ ${comWndProcCase}
         }
         case WM_LINGBUILDER_WINDOW_CREATED:
             OnWindowCreated();
+            // 控件全部在 WM_CREATE 期间、主窗口尚未可见时以 WS_VISIBLE 创建，父窗口的
+            // WS_CLIPCHILDREN 又会把它们从「显示时的一次整体重绘」里裁掉，因此它们从未
+            // 拿到过首个 WM_PAINT —— 界面表现为「控件存在、点击有效，但要鼠标悬停才浮现」。
+            // OnWindowCreated 是 PostMessage 派发（此时窗口已可见、Loaded 事件与
+            // WireCompositeControls 均已跑完，页签活动页也已 ShowWindow），在这里补一次
+            // 覆盖全部子窗口的立即重绘，作为「任何控件没在创建期被重绘过」的兜底。
+            RedrawWindow(hwnd_, nullptr, nullptr,
+                RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
             return 0;
         case WM_CLOSE:
             if (isPumpWindow_) {
@@ -29026,7 +29176,8 @@ ${comWndProcCase}
             DispatchWindowEvent(L"Closing");
             closingEventActive_ = false;
             if (!closingCancelled_) {
-#if LINGBUILDER_FBRO_AVAILABLE
+` },
+    { family: 'fbro', text: `#if LINGBUILDER_FBRO_AVAILABLE
                 // Keep the Win32 host and its message pump alive until FBro
                 // delivers OnBeforeClose. A five-second fallback prevents a
                 // broken SDK callback from leaving a hidden process forever.
@@ -29043,7 +29194,8 @@ ${comWndProcCase}
                     return 0;
                 }
 #endif
-                DestroyWindow(hwnd_);
+` },
+    { family: 'core', text: `                DestroyWindow(hwnd_);
             }
             return 0;
         case WM_SHOWWINDOW: {
@@ -29086,13 +29238,17 @@ ${comWndProcCase}
                 windowStateBaselineReady_ = true;
             }
             ApplyWindowCornerRegion();
-#if LINGBUILDER_EDGEVIEW_AVAILABLE
+` },
+    { family: 'edgeview', text: `#if LINGBUILDER_EDGEVIEW_AVAILABLE
             EdgeView_随窗口调整设计器控件();
             EdgeView_调整全部大小();
 #endif
-            CEF3_调整全部大小();
-            FBro_调整全部大小();
-            return 0;
+` },
+    { family: 'cef3', text: `            CEF3_调整全部大小();
+` },
+    { family: 'fbro', text: `            FBro_调整全部大小();
+` },
+    { family: 'core', text: `            return 0;
         case WM_ACTIVATE: {
             bool nextActive = LOWORD(wParam) != WA_INACTIVE;
             if (active_ != nextActive) {
@@ -29118,26 +29274,36 @@ ${comWndProcCase}
             SetWindowPos(hwnd_, nullptr, suggested ? suggested->left : 0, suggested ? suggested->top : 0,
                 desired.right - desired.left, desired.bottom - desired.top,
                 SWP_NOZORDER | SWP_NOACTIVATE | (suggested ? 0 : SWP_NOMOVE));
-            EdgeView_关闭设计器控件();
-#if LINGBUILDER_FBRO_AVAILABLE
+` },
+    { family: 'edgeview', text: `            EdgeView_关闭设计器控件();
+` },
+    { family: 'fbro', text: `#if LINGBUILDER_FBRO_AVAILABLE
             浏览器管理器_控件重建前();
 #endif
-            DestroyControls();
+` },
+    { family: 'core', text: `            DestroyControls();
             CreateImageLists();
             RebuildControls();
-#if LINGBUILDER_FBRO_AVAILABLE
+` },
+    { family: 'fbro', text: `#if LINGBUILDER_FBRO_AVAILABLE
             浏览器管理器_控件重建后();
 #endif
-#if LINGBUILDER_EDGEVIEW_AVAILABLE
+` },
+    { family: 'edgeview', text: `#if LINGBUILDER_EDGEVIEW_AVAILABLE
             EdgeView_创建控件(nullptr);
 #endif
-            DispatchWindowEvent(L"DpiChanged");
-#if LINGBUILDER_EDGEVIEW_AVAILABLE
+` },
+    { family: 'core', text: `            DispatchWindowEvent(L"DpiChanged");
+` },
+    { family: 'edgeview', text: `#if LINGBUILDER_EDGEVIEW_AVAILABLE
             EdgeView_调整全部大小();
 #endif
-            CEF3_调整全部大小();
-            FBro_调整全部大小();
-            return 0;
+` },
+    { family: 'cef3', text: `            CEF3_调整全部大小();
+` },
+    { family: 'fbro', text: `            FBro_调整全部大小();
+` },
+    { family: 'core', text: `            return 0;
         }
         case WM_DROPFILES: {
             HDROP drop = reinterpret_cast<HDROP>(wParam);
@@ -29421,10 +29587,14 @@ ${comWndProcCase}
                 closedDispatched_ = true;
                 DispatchWindowEvent(L"Closed");
             }
-            EdgeView_关闭();
-            CEF3_关闭全部();
-            FBro_关闭全部();
-            DestroyControls();
+` },
+    { family: 'edgeview', text: `            EdgeView_关闭();
+` },
+    { family: 'cef3', text: `            CEF3_关闭全部();
+` },
+    { family: 'fbro', text: `            FBro_关闭全部();
+` },
+    { family: 'core', text: `            DestroyControls();
             DestroyWindowIcons();
             if (windowBrush_) {
                 DeleteObject(windowBrush_);
@@ -29465,7 +29635,11 @@ public:
         return result;
     }
 };
-#if LINGBUILDER_CEF3_AVAILABLE
+` },
+  ];
+
+  // CEF3_AVAILABLE 守卫与本段 #endif 同段同生命周期（阶段B 配对设计），裁剪整段时一起消失。
+  const rtSegCefClient = `#if LINGBUILDER_CEF3_AVAILABLE
 class LingCefClient final : public CefClient,
     public CefAudioHandler, public CefCommandHandler, public CefContextMenuHandler,
     public CefDialogHandler, public CefDisplayHandler, public CefDownloadHandler,
@@ -29898,10 +30072,11 @@ CefRefPtr<CefClient> LingCreateCefClient(LingWindowBase* owner, int controlId) {
     return new LingCefClient(owner, controlId);
 }
 #endif
-${pureLogicDll ? '#endif // LINGBUILDER_PURE_LOGIC_DLL' : ''}
 
-${classDefinitions}
-${pureLogicDll ? '#ifndef LINGBUILDER_PURE_LOGIC_DLL' : ''}
+`;
+  const rtSegUserClasses = `${classDefinitions}
+`;
+  const rtSegFactoryAndEntry = `${pureLogicDll ? '#ifndef LINGBUILDER_PURE_LOGIC_DLL' : ''}
 
 static LingWindowBase* CreateWindowObject(int windowIndex) {
     switch (windowIndex) {
@@ -30086,9 +30261,128 @@ ${uiaCleanupLine}
     return static_cast<int>(message.wParam);
 }`}
 `;
-  return enabledModules.some(module => module.manifest.id === 'lingbuilder.cef3.browser')
-    ? createBridgeOnlyCef3Source(generatedSource)
-    : generatedSource;
+  // 类内浏览器代码按族门控：EdgeView/FBro/CEF3 片段只在对应模块族启用时拼入，
+  // 核心片段恒保留。类内浏览器方法自带 #if 宏 stub 回退，裁剪移除的是
+  // 「模块未启用时必然不参与编译/不可达」的文本；OnWindowCreated 与布局
+  // else-if 分支已按族拆片段，任意裁剪组合下语法完整。
+  // 家族判定用模块 ID 前缀：CEF3/FBro 各有 browser 之外的子模块
+  // （cef3.platform/cef3.automation、fbro.session/fbro.objects 等），它们同样
+  // 携带各自家族的运行时内容，等值匹配会误裁。
+  const cef3FamilyEnabled = enabledModules.some(module => module.manifest.id.startsWith('lingbuilder.cef3'));
+  const fbroFamilyEnabled = enabledModules.some(module => module.manifest.id.startsWith('lingbuilder.fbro'));
+  const edgeviewFamilyEnabled = enabledModules.some(module => module.manifest.id.startsWith('lingbuilder.edgeview'));
+  // —— 控件/命令级裁剪门控输入 ——
+  // 设计器实际用到的控件类型 + 翻译后的用户代码（窗口类/功能库/全局/数据类型），
+  // 用于判断「自包含块/控件族」是否随项目生成。字符串误命中只会多保留（宁多勿错）。
+  const designerControlTypes = new Set<string>(
+    project.windows.flatMap(window => (window.controls || []).map(control => String(control.type)))
+  );
+  const translatedUserCodeText = [
+    classDefinitions,
+    functionLibraryMethods,
+    projectGlobalsDefinition,
+    projectDataTypesDefinition
+  ].join('\n');
+  const userCodeCalls = (pattern: RegExp): boolean => pattern.test(translatedUserCodeText);
+  // 控件/命令族门控：设计器实际控件类型 ∪ 翻译后用户代码（窗口类/功能库/全局/数据类型）中的
+  // 命令调用。字符串误命中只会多保留（宁多勿错）；控件_创建Xxx（运行时动态创建）一并计入。
+  const controlFamilyEnabled = (designerTypes: string[], callPattern: RegExp): boolean =>
+    designerTypes.some(type => designerControlTypes.has(type)) || userCodeCalls(callPattern);
+  const dataGridFamilyEnabled = controlFamilyEnabled(['DataGrid'], /表格_|数据表格_|控件_创建数据表格/u);
+  const listviewFamilyEnabled = controlFamilyEnabled(['ListView'], /列表视图_|控件_创建列表视图/u);
+  const tabFamilyEnabled = controlFamilyEnabled(['TabControl'], /选项卡_|控件_创建选项卡/u);
+  const dateFamilyEnabled = controlFamilyEnabled(['DateTimePicker', 'MonthCalendar'], /日期时间选择器_|月历_|控件_创建(?:日期时间选择器|月历)/u);
+  const ipFamilyEnabled = controlFamilyEnabled(['IPAddress'], /IP地址框_|控件_创建IP地址框/u);
+  const toolbarFamilyEnabled = controlFamilyEnabled(['ToolBar', 'StatusBar'], /工具栏_|状态栏_|控件_创建(?:工具栏|状态栏)/u);
+  const videoFamilyEnabled = controlFamilyEnabled(['VideoPlayer', 'AnimatedImage'], /视频播放器_|动画_|控件_创建(?:动画控件|视频播放器)/u);
+  const colorPickerFamilyEnabled = controlFamilyEnabled(['ColorPicker'], /颜色选择器_|选择颜色\s*\(|选择字体\s*\(|控件_创建颜色选择器/u);
+  const treeviewFamilyEnabled = controlFamilyEnabled(['TreeView'], /树形框_|树形视图_|控件_创建树形视图/u);
+  const findreplaceFamilyEnabled = userCodeCalls(/查找文本|替换文本|查找替换_/u);
+  const printFamilyEnabled = userCodeCalls(/打印文本|页面设置_|打印\s*\(/u);
+  const propsheetFamilyEnabled = userCodeCalls(/属性页_/u);
+  const taskdialogFamilyEnabled = userCodeCalls(/任务对话框/u);
+  const printerFamilyEnabled = userCodeCalls(/打印机_/u);
+  const familyEnabledByFlag: Record<string, boolean> = {
+    core: true,
+    edgeview: edgeviewFamilyEnabled,
+    fbro: fbroFamilyEnabled,
+    cef3: cef3FamilyEnabled,
+    datagrid: dataGridFamilyEnabled,
+    listview: listviewFamilyEnabled,
+    tab: tabFamilyEnabled,
+    date: dateFamilyEnabled,
+    ip: ipFamilyEnabled,
+    toolbar: toolbarFamilyEnabled,
+    video: videoFamilyEnabled,
+    colorpicker: colorPickerFamilyEnabled,
+    treeview: treeviewFamilyEnabled,
+    findreplace: findreplaceFamilyEnabled,
+    print: printFamilyEnabled,
+    propsheet: propsheetFamilyEnabled,
+    taskdialog: taskdialogFamilyEnabled
+  };
+  const windowBaseFamilyEnabled = (family: 'core' | 'edgeview' | 'fbro' | 'cef3' | string): boolean =>
+    familyEnabledByFlag[family] !== false;
+const windowBaseText = windowBaseParts
+    .filter(part => windowBaseFamilyEnabled(part.family))
+    .map(part => part.text)
+    .join('');
+  const generatedSource = rtSegHead
+    + rtSegFinallyGuard
+    + (printerFamilyEnabled ? rtSegPrinter : '')
+    + rtSegPrinterCore
+    + rtSegCoreStructs
+    + rtSegVideoCallback
+    + rtSegRuntimeControl
+    + rtSegColorPickerDialog
+    + rtSegInfraMiscTail
+    + rtSegForwardAndProjectData
+    + (cef3FamilyEnabled ? rtSegCefTasks : '')
+    + rtSegForwardAndProjectDataTail
+    + rtSegRichEditAndMisc
+    + windowBaseText
+    + (cef3FamilyEnabled ? rtSegCefClient : '')
+    // 纯逻辑动态库第二对守卫的闭合必须紧随被罩内容（windowBaseText 与 CEF3 客户端段），
+    // 不能内嵌在 rtSegCefClient 段尾——CEF3 客户端段只在单文件形态拼接，拆分形态下
+    // 它不进任何文件，闭合会随段一起消失，runtime.h 就带着未闭合 #ifndef 编译报 C1004。
+    + (pureLogicDll ? '#endif // LINGBUILDER_PURE_LOGIC_DLL' : '')
+    + rtSegUserClasses
+    + rtSegFactoryAndEntry;
+
+  if (enabledModules.some(module => module.manifest.id === 'lingbuilder.cef3.browser')) {
+    // CEF3 桥接后处理作用于整份文档：这类项目保持单文件形态，避免拆分后再变换。
+    // 注意单文件判定沿用既有的精确 id 口径，与家族裁剪门控互不影响。
+    return { layout: 'single', source: createBridgeOnlyCef3Source(generatedSource) };
+  }
+
+  // 拆分形态：段边界两侧无跨文件的前置条件区域（LINGBUILDER_PURE_LOGIC_DLL 的
+  // 三对 #ifndef/#endif 已核验各自完整落在同一侧），单翻译单元语义不变。
+  // 第二对守卫罩住 windowBaseText，闭合由上方 join 清单显式补齐（见单文件装配处的说明）。
+  const runtimeHeader = LINGBUILDER_RUNTIME_HEADER_BANNER
+    + '#pragma once\n'
+    + [
+      rtSegHead,
+      rtSegFinallyGuard,
+      printerFamilyEnabled ? rtSegPrinter : '',
+      rtSegPrinterCore,
+      rtSegCoreStructs,
+      rtSegVideoCallback,
+      rtSegRuntimeControl,
+      rtSegColorPickerDialog,
+      rtSegInfraMiscTail,
+      rtSegForwardAndProjectData,
+      cef3FamilyEnabled ? rtSegCefTasks : '',
+      rtSegForwardAndProjectDataTail,
+      rtSegRichEditAndMisc,
+      windowBaseText,
+      pureLogicDll ? '#endif // LINGBUILDER_PURE_LOGIC_DLL' : ''
+    ].join('');
+  const mainCpp = LINGBUILDER_MAIN_CPP_BANNER
+    + '#include "lingbuilder_runtime.h"\n'
+    + '\n'
+    + rtSegUserClasses
+    + rtSegFactoryAndEntry;
+  return { layout: 'split', mainCpp, runtimeHeader };
 }
 
 function generateNativeManifest(
@@ -30097,7 +30391,8 @@ function generateNativeManifest(
   enabledModules: InstalledModule[],
   sourceFilePath: string,
   sourceMap: LingCppNativeSourceMapEntry[],
-  edgeViewApiUsage: EdgeViewApiUsage
+  edgeViewApiUsage: EdgeViewApiUsage,
+  runtimeHeaderIncluded = false
 ): string {
   return JSON.stringify({
     schemaVersion: 1,
@@ -30125,13 +30420,20 @@ function generateNativeManifest(
       capability: edgeViewApiUsage.minimumRuntimeMajor >= EDGEVIEW_FULL_RUNTIME_MAJOR ? 'edgeview.safe-api.v2' : 'edgeview.safe-api.v1',
       usedCommands: edgeViewApiUsage.commands
     } : undefined,
-    files: ['main.cpp', 'layout.json', 'module-dependencies.txt', 'README.txt', 'lingbuilder-native-manifest.json'],
+    files: [
+      'main.cpp',
+      ...(runtimeHeaderIncluded ? [LINGBUILDER_RUNTIME_HEADER_FILE_NAME] : []),
+      'layout.json',
+      'module-dependencies.txt',
+      'README.txt',
+      'lingbuilder-native-manifest.json'
+    ],
     sourceMap
   }, null, 2);
 }
 
 function generateLingCppNativeSourceMap(
-  mainCppContent: string,
+  docs: Array<{ file: string; content: string }>,
   project: LingWindowProject,
   program: LingCppProgram,
   sourceFilePath: string,
@@ -30141,29 +30443,34 @@ function generateLingCppNativeSourceMap(
   dataTypeSourceFile?: string,
   enabledModules: InstalledModule[] = []
 ): LingCppNativeSourceMapEntry[] {
-  const lines = mainCppContent.split('\n');
+  // 用户窗口类/事件落在 main.cpp；数据类型、项目全局变量与功能库方法落在运行时文件
+  // （拆分形态为 lingbuilder_runtime.h，单文件形态两者同 doc，行号与旧口径一致）。
+  const mainDoc = docs.find(doc => doc.file === 'main.cpp') || docs[0];
+  const runtimeDoc = docs.find(doc => doc.file !== 'main.cpp') || mainDoc;
+  const lines = mainDoc.content.split('\n');
+  const runtimeLines = runtimeDoc.content.split('\n');
   const entries: LingCppNativeSourceMapEntry[] = [];
   if (dataTypeSourceFile) {
     program.dataTypes.filter(dataType => dataType.origin !== 'module').forEach(dataType => {
-      const structLine = lines.findIndex(line => line.trim() === `struct ${toCppIdentifier(dataType.name)} {`);
+      const structLine = runtimeLines.findIndex(line => line.trim() === `struct ${toCppIdentifier(dataType.name)} {`);
       if (structLine < 0) return;
-      const structEnd = lines.findIndex((line, index) => index > structLine && line.trim() === '};');
-      entries.push({ generatedFile: 'main.cpp', generatedStartLine: structLine + 1, generatedEndLine: (structEnd >= 0 ? structEnd : structLine) + 1, sourceFile: dataTypeSourceFile, sourceStartLine: dataType.line, sourceEndLine: dataType.endLine || dataType.line, kind: 'data-type', symbolName: dataType.name });
+      const structEnd = runtimeLines.findIndex((line, index) => index > structLine && line.trim() === '};');
+      entries.push({ generatedFile: runtimeDoc.file, generatedStartLine: structLine + 1, generatedEndLine: (structEnd >= 0 ? structEnd : structLine) + 1, sourceFile: dataTypeSourceFile, sourceStartLine: dataType.line, sourceEndLine: dataType.endLine || dataType.line, kind: 'data-type', symbolName: dataType.name });
       dataType.fields.forEach(field => {
         const identifier = toCppIdentifier(field.name);
-        const fieldLine = lines.findIndex((line, index) => index > structLine && (structEnd < 0 || index < structEnd) && line.includes(identifier) && line.trim().endsWith(';'));
+        const fieldLine = runtimeLines.findIndex((line, index) => index > structLine && (structEnd < 0 || index < structEnd) && line.includes(identifier) && line.trim().endsWith(';'));
         if (fieldLine < 0) return;
-        entries.push({ generatedFile: 'main.cpp', generatedStartLine: fieldLine + 1, generatedEndLine: fieldLine + 1, sourceFile: dataTypeSourceFile, sourceStartLine: field.line, sourceEndLine: field.line, kind: 'data-field', symbolName: `${dataType.name}.${field.name}` });
+        entries.push({ generatedFile: runtimeDoc.file, generatedStartLine: fieldLine + 1, generatedEndLine: fieldLine + 1, sourceFile: dataTypeSourceFile, sourceStartLine: field.line, sourceEndLine: field.line, kind: 'data-field', symbolName: `${dataType.name}.${field.name}` });
       });
     });
   }
   if (globalSourceFile) {
     program.constants.forEach(constant => {
       const identifier = toCppIdentifier(constant.name);
-      const generatedLine = lines.findIndex(line => line.includes(identifier) && line.trim().endsWith(';'));
+      const generatedLine = runtimeLines.findIndex(line => line.includes(identifier) && line.trim().endsWith(';'));
       if (generatedLine < 0) return;
       entries.push({
-        generatedFile: 'main.cpp',
+        generatedFile: runtimeDoc.file,
         generatedStartLine: generatedLine + 1,
         generatedEndLine: generatedLine + 1,
         sourceFile: globalSourceFile,
@@ -30175,10 +30482,10 @@ function generateLingCppNativeSourceMap(
     });
     program.globals.forEach(global => {
       const identifier = toCppIdentifier(global.name);
-      const generatedLine = lines.findIndex(line => line.includes(identifier) && line.trim().endsWith(';'));
+      const generatedLine = runtimeLines.findIndex(line => line.includes(identifier) && line.trim().endsWith(';'));
       if (generatedLine < 0) return;
       entries.push({
-        generatedFile: 'main.cpp',
+        generatedFile: runtimeDoc.file,
         generatedStartLine: generatedLine + 1,
         generatedEndLine: generatedLine + 1,
         sourceFile: globalSourceFile,
@@ -30193,10 +30500,10 @@ function generateLingCppNativeSourceMap(
     const sourceFile = functionLibrarySourceFiles.get(normalizeIdentifier(library.name));
     library.methods.forEach(method => {
       const generatedName = functionLibraryCppName(library.name, method.name);
-      const boundary = findGeneratedMethodBoundary(lines, generatedName);
+      const boundary = findGeneratedMethodBoundary(runtimeLines, generatedName);
       if (!boundary) return;
       entries.push({
-        generatedFile: 'main.cpp',
+        generatedFile: runtimeDoc.file,
         generatedStartLine: boundary.startLine,
         generatedEndLine: boundary.endLine,
         sourceFile,
@@ -30208,10 +30515,10 @@ function generateLingCppNativeSourceMap(
       const statementEntries = translateMethodStatementsWithMetadata(method, enabledModules, program.dataTypes);
       let searchLine = boundary.startLine + 1;
       statementEntries.forEach(statement => {
-        const targetLine = findGeneratedStatementLine(lines, statement.code, searchLine, boundary.endLine);
+        const targetLine = findGeneratedStatementLine(runtimeLines, statement.code, searchLine, boundary.endLine);
         if (targetLine === -1) return;
         entries.push({
-          generatedFile: 'main.cpp',
+          generatedFile: runtimeDoc.file,
           generatedStartLine: targetLine,
           generatedEndLine: targetLine,
           sourceFile,
@@ -31423,7 +31730,7 @@ function translateStatementToMetadata(
   const nativeCpp = parseNativeCppStatement(text);
 
   return {
-    code: nativeCpp !== undefined ? nativeCpp : translateStatement(text, enabledModules, translationContext),
+    code: nativeCpp !== undefined ? nativeCpp : translateStatement(text, enabledModules, translationContext, statement.line),
     sourceStartLine: statement.line,
     sourceEndLine: statement.endLine ?? statement.line,
     kind: nativeCpp !== undefined ? 'native-cpp' : 'statement'
@@ -31443,7 +31750,8 @@ function translateMethodStatements(
 function translateStatement(
   statement: string,
   enabledModules: InstalledModule[] = [],
-  translationContext: LingCppTranslationContext = EMPTY_TRANSLATION_CONTEXT
+  translationContext: LingCppTranslationContext = EMPTY_TRANSLATION_CONTEXT,
+  statementLine?: number
 ): string {
   const nativeCpp = parseNativeCppStatement(statement);
   if (nativeCpp !== undefined) return nativeCpp;
@@ -31457,10 +31765,10 @@ function translateStatement(
 
   const messageBox = parseMessageBox(statement);
   if (/^如果(?:真)?(?:\s|[（(])/.test(statement) && messageBox && /[=＝]{1,2}\s*6/.test(statement)) {
-    return `if (信息框(L"${escapeWideString(messageBox.text)}", ${messageBox.flags}, L"${escapeWideString(messageBox.title)}") == IDYES) { 结束(); return; }`;
+    return `if (信息框(${toCppWideStringLiteral(messageBox.text)}, ${messageBox.flags}, ${toCppWideStringLiteral(messageBox.title)}) == IDYES) { 结束(); return; }`;
   }
   if (messageBox) {
-    return `信息框(L"${escapeWideString(messageBox.text)}", ${messageBox.flags}, L"${escapeWideString(messageBox.title)}");`;
+    return `信息框(${toCppWideStringLiteral(messageBox.text)}, ${messageBox.flags}, ${toCppWideStringLiteral(messageBox.title)});`;
   }
 
   const ifCondition = parseIfCondition(statement);
@@ -31476,7 +31784,7 @@ function translateStatement(
 
   const debugMatch = statement.match(/调试输出\s*[（(]\s*[“"]([^”"]*)[”"]\s*[）)]/u);
   if (debugMatch) {
-    return `调试输出(L"${escapeWideString(debugMatch[1] || '')}");`;
+    return `调试输出(${toCppWideStringLiteral(debugMatch[1] || '')});`;
   }
 
   const openWindowCommand = parseOpenWindowCommand(statement);
@@ -31511,10 +31819,26 @@ function translateStatement(
     return 'return;';
   }
 
+  // 连续赋值(值, 目标1, ...)：一值多目标语言级语句，展开为逐条赋值（求值一次语义
+  // 见 consecutiveAssignment.ts 模块注释）；必须排在普通赋值/命令调用分支之前。
+  const consecutiveAssignment = parseLingCppConsecutiveAssignmentStatement(statement);
+  if (consecutiveAssignment) {
+    return translateConsecutiveAssignmentStatement(consecutiveAssignment, statement, enabledModules, translationContext, statementLine);
+  }
+
   const variableAssignment = statement.match(/^([\p{L}_][\p{L}\p{N}_]*(?:\s*\.\s*[\p{L}_][\p{L}\p{N}_]*)*)\s*[=＝](?!=)\s*(.+?)\s*;?$/u);
   if (variableAssignment) {
     const target = (variableAssignment[1] || '').split(/\s*\.\s*/u).map(toCppIdentifier).join('.');
     return `${target} = ${translateLingCppExpression(variableAssignment[2] || '', enabledModules, translationContext)};`;
+  }
+
+  // 数组元素赋值行（a[下标] = 值 / a.成员[下标] = 值）：下标一期只允许链尾一个且
+  // 内部不得再嵌方括号；不符形态的语句落入句尾「暂不支持」注释降级。
+  const subscriptAssignment = statement.match(/^([\p{L}_][\p{L}\p{N}_]*(?:\s*\.\s*[\p{L}_][\p{L}\p{N}_]*)*)\s*\[([^\[\]]+)\]\s*[=＝](?!=)\s*(.+?)\s*;?$/u);
+  if (subscriptAssignment) {
+    const target = (subscriptAssignment[1] || '').split(/\s*\.\s*/u).map(toCppIdentifier).join('.');
+    const subscript = translateLingCppExpression(subscriptAssignment[2] || '', enabledModules, translationContext);
+    return `${target}[${subscript}] = ${translateLingCppExpression(subscriptAssignment[3] || '', enabledModules, translationContext)};`;
   }
 
   const callStatement = parseCallStatement(statement);
@@ -31548,6 +31872,59 @@ function findModuleCommandBinding(commandName: string, enabledModules: Installed
     if (binding) return binding;
   }
   return undefined;
+}
+
+/** 连续赋值临时变量兜底序号：仅在语句行号缺失（直调 translateStatement 的测试路径）时使用。 */
+let consecutiveAssignmentTempOrdinal = 0;
+
+/**
+ * 连续赋值展开：逐目标生成「目标 = 值」。值是字面量或纯变量链时直接展开 N 份；
+ * 否则生成行内临时变量（单物理行，保证 findGeneratedStatementLine 的 sourceMap
+ * 逐行匹配不被破坏），实现与易语言一致的「值只求值一次」语义。
+ */
+function translateConsecutiveAssignmentStatement(
+  rule: LingCppConsecutiveAssignmentStatement,
+  statement: string,
+  enabledModules: InstalledModule[],
+  translationContext: LingCppTranslationContext,
+  statementLine?: number
+): string {
+  if (!rule.wellFormed || rule.targets.length === 0) {
+    return `// 连续赋值至少需要 1 个值和 1 个赋值目标，写法：连续赋值(值, 目标1, 目标2, ...)：${escapeCppComment(statement)}`;
+  }
+  const targets = rule.targets.map(parseLingCppAssignmentTarget);
+  const invalidTargetIndex = targets.findIndex(target => target === undefined);
+  if (invalidTargetIndex >= 0) {
+    return `// 连续赋值的第 ${invalidTargetIndex + 2} 个参数「${rule.targets[invalidTargetIndex]}」不是合法赋值目标（只能是变量、成员或数组元素，不带引号）：${escapeCppComment(statement)}`;
+  }
+  const controlMemberTarget = rule.targets.find(target => parseEplControlMemberRule(target) !== undefined);
+  if (controlMemberTarget) {
+    return `// 连续赋值目标暂不支持控件属性（${escapeCppComment(controlMemberTarget)}），请单独使用赋值行或控件命令：${escapeCppComment(statement)}`;
+  }
+  const translateTarget = (target: LingCppAssignmentTargetParts): string => {
+    const chain = [target.head, ...target.members].map(segment => toCppIdentifier(segment)).join('.');
+    return target.subscript !== undefined
+      ? `${chain}[${translateLingCppExpression(target.subscript, enabledModules, translationContext)}]`
+      : chain;
+  };
+  const targetLvalues = (targets as LingCppAssignmentTargetParts[]).map(translateTarget);
+  if (isSimpleConsecutiveAssignmentValue(rule.valueExpression)) {
+    const valueText = translateLingCppExpression(rule.valueExpression, enabledModules, translationContext);
+    return targetLvalues.map(target => `${target} = ${valueText};`).join(' ');
+  }
+  const tempName = toCppIdentifier(
+    `连续赋值_值_${statementLine ?? `T${(consecutiveAssignmentTempOrdinal += 1)}`}`
+  );
+  const valueText = translateLingCppExpression(rule.valueExpression, enabledModules, translationContext);
+  const assignments = targetLvalues.map(target => `${target} = ${tempName};`).join(' ');
+  return `const auto& ${tempName} = (${valueText}); ${assignments}`;
+}
+
+/** 值是字面量（数字/字符串/真/假）或纯变量链时无需临时变量，直接逐目标展开。 */
+function isSimpleConsecutiveAssignmentValue(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return true;
+  return /^(?:-?\d+(?:\.\d+)?|"(?:\\.|[^"\\])*"|“[^”]*”|真|假|[\p{L}_][\p{L}\p{N}_]*(?:\s*\.\s*[\p{L}_][\p{L}\p{N}_]*)*)$/u.test(trimmed);
 }
 
 function parseNativeCppStatement(statement: string): string | undefined {
@@ -31601,7 +31978,7 @@ function parseOpenWindowCommand(statement: string): OpenWindowCommand | undefine
 }
 
 function formatOpenWindowCall(command: OpenWindowCommand): string {
-  const target = `L"${escapeWideString(command.target)}"`;
+  const target = toCppWideStringLiteral(command.target);
   if (command.hasCustomPosition && command.x !== undefined && command.y !== undefined) {
     return `窗口_打开(${target}, L"custom", ${int(command.x)}, ${int(command.y)}, true);`;
   }
@@ -31689,9 +32066,11 @@ function translateModuleCallArguments(
       }
       if (parameterType === 'wideString') {
         const trimmed = argument.trim();
-        if (/^"(?:\\.|[^"\\])*"$/u.test(trimmed)) return `L${trimmed}`;
+        // 纯 ASCII 引号字面量也必须经统一出口：原样直出会让未识别转义（\x \0 \f 等）
+        // 被 C++ 二次解释成控制字符，与表达式路径同一字面量得到不同值（2026-10-01 根治）。
+        if (/^"(?:\\.|[^"\\])*"$/u.test(trimmed)) return toCppWideStringLiteral(trimmed.slice(1, -1));
         const chineseQuoted = trimmed.match(/^“([\s\S]*)”$/u);
-        if (chineseQuoted) return `L"${escapeWideString(interpretLingCppStringEscapes(chineseQuoted[1] || ''))}"`;
+        if (chineseQuoted) return toCppWideStringLiteral(chineseQuoted[1] || '');
       }
       const translated = translateLingCppExpression(argument, enabledModules, translationContext);
       // 项目 DLL 命令声明的结构体参数：调用端传长整数型句柄，此处自动强转为结构体指针。
@@ -31822,9 +32201,9 @@ function translateLingCppExpression(
   if (!trimmed) return '';
   if (/^L"/u.test(trimmed)) return trimmed;
   const quoted = trimmed.match(/^"((?:\\.|[^"\\])*)"$/u);
-  if (quoted) return `L"${escapeWideString(interpretLingCppStringEscapes(quoted[1] || ''))}"`;
+  if (quoted) return toCppWideStringLiteral(quoted[1] || '');
   const chineseQuoted = trimmed.match(/^“([\s\S]*)”$/u);
-  if (chineseQuoted) return `L"${escapeWideString(interpretLingCppStringEscapes(chineseQuoted[1] || ''))}"`;
+  if (chineseQuoted) return toCppWideStringLiteral(chineseQuoted[1] || '');
   // #常量名 引用：剥掉 # 前缀映射到编译期常量标识符（项目常量或模块常量物化结果）。
   const constantReference = trimmed.match(/^#([\p{L}_][\p{L}\p{N}_]*)$/u);
   if (constantReference) return toCppIdentifier(constantReference[1] || '');
@@ -31919,31 +32298,33 @@ const UNTRANSLATABLE_EXPRESSION_COMMENT_PREFIX_TEXT = '无法翻译的表达式�
  * 让用户看到中文原因（文件 + 行号 + 原文），而不是 MSVC 的 C2065 或更糟的静默错误行为。
  */
 function collectUntranslatableExpressionDiagnostics(
-  mainCppContent: string,
+  docs: Array<{ file: string; content: string }>,
   sourceMap: LingCppNativeSourceMapEntry[],
   fallbackSourceFile: string
 ): string[] {
   const marker = `/* ${UNTRANSLATABLE_EXPRESSION_COMMENT_PREFIX_TEXT}`;
-  if (!mainCppContent.includes(marker)) return [];
   const messages: string[] = [];
-  mainCppContent.split('\n').forEach((line, lineIndex) => {
-    const markerIndex = line.indexOf(marker);
-    if (markerIndex < 0) return;
-    const commentStart = markerIndex + marker.length;
-    const commentEnd = line.indexOf('*/', commentStart);
-    const original = (commentEnd >= 0 ? line.slice(commentStart, commentEnd) : line.slice(commentStart)).trim();
-    const generatedLine = lineIndex + 1;
-    // 取「生成行之前起点最近」的条目：语句条目存在时最精确；个别事件名边界匹配不准导致
-    // 语句条目缺失时，退而取所在事件/类条目，保证诊断始终落在正确源码文件与就近行号上。
-    let owner: LingCppNativeSourceMapEntry | undefined;
-    for (const entry of sourceMap) {
-      if (entry.generatedFile !== 'main.cpp' || entry.generatedStartLine > generatedLine) continue;
-      if (!owner || entry.generatedStartLine >= owner.generatedStartLine) owner = entry;
-    }
-    const sourceFile = owner?.sourceFile || fallbackSourceFile;
-    const sourceLine = owner?.sourceStartLine || generatedLine;
-    messages.push(`${sourceFile} 第 ${sourceLine} 行：表达式「${original}」无法翻译成 C++，已按空文本降级；请把该表达式改写成已支持的形态（或改用等价模块命令）后重新构建。`);
-  });
+  for (const doc of docs) {
+    if (!doc.content.includes(marker)) continue;
+    doc.content.split('\n').forEach((line, lineIndex) => {
+      const markerIndex = line.indexOf(marker);
+      if (markerIndex < 0) return;
+      const commentStart = markerIndex + marker.length;
+      const commentEnd = line.indexOf('*/', commentStart);
+      const original = (commentEnd >= 0 ? line.slice(commentStart, commentEnd) : line.slice(commentStart)).trim();
+      const generatedLine = lineIndex + 1;
+      // 取「生成行之前起点最近」的条目：语句条目存在时最精确；个别事件名边界匹配不准导致
+      // 语句条目缺失时，退而取所在事件/类条目，保证诊断始终落在正确源码文件与就近行号上。
+      let owner: LingCppNativeSourceMapEntry | undefined;
+      for (const entry of sourceMap) {
+        if (entry.generatedFile !== doc.file || entry.generatedStartLine > generatedLine) continue;
+        if (!owner || entry.generatedStartLine >= owner.generatedStartLine) owner = entry;
+      }
+      const sourceFile = owner?.sourceFile || fallbackSourceFile;
+      const sourceLine = owner?.sourceStartLine || generatedLine;
+      messages.push(`${sourceFile} 第 ${sourceLine} 行：表达式「${original}」无法翻译成 C++，已按空文本降级；请把该表达式改写成已支持的形态（或改用等价模块命令）后重新构建。`);
+    });
+  }
   return messages;
 }
 
@@ -32531,7 +32912,8 @@ function findWindowCreatedHandler(window: LingWindowModel, program: LingCppProgr
 
   const conventional = candidates.find(candidate => Boolean(findLingCppMethod(program, candidate)));
   if (conventional) return conventional;
-  // 新建项目模板使用裸「创建完毕」；按窗口自身源码类精确解析，避免多窗口同名事件互相误绑。
+  // 旧项目/外部导入可能只有裸「创建完毕」；按窗口自身源码类精确解析，避免多窗口同名事件互相误绑。
+  // （新建项目模板已改为强名「_类名_创建完毕」并在设计器模型写 events.Loaded，不再依赖本兜底。）
   const sourceClass = findLingCppClassForWindow(program, window);
   const hasBareCreated = (sourceClass?.methods || [])
     .some(method => method.kind === 'event' && method.name === '创建完毕');
@@ -32871,12 +33253,36 @@ function escapeRegexLiteral(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/**
+ * .lcpp 字符串字面量内容的转义解释（唯一实现）。
+ * 必须单趟扫描且 `\\` 配对先于字母转义消费：旧实现是 replace 链先处理 \t/\n/\r、
+ * 最后折叠 \\，导致 "\\runtime" 的第二个反斜杠被 \r 规则抢先吃成回车（2026-10-01 根治）。
+ * 解释表与 stringLiteralRegions 的词法口径一致：\\ → 一个反斜杠、\" → 引号、
+ * \t/\n/\r → 制表/换行/回车；其余 \X 原样保留两个字符（含 \0、\x 等，
+ * 不让 C++ 把它们二次解释成控制字符）。
+ */
 function interpretLingCppStringEscapes(value: string): string {
-  return value
-    .replace(/\\t/g, '\t')
-    .replace(/\\n/g, '\n')
-    .replace(/\\r/g, '\r')
-    .replace(/\\\\/g, '\\');
+  let result = '';
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    if (char !== '\\') {
+      result += char;
+      continue;
+    }
+    const next = value[index + 1];
+    if (next === '\\') {
+      result += '\\';
+      index += 1;
+      continue;
+    }
+    if (next === 't' || next === 'n' || next === 'r' || next === '"') {
+      result += next === 't' ? '\t' : next === 'n' ? '\n' : next === 'r' ? '\r' : '"';
+      index += 1;
+      continue;
+    }
+    result += char;
+  }
+  return result;
 }
 
 function escapeWideString(value: string): string {
@@ -32886,6 +33292,18 @@ function escapeWideString(value: string): string {
     .replace(/\r/g, '\\r')
     .replace(/\n/g, '\\n')
     .replace(/\t/g, '\\t');
+}
+
+/**
+ * .lcpp 源码字符串字面量 → C++ 宽字符串字面量的唯一出口：
+ * 先按 .lcpp 转义语义解释（interpretLingCppStringEscapes），再确定性转义为可编译的
+ * C++ 宽字面量。所有消费 .lcpp 源码字面量的发射点（表达式、调试输出、信息框、
+ * 模块 wideString 纯字面量实参、打开窗口目标）都必须经此出口，禁止各自直出——
+ * 否则同一字面量在不同语句里会得到不同的运行时值（2026-10-01 根治的两套语义并存问题）。
+ * 设计器模型字段、模块 manifest 值等非 .lcpp 来源的文本仍直接用 escapeWideString。
+ */
+function toCppWideStringLiteral(lingCppLiteralContent: string): string {
+  return `L"${escapeWideString(interpretLingCppStringEscapes(lingCppLiteralContent))}"`;
 }
 
 function escapeIncludePath(value: string): string {

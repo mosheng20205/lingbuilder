@@ -104,7 +104,7 @@ test('专用绘制控件不会截断已经公开的通用事件', () => {
       controls: []
     }]
   }, { lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类' });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.find(file => file.relativePath === 'lingbuilder_runtime.h')?.content || '';
   const subclassStart = cpp.indexOf('static LRESULT CALLBACK ControlSubclassProc(');
   const branch = (type: string, nextType: string) => {
     const start = cpp.indexOf(`if (IsType(*control, L"${type}"))`, subclassStart);
@@ -149,7 +149,7 @@ test('日期属性使用原生日期时间输入并按显示格式生成 SYSTEMT
       }]
     }]
   }, { lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类' });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.find(file => file.relativePath === 'lingbuilder_runtime.h')?.content || '';
   assert.match(cpp, /ParseDateTimeValue\(const wchar_t\* value, const wchar_t\* format, SYSTEMTIME& result\)/u);
   assert.match(cpp, /wcscmp\(format, L"time"\) == 0/u);
   assert.match(cpp, /L"DateTimePicker", L"时间选择器"[^\n]+L"14:05:09"[^\n]+L"time"/u);

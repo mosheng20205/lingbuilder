@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { generateLingCppNativeWin32Project } from '../src/services/windowDesigner/lingCppWin32Project';
+import { BUILTIN_MODULES } from '../src/services/modules/builtinModules';
 import type { LingWindowProject } from '../src/services/windowDesigner/types';
 
 // 无头运行时段与「无 HWND」扫描都针对 LingWindowBase 里无条件生成的 CEF3 运行时，
@@ -35,9 +36,19 @@ export function project(): LingWindowProject {
 }
 
 export function mainCpp(): string {
+  // CEF3 无头运行时文本已按模块族裁剪：启用 cef3.browser（走单文件形态）后
+  // 再断言无头实现语义，与「未启用项目不携带该运行时」的裁剪目标一致。
   const generated = generateLingCppNativeWin32Project(project(), {
     lingCppSourceCode: SOURCE,
-    outputKind: 'console-application'
+    outputKind: 'console-application',
+    enabledModules: [{
+      manifest: BUILTIN_MODULES.find(item => item.id === 'lingbuilder.cef3.browser')!,
+      installPath: 'builtin://lingbuilder.cef3.browser',
+      isBuiltin: true,
+      isInstalled: true,
+      isEnabledForProject: true,
+      diagnostics: []
+    }]
   });
   assert.deepEqual(generated.blockingDiagnostics, []);
   return generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
@@ -47,7 +58,16 @@ test('headless designer resource generates a spec table with owner-window auto-c
   const withResource = project();
   withResource.resources = [headlessResource()];
   const generated = generateLingCppNativeWin32Project(withResource, {
-    lingCppSourceCode: SOURCE, outputKind: 'console-application'
+    lingCppSourceCode: SOURCE, outputKind: 'console-application',
+    // CEF3 无头运行时按模块族裁剪：断言实现语义时启用 cef3.browser（单文件形态）。
+    enabledModules: [{
+      manifest: BUILTIN_MODULES.find(item => item.id === 'lingbuilder.cef3.browser')!,
+      installPath: 'builtin://lingbuilder.cef3.browser',
+      isBuiltin: true,
+      isInstalled: true,
+      isEnabledForProject: true,
+      diagnostics: []
+    }]
   });
   assert.deepEqual(generated.blockingDiagnostics, []);
   const code = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
@@ -171,7 +191,8 @@ test('windowed exit recycle dereferences only registry-validated instances', () 
   // 因此裸 GWLP_USERDATA 指针必须先过存活登记校验（HWND 值可能被回收给别的窗口）。
   const generated = generateLingCppNativeWin32Project(project(), { lingCppSourceCode: SOURCE });
   assert.deepEqual(generated.blockingDiagnostics, []);
-  const code = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  // 入口在 main.cpp、存活登记在运行时头：混合断言用拼接视图。
+  const code = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(code, /while \(GetMessageW/u);
   assert.match(code, /LingBuilder_取存活实例\(LingWindowBase::FromMessageWindow\(startWindow\)\)/u);
   assert.doesNotMatch(code, /\? LingWindowBase::FromMessageWindow\(startWindow\) : nullptr;/u);

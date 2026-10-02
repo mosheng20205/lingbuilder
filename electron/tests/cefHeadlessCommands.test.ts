@@ -565,19 +565,38 @@ test('cef3 osr commands have real runtime implementations that call the bridge e
   // 订阅像素帧的运行时诊断也必须重复「帧内容不外发」，否则用户从 exe 侧得到相反预期。
   assert.match(memberBody(code, OSR_COMMANDS['CEF3离屏_订阅像素帧'].runtime), /一期不外发帧内容/u);
 
-  // 未启用 CEF3 浏览器模块时不做宏收敛，5 条命令都必须保留桥可用性守卫与中文兜底（否则无桥构建链接不过）。
+  // 运行时按 CEF3 家族裁剪后，「无桥构建」的守卫场景由「启用 cef3 子模块（如 platform）
+  // 但未启用 browser 宏收敛」承载：块照常生成，5 条命令必须保留桥可用性守卫与中文兜底。
+  // 完全未启用家族模块时运行时整体不生成（更强的裁剪保证，另断言之）。
+  const cef3PlatformModule: InstalledModule = {
+    manifest: BUILTIN_MODULES.find(item => item.id === 'lingbuilder.cef3.platform')!,
+    installPath: 'builtin://lingbuilder.cef3.platform',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
   const unguarded = generateLingCppNativeWin32Project(consoleProject(), {
     lingCppSourceCode: '包 无桥校验\n\n类 程序\n公开\n  整数型 启动()\n    调试输出(\"x\")\n    返回 (0)\n  结束\n结束类\n',
     outputKind: 'console-application',
-    enabledModules: []
+    enabledModules: [cef3PlatformModule]
   });
   const bridgeOptional = unguarded.files.find(file => file.relativePath === 'main.cpp')?.content || '';
   for (const shape of Object.values(OSR_COMMANDS)) {
     const start = bridgeOptional.indexOf(shape.runtime);
-    assert.ok(start >= 0, `未启用模块的生成结果同样缺少 ${shape.runtime}`);
+    assert.ok(start >= 0, `未启用浏览器宏收敛的生成结果缺少 ${shape.runtime}`);
     const body = bridgeOptional.slice(start, start + 1200);
     assert.match(body, /#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE/, `${shape.runtime} 必须带桥可用性守卫`);
     assert.match(body, /#else[\s\S]*当前构建未启用 CEF3 桥/u, `${shape.runtime} 必须有中文兜底分支`);
+  }
+  const trimmed = generateLingCppNativeWin32Project(consoleProject(), {
+    lingCppSourceCode: '包 无桥校验\n\n类 程序\n公开\n  整数型 启动()\n    调试输出(\"x\")\n    返回 (0)\n  结束\n结束类\n',
+    outputKind: 'console-application',
+    enabledModules: []
+  });
+  const trimmedCpp = trimmed.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
+  for (const shape of Object.values(OSR_COMMANDS)) {
+    assert.ok(!trimmedCpp.includes(shape.runtime), `未启用 CEF3 家族模块时 ${shape.runtime} 应随族整体裁剪`);
   }
 });
 

@@ -83,7 +83,7 @@ test('功能库可引用项目常量与全局变量，全局命名空间必须�
     ]
   });
   assert.equal(generated.blockingDiagnostics.length, 0);
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.find(file => file.relativePath === 'lingbuilder_runtime.h')?.content || '';
   const globalsNamespaceIndex = mainCpp.indexOf('namespace LingBuilderProjectGlobals');
   const windowBaseDefinitionIndex = mainCpp.indexOf('class LingWindowBase {');
   const libraryFunctionIndex = mainCpp.indexOf('LBFL_文本工具_报告');
@@ -108,7 +108,7 @@ test('多窗口源码共享同一 C++ 全局命名空间并生成逐文件映射
       { filePath: 'src/demo/子窗口.lcpp', sourceCode: '类 子窗口\n  事件 创建完毕()\n    调试输出(当前用户, 访问次数)\n  结束\n结束类\n' }
     ]
   });
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.find(file => file.relativePath === 'lingbuilder_runtime.h')?.content || '';
   assert.match(mainCpp, /namespace LingBuilderProjectGlobals/u);
   assert.match(mainCpp, /std::wstring 当前用户 = L"访客";/u);
   assert.match(mainCpp, /int 访问次数 = 0;/u);

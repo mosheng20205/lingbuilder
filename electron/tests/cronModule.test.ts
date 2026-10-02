@@ -118,7 +118,7 @@ test('窗口项目生成 cron 命令调用、处理器派发与守护入口', ()
     activeWindowId: 'main-window',
     lingCppSourceCode: source,
     enabledModules: [cronModule]
-  }).files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   // handler-as-name ABI：字符串实参传处理器名。
   assert.ok(generated.includes('cron_定时_启动(L"*/5 * * * *", L"检查更新")'), '启动调用必须翻译为宽字符串处理器名');
   assert.ok(generated.includes('cron_定时_提交线程(L"0 2 * * *", L"夜间备份", L"备份完成")'), '提交线程调用必须翻译为三个宽字符串实参');
@@ -142,7 +142,7 @@ test('未启用 cron 模块时不注入运行时（接线由预处理守卫剔�
     activeWindowId: 'main-window',
     lingCppSourceCode: source,
     enabledModules: []
-  }).files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   // 运行时块（解析器/调度器/表/守护/邮件）只在模块启用时注入。
   assert.ok(!generated.includes('class LingCronRuntime'));
   assert.ok(!generated.includes('cron_定时_表载入运行'), '未启用时不得注入表命令实现');

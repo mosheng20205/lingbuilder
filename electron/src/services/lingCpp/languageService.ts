@@ -43,6 +43,7 @@ import {
   LingCppLanguageContext,
   LingCppStructuredReadingRow,
   LingCppStatement,
+  LingCppLocalVariable,
   ReadableEventName,
   LingCppStructureNode
 } from './types';
@@ -62,6 +63,7 @@ import { getConventionalControlEventBindings, getWin32ControlDefinition } from '
 import { areLingCppTypesCompatible, inferLingCppExpressionType, lingCppTypeCategory, normalizeLingCppValueType, type LingCppModuleTypeCategories } from './expressionTypeService';
 import { getLingCppParameterElementType, isLingCppArrayParameterType } from './parameterTypeService';
 import { parseLingCppControlFlowLine } from './controlFlow';
+import { LING_CPP_LANGUAGE_STATEMENT_CALL_NAMES, parseLingCppAssignmentTarget, parseLingCppConsecutiveAssignmentStatement, type LingCppConsecutiveAssignmentStatement } from './consecutiveAssignment';
 import { getProjectGlobalDiagnostics, isProjectGlobalsFilePath, projectSymbolTypes } from './projectGlobalService';
 import { getProjectDataTypeDiagnostics, getProjectDataTypeNames, resolveProjectFieldPathType } from './projectDataTypeService';
 import { createEffectiveLingCppTypeContext, getEnabledModuleStructuredTypeDiagnostics } from '../modules/modulePublicTypeService';
@@ -3030,6 +3032,22 @@ function getVariableDiagnostics(
         orderedLocals
           .filter(local => local.line < statement.line)
           .forEach(local => scopeTypes.set(normalizeIdentifier(local.name), local.isArray ? `${local.type}[]` : local.type));
+        const consecutiveAssignment = parseLingCppConsecutiveAssignmentStatement(statement.text);
+        if (consecutiveAssignment) {
+          diagnostics.push(...getConsecutiveAssignmentStatementDiagnostics({
+            statement,
+            rule: consecutiveAssignment,
+            methodName: method.name,
+            orderedLocals,
+            scopeTypes,
+            constantNames,
+            designerControlNames,
+            moduleContext,
+            moduleTypeCategories,
+            projectTypes
+          }));
+          return;
+        }
         const returnValue = statement.text.trim().match(/^返回(?:\s+|[（(])(.+?)[）)]?\s*;?$/u)?.[1]?.trim();
         if (returnValue) {
           const actualReturnType = inferLingCppExpressionType(returnValue, scopeTypes, moduleContext, new Map(), projectTypes);
@@ -3055,9 +3073,13 @@ function getVariableDiagnostics(
             return;
           }
         }
-        const assignment = statementTextMasked.trim().match(/^([\p{L}_][\p{L}\p{N}_]*(?:\s*\.\s*[\p{L}_][\p{L}\p{N}_]*)*)\s*[=＝](?!=)/u);
+        // 掩码文本上同时捕获目标链与右部：组2曾在掩码重构时丢失，导致赋值类型检查
+        // 长期失效（lingcpp-assignment-type 死代码，tests/lingcpp.test.ts 两条红即此回归）。
+        // 目标链允许下标段（a[1] = x / a.b[2] = x），下标一期只允许链尾。
+        const assignment = statementTextMasked.trim().match(/^([\p{L}_][\p{L}\p{N}_]*(?:\s*(?:\.\s*[\p{L}_][\p{L}\p{N}_]*|\[[^\]\[]+\]))*)\s*[=＝](?!=)\s*(.+?)\s*;?$/u);
         if (!assignment) return;
-        const targetPath = (assignment[1] || '').split(/\s*\.\s*/u);
+        const targetSubscripted = /\[\s*[^\]\[\s][^\]\[]*\]\s*$/u.test(assignment[1] || '');
+        const targetPath = (assignment[1] || '').replace(/\s*\[[^\]\[]*\]/gu, '').split(/\s*\.\s*/u).filter(Boolean);
         const targetName = targetPath[0] || '';
         if (targetPath.length === 1 && targetName === '当前窗口') {
           diagnostics.push(createDiagnostic('error', statement.line, statement.text, '当前窗口是只读内置容器，不能重新赋值。', '请把创建或查找结果保存到具体控件类型的局部变量。'));
@@ -3074,7 +3096,15 @@ function getVariableDiagnostics(
         const rootType = scopeTypes.get(normalizedTargetName);
         const rootIsProjectType = projectTypes?.dataTypes.some(dataType => normalizeIdentifier(dataType.name) === normalizeIdentifier(rootType || ''));
         if (targetPath.length > 1 && rootType && !rootIsProjectType) return;
-        const targetType = targetPath.length === 1 ? rootType : resolveProjectFieldPathType(rootType, targetPath.slice(1), projectTypes);
+        let targetType = targetPath.length === 1 ? rootType : resolveProjectFieldPathType(rootType, targetPath.slice(1), projectTypes);
+        if (targetType && targetSubscripted) {
+          if (/(?:\[\]|［］)$/u.test(targetType)) {
+            targetType = targetType.replace(/(?:\[\]|［］)$/u, '');
+          } else {
+            diagnostics.push(createDiagnostic('error', statement.line, statement.text, `变量 ${targetName} 不是数组，不能使用下标赋值。`, `请把 ${targetName} 声明为数组（类型后加 []），或去掉下标直接赋值。`));
+            return;
+          }
+        }
         if (!targetType) {
           diagnostics.push({
             id: `lingcpp-undeclared-variable-${method.name}-${targetName}-${statement.line}`,
@@ -3099,6 +3129,104 @@ function getVariableDiagnostics(
         }
       });
     });
+  });
+  return diagnostics;
+}
+
+interface LingCppConsecutiveAssignmentDiagnosticContext {
+  statement: LingCppStatement;
+  rule: LingCppConsecutiveAssignmentStatement;
+  methodName: string;
+  orderedLocals: LingCppLocalVariable[];
+  scopeTypes: Map<string, string>;
+  constantNames: ReadonlySet<string>;
+  designerControlNames: ReadonlySet<string>;
+  moduleContext?: LingCppModuleContext;
+  moduleTypeCategories: LingCppModuleTypeCategories;
+  projectTypes?: LingCppProjectTypeContext;
+}
+
+/**
+ * 连续赋值语句诊断（与普通赋值行同一套类型兼容口径，不放宽也不收紧）：
+ * 实参个数 → 目标左值形态 → 只读目标（局部/项目常量、当前窗口）→ 控件属性专项 →
+ * 未声明 → 成员/下标元素类型解析 → 逐目标类型兼容。
+ */
+function getConsecutiveAssignmentStatementDiagnostics(context: LingCppConsecutiveAssignmentDiagnosticContext): LingCppDiagnostic[] {
+  const {
+    statement, rule, methodName, orderedLocals, scopeTypes, constantNames,
+    designerControlNames, moduleContext, moduleTypeCategories, projectTypes
+  } = context;
+  const diagnostics: LingCppDiagnostic[] = [];
+  const push = (kind: string, message: string, suggestion: string) => diagnostics.push({
+    id: `lingcpp-consecutive-assignment-${kind}-${methodName}-${statement.line}`,
+    line: statement.line,
+    level: 'error',
+    message,
+    codeSnippet: statement.text,
+    suggestion
+  });
+
+  if (!rule.wellFormed) {
+    push('malformed', '连续赋值至少需要 1 个值和 1 个赋值目标，写法：连续赋值(值, 目标1, 目标2, ...)。',
+      '第 1 个参数是值，其后每个参数都是一个赋值目标，例如：连续赋值(0, 人数, 名单[1])。');
+    return diagnostics;
+  }
+
+  const actualType = inferLingCppExpressionType(rule.valueExpression, scopeTypes, moduleContext, new Map(), projectTypes);
+
+  rule.targets.forEach((targetText, targetIndex) => {
+    const position = targetIndex + 2;
+    const parts = parseLingCppAssignmentTarget(targetText);
+    if (!parts) {
+      push('target-shape', `连续赋值的第 ${position} 个参数「${targetText}」不是合法赋值目标。`,
+        '目标只能是已声明的变量、成员或数组元素（不带引号），例如：连续赋值(0, 人数, 名单[1])。');
+      return;
+    }
+    const memberPath = [parts.head, ...parts.members];
+    const pathText = memberPath.join('.');
+    const pathSuffix = parts.subscript !== undefined ? `[${parts.subscript}]` : '';
+    const normalizedHead = normalizeIdentifier(parts.head);
+    const localConstant = orderedLocals.find(local => (
+      local.isConstant && local.line < statement.line && normalizeIdentifier(local.name) === normalizedHead
+    ));
+    if (localConstant) {
+      push('readonly-target', `局部常量 ${localConstant.name} 是只读值，不能作为连续赋值目标。`, '请改用普通局部变量保存运行时变化的值。');
+      return;
+    }
+    if (constantNames.has(normalizedHead)) {
+      push('readonly-target', `项目常量 ${parts.head} 是只读值，不能作为连续赋值目标。`, '请改用局部变量或项目全局变量保存运行时变化的值。');
+      return;
+    }
+    if (memberPath.length === 1 && parts.head === '当前窗口') {
+      push('readonly-target', '当前窗口是只读内置容器，不能作为连续赋值目标。', '请把创建或查找结果保存到具体控件类型的局部变量。');
+      return;
+    }
+    // 控件属性目标（编辑框1.内容）按既有普通赋值口径交给控件引用/控件命令诊断，
+    // 连续赋值一期不支持控件属性，生成端会按中文注释降级，不在这里重复报错。
+    if (memberPath.length > 1 && designerControlNames.has(normalizedHead)) return;
+    const rootType = scopeTypes.get(normalizedHead);
+    const rootIsProjectType = projectTypes?.dataTypes.some(dataType => normalizeIdentifier(dataType.name) === normalizeIdentifier(rootType || ''));
+    if (memberPath.length > 1 && rootType && !rootIsProjectType) return;
+    let targetType = memberPath.length === 1 ? rootType : resolveProjectFieldPathType(rootType, memberPath.slice(1), projectTypes);
+    if (!targetType) {
+      push(rootType ? 'field-missing' : 'undeclared',
+        rootType ? `类型 ${rootType} 中不存在字段 ${memberPath.slice(1).join('.')}。` : `变量 ${parts.head} 尚未声明。`,
+        `请在 ${methodName} 的局部变量表、程序集变量表或项目全局变量表中声明 ${parts.head}。`);
+      return;
+    }
+    if (parts.subscript !== undefined) {
+      if (/(?:\[\]|［］)$/u.test(targetType)) {
+        targetType = targetType.replace(/(?:\[\]|［］)$/u, '');
+      } else {
+        push('not-array', `变量 ${parts.head} 不是数组，不能使用下标作为连续赋值目标。`, `请把 ${parts.head} 声明为数组（类型后加 []），或去掉下标直接赋值。`);
+        return;
+      }
+    }
+    if (actualType && !areLingCppTypesCompatible(targetType, actualType, moduleTypeCategories)) {
+      push('type',
+        `不能把 ${actualType} 赋值给 ${targetType} 目标 ${pathText}${pathSuffix}（连续赋值第 ${position} 个参数）。`,
+        `请调整连续赋值的值表达式，或修改 ${parts.head} 的类型。`);
+    }
   });
   return diagnostics;
 }
@@ -4114,6 +4242,9 @@ function getUnknownCommandDiagnostics(
   // 控件_*/窗口_* 事件上下文命令与 到文本/格式化文本 等核心语言命令经 UI 后端契约通道解析，
   // 不依赖启用模块（自绘按钮镜像用例：enabledModules 为空时 控件_设置文本 仍生成 SetWindowTextW）。
   NEW_EMOJI_WIN32_BASIC_COMMANDS.forEach(name => knownCommands.add(unknownCommandKey(name)));
+  // 连续赋值等语言级语句长着调用样（连续赋值(0, a, b)），但生成器按语句展开为赋值序列，
+  // 不存在同名运行时符号；必须在这里豁免，否则会被未知命令准入误拦。
+  const languageStatementCallKeys = new Set(LING_CPP_LANGUAGE_STATEMENT_CALL_NAMES.map(name => unknownCommandKey(name)));
 
   const classMethodNames = new Map<string, Set<string>>(
     program.classes.map(cls => [normalizeIdentifier(cls.name), new Set(cls.methods.map(method => normalizeIdentifier(method.name)))])
@@ -4157,6 +4288,7 @@ function getUnknownCommandDiagnostics(
           if (scanText.slice(Math.max(0, invocation.start - 1), invocation.start) === '.') return;
           const key = unknownCommandKey(name);
           if (knownCommands.has(key)) return;
+          if (languageStatementCallKeys.has(key)) return;
           if (owner.className && classMethodNames.get(normalizeIdentifier(owner.className))?.has(normalizeIdentifier(name))) return;
           const dedupeKey = `${expression.line}:${key}`;
           if (reported.has(dedupeKey)) return;

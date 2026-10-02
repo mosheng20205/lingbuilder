@@ -810,6 +810,15 @@ const BEGINNER_CODE_COMPLETIONS: BeginnerCodeCompletion[] = [
     selectLength: '提示内容'.length
   },
   {
+    label: '连续赋值',
+    detail: '把同一个值一次写入多个变量或数组元素',
+    insertText: '连续赋值(0, 变量1, 变量2)',
+    aliases: ['lxfz', 'lianxufuzhi', '批量赋值', 'batch', 'assign', '连续', '赋值'],
+    kind: '命令',
+    cursorOffset: '连续赋值('.length,
+    selectLength: 1
+  },
+  {
     label: '打开窗口',
     detail: '打开另一个设计器窗口',
     insertText: '打开窗口("窗口标题")',
@@ -1731,7 +1740,6 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   const [focusedReadableBlockId, setFocusedReadableBlockId] = useState<string | undefined>();
   const [structureEditDraft, setStructureEditDraft] = useState<StructureEditDraft | null>(null);
   const [structureEditError, setStructureEditError] = useState<string | null>(null);
-  const [newMemberDraft, setNewMemberDraft] = useState({ type: '文本型', name: '', initialValue: '', isStatic: false, isArray: false, note: '' });
   const [newEventDraft, setNewEventDraft] = useState({ handlerName: '', parameters: '' });
   const [newFunctionDraft, setNewFunctionDraft] = useState({ returnType: '空', name: '', parameters: '' });
   const [beginnerParameterFocus, setBeginnerParameterFocus] = useState<{ targetKey: string; parameterName: string } | null>(null);
@@ -4839,11 +4847,6 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     />
   );
 
-  const resetNewMemberDraft = () => {
-    setNewMemberDraft({ type: '文本型', name: '', initialValue: '', isStatic: false, isArray: false, note: '' });
-    setStructureEditError(null);
-  };
-
   const resetNewEventDraft = () => {
     setNewEventDraft({ handlerName: '', parameters: '' });
   };
@@ -4851,32 +4854,6 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   const resetNewFunctionDraft = () => {
     setNewFunctionDraft({ returnType: '空', name: '', parameters: '' });
   };
-
-  const renderNewMemberInput = (
-    field: 'type' | 'name' | 'initialValue' | 'note',
-    placeholder: string,
-    tone: StructureInputTone = 'plain'
-  ) => (
-    <input
-      value={newMemberDraft[field]}
-      placeholder={placeholder}
-      list={
-        field === 'name' ? 'beginner-member-name-suggestions'
-        : undefined
-      }
-      autoComplete="off"
-      disabled={!onUpdateSourceContent || !primaryLingCppClass}
-      onChange={event => setNewMemberDraft(current => ({ ...current, [field]: event.target.value }))}
-      onKeyDown={event => {
-        if (event.key === 'Escape') {
-          resetNewMemberDraft();
-          event.currentTarget.blur();
-        }
-      }}
-      className={`${directInputClasses(tone)} disabled:cursor-not-allowed disabled:opacity-40`}
-      title="填写完整后点击“新增”写回源码"
-    />
-  );
 
   const renderMemberBooleanSwitch = (
     row: LingCppStructuredReadingRow,
@@ -4896,40 +4873,6 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           checked={checked}
           disabled={disabled}
           onChange={event => commitDirectStructureValue(row, field, booleanCellValue(event.currentTarget.checked))}
-        />
-        <span className={`relative h-[var(--beginner-switch-height)] w-[var(--beginner-switch-width)] rounded-full transition-colors ${
-          checked
-            ? isDarkMode ? 'bg-cyan-500/80' : 'bg-cyan-600'
-            : isDarkMode ? 'bg-[#2b2d34]' : 'bg-slate-300'
-        }`}>
-          <span className={`absolute top-[var(--beginner-switch-knob-offset)] h-[var(--beginner-switch-knob-size)] w-[var(--beginner-switch-knob-size)] rounded-full bg-white transition-transform ${
-            checked ? 'translate-x-[var(--beginner-switch-knob-translate)]' : 'translate-x-[var(--beginner-switch-knob-offset)]'
-          }`} />
-        </span>
-      </label>
-    );
-  };
-
-  const renderNewMemberBooleanSwitch = (
-    field: 'isStatic' | 'isArray',
-    title: string
-  ) => {
-    const checked = Boolean(newMemberDraft[field]);
-    const disabled = !onUpdateSourceContent || !primaryLingCppClass;
-    return (
-      <label
-        className={`inline-flex h-[var(--beginner-input-height)] w-full items-center justify-center ${disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'}`}
-        title={title}
-      >
-        <input
-          type="checkbox"
-          className="sr-only"
-          checked={checked}
-          disabled={disabled}
-          onChange={event => {
-            const nextChecked = event.currentTarget.checked;
-            setNewMemberDraft(current => ({ ...current, [field]: nextChecked }));
-          }}
         />
         <span className={`relative h-[var(--beginner-switch-height)] w-[var(--beginner-switch-width)] rounded-full transition-colors ${
           checked
@@ -5468,18 +5411,6 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               </div>
             );
           })}
-          <div className={`border-x border-b border-dashed px-2 py-1.5 text-[11px] ${
-            isDarkMode ? 'border-[#30303a] bg-[#15151b]/70' : 'border-slate-200 bg-slate-50/80'
-          }`}>
-            <div className="grid min-w-0 grid-cols-[72px_minmax(86px,1fr)_54px_54px_minmax(72px,1fr)_44px] items-center gap-2 text-left">
-              {renderNewMemberInput('type', '类型', 'type')}
-              {renderNewMemberInput('name', '输入新成员', 'variable')}
-              {renderNewMemberBooleanSwitch('isStatic', '新成员 · 静态')}
-              {renderNewMemberBooleanSwitch('isArray', '新成员 · 数组')}
-              {renderNewMemberInput('note', '备注', 'plain')}
-              <span className={`text-right text-[10px] ${isDarkMode ? 'text-slate-600' : 'text-slate-400'}`}>新</span>
-            </div>
-          </div>
         </div>
       </section>
     );
@@ -8610,17 +8541,6 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               </tr>
             );
           })}
-          {primaryMethodOwnerName && (
-            <tr className={isDarkMode ? 'bg-[#121318]' : 'bg-slate-50'}>
-              <td className={cellClass}>{renderNewMemberInput('type', '类型', 'type')}</td>
-              <td className={cellClass}>{renderNewMemberInput('name', '输入新成员', 'variable')}</td>
-              <td className={cellClass}>{renderNewMemberBooleanSwitch('isStatic', '新成员 · 静态')}</td>
-              <td className={cellClass}>{renderNewMemberBooleanSwitch('isArray', '新成员 · 数组')}</td>
-              <td className={cellClass}>{renderNewMemberInput('initialValue', '初始值', 'value')}</td>
-              <td className={`${cellClass} text-right`}>{renderTextCell('新', 'muted')}</td>
-              <td className={cellClass}>{renderNewMemberInput('note', '备注', 'plain')}</td>
-            </tr>
-          )}
         </tbody>
       </table>
     );

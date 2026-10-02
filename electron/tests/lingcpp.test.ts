@@ -551,7 +551,7 @@ test('Win32 native generation emits shared runtime control references, tags and 
   ].join('\n');
   const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: modules });
   assert.equal(generated.blockingDiagnostics.length, 0, generated.blockingDiagnostics.join('\n'));
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /struct LingControlRef/u);
   assert.match(cpp, /std::deque<DynamicControlSpec> dynamicControlSpecs_/u);
   assert.match(cpp, /LingControlRef 动态按钮 = 控件_创建按钮\(hwnd_, 20, 20, 120, 36, L"确定", L"动态确认", 0\)/u);
@@ -1918,7 +1918,7 @@ test('controlRef deterministically emits a wide control name for native C++', ()
   };
   const source = '类 游戏主窗体 : 公开 窗体\n事件 _游戏主窗体_创建完毕()\n    控件_设置文本(操作结果, "完成")\n结束\n结束类';
   const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [module] })
-    .files.find(file => file.relativePath === 'main.cpp')!.content;
+    .files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /控件_设置文本\(L"操作结果", L"完成"\);/u);
 });
 
@@ -1951,7 +1951,7 @@ test('controlRef runtime representations are adapted by the registered UI backen
   const source = '类 游戏主窗体 : 公开 窗体\n事件 _游戏主窗体_创建完毕()\n    探测稳定ID(操作结果)\n    探测原生句柄(操作结果)\n结束\n结束类';
   const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [module] });
   assert.deepEqual(generated.blockingDiagnostics, []);
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /调试输出\(LingCppControlStableId\(L"操作结果"\)\);/u);
   assert.match(cpp, /调试输出\(LingCppControlNativeHandle\(L"操作结果"\)\);/u);
   assert.match(cpp, /int LingCppControlStableId[\s\S]+HWND LingCppControlNativeHandle[\s\S]+private:\s+HTREEITEM FindTreeItemByText/u);
@@ -2402,7 +2402,7 @@ test('Win32 生成延时、延迟调用与时钟组件的不冻结界面运行�
 
   const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: modules });
   assert.deepEqual(generated.blockingDiagnostics, []);
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   // 延时：泵消息等待实现存在，调用按原样落进创建完毕。
   assert.match(mainCpp, /MsgWaitForMultipleObjectsEx\(0, nullptr, wait, QS_ALLINPUT, MWMO_INPUTAVAILABLE\)/u);
   assert.match(mainCpp, /延时\(500\);/u);
@@ -3699,7 +3699,7 @@ test('LingCpp AST edits and native generation preserve array parameters end to e
 
   const mainCpp = generateLingCppNativeWin32Project(sampleProject, {
     lingCppSourceCode: edited.sourceCode
-  }).files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(mainCpp, /void 批量处理\(std::vector<int> 编号集合\)/u);
 });
 
@@ -3845,7 +3845,7 @@ test('generateLingCppNativeWin32Project emits OOP Win32 class code and event wir
     lingCppSourceCode: sampleSource
   });
 
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.ok(mainCpp.includes('class 游戏主窗体 : public LingWindowBase'));
   assert.ok(mainCpp.includes('void DispatchWindowEvent(const wchar_t* eventName) override'));
   assert.ok(mainCpp.includes('if (handler == L"_游戏主窗体_创建完毕") { 游戏主窗体_创建完毕(); return; }'));
@@ -3982,7 +3982,7 @@ test('LCPP 整行注释中的信息框和调试输出不会进入 F5 生成结�
     activeWindowId: 'window-1',
     lingCppSourceCode: source
   });
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.doesNotMatch(mainCpp, /L"(?:注释弹窗|注释日志|注释确认|分支注释弹窗)"/u);
   assert.match(mainCpp, /if \(true\) \{/u);
@@ -4006,7 +4006,7 @@ test('generateLingCppNativeWin32Project emits members, locals and module return 
     lingCppSourceCode: source,
     enabledModules: [byteResponseModule]
   });
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.ok(mainCpp.includes('std::wstring apiBase = L"http://127.0.0.1:8981";'));
   assert.ok(mainCpp.includes('std::wstring url = L"http://127.0.0.1:8981/api";'));
@@ -4032,7 +4032,7 @@ test('Win32 generator converts single-equals Chinese text conditions to wide-str
     activeWindowId: 'window-1',
     lingCppSourceCode: source
   });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.match(cpp, /std::wstring 局部变量 = L"12234";/u);
   assert.ok(cpp.includes('if (std::wstring(LingCppWideArg(局部变量))==LingCppWideArg(L"12234")) {'));
@@ -4077,7 +4077,7 @@ test('generateLingCppNativeWin32Project emits runtime local constants in source 
     lingCppSourceCode: source,
     lingCppSourceFilePath: sourcePath
   });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.match(cpp, /int const 最大次数 = 取最大次数\(\);/u);
   assert.match(cpp, /std::wstring const 标题 = L"ready";/u);
@@ -4124,7 +4124,7 @@ test('generateLingCppNativeWin32Project emits runtime local constants in source 
     activeWindowId: 'window-1',
     lingCppSourceCode: source.replace('事件 _按钮1_被单击()', '事件 创建完毕()'),
     enabledModules: [newEmojiModule]
-  }).files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(newEmojiCpp, /int const 最大次数 = 取最大次数\(\);/u);
   assert.match(newEmojiCpp, /int const 功能值 = 4;/u);
 });
@@ -4134,7 +4134,7 @@ test('generateLingCppNativeWin32Project paints Grid with the designer background
     activeWindowId: 'window-1',
     lingCppSourceCode: sampleSource
   });
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   const gridBranchStart = mainCpp.indexOf('} else if (IsType(control, L"Grid")) {');
   const gridBranchEnd = mainCpp.indexOf('} else if (IsType(control, L"ListView")) {', gridBranchStart);
 
@@ -4195,7 +4195,7 @@ test('generateLingCppNativeWin32Project translates beginner open-window commands
     lingCppSourceCode: source
   });
 
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.ok(mainCpp.includes('HWND 窗口_打开(const wchar_t* windowName, const wchar_t* placement = nullptr'));
   assert.ok(mainCpp.includes('static HWND OpenGeneratedWindowByName(const wchar_t* windowName, int showCommand, const wchar_t* placement = nullptr'));
   assert.ok(mainCpp.includes('窗口_打开(L"关于太空冒险客户端");'));
@@ -4234,7 +4234,7 @@ test('generateLingCppNativeWin32Project emits function methods, calls, return va
     lingCppSourceCode: source
   });
 
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.equal(parseLingCpp(source).program.classes[0].methods.find(method => method.name === '显示状态')?.isStatic, true);
   assert.ok(mainCpp.includes('static int 显示状态(std::wstring 标题, int 次数)'));
   assert.ok(mainCpp.includes('显示状态(L"启动", 3);'));
@@ -4258,7 +4258,7 @@ test('generateLingCppNativeWin32Project keeps wide string arguments inside arith
     activeWindowId: 'window-1',
     lingCppSourceCode: source
   });
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.ok(mainCpp.includes('控件_设置数值(L"进度条1", 控件_取数值(L"进度条1")+10);'));
   assert.ok(mainCpp.includes('控件_设置数值(L"进度条1", 控件_取数值(L"进度条1")-10);'));
@@ -4284,7 +4284,7 @@ test('generateLingCppNativeWin32Project accepts std::wstring results for 控件_
     }]
   };
   const generated = generateLingCppNativeWin32Project(project, { activeWindowId: 'window-1', lingCppSourceCode: source });
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.ok(mainCpp.includes('int 控件_添加项目(const wchar_t* controlName, const std::wstring& text)'));
   assert.ok(mainCpp.includes('控件_添加项目('));
@@ -4319,7 +4319,7 @@ test('generateLingCppNativeWin32Project translates ordinary conditions and round
     lingCppSourceCode: source,
     enabledModules
   });
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.ok(mainCpp.includes('if (std::wstring(LingCppWideArg(文件对话框_取文件(L"文件对话框1", 0)))!=LingCppWideArg(L"")) {'));
   assert.ok(mainCpp.includes('} else {'));
@@ -4344,7 +4344,7 @@ test('generateLingCppNativeWin32Project does not translate block end into exit c
     activeWindowId: 'window-1',
     lingCppSourceCode: source
   });
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.ok(mainCpp.includes('调试输出(L"只初始化，不退出");'));
   assert.equal(mainCpp.includes('        结束();'), false);
 });
@@ -4361,7 +4361,7 @@ test('generateLingCppNativeWin32Project closes windows asynchronously to avoid c
     activeWindowId: 'window-1',
     lingCppSourceCode: source
   });
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.ok(mainCpp.includes('void 结束() {\n        if (hwnd_) PostMessageW(hwnd_, WM_CLOSE, 0, 0);\n    }'));
   assert.equal(mainCpp.includes('void 结束() {\n        if (hwnd_) DestroyWindow(hwnd_);\n    }'), false);
   assert.ok(mainCpp.includes('Avoid double-free when user code closes the window during creation.'));
@@ -4378,7 +4378,7 @@ test('generateLingCppNativeWin32Project keeps richer control types and unsupport
     lingCppSourceCode: advancedSource
   });
 
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.ok(mainCpp.includes('class 设置窗体 : public LingWindowBase'));
   assert.ok(mainCpp.includes('void 设置窗体_创建完毕()'));
   assert.ok(mainCpp.includes('void 记住密码_被单击()'));
@@ -4455,7 +4455,7 @@ test('LingCpp complete control flow generates deterministic C++ and beginner flo
     activeWindowId: 'window-1',
     lingCppSourceCode: source
   });
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.match(mainCpp, /if \(true&&!\(false\)\) \{/u);
   assert.match(mainCpp, /\} else if \(次数==2\|\|false\) \{/u);
@@ -4688,7 +4688,7 @@ test('importNativeCppToLingBuilder converts generated native cpp back to lcpp st
     activeWindowId: 'window-1',
     lingCppSourceCode: sampleSource
   });
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   const manifest = generated.files.find(file => file.relativePath === 'lingbuilder-native-manifest.json')?.content || '';
 
   const imported = importNativeCppToLingBuilder(mainCpp, {
@@ -5304,7 +5304,7 @@ test('generateLingCppNativeWin32Project emits project constants before mutable g
       { filePath: sourcePath, sourceCode: source }
     ]
   });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /inline constexpr int 最大次数 = 3;/u);
   assert.match(cpp, /inline const std::wstring 产品名称 = L"LingBuilder";/u);
   assert.match(cpp, /inline constexpr bool 启用日志 = true;/u);
@@ -5490,7 +5490,7 @@ test('generateLingCppNativeWin32Project emits text block as one escaped wide lit
     activeWindowId: 'window-1',
     lingCppSourceCode: TEXT_BLOCK_SOURCE
   });
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.ok(mainCpp.includes('主页HTML = L"<!DOCTYPE html>\\n<html lang=\\"zh-CN\\">'), '块生成必须折叠为单行宽字面量');
   assert.ok(mainCpp.includes('\\n</html>";'), '结束标记前不得遗漏最后一行内容');
   // 块内 信息框( 不得被翻译成功能库/内置命令调用
@@ -5643,7 +5643,7 @@ test('LingCpp dynamic-library output exports 公开 methods via DllMain entry an
   ].join('\n');
   const generated = generateLingCppNativeWin32Project(sampleProject, { lingCppSourceCode: source, outputKind: 'dynamic-library' });
   assert.equal(generated.blockingDiagnostics.length, 0, generated.blockingDiagnostics.join('\n'));
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.ok(!cpp.includes('int WINAPI wWinMain'), '动态库模式不应生成 wWinMain 入口');
   assert.match(cpp, /BOOL WINAPI DllMain\(HINSTANCE instance, DWORD reason, LPVOID reserved\)/u);
   assert.match(cpp, /LingBuilder_EnsureRuntimeInitialized\(\)/u);
@@ -5666,7 +5666,7 @@ test('LingCpp dynamic-library output blocks non-POD export signatures', () => {
   ].join('\n');
   const generated = generateLingCppNativeWin32Project(sampleProject, { lingCppSourceCode: source, outputKind: 'dynamic-library' });
   assert.ok(generated.blockingDiagnostics.some(message => message.includes('不能跨 DLL 边界的类型')), generated.blockingDiagnostics.join('\n'));
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.ok(!cpp.includes('__declspec(dllexport)'), '存在阻断诊断时不应生成导出包装');
 });
 
@@ -5683,7 +5683,7 @@ test('LingCpp application output keeps wWinMain and generates no export wrappers
   ].join('\n');
   const generated = generateLingCppNativeWin32Project(sampleProject, { lingCppSourceCode: source });
   assert.equal(generated.blockingDiagnostics.length, 0, generated.blockingDiagnostics.join('\n'));
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /int WINAPI wWinMain\(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand\)/u);
   assert.ok(!cpp.includes('__declspec(dllexport)'), 'EXE 模式不应生成导出包装');
 });
@@ -5880,6 +5880,19 @@ test('项目 DLL 命令声明编辑器的库文件名逐行独立，不随同库
   assert.match(editorSource, /function archFilesForLibrary\(name: string\)/u);
   // 顶部库名必须说明它作用于整个库（本库全部命令的库文件名一起更新）。
   assert.match(editorSource, /改名后本库全部命令下方的「库文件名」一起更新/u);
+});
+
+test('项目 DLL 命令编辑器：添加命令插顶部、折叠状态按文件记忆、库文件名草稿卸载补提交（2026-10-02 回归）', () => {
+  const editorSource = readFileSync(resolve(process.cwd(), 'src', 'components', 'ProjectDllCommandsEditor.tsx'), 'utf8');
+  // ① 「添加命令」新命令出现在列表第一条（旧实现追加到首个库末尾，多库项目里落在列表中间）。
+  assert.match(editorSource, /commands: \[command, \.\.\.library\.commands\]/u);
+  assert.match(editorSource, /setFocusRequest\('0::0'\)/u);
+  assert.doesNotMatch(editorSource, /setFocusRequest\(`0::\$\{header\?\.commands\.length \|\| 0\}`\)/u);
+  // ② 折叠/展开状态按文件持久化：切到其它 .lcpp 再切回（组件卸载重建）后保持原状。
+  assert.match(editorSource, /readStoredCollapsedKeys\(filePath\)/u);
+  assert.match(editorSource, /lingbuilder\.dllCommands\.collapsed\.v1:\$\{filePath\}/u);
+  // ③ 「库文件名」草稿只在失焦/回车提交，切走文件组件卸载不触发 blur——卸载前必须补提交。
+  assert.match(editorSource, /pendingLibraryDraftCommitRef\.current\?\.\(\)/u);
 });
 
 test('项目 DLL 命令声明编辑器的右键菜单动作带上下文执行', () => {
@@ -6104,7 +6117,7 @@ test('Project DLL declarations synthesize a virtual module consumed by generatio
     enabledModules: [module]
   });
   assert.equal(generated.blockingDiagnostics.length, 0, generated.blockingDiagnostics.join('\n'));
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /#include "modules\/lingbuilder\.project\.dll\/include\/ProjectDllCommands\.h"/u);
   assert.match(cpp, /加法计算\(1, 2\)/u);
 });
@@ -6188,7 +6201,7 @@ test('wideString 形参实参与指针文本拼接统一经 LingCppWideArg 归�
   ].join('\n');
   const generated = generateLingCppNativeWin32Project(sampleProject, { lingCppSourceCode: source, enabledModules: modules });
   assert.equal(generated.blockingDiagnostics.length, 0, generated.blockingDiagnostics.join('\n'));
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   // D-2：const wchar_t* + const wchar_t* 不再吐成指针加法（C2110）。
   assert.ok(cpp.includes('(std::wstring(LingCppWideArg(数组_取成员(名单, 0))) + LingCppWideArg(L"（"))'), '数组成员与字面量拼接必须先经 LingCppWideArg 归一');
   assert.equal(cpp.includes('数组_取成员(名单, 0)+L"（"'), false);
@@ -6278,7 +6291,7 @@ test('零内嵌 C++ 能力批次：到文本/数组成员/定宽填充/连接/�
     enabledModules: modules
   });
   assert.equal(generated.blockingDiagnostics.length, 0, generated.blockingDiagnostics.join(String.fromCharCode(10)));
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   // P0-1：到文本 直接返回 std::wstring，文本结果类型不再是带隐式 const wchar_t* 转换的派生类型，
   // 「到文本(个数) + 文本变量」「到文本(a) + 到文本(b)」不再触发 C2666 重载二义。
@@ -6387,7 +6400,7 @@ test('模块命令实参类型不符给出行列中文诊断，正确转换写�
     enabledModules: modules,
     lingCppSourceCode: source
   });
-  const cpp = generated.files.find(file => file.relativePath.endsWith('.cpp'))?.content || '';
+  const cpp = generated.files.filter(file => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp').map(file => file.content).join('\n');
   assert.ok(cpp.includes('文本_取左边(字节集_到十六进制字节集(数据), 40)'), '已知非文本调用不再生成 LingCppWideArg 包装');
   assert.doesNotMatch(cpp, /LingCppWideArg\(字节集_到十六进制字节集\(数据\)\)/u);
 });
@@ -6657,10 +6670,145 @@ test('条件连词短记号 且/或 生成 && 与 ||', () => {
   ].join('\n');
   const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source });
   assert.deepEqual(generated.blockingDiagnostics, [], generated.blockingDiagnostics.join('\n'));
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   const ifLine = cpp.split('\n').find(line => line.includes('4000') && line.includes('起点') && line.trimStart().startsWith('if'));
   assert.ok(ifLine, '应生成包含 4000 的 if 行');
   assert.match(ifLine, /&&/u, `if 行缺少 &&：${ifLine}`);
   assert.match(ifLine, /\|\|/u, `if 行缺少 ||：${ifLine}`);
   assert.ok(!ifLine.includes('且') && !ifLine.includes('或'), `if 行残留中文连词：${ifLine}`);
+});
+
+test('连续赋值语句翻译：标量组/成员链/数组元素/求值一次', () => {
+  const project = {
+    schemaVersion: 2 as const,
+    id: 'consecutive-assignment-generation',
+    name: '连续赋值生成',
+    windows: [{ id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 640, height: 480, background: '#202028', description: '', controls: [] }]
+  };
+  const source = [
+    '类 主窗口',
+    '    事件 创建完毕()',
+    '        局部 整数型 人数',
+    '        局部 整数型 轮询次数',
+    '        局部 文本型 名单[]',
+    '        局部 整数型 序号 = 2',
+    '        连续赋值(0, 人数, 轮询次数)',
+    '        连续赋值("", 名单[1], 名单[2])',
+    '        连续赋值(取起始序号(), 人数, 序号)',
+    '        局部 数据包 包1',
+    '        连续赋值(3, 包1.层级)',
+    '        调试输出(人数)',
+    '    结束',
+    '    整数型 取起始序号()',
+    '        返回 (7)',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const generated = generateLingCppNativeWin32Project(project, {
+    lingCppSourceCode: source,
+    lingCppSources: [
+      { filePath: 'src/项目数据类型.lcpp', sourceCode: ['数据类型 数据包', '    整数型 层级', '结束数据类型', ''].join('\n') },
+      { filePath: 'src/MainWindow.lcpp', sourceCode: source }
+    ]
+  });
+  assert.deepEqual(generated.blockingDiagnostics, [], generated.blockingDiagnostics.join('\n'));
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
+  assert.match(cpp, /人数 = 0; 轮询次数 = 0;/u, `标量组未展开：${cpp}`);
+  assert.match(cpp, /名单\[1\] = L""; 名单\[2\] = L"";/u, `数组元素目标未展开：${cpp}`);
+  assert.match(cpp, /const auto& 连续赋值_值_\d+ = \(取起始序号\(\)\); 人数 = 连续赋值_值_\d+; 序号 = 连续赋值_值_\d+;/u, `求值一次临时变量未生成：${cpp}`);
+  assert.match(cpp, /包1\.层级 = 3;/u, `成员链目标未展开：${cpp}`);
+});
+
+test('连续赋值语句翻译：数组元素单行赋值与非法形态安全降级', () => {
+  const project = {
+    schemaVersion: 2 as const,
+    id: 'consecutive-assignment-degrade',
+    name: '连续赋值降级',
+    windows: [{ id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 640, height: 480, background: '#202028', description: '', controls: [] }]
+  };
+  const source = [
+    '类 主窗口',
+    '    事件 创建完毕()',
+    '        局部 整数型 人数表[]',
+    '        人数表[2] = 5',
+    '        连续赋值(0)',
+    '        连续赋值(0, "带引号")',
+    '        调试输出(人数表[2])',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source });
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
+  assert.match(cpp, /人数表\[2\] = 5;/u, `数组元素单行赋值未生成：${cpp}`);
+  assert.match(cpp, /连续赋值至少需要 1 个值和 1 个赋值目标/u, `缺目标形态未降级：${cpp}`);
+  assert.match(cpp, /不是合法赋值目标/u, `带引号目标未降级：${cpp}`);
+});
+
+test('连续赋值诊断：实参不足/目标形态/未声明/类型不匹配/未知命令豁免', () => {
+  const source = [
+    '类 主窗口',
+    '    事件 创建完毕()',
+    '        局部 整数型 人数',
+    '        局部 文本型 名单[]',
+    '        连续赋值(0, 人数, 名单[1])',
+    '        连续赋值(0)',
+    '        连续赋值(0, "带引号")',
+    '        连续赋值(0, 未声明变量)',
+    '        连续赋值("", 人数)',
+    '        连续赋值(0, 名单)',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const diagnostics = getLingCppSemanticDiagnostics(source, undefined, undefined, { enabledModules: [], availableModules: [] });
+  assert.ok(diagnostics.some(item => item.id.includes('consecutive-assignment-malformed') && item.message.includes('至少需要 1 个值')), '缺目标应报 malformed');
+  assert.ok(diagnostics.some(item => item.id.includes('consecutive-assignment-target-shape') && item.message.includes('带引号')), '带引号目标应报 target-shape');
+  assert.ok(diagnostics.some(item => item.id.includes('consecutive-assignment-undeclared') && item.message.includes('未声明变量')), '未声明目标应报 undeclared');
+  const typeErrors = diagnostics.filter(item => item.id.includes('consecutive-assignment-type'));
+  assert.ok(typeErrors.some(item => item.message.includes('文本型') && item.message.includes('整数型') && item.message.includes('人数')), '类型不匹配应报 type');
+  assert.ok(typeErrors.some(item => item.message.includes('文本型[]') && item.message.includes('名单')), '整体数组目标类型应按数组类型校验');
+  assert.equal(diagnostics.some(item => item.id.includes('unknown-command')), false, '连续赋值不应被未知命令准入误拦');
+});
+
+test('连续赋值诊断：只读目标与非数组下标', () => {
+  const source = [
+    '类 主窗口',
+    '    事件 创建完毕()',
+    '        局部常量 整数型 上限 = 10',
+    '        局部 整数型 人数',
+    '        连续赋值(0, 上限)',
+    '        连续赋值(0, 人数[1])',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const diagnostics = getLingCppSemanticDiagnostics(source, undefined, undefined, { enabledModules: [], availableModules: [] });
+  assert.ok(diagnostics.some(item => item.id.includes('consecutive-assignment-readonly-target') && item.message.includes('局部常量')), '局部常量目标应报只读');
+  assert.ok(diagnostics.some(item => item.id.includes('consecutive-assignment-not-array') && item.message.includes('不是数组')), '非数组下标目标应报 not-array');
+});
+
+test('数组元素单行赋值诊断：元素类型按声明校验', () => {
+  const source = [
+    '类 主窗口',
+    '    事件 创建完毕()',
+    '        局部 整数型 人数表[]',
+    '        人数表[1] = 5',
+    '        人数表[1] = "文本"',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const diagnostics = getLingCppSemanticDiagnostics(source, undefined, undefined, { enabledModules: [], availableModules: [] });
+  assert.equal(diagnostics.some(item => item.id.includes('assignment-type') && item.line === 4), false, '类型匹配的数组元素赋值不应报错');
+  assert.ok(diagnostics.some(item => item.id.includes('assignment-type') && item.line === 5 && item.message.includes('整数型') && item.message.includes('文本型')), '类型不匹配的数组元素赋值应报错');
+});
+
+test('实参类型门禁豁免连续赋值语句（无 binding 调用不进 argument-type）', () => {
+  const source = [
+    '类 主窗口',
+    '    事件 创建完毕()',
+    '        局部 整数型 人数',
+    '        连续赋值(0, 人数)',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const diagnostics = getLingCppSemanticDiagnostics(source, undefined, undefined, { enabledModules: [], availableModules: [] });
+  assert.equal(diagnostics.filter(item => item.id.startsWith('lingcpp-argument-type-')).length, 0, '连续赋值不得产生 argument-type 诊断');
 });

@@ -115,7 +115,7 @@ test('普通 Win32 生成依赖排序的 struct、值语义变量和数据类型
     { filePath: 'src/demo/主窗口.lcpp', sourceCode: '类 主窗口\n  用户信息 备份用户\n  事件 创建完毕()\n    局部 用户信息 当前用户\n    当前用户.姓名 = "小明"\n    当前用户.地址.城市 = "上海"\n    备份用户 = 当前用户\n  结束\n结束类\n' },
     { filePath: 'src/demo/子窗口.lcpp', sourceCode: '类 子窗口\n  用户信息 当前用户\n  用户信息 读取用户()\n    局部 用户信息 结果\n    返回 结果\n  结束\n结束类\n' }
   ] });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.find(file => file.relativePath === 'lingbuilder_runtime.h')?.content || '';
   assert.ok(cpp.indexOf('struct 地址信息') < cpp.indexOf('struct 用户信息'));
   assert.match(cpp, /std::vector<std::wstring> 标签\{\};/u);
   assert.match(cpp, /用户信息 登录用户\{\};/u);
@@ -217,7 +217,7 @@ test('模块公开记录与数组进入语言服务、项目嵌套和 C++ 生成
     enabledModules: [publicTypeModule],
     lingCppSources: [{ filePath: 'src/demo/主窗口.lcpp', sourceCode: source.replace('    当前用户.\n', '') }]
   });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.find(file => file.relativePath === 'lingbuilder_runtime.h')?.content || '';
   assert.match(cpp, /struct 模块地址[\s\S]*struct 模块用户/u);
   assert.match(cpp, /std::vector<std::wstring> 标签\{\};/u);
   assert.match(cpp, /模块用户 当前用户\{\};/u);
@@ -286,7 +286,7 @@ test('模块常量 contributes.constants 进入语言服务并以 #常量 物化
     enabledModules: [constantsModule],
     lingCppSources: [{ filePath: 'src/demo/主窗口.lcpp', sourceCode: source.replace('    调试输出(#不存在常量)\n', '') }]
   });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.find(file => file.relativePath === 'lingbuilder_runtime.h')?.content || '';
   assert.match(cpp, /inline constexpr int 键盘1 = 49;/u);
   assert.match(cpp, /inline const std::wstring 模块标题 = L"常量模块";/u);
   assert.match(cpp, /inline constexpr bool 启用日志 = true;/u);
@@ -302,7 +302,7 @@ test('模块常量 contributes.constants 进入语言服务并以 #常量 物化
       { filePath: 'src/demo/主窗口.lcpp', sourceCode: source.replace('    调试输出(#不存在常量)\n', '') }
     ]
   });
-  const shadowedCpp = shadowed.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const shadowedCpp = shadowed.files.find(file => file.relativePath === 'lingbuilder_runtime.h')?.content || '';
   assert.match(shadowedCpp, /inline constexpr int 键盘1 = 99;/u);
   assert.equal(/inline constexpr int 键盘1 = 49;/u.test(shadowedCpp), false, '遮蔽时不得同时物化两份同名常量');
 
