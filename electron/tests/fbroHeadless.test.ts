@@ -66,7 +66,7 @@ function generatedMain(project: LingWindowProject, source: string) {
     enabledModules: [fbroModule],
     lingCppSourceCode: source
   });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   return { generated, cpp };
 }
 

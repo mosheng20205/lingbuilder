@@ -116,6 +116,41 @@ test('new solution project uses an in-app input dialog instead of a browser prom
   assert.match(markup, /创建项目/u);
 });
 
+test('create location shows a browse button only when the native directory picker is available', () => {
+  const desktopMarkup = renderToStaticMarkup(
+    <ProjectNameDialog
+      open
+      value="我的工具"
+      isDarkMode
+      location=""
+      onLocationChange={() => undefined}
+      onBrowseLocation={() => undefined}
+      onChange={() => undefined}
+      onConfirm={() => undefined}
+      onClose={() => undefined}
+    />
+  );
+  assert.match(desktopMarkup, /aria-label="创建位置"/u);
+  assert.match(desktopMarkup, /aria-label="浏览创建位置"/u);
+  assert.match(desktopMarkup, /浏览…/u);
+
+  const webMarkup = renderToStaticMarkup(
+    <ProjectNameDialog
+      open
+      value="我的工具"
+      isDarkMode
+      location="games/我的游戏"
+      onLocationChange={() => undefined}
+      onChange={() => undefined}
+      onConfirm={() => undefined}
+      onClose={() => undefined}
+    />
+  );
+  assert.match(webMarkup, /aria-label="创建位置"/u);
+  assert.match(webMarkup, /value="games\/我的游戏"/u);
+  assert.doesNotMatch(webMarkup, /浏览创建位置/u, '无原生目录选择通道时不应渲染浏览按钮');
+});
+
 test('recovery confirmation uses an in-app dialog instead of blocking window.confirm', () => {
   const markup = renderToStaticMarkup(
     <WorkbenchConfirmDialog

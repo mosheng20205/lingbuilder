@@ -120,7 +120,7 @@ test('HTTP 客户端模块清单、文档和旧兼容入口保持完整', async 
 test('Win32 HTTP 客户端生成共享 WinHTTP runtime、完成消息和处理器引用', () => {
   const generated = generate([httpModule]);
   assert.deepEqual(generated.blockingDiagnostics, []);
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.ok(mainCpp.includes('class LingHttpClientRuntime'));
   assert.ok(mainCpp.includes('WinHttpOpen('));
   assert.ok(mainCpp.includes('WinHttpSendRequest('));
@@ -155,6 +155,9 @@ test('Win32 HTTP 客户端生成共享 WinHTTP runtime、完成消息和处理�
   assert.ok(mainCpp.includes('LB_CURL_OPT_CAINFO = 10065'));
   assert.ok(mainCpp.includes('ExecuteWithImpersonation'));
   assert.ok(mainCpp.includes('int HTTP客户端_设置TLS指纹(long long client, const wchar_t* target)'));
+  // 2026-09-30 指纹画像批：仿真路径补 bodyMime 的 Content-Type + 空值头"Name:"移除语义（可裁模板画像头）。
+  assert.ok(mainCpp.includes('headerList.push_back({ L"Content-Type", request->bodyMime })'));
+  assert.ok(mainCpp.includes('LB_WideToUtf8((name + L":").c_str())'));
   // 2026-09-30 收尾批：CAINFO=10065 实锤修复 + 全量 setopt 返回值检查（未知选项号中文阻断不静默）
   // + 档案名归一化保留 _、点号映射 _，未知档案诊断列出当前 DLL 实测可用档案清单。
   assert.ok(mainCpp.includes('rejectedOptions'));
@@ -170,12 +173,20 @@ test('Win32 HTTP 客户端生成共享 WinHTTP runtime、完成消息和处理�
   assert.ok(mainCpp.includes('caBlobStorage'));
   // 2026-09-30 晚补②：指纹路径回填 contentType（此前「取内容类型」在指纹路径恒空，直出文件判路失效）。
   assert.ok(mainCpp.includes("Lower(item.first) == L\"content-type\""));
+  // 2026-09-30 CA 路径批：CAINFO 生效后暴露「curl 在 Windows 按 ANSI(ACP) 打开文件」——
+  // 中文目录（T:\逆向\小红书\...）按 UTF-8 传会 fopen 失败、TLS 信任链缺失、请求 0 步即失败；
+  // 文件路径类选项改走 8.3 短路径优先 + ACP 兜底，URL/代理/UA 等非路径项仍走 UTF-8。
+  assert.ok(mainCpp.includes('const auto keepAnsiPath'));
+  assert.ok(mainCpp.includes('GetShortPathNameW(value.c_str(), shortPath, MAX_PATH)'));
+  assert.ok(mainCpp.includes('WideCharToMultiByte(CP_ACP, 0, filePath.c_str()'));
+  assert.ok(mainCpp.includes('setoptChecked(LB_CURL_OPT_CAINFO, L"CAINFO", keepAnsiPath(caBundle))'));
+  assert.equal(mainCpp.includes('setoptChecked(LB_CURL_OPT_CAINFO, L"CAINFO", keepUtf8(caBundle))'), false);
 });
 
 test('断点续传：设置续传文件生成追加落盘运行时且文件流不占响应体内存上限', () => {
   const generated = generate([httpModule]);
   assert.deepEqual(generated.blockingDiagnostics, []);
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.ok(mainCpp.includes('bool HTTP客户端_设置续传文件(long long request, const wchar_t* path)'));
   assert.ok(mainCpp.includes('request.resumePath = file'));
   assert.ok(mainCpp.includes('std::ios::app'));
@@ -185,7 +196,7 @@ test('断点续传：设置续传文件生成追加落盘运行时且文件流�
 test('new_emoji HTTP 客户端复用同一 runtime 并创建消息窗口', () => {
   const generated = generate([newEmojiModule, httpModule], 'new-emoji');
   assert.deepEqual(generated.blockingDiagnostics, []);
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.ok(mainCpp.includes('static LingHttpClientRuntime g_httpClientRuntime'));
   assert.ok(mainCpp.includes('LB_NE_CreateHttpClientEventWindow'));
   assert.ok(mainCpp.includes('WM_LINGBUILDER_NE_HTTP_CLIENT_EVENT'));
@@ -196,7 +207,7 @@ test('new_emoji HTTP 客户端复用同一 runtime 并创建消息窗口', () =>
 
 test('未启用 HTTP 客户端模块时不注入 WinHTTP runtime', () => {
   const generated = generate([]);
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.equal(mainCpp.includes('class LingHttpClientRuntime'), false);
   assert.equal(mainCpp.includes('HTTP客户端_请求(const wchar_t* method'), false);
 });

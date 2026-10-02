@@ -39,6 +39,8 @@ import {
   FolderOutput
 } from 'lucide-react';
 import { CppFile, ExtractedString, SourceControlStatus } from '../types';
+import { getCurrentFileContent } from '../services/files/editorFileState';
+import { findLegacyWindowSourceFile } from '../services/windowDesigner/legacyWindowSource';
 import ModuleInspector from './ModuleInspector';
 import {
   createBlankWindow,
@@ -550,6 +552,30 @@ export default function Sidebar({
     setDesignerState(nextState);
 
     if (!sourceFile) {
+      // 绑定路径缺失：先识别「声明了该窗口类的唯一旧命名主源码」（早于 src/<窗口类名>.lcpp
+      // 约定的项目，DLL命令声明演示 实测）。此时不得再合成同类模板——模板一旦保存落盘，
+      // 会与旧命名文件构成窗口类重复定义；改为触发工作台一键迁移（重命名到约定路径）。
+      const legacyMigration = findLegacyWindowSourceFile(
+        files
+          .filter(candidate => candidate.language === 'lingcpp' || candidate.path.toLocaleLowerCase().endsWith('.lcpp'))
+          .map(candidate => ({ path: candidate.path, content: getCurrentFileContent(candidate) })),
+        activeSolutionProject?.sourceRoot,
+        windowModel
+      );
+      if (legacyMigration) {
+        window.dispatchEvent(new CustomEvent('legacy-window-source-found', {
+          detail: {
+            windowModel,
+            legacyPath: legacyMigration.legacyPath,
+            conventionalPath: legacyMigration.conventionalPath
+          }
+        }));
+        window.dispatchEvent(new CustomEvent('show-window-designer', {
+          detail: { projectId, windowId: windowModel.id }
+        }));
+        triggerSuccess(`发现旧命名主源码，正在迁移为 ${sourceName}`);
+        return;
+      }
       window.dispatchEvent(new CustomEvent('window-added', { detail: windowModel }));
       window.dispatchEvent(new CustomEvent('show-window-designer', {
         detail: { projectId, windowId: windowModel.id }
@@ -1061,10 +1087,27 @@ export default function Sidebar({
           className={`px-3 py-1.5 hover:bg-blue-500 hover:text-white cursor-pointer transition-colors`}
           onClick={() => {
             navigator.clipboard.writeText(contextMenu.file.path);
-            triggerSuccess('已复制文件绝对路径');
+            triggerSuccess(`已复制相对路径：${contextMenu.file.path}`);
           }}
         >
-          <span>复制路径 (C)</span>
+          <span>复制相对路径 (C)</span>
+        </div>
+        <div
+          className={`px-3 py-1.5 hover:bg-blue-500 hover:text-white cursor-pointer transition-colors`}
+          onClick={() => {
+            void (async () => {
+              const copyFullPath = window.lingBuilder?.shell?.copyFullPath;
+              if (!copyFullPath) {
+                triggerError('当前运行环境不支持复制完整路径。');
+                return;
+              }
+              const result = await copyFullPath({ kind: 'file', relativePath: contextMenu.file.path });
+              if (result.ok && result.path) triggerSuccess(`已复制完整路径：${result.path}`);
+              else triggerError(result.error || '复制完整路径失败。');
+            })();
+          }}
+        >
+          <span>复制完整路径</span>
         </div>
         {/\.(?:cpp|cc|cxx|c)$/iu.test(contextMenu.file.name) && (
           <div
