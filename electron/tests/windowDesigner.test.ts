@@ -12,6 +12,9 @@ import ListViewDesignerPreview from '../src/components/ListViewDesignerPreview';
 import HeaderDesignerPreview from '../src/components/HeaderDesignerPreview';
 import TabControlDesignerPreview from '../src/components/TabControlDesignerPreview';
 import { selectControlEventTargetFile } from '../src/services/windowDesigner/controlEventTargetFile';
+import { describeWindowSourceClobber } from '../src/services/windowDesigner/windowSourceClobber';
+import { findLegacyWindowSourceFile } from '../src/services/windowDesigner/legacyWindowSource';
+import { ensureLingCppControlEventHandler } from '../src/services/windowDesigner/controlEventCodeService';
 import ListViewCollectionDialog from '../src/components/ListViewCollectionDialog';
 import ToolbarButtonsDialog from '../src/components/ToolbarButtonsDialog';
 import StatusBarPartsDialog from '../src/components/StatusBarPartsDialog';
@@ -447,7 +450,7 @@ test('调试输出支持英文逗号分隔的任意数量异构参数', () => {
         调试输出("当前选择项", 控件_取选择项("列表框_tab"), 真, 3)
     结束
 结束类`;
-  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /调试输出\(L"当前选择项", 控件_取选择项\(L"列表框_tab"\), true, 3\);/u);
   assert.match(cpp, /template <typename\.\.\. Args> void 调试输出\(const Args&\.\.\. args\)/u);
   assert.match(cpp, /if \(!first\) output \+= L", ";/u);
@@ -478,7 +481,7 @@ test('单精度小数型生成 C++ float 并补字面量 f 后缀，小数型/�
     ]
   });
   assert.deepEqual(generated.blockingDiagnostics, []);
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /inline constexpr float 比例 = 0\.5f;/u);
   assert.match(cpp, /float 成员比例 = 1\.5f;/u);
   assert.match(cpp, /float 取比例\(float 输入值/u);
@@ -499,7 +502,7 @@ test('空窗口使用与 ControlSpec 同步的类型安全占位项', () => {
   };
   const cpp = generateLingCppNativeWin32Project(project, {
     lingCppSourceCode: '类 主窗口\n结束类\n'
-  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   const placeholder = cpp.split('\n').find(line => line.includes('{ 0, 0, L"Label", L"", L""')) || '';
 
   assert.match(placeholder, /12, L"Microsoft YaHei UI", false, false, false/u);
@@ -534,8 +537,15 @@ test('普通空窗口不会尝试初始化未使用的 CEF3 运行时', () => {
   };
   const cpp = generateLingCppNativeWin32Project(project, {
     lingCppSourceCode: '类 主窗口\n结束类\n'
-  }).files.find(file => file.relativePath === 'main.cpp')!.content;
-  const createFunction = cpp.slice(cpp.indexOf('int CEF3_创建(const wchar_t* controlName)'), cpp.indexOf('int CEF3_创建单个'));
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
+  const createStart = cpp.indexOf('int CEF3_创建(const wchar_t* controlName)');
+  if (createStart < 0) {
+    // 运行时按模块裁剪后，未启用 CEF3 的项目连浏览器族运行时都不生成，
+    // 「不会初始化未使用运行时」由更强的保证（整个函数不存在）满足。
+    assert.ok(!cpp.includes('CefInitialize'));
+    return;
+  }
+  const createFunction = cpp.slice(createStart, cpp.indexOf('int CEF3_创建单个'));
 
   assert.ok(createFunction.indexOf('if (!hasTarget) return 0;') < createFunction.indexOf('#if LINGBUILDER_CEF3_AVAILABLE'));
   assert.match(createFunction, /IsType\(control, L"CefBrowser"\)/u);
@@ -553,9 +563,9 @@ test('普通 Win32 运行窗口只执行一次标准显示且不切换置顶或�
   };
   const lingCpp = generateLingCppNativeWin32Project(project, {
     lingCppSourceCode: '类 主窗口\n结束类\n'
-  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   const openWindow = lingCpp.slice(lingCpp.indexOf('HWND Open('), lingCpp.indexOf('void AttachPropertyPage'));
-  const legacyCpp = generateNativeWin32Project(project).files.find(file => file.relativePath === 'main.cpp')!.content;
+  const legacyCpp = generateNativeWin32Project(project).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.match(openWindow, /SetWindowPos\(hwnd_, nullptr,[\s\S]*ShowWindow\(hwnd_, showCommand\);\s*UpdateWindow\(hwnd_\);/u);
   assert.doesNotMatch(openWindow, /HWND_(?:TOPMOST|NOTOPMOST)|SetForegroundWindow|BringWindowToTop|SetFocus|SetTimer/u);
@@ -576,7 +586,7 @@ test('F5 后台启动的普通 Win32 启动窗口在消息循环前执行一次�
   };
   const cpp = generateLingCppNativeWin32Project(project, {
     lingCppSourceCode: '类 主窗口\n结束类\n'
-  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   const winMainStart = cpp.indexOf('int WINAPI wWinMain');
   // cron 守护模式（--lingbuilder-cron-daemon）下启动窗口以 SW_HIDE 创建且不抢前台；
   // 普通启动路径仍是 OpenGeneratedWindow(...) → EnsureStartWindowForeground(...) → 消息循环 的顺序。
@@ -690,7 +700,7 @@ test('控件字体属性迁移、下拉选项、预览和 Win32 生成保持一�
   });
   const cpp = generateLingCppNativeWin32Project({ ...project, windows: [{ ...project.windows[0], controls: [styledControl] }] }, {
     lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类'
-  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /CreateControlFont\(const wchar_t\* family, int cssPx, bool bold, bool italic, bool underline/u);
   assert.match(cpp, /bold \? FW_BOLD : FW_NORMAL/u);
   assert.match(cpp, /italic \? TRUE : FALSE, underline \? TRUE : FALSE/u);
@@ -732,7 +742,7 @@ test('IP 地址框在设计器和原生运行时应用颜色、垂直对齐与�
 
   const cpp = generateLingCppNativeWin32Project(project, {
     lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类'
-  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.match(cpp, /L"IPAddress"[^\n]+RGB\(18, 52, 86\), false, RGB\(254, 220, 186\)/u);
   assert.match(cpp, /IsType\(\*control, L"IPAddress"\)[\s\S]+message == WM_CTLCOLOREDIT/u);
@@ -772,7 +782,7 @@ test('超链接控件点击或按回车时打开已配置的链接并继续分�
 
   const cpp = generateLingCppNativeWin32Project(project, {
     lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类'
-  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.match(cpp, /L"SysLink"[^\n]+L"https:\/\/lingbuilder\.example\/docs"/u);
   assert.match(cpp, /header->code == NM_CLICK \|\| header->code == NM_RETURN/u);
@@ -972,7 +982,7 @@ test('窗口参数化事件统一生成强类型签名并传递 Win32 运行时�
   };
   const diagnostics = getLingCppSemanticDiagnostics(source, project);
   assert.equal(diagnostics.filter(item => item.level === 'error').length, 0, diagnostics.map(item => item.message).join('\n'));
-  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.match(cpp, /void 主窗口_按键被按下\(int 键码 = \{\}, bool Ctrl键按下 = \{\}, bool Shift键按下 = \{\}, bool Alt键按下 = \{\}/u);
   assert.match(cpp, /void 主窗口_按键被放开\(int 键码 = \{\}, bool Ctrl键按下 = \{\}, bool Shift键按下 = \{\}, bool Alt键按下 = \{\}/u);
@@ -1145,7 +1155,7 @@ test('父容器的可见和启用状态由所有后代继承', () => {
   };
   const cpp = generateLingCppNativeWin32Project(project, {
     lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类'
-  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.match(cpp, /L"GroupBox", L"hidden-group"[^\n]+536870912/u);
   const inheritedHiddenChild = cpp.split('\n').find(line => line.includes('L"ComboBox", L"hidden-combo"')) || '';
@@ -1249,7 +1259,7 @@ test('动态图像控件使用项目 GIF 资源并按帧延时生成 Win32 播�
   };
   const cpp = generateLingCppNativeWin32Project(project, {
     lingCppSourceCode: '类 主窗口 : 公开 窗体\n事件 _动态徽标_播放完毕()\n结束\n结束类'
-  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.match(cpp, /L"AnimatedImage"[^\r\n]+L"assets\/demo\/loading\.gif"/u);
   assert.match(cpp, /InitializeAnimatedImage\(const ControlSpec& control, RuntimeControl& runtime\)/u);
@@ -1325,7 +1335,7 @@ test('Win32 列表框使用设计器边框和渐变圆角选中样式', () => {
   };
   const cpp = generateLingCppNativeWin32Project(project, {
     lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类'
-  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.match(cpp, /L"ListBox"[^\n]+, 3, RGB\(71, 85, 105\), RGB\(109, 40, 217\), RGB\(14, 116, 144\), RGB\(103, 232, 249\), 7, 32, 5, 28, 6, 1, 12, RGB\(17, 24, 39\), RGB\(6, 182, 212\)[^\n]+RGB\(15, 23, 42\), (?:true|false), RGB\(226, 232, 240\)/u);
   assert.match(cpp, /LBS_OWNERDRAWFIXED \| LBS_HASSTRINGS/u);
@@ -1364,7 +1374,7 @@ test('Win32 列表框使用设计器边框和渐变圆角选中样式', () => {
         ...listBox,
         properties: { ...listBox.properties, textAlign }
       }] }]
-    }, { lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类' }).files.find(file => file.relativePath === 'main.cpp')!.content;
+    }, { lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类' }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
     const expectedFlags = alignFlag | (1 << 25);
     assert.match(alignCpp, new RegExp(`L"ListBox"[^\\n]+, ${expectedFlags}, L"`), `textAlign=${textAlign} 应产出运行时标志位 ${expectedFlags}`);
   };
@@ -1378,7 +1388,7 @@ test('Win32 列表框使用设计器边框和渐变圆角选中样式', () => {
       ...listBox,
       properties: { ...listBox.properties, showBorder: false }
     }] }]
-  }, { lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类' }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  }, { lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类' }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(borderlessCpp, /L"ListBox"[^\n]+, 0, RGB\(71, 85, 105\)/u);
 });
 
@@ -1419,7 +1429,7 @@ test('Win32 分组框沿用文字颜色并支持标题对齐和边框外观', ()
   };
   const cpp = generateLingCppNativeWin32Project(project, {
     lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类'
-  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.match(cpp, /L"GroupBox"[^\n]+, 3, RGB\(34, 211, 238\)[^\n]+RGB\(31, 41, 55\), false, RGB\(249, 115, 22\)/u);
   assert.match(cpp, /L"GroupBox"[^\n]+, 0, RGB\(239, 68, 68\)/u);
@@ -1475,7 +1485,7 @@ test('分组框转发嵌套组合框的自绘、颜色和选择消息', () => {
   };
   const cpp = generateLingCppNativeWin32Project(project, {
     lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类'
-  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.match(cpp, /\{ 1002, 1001, L"ComboBox"/u);
   const forwardingStart = cpp.indexOf('if (IsType(*control, L"GroupBox") && (');
@@ -1522,7 +1532,7 @@ test('Win32 组合框分离收起高度和下拉高度并使用暗色自绘', ()
   };
   const cpp = generateLingCppNativeWin32Project(project, {
     lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类'
-  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.match(cpp, /style \|= \(control\.flags & CF_EDITABLE\) \? CBS_DROPDOWN : CBS_DROPDOWNLIST/u);
   assert.match(cpp, /style \|= CBS_OWNERDRAWFIXED \| CBS_HASSTRINGS/u);
@@ -1591,7 +1601,7 @@ test('Win32 增强组合框应用模型颜色并允许设置下拉列表高度',
   };
   const cpp = generateLingCppNativeWin32Project(project, {
     lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类'
-  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.match(cpp, /L"ComboBoxEx"[^\n]+RGB\(17, 34, 51\), false, RGB\(221, 238, 255\)[^\n]+L"", L"260"/u);
   assert.match(cpp, /IsType\(control, L"ComboBox"\) \|\| IsType\(control, L"ComboBoxEx"\)/u);
@@ -1641,7 +1651,7 @@ test('启用 new_emoji 后设计器模型生成真实原生窗口和基础控件
     lingCppSourceCode: '类 MainWindow\n    事件 创建完毕()\n        主输入框.内容 = "new_emoji 已创建"\n        调试输出(主输入框.内容)\n    结束\n    事件 _文件上传_文件已选择()\n        调试输出(NE_取最近上传选择文件())\n    结束\n    事件 _文件上传_上传操作()\n        调试输出("上传动作")\n    结束\n结束类',
     enabledModules: [newEmojiModule]
   });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.match(cpp, /#include "new_emoji_bridge\.h"/);
   assert.match(cpp, /#ifndef DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2/u);
@@ -1708,6 +1718,59 @@ test('启用 new_emoji 后设计器模型生成真实原生窗口和基础控件
   assert.ok(generated.diagnostics.some(item => item.includes('说明文本') && item.includes('仅支持字体名称和字号')));
 });
 
+test('new_emoji + fbro 窗口项目生成的 FBro 运行时预处理条件必须配平', () => {
+  // 2026-10-01 实锤：FBro缓冲_转十六进制 的 #else 回退分支缺 #endif，
+  // 任何启用 fbro 的 new_emoji 窗口项目 F5 编译都会以 C1004（意外的文件尾）失败。
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'new-emoji-fbro-project',
+    name: 'new_emoji fbro 项目',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: 'MainWindow', title: 'fbro 主窗口',
+      width: 720, height: 480, background: '#111827', description: '',
+      controls: []
+    }]
+  };
+  const modules: InstalledModule[] = [
+    {
+      manifest: {
+        schemaVersion: 2, id: 'lingbuilder.new_emoji.ui', name: 'new_emoji 原生界面库', version: '1.0.0',
+        category: '界面', description: '测试模块',
+        targets: [
+          { id: 'windows-msvc-win32', platform: 'windows', arch: 'win32', toolchain: 'msvc', includeDirs: ['include'], libs: ['lib/Win32/new_emoji.lib'] },
+          { id: 'windows-msvc-x64', platform: 'windows', arch: 'x64', toolchain: 'msvc', includeDirs: ['include'], libs: ['lib/x64/new_emoji.lib'] }
+        ]
+      },
+      installPath: 'C:/modules/lingbuilder.new_emoji.ui', isInstalled: true, isEnabledForProject: true, diagnostics: []
+    },
+    {
+      manifest: {
+        schemaVersion: 2, id: 'lingbuilder.fbro.browser', name: 'FBro 浏览器', version: '1.0.0',
+        category: '界面', description: '测试模块',
+        targets: [
+          { id: 'windows-msvc-x64', platform: 'windows', arch: 'x64', toolchain: 'msvc', includeDirs: ['include'], libs: ['lib/x64/LingBuilderFbroBridge.lib'] }
+        ]
+      },
+      installPath: 'C:/modules/lingbuilder.fbro.browser', isInstalled: true, isEnabledForProject: true, diagnostics: []
+    }
+  ];
+  const generated = generateLingCppNativeWin32Project(project, {
+    lingCppSourceCode: '类 MainWindow\n    事件 创建完毕()\n        调试输出("fbro 可用")\n    结束\n结束类',
+    enabledModules: modules
+  });
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
+  const shimStart = cpp.indexOf('static std::wstring FBro缓冲_转十六进制(long long buffer)');
+  assert.ok(shimStart >= 0, '启用 fbro 的 new_emoji 项目必须生成 FBro 缓冲运行时');
+  assert.match(
+    cpp.slice(shimStart),
+    /#else\s*\(void\)buffer;\s*return L"";\s*#endif\s*\}/u,
+    'FBro缓冲_转十六进制 的 #else 回退分支必须以 #endif 收尾再闭函数'
+  );
+  const openConditionals = (cpp.match(/^[ \t]*#[ \t]*(?:if|ifdef|ifndef)\b/gm) ?? []).length;
+  const endIfs = (cpp.match(/^[ \t]*#[ \t]*endif\b/gm) ?? []).length;
+  assert.equal(openConditionals, endIfs, '生成的源码预处理条件必须配平（缺 #endif 会以 C1004 意外文件尾爆发）');
+});
+
 test('new_emoji 浅色窗口显式切浅色主题并逐字下发外观颜色令牌', () => {
   const project: LingWindowProject = {
     schemaVersion: 2,
@@ -1737,7 +1800,7 @@ test('new_emoji 浅色窗口显式切浅色主题并逐字下发外观颜色令�
     lingCppSourceCode: '类 MainWindow\n    事件 创建完毕()\n        调试输出("就绪")\n    结束\n结束类',
     enabledModules: [newEmojiModule]
   });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   // 浅色背景必须走 NE_创建窗口 并显式 EU_SetThemeMode(LIGHT)：
   // 随包引擎的浅色创建路径从不设置主题，缺这行运行窗口永远深色。
@@ -1802,7 +1865,7 @@ test('new_emoji 目录编辑框在创建后应用设计器显示内容', () => {
     return generateLingCppNativeWin32Project(project, {
       enabledModules,
       lingCppSourceCode: '类 MainWindow\n结束类'
-    }).files.find(file => file.relativePath === 'main.cpp')!.content;
+    }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   };
   const applyLine = 'EU_SetElementText(g_newEmojiWindow, ne_element_1, reinterpret_cast<const unsigned char*>(ne_element_1_utf8_content.data()), static_cast<int>(ne_element_1_utf8_content.size()));';
 
@@ -1874,7 +1937,7 @@ test('new_emoji 93 项目录生成类型化运行时创建和标记查找 C++', 
       '结束类'
     ].join('\n')
   });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.deepEqual(generated.blockingDiagnostics, []);
   assert.equal((cpp.match(/static LingControlRef 控件_创建NE/gu) || []).length, 93);
   assert.equal((cpp.match(/static LingControlRef 通过标记文本获取NE/gu) || []).length, 93);
@@ -1996,7 +2059,7 @@ test('new_emoji 命名空间列表框保留静态项目并跳过会清空数据�
   const cpp = generateLingCppNativeWin32Project(project, {
     lingCppSourceCode: '类 MainWindow\n结束类',
     enabledModules: [newEmojiModule]
-  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.match(cpp, /LB_NE_ToUtf8\(L"整理需求 📋\|设计界面 🎨\|导出项目 🚀"\)/u);
   assert.match(cpp, /EU_CreateListBox\(/u);
@@ -2074,7 +2137,7 @@ test('new_emoji 图标设计器百分比按 valueScale 转换为原生倍率', (
   const cpp = generateLingCppNativeWin32Project(project, {
     lingCppSourceCode: '类 MainWindow\n结束类',
     enabledModules: [newEmojiModule]
-  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.match(cpp, /EU_SetIconOptions\(g_newEmojiWindow, ne_element_1, 1, 0\);/u);
   assert.doesNotMatch(cpp, /EU_SetIconOptions\([^\n]+, 100, 0\);/u);
@@ -2203,7 +2266,7 @@ test('new_emoji 隐藏的 Notification、Message 和 MessageBox 不在窗口初�
   const cpp = generateLingCppNativeWin32Project(project, {
     lingCppSourceCode: '类 MainWindow\n结束类',
     enabledModules: [newEmojiModule]
-  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.equal((cpp.match(/EU_ShowMessage\(/gu) || []).length, 1);
   assert.doesNotMatch(cpp, /EU_CreateNotification\(/u);
@@ -2285,7 +2348,7 @@ test('new_emoji Table 示例绑定鼠标进入和参数化单元格动作并输�
     enabledModules: [basicModule, installed],
     lingCppSourceCode: source
   });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.match(cpp, /case 1:[\s\S]*调试输出\(L"表格06鼠标移入"\)/u);
   assert.match(cpp, /EU_SetElementMouseCallback\(g_newEmojiWindow, ne_element_7, LB_NE_Event_/u);
@@ -2371,7 +2434,7 @@ test('new_emoji ListBox 所有事件生成真实参数并映射原生回调 ABI'
     enabledModules: [basicModule, installed],
     lingCppSourceCode: source
   });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.match(cpp, /std::wstring 选中键列表 = LB_NE_FromUtf8\(lb_utf8, lb_utf8_length\);/u);
   assert.match(cpp, /int 项目索引 = lb_value;\s+int 起始位置 = lb_range_start;\s+int 结束位置 = lb_range_end;/u);
@@ -2445,7 +2508,7 @@ test('new_emoji Tabs 选择变化事件生成真实参数并映射原生回调 A
     enabledModules: [basicModule, installed],
     lingCppSourceCode: source
   });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.equal(generated.blockingDiagnostics.length, 0);
   assert.match(cpp, /int 选中索引 = lb_value;\s+int 项目数量 = lb_range_start;\s+int 动作 = lb_range_end;/u);
   assert.match(cpp, /EU_SetTabsChangeCallback\(g_newEmojiWindow, ne_element_1, LB_NE_Event_/u);
@@ -2488,7 +2551,7 @@ test('new_emoji tabs defer page binding until page controls are created', async 
     lingCppSourceCode: source,
     enabledModules: [basicModule, newEmojiModule]
   });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   const controls = project.windows[0]?.controls || [];
   const tabs = controls.find(control => control.designerType === 'lingbuilder.new_emoji.ui/Tabs');
   assert.ok(tabs, '验证项目必须包含主 Tabs 控件');
@@ -2642,7 +2705,7 @@ test('new_emoji 契约覆盖可移植 Win32 基础命令和完整窗口事件上
     lingCppSourceCode: '类 MainWindow\n结束类',
     enabledModules: [basicModule, newEmojiModule]
   });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   const bindingNames = new Set((basicManifest.bindings?.commands || []).map(binding => binding.command));
   for (const commandName of NEW_EMOJI_WIN32_BASIC_COMMANDS) {
     assert.ok(bindingNames.has(commandName), `契约命令必须存在于 Win32 基础模块 binding：${commandName}`);
@@ -2661,7 +2724,7 @@ test('new_emoji 契约覆盖可移植 Win32 基础命令和完整窗口事件上
     lingCppSourceCode: '类 MainWindow\n    事件 创建完毕()\n        调试输出(文本_取长度("abc"))\n    结束\n结束类',
     enabledModules: [basicModule, textModule, newEmojiModule]
   });
-  const portableCpp = portable.files.find(file => file.relativePath === 'main.cpp')!.content;
+  const portableCpp = portable.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.doesNotMatch(portable.blockingDiagnostics.join('\n'), /文本_取长度/u);
   assert.match(portableCpp, /int 文本_取长度\(const wchar_t\* text\)/u);
   assert.match(portableCpp, /调试输出\(文本_取长度\(L"abc"\)\);/u);
@@ -2701,7 +2764,7 @@ test('new_emoji 契约覆盖可移植 Win32 基础命令和完整窗口事件上
     lingCppSourceCode: menuSource,
     enabledModules: [basicModule, commonControlsModule, newEmojiModule]
   });
-  const menuCpp = menuGenerated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  const menuCpp = menuGenerated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.deepEqual(menuGenerated.blockingDiagnostics, []);
   assert.deepEqual([...NEW_EMOJI_WIN32_MENU_COMMANDS], ['上下文菜单_显示', '弹出菜单_显示', '弹出菜单_在坐标显示', '菜单_取最后项目']);
   assert.match(menuCpp, /TrackPopupMenuEx\(menu, TPM_RETURNCMD \| TPM_RIGHTBUTTON/u);
@@ -2832,7 +2895,7 @@ test('非可视文件对话框绑定按钮和拖放目标并生成统一结果�
     结束
 结束类`;
   const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /FileDialogSpec g_fileDialogs/);
   assert.match(cpp, /L"file-dialog-1", L"文件对话框1", 0, 1001, 1002, true, true/u);
   assert.match(cpp, /HandleFileDialogTrigger\(control->id\)/);
@@ -2879,7 +2942,7 @@ test('上下文菜单与弹出菜单作为非可视资源生成右键绑定、�
     结束
 结束类`;
   const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /MenuResourceSpec g_menuResources/);
   assert.match(cpp, /L"context-menu-1", L"上下文菜单1", 0, 1001, true/u);
   assert.match(cpp, /L"popup-menu-1", L"弹出菜单1", 0, 0, false/u);
@@ -2931,7 +2994,7 @@ test('视频播放器注册 Media Foundation 属性、命令和原生播放生�
         调试输出("视频播放失败")
     结束
 结束类`;
-  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /#include <mfplay\.h>/);
   assert.match(cpp, /#pragma comment\(lib, "mfplay\.lib"\)/);
   assert.match(cpp, /MFPCreateMediaPlayer\(mediaUrl/);
@@ -2963,7 +3026,7 @@ test('动画控件使用 Media Foundation 播放现代编码 AVI 并保留完成
   };
   const cpp = generateLingCppNativeWin32Project(project, {
     lingCppSourceCode: '类 主窗口 : 公开 窗体\n    事件 动画控件1_播放完毕()\n        调试输出("播放完毕")\n    结束\n结束类'
-  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.match(cpp, /L"Animation"[^\n]+L"assets\/demo-h264\.avi"[^\n]+24576/u);
   assert.match(cpp, /IsType\(control, L"Animation"\) \|\| IsType\(control, L"VideoPlayer"\)/u);
@@ -2990,7 +3053,7 @@ test('原生 Win32 上传控件生成文件选择、格式过滤、文件列表�
         调试输出("开始上传")
     结束
 结束类`;
-  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /CLSID_FileOpenDialog/);
   assert.match(cpp, /FOS_ALLOWMULTISELECT/);
   assert.match(cpp, /WM_DROPFILES/);
@@ -3064,7 +3127,7 @@ test('圆角按钮使用实际父容器背景清理四角而不是固定使用�
   };
   const cpp = generateLingCppNativeWin32Project(project, {
     lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类'
-  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.match(cpp, /COLORREF ResolveControlSurroundingColor\(const ControlSpec& control, HWND controlHwnd\) const/u);
   assert.match(cpp, /return tabControl \? ResolveTabBackground\(\*tabControl\) : GetSysColor\(COLOR_WINDOW\);/u);
@@ -3686,7 +3749,7 @@ test('窗口大小与最大化限制进入布局 XML 和 Win32 样式', () => {
   const xml = generateWindowXml(window);
   const cpp = generateLingCppNativeWin32Project(project, {
     lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类'
-  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.match(xml, /禁止拖拽调整大小="是"/u);
   assert.match(xml, /禁止窗口最大化="是"/u);
@@ -3722,7 +3785,7 @@ test('窗口外观与 ListView 深色配色进入同一份 Win32 生成结果', 
   };
   const cpp = generateLingCppNativeWin32Project(project, {
     lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类'
-  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.match(cpp, /DwmSetWindowAttributeFunction/u);
   assert.match(cpp, /const DWORD captionColor = 35/u);
@@ -3760,7 +3823,7 @@ test('自定义 ICO 路径进入设计器结构与 Win32 大小图标加载链�
   };
   const project: LingWindowProject = { schemaVersion: 2, id: 'demo', name: '图标项目', windows: [window] };
   const result = generateLingCppNativeWin32Project(project, { lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类' });
-  const cpp = result.files.find(file => file.relativePath === 'main.cpp')!.content;
+  const cpp = result.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   const resource = result.files.find(file => file.relativePath === WINDOWS_EXECUTABLE_RESOURCE_FILE)?.content || '';
 
   assert.equal(result.diagnostics.some(message => message.includes('自定义图标必须')), false);
@@ -3778,7 +3841,7 @@ test('自定义 ICO 路径进入设计器结构与 Win32 大小图标加载链�
   assert.ok(unsafeResult.diagnostics.some(message => message.includes('assets 目录内的相对 ICO 路径')));
   assert.ok(unsafeResult.blockingDiagnostics.some(message => message.includes('assets 目录内的相对 ICO 路径')));
   assert.equal(unsafeResult.files.some(file => file.relativePath === WINDOWS_EXECUTABLE_RESOURCE_FILE), false);
-  assert.doesNotMatch(unsafeResult.files.find(file => file.relativePath === 'main.cpp')!.content, /C:\\\\Users/u);
+  assert.doesNotMatch(unsafeResult.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, ''), /C:\\\\Users/u);
 });
 
 test('LingBuilder 默认窗口图标生成 EXE 资源并物化为可移植 ICO', async () => {
@@ -3897,7 +3960,7 @@ test('内嵌站点生成零释放内存服务运行时并要求启用 EdgeView �
   };
   const withModule = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [edgeviewModule] });
   assert.equal(withModule.blockingDiagnostics.length, 0);
-  const cpp = withModule.files.find(file => file.relativePath === 'main.cpp')!.content;
+  const cpp = withModule.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /void LingBuilderEmbeddedSite_注册\(EdgeViewInstance& instance\)/u);
   assert.match(cpp, /LingBuilderEmbeddedSite_注册\(instance\);/u);
   assert.match(cpp, /static const wchar_t\* const kHost = L"demo\.local";/u);
@@ -3956,7 +4019,7 @@ test('内嵌站点在 FBro 生成创建后注册流程并阻断独立进程模�
     { lingCppSourceCode: source, enabledModules: [fbroModule] }
   );
   assert.equal(inProcess.blockingDiagnostics.length, 0);
-  const cpp = inProcess.files.find(file => file.relativePath === 'main.cpp')!.content;
+  const cpp = inProcess.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /#define LINGBUILDER_FBRO_EMBEDDED_SITE 1/u);
   assert.match(cpp, /int FBro_内嵌站点_注册规则\(long long handle\)/u);
   assert.match(cpp, /FBroHsVIPControl_AddResourceHandlerChangeData/u);
@@ -4083,7 +4146,7 @@ test('标签页中的透明标签在 Win32 运行时继承实际父容器背景'
   };
   const cpp = generateLingCppNativeWin32Project(project, {
     lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类'
-  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.match(cpp, /bool backgroundTransparent;/u);
   // ControlSpec 行自 6ae729c 起在 foreground 与 enabled 之间新增 selectedColor/selectedMarkColor 两个颜色字段；
@@ -4148,7 +4211,7 @@ test('副窗口和嵌套容器中的透明超链接跟随实际父级背景', ()
     activeWindowId: 'secondary',
     lingCppSourceCode: '类 副窗口 : 公开 窗体\n结束类',
     lingCppSourceFilePath: 'src/SecondaryWindow.lcpp'
-  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.match(cpp, /L"SysLink", L"副窗口链接", L"打开帮助"[^\n]+RGB\(85, 102, 119\), true/u);
   assert.match(cpp, /if \(control\.backgroundTransparent\) style \|= LWS_TRANSPARENT;/u);
@@ -4205,7 +4268,7 @@ test('透明复选框和单选框的 Win32 自绘背景继承实际父容器', (
   };
   const cpp = generateLingCppNativeWin32Project(project, {
     lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类'
-  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.match(cpp, /L"CheckBox", L"透明复选框", L"透明复选框"[^\n]+true, RGB/u);
   assert.match(cpp, /L"RadioButton", L"透明单选框", L"透明单选框"[^\n]+true, RGB/u);
@@ -4229,7 +4292,7 @@ test('复选框和单选框生成独立的选中颜色与标记颜色', () => {
       ]
     }]
   };
-  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类' }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类' }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /COLORREF selectedColor;/u);
   assert.match(cpp, /COLORREF selectedMarkColor;/u);
   assert.match(cpp, /RGB\(37, 99, 235\), RGB\(255, 255, 255\)/u);
@@ -4268,7 +4331,7 @@ test('高级控件生成真实 Win32 类、专属数据和多事件通知', () =
     }]
   };
   const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类' });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /WC_LISTVIEWW/);
   assert.match(cpp, /WC_TREEVIEWW/);
   assert.match(cpp, /DATETIMEPICK_CLASSW/);
@@ -4378,7 +4441,7 @@ test('日期选择器和月历提供不会裁切内容的可调高度', () => {
   };
   const cpp = generateLingCppNativeWin32Project(project, {
     lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类'
-  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /L"DateTimePicker"[^\n]+L"1200"/u);
   assert.match(cpp, /requestedHeight = ScaleForDpi\(std::max\(200, _wtoi\(control\.data2\)\), dpi_\)/u);
   assert.match(cpp, /case WM_LINGBUILDER_LAYOUT_DATE_PICKER/u);
@@ -4420,7 +4483,7 @@ test('选项卡容器槽位、隐藏表头、Rebar、Pager 和 UpDown 生成真�
       background: '#202028', description: '', controls: [tab, tabChild, rebar, toolbar, pager, pagerChild, edit, upDown], menuItems: ''
     }]
   };
-  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类' }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类' }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /UpdateTabChildren/);
   assert.match(cpp, /struct RuntimeTabPage/u);
   assert.match(cpp, /if \(!runtimeControls_\.back\(\)\.hideTabHeader\) TabCtrl_AdjustRect\(child, FALSE, &pageRect\)/u);
@@ -4503,7 +4566,7 @@ test('旧项目分页容器不再允许新增但保留中文属性和原生生�
   };
   const cpp = generateLingCppNativeWin32Project(project, {
     lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类'
-  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /L"Pager"[^\n]+L"vertical"/u);
   assert.match(cpp, /if \(TextEquals\(control\.option1, L"vertical"\)\) style \|= PGS_VERT/u);
   assert.match(cpp, /PGM_SETCHILD/u);
@@ -4538,7 +4601,7 @@ test('系统对话框、查找替换、工具栏命令和真实文本打印保�
   const project: LingWindowProject = {
     schemaVersion: 2, id: 'dialogs', name: '系统对话框', resources: [], windows: [{ id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 640, height: 480, background: '#202028', description: '', controls: [] }]
   };
-  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类' }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类' }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /SetFileTypes/);
   assert.match(cpp, /ERROR_CANCELLED/);
   assert.match(cpp, /系统对话框_状态/u);
@@ -4579,7 +4642,7 @@ test('外壳控件使用独立工具栏命令、可着色对齐状态栏分区�
   const pagerChild = createControl('pager-child', 'pager', 'Button');
   const rich = { ...createControl('rich', undefined, 'RichEdit'), background: 'transparent', foreground: '#12AB34', properties: { multiline: true, wordWrap: true, readOnly: false, scrollBars: 'vertical', rtfText: '{\\rtf1\\ansi\\b 加粗\\b0}', toolTip: '富文本提示', toolTipDelay: 250 } };
   const project: LingWindowProject = { schemaVersion: 2, id: 'shell-controls', name: '外壳控件', resources: [], windows: [{ id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 800, height: 600, background: '#202028', description: '', controls: [toolbar, status, pager, pagerChild, rich] }] };
-  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类' }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类' }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /toolbarCommandOwners_/);
   assert.match(cpp, /toolbarCommandValues_/);
   assert.match(cpp, /TBSTYLE_FLAT \| TBSTYLE_TOOLTIPS \| CCS_NODIVIDER \| CCS_NOPARENTALIGN \| CCS_NOMOVEY \| CCS_NORESIZE/u);
@@ -4623,7 +4686,7 @@ test('ToolTip 与 PropertySheet 作为非可视资源生成附加行为和顶层
     ]
   };
   const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: '类 主窗口 : 公开 窗体\n    事件 _设置属性页_属性被应用()\n        调试输出("已应用")\n    结束\n结束类' });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /L"点击保存", 180/);
   assert.match(cpp, /PropertySheetSpec/);
   assert.match(cpp, /BuildPropertySheetTemplate/);
@@ -4662,7 +4725,7 @@ test('.lcpp 控件属性读写和集合命令通过模块 binding 确定性生�
         选项卡_取隐藏表头("页面选项卡")
     结束
 结束类`;
-  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /控件_设置文本\(L"保存按钮", L"立即保存"\)/u);
   assert.match(cpp, /控件_设置文本\(L"保存按钮", LingCppWideArg\(到文本\(123\)\)\)/u);
   assert.match(cpp, /std::wstring 到文本\(int value\) const/u);
@@ -4737,7 +4800,7 @@ test('文本类型转换命令族在 Win32 与 new_emoji 两后端确定性生�
 
   const win32 = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [basicModule] });
   assert.deepEqual(win32.blockingDiagnostics, []);
-  const win32Cpp = win32.files.find(file => file.relativePath === 'main.cpp')!.content;
+  const win32Cpp = win32.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   // 控件属性表达式按控件名确定性翻译，字面量走 L"..."；非文本实参不会被自动补 到文本（与 到整数 一致）。
   assert.match(win32Cpp, /long long 大小 = 到长整数\(LingCppWideArg\(控件_取文本\(L"编辑框_大小"\)\)\);/u);
   assert.match(win32Cpp, /double 折扣 = 到小数\(L" 0\.85 "\);/u);
@@ -4768,7 +4831,7 @@ test('文本类型转换命令族在 Win32 与 new_emoji 两后端确定性生�
     { lingCppSourceCode: source, enabledModules: [basicModule, newEmojiModule] }
   );
   assert.deepEqual(newEmoji.blockingDiagnostics, []);
-  const newEmojiCpp = newEmoji.files.find(file => file.relativePath === 'main.cpp')!.content;
+  const newEmojiCpp = newEmoji.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(newEmojiCpp, /static long long 到长整数\(const std::wstring& text\) \{/u);
   assert.match(newEmojiCpp, /static double 到小数\(const std::wstring& text\) \{/u);
   assert.match(newEmojiCpp, /static float 到单精度小数\(const std::wstring& text\) \{/u);
@@ -4854,7 +4917,7 @@ test('ListView 完整数据接口、批量更新和 OWNERDATA 虚拟模式确定
         列表视图_设置虚拟行("虚拟列表", 1, 列表视图_创建行("2", "数组行", 64, 真))
     结束
 结束类`;
-  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /LVS_OWNERDATA/u);
   assert.match(cpp, /LVN_GETDISPINFOW/u);
   assert.match(cpp, /ListView_SetItemCountEx/u);
@@ -4882,7 +4945,7 @@ test('工作区 ListView 全方法示例可直接生成并用于源码包分享'
   const enabledModules = ['lingbuilder.win32.basic', 'lingbuilder.win32.common-controls'].map(id => ({ manifest: BUILTIN_MODULES.find(module => module.id === id)!, installPath: 'builtin', isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] }));
   const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules });
   assert.deepEqual(generated.blockingDiagnostics, []);
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /std::vector<std::wstring> 行数据\{\};/u);
   assert.match(cpp, /std::vector<std::vector<std::wstring>> 导入行 = 列表视图_创建行集合/u);
   assert.match(cpp, /行数据\s*=\s*列表视图_创建行\(文本序号, L"代码段", 128, 5\)/u);
@@ -4921,7 +4984,7 @@ test('.lcpp 图片框设置图片方法确定性生成 Win32 运行时调用', (
         图片框1.设置图片("assets/示例.png")
     结束
 结束类`;
-  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.match(cpp, /控件_设置图片\(L"图片框1", L"assets\/示例\.png"\)/u);
   assert.match(cpp, /bool 控件_设置图片\(const wchar_t\* controlName, const std::wstring& imagePath\)/u);
@@ -4942,7 +5005,7 @@ test('窗口创建完毕事件支持自定义处理器绑定并进入生成结�
   const generated = generateLingCppNativeWin32Project(project, {
     lingCppSourceCode: '类 主窗口 : 公开 窗体\n    事件 _主窗口_初始化界面()\n        调试输出("初始化")\n    结束\n结束类'
   });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /主窗口_初始化界面\(\);/u);
 });
 
@@ -4968,7 +5031,7 @@ test('窗口第一批和第二批事件生成统一 Win32 分发与上下文运�
   const generated = generateLingCppNativeWin32Project(project, {
     lingCppSourceCode: `类 主窗口 : 公开 窗体\n${sourceEvents}\n结束类`
   });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.match(cpp, /const wchar_t\* events;/u);
   assert.match(cpp, /Closing=_主窗口_关闭前/u);
@@ -5017,7 +5080,7 @@ test('new_emoji FBro browser shell template generates one real HWND host per tab
     lingCppSourceFilePath: 'src/browser-shell/MainWindow.lcpp',
     lingCppSourceCode: source
   });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.deepEqual(generated.blockingDiagnostics, []);
   assert.doesNotMatch(generated.diagnostics.join('\n'), /需要启用模块 lingbuilder\.win32\.common-controls/u);
@@ -5137,7 +5200,7 @@ test('未启用 FBro 模块时生成浏览器管理器安全回退，避免发�
   const cpp = generateLingCppNativeWin32Project(project, {
     lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类',
     enabledModules: []
-  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.match(cpp, /void 浏览器管理器_调整页面\(\) \{\}/u);
   assert.match(cpp, /bool 浏览器管理器_是否全部关闭\(\) const \{ return true; \}/u);
@@ -5217,7 +5280,7 @@ test('热键输入框的文字色和透明背景进入 Win32 父容器绘制链�
 
   const cpp = generateLingCppNativeWin32Project(project, {
     lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类'
-  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.match(cpp, /L"HotKey"[^\n]+true, RGB\(18, 171, 52\)/u);
   assert.match(cpp, /\(message == WM_CTLCOLOREDIT \|\| message == WM_CTLCOLORSTATIC\) && IsType\(\*control, L"HotKey"\)/u);
@@ -5275,7 +5338,7 @@ test('颜色选择器支持可视入口和隐藏后由其他事件按名称打�
     结束
 结束类`;
   const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source })
-    .files.find(file => file.relativePath === 'main.cpp')!.content;
+    .files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.match(cpp, /L"ColorPicker", L"颜色选择器1"/u);
   assert.match(cpp, /L"选择主题颜色"/u);
@@ -5340,7 +5403,7 @@ test('格式化文本完整能力演示项目覆盖四组选项卡并可生成�
     lingCppSourceFilePath: 'src/format-text-api-demo/MainWindow.lcpp',
     enabledModules
   });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.deepEqual(generated.blockingDiagnostics, []);
   assert.match(cpp, /WC_TABCONTROL/u);
   assert.match(cpp, /template <typename\.\.\. Args> LingCppTextValue 格式化文本/u);
@@ -5378,7 +5441,7 @@ test('multiline TextBox text updates keep the latest log line visible', () => {
   };
   const cpp = generateLingCppNativeWin32Project(project, {
     lingCppSourceCode: 'class MainWindow: public window\nend class'
-  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.match(cpp, /const ControlSpec\* control = FindControl\(runtime->id\);[\s\S]+?if \(updated && control && IsType\(\*control, L"TextBox"\) && \(control->flags & CF_MULTILINE\)\)/u);
   assert.match(cpp, /SendMessageW\(runtime->hwnd, EM_SETSEL, static_cast<WPARAM>\(-1\), static_cast<LPARAM>\(-1\)\);/u);
@@ -5441,7 +5504,7 @@ test('lingCpp 生成器：边框样式进入 WindowSpec 与 C++ 样式辅助函�
   };
   const projectOf = (window: LingWindowModel): LingWindowProject => ({ id: 'bp', name: '边框项目', windows: [window] });
   const result = generateLingCppNativeWin32Project(projectOf({ ...baseWindow, borderStyle: 'none', borderlessDraggable: true }));
-  const mainCpp = result.files.find(file => file.relativePath.endsWith('.cpp'))!;
+  const mainCpp = { content: result.files.filter(file => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp').map(file => file.content).join('\n') };
   assert.ok(mainCpp.content.includes('LB_WindowBorderStyleToDwStyle'));
   assert.ok(mainCpp.content.includes('LB_WindowBorderStyleToDwExStyle'));
   assert.ok(mainCpp.content.includes('WS_POPUP | WS_SYSMENU | WS_MINIMIZEBOX'));
@@ -5462,11 +5525,11 @@ test('lingCpp 生成器：固定/窄标题边框映射与序列化字段', () =>
   };
   const projectOf = (window: LingWindowModel): LingWindowProject => ({ id: 'bp2', name: '边框项目2', windows: [window] });
   const fixedResult = generateLingCppNativeWin32Project(projectOf({ ...baseWindow, borderStyle: 'normal-fixed' }));
-  const fixedCpp = fixedResult.files.find(file => file.relativePath.endsWith('.cpp'))!;
+  const fixedCpp = { content: fixedResult.files.filter(file => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp').map(file => file.content).join('\n') };
   assert.ok(fixedCpp.content.includes('WS_OVERLAPPEDWINDOW & ~WS_THICKFRAME'));
 
   const thinResult = generateLingCppNativeWin32Project(projectOf({ ...baseWindow, borderStyle: 'thin-title-fixed' }));
-  const thinCpp = thinResult.files.find(file => file.relativePath.endsWith('.cpp'))!.content;
+  const thinCpp = thinResult.files.filter(file => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp').map(file => file.content).join('\n');
   assert.ok(thinCpp.includes('WS_EX_TOOLWINDOW'));
   // WindowSpec 序列化：resizable 由 thin-title-fixed 派生为 false，边框编号 4，拖动布尔默认 false
   assert.ok(thinCpp.includes('false, true, 4, false, g_controls_'));
@@ -5527,7 +5590,7 @@ test('精简设计器模型缺少控件颜色字段时也能生成（手写/AI �
     }]
   } satisfies LingWindowProject;
   const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: '类 主窗口\n结束类\n' })
-    .files.find(file => file.relativePath === 'main.cpp')!.content;
+    .files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /L"状态标签"/u);
   // 背景缺省回落到窗口背景，前景缺省回落黑色 —— 不再抛异常。
   assert.match(cpp, /RGB\(32, 32, 40\), false, RGB\(0, 0, 0\)/u);
@@ -5592,7 +5655,7 @@ test('常规命名事件两种写法都接线：无下划线的 按钮1_被单�
     结束
 结束类
 `
-    }).files.find(file => file.relativePath === 'main.cpp')!.content;
+    }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   };
 
   // 无下划线（AI/手写自然写法）必须接线。
@@ -5633,6 +5696,76 @@ test('事件代码定位在缺少窗口类声明时退回「声明处理器的�
   assert.equal(conventional?.path, 'src/主窗口.lcpp');
 
   assert.equal(selectControlEventTargetFile([], { windowClassName: '主窗口', handlerName: '创建完毕' }), undefined);
+});
+
+// ===== 设计器双击定位创建完毕事件（2026-09-30 灵码1 回归） =====
+// 背景：ensure 的追加判定原先只认精确正则，而存在性判定 hasLingCppEventHandler 有 parser
+// 「类名_方法」容错——新建项目模板的裸「事件 创建完毕」被容错判为已存在，却又被追加出
+// 第二个「_MainWindow_创建完毕」处理器，一次双击出两个创建完毕且日志谎报「已升级」。
+
+test('双击定位事件：裸「创建完毕」容错命中时不再追加第二个处理器', () => {
+  const template = [
+    '包 LingBuilder',
+    '',
+    '类 MainWindow',
+    '    事件 创建完毕()',
+    '        调试输出("窗口创建完毕")',
+    '    结束',
+    '结束类',
+    ''
+  ].join('\n');
+  const ensured = ensureLingCppControlEventHandler(template, {
+    controlName: 'MainWindow',
+    controlType: 'Grid',
+    eventName: 'Loaded',
+    handlerName: '_MainWindow_创建完毕',
+    windowClassName: 'MainWindow'
+  });
+  assert.equal(ensured.content, template, '容错命中必须原样返回，不追加第二个处理器');
+  assert.equal(ensured.signatureUpgraded, false);
+  assert.equal(ensured.matchedHandlerName, '创建完毕', '命中名应回指源码里的裸处理器');
+});
+
+test('双击定位事件：处理器缺失时追加强名桩且不算签名升级', () => {
+  const source = '类 MainWindow\n结束类\n';
+  const ensured = ensureLingCppControlEventHandler(source, {
+    controlName: 'MainWindow',
+    controlType: 'Grid',
+    eventName: 'Loaded',
+    handlerName: '_MainWindow_创建完毕',
+    windowClassName: 'MainWindow'
+  });
+  assert.match(ensured.content, /事件 _MainWindow_创建完毕\(\)/u);
+  assert.match(ensured.content, /调试输出\("MainWindow创建完毕"\)/u);
+  assert.equal(ensured.signatureUpgraded, false);
+  assert.equal(ensured.matchedHandlerName, '_MainWindow_创建完毕');
+});
+
+test('双击定位事件：精确名零参处理器升级为强类型签名并如实标记', () => {
+  const source = '类 MainWindow\n    事件 _MainWindow_按键被按下()\n        调试输出("按键")\n    结束\n结束类\n';
+  const ensured = ensureLingCppControlEventHandler(source, {
+    controlName: 'MainWindow',
+    controlType: 'Grid',
+    eventName: 'KeyDown',
+    handlerName: '_MainWindow_按键被按下',
+    windowClassName: 'MainWindow'
+  });
+  assert.equal(ensured.signatureUpgraded, true);
+  assert.match(ensured.content, /事件 _MainWindow_按键被按下\(整数型 键码，逻辑型 Ctrl键按下，逻辑型 Shift键按下，逻辑型 Alt键按下\)/u);
+});
+
+test('双击定位事件：精确名已存在时原样返回', () => {
+  const source = '类 MainWindow\n    事件 _MainWindow_创建完毕()\n        调试输出("x")\n    结束\n结束类\n';
+  const ensured = ensureLingCppControlEventHandler(source, {
+    controlName: 'MainWindow',
+    controlType: 'Grid',
+    eventName: 'Loaded',
+    handlerName: '_MainWindow_创建完毕',
+    windowClassName: 'MainWindow'
+  });
+  assert.equal(ensured.content, source);
+  assert.equal(ensured.signatureUpgraded, false);
+  assert.equal(ensured.matchedHandlerName, '_MainWindow_创建完毕');
 });
 
 
@@ -5714,7 +5847,7 @@ test('事件处理器先于子程序定义调用保持合法，且不得生成�
     '    结束',
     '结束类'
   ].join('\n');
-  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   // 事件处理器调用后置子程序：类内联成员函数体是 complete-class context，顺序与编译解耦。
   assert.match(cpp, /换行\(\);/u);
   assert.match(cpp, /换行\(\)\s*\{/u);
@@ -5737,7 +5870,7 @@ test('Loaded 派发（创建完毕返回）之后补一次 WireCompositeControls
     '    结束',
     '结束类'
   ].join('\n');
-  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /DispatchWindowEvent\(L"Loaded"\); WireCompositeControls\(\);/u);
 });
 
@@ -5762,9 +5895,93 @@ test('TextBox 占位提示走 EM_SETCUEBANNER，content 保持控件真实文本
     '    结束',
     '结束类'
   ].join('\n');
-  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /EM_SETCUEBANNER/u);
   assert.match(cpp, /L"请输入昵称"/u);
   // 占位提示进 data 槽，不是窗口文本：控件初始文本仍为空。
   assert.match(cpp, /L"输入_昵称"/u);
+});
+
+// ===== 窗口源码串写检测与旧命名主源码迁移（2026-10-02 DLL命令声明演示 回归） =====
+// 背景：DLL命令声明演示 项目主源码按旧惯例命名为 src/DLL命令声明演示.lcpp（内容声明的窗口类
+// 是 声明演示窗口）。F5 构建前保存的内联守卫曾把「声明了窗口类但不是绑定源码」一律判串写，
+// 合法旧命名主源码永远无法保存；点击窗口又会按绑定路径合成同名模板，一旦保存即类名重复。
+
+test('串写检测：绑定源码被整文件写入其它窗口内容时报告串写', () => {
+  const project = {
+    windows: [
+      { className: '主窗口', fileName: 'Main.xml', title: '主窗口' },
+      { className: '浏览器窗口', fileName: 'Browser.xml', title: '浏览器' }
+    ]
+  };
+  const clobber = describeWindowSourceClobber(project, 'src', 'src/主窗口.lcpp', '包 演示\n类 浏览器窗口 : 窗口\n结束类\n');
+  assert.match(clobber || '', /浏览器窗口/u);
+  assert.match(clobber || '', /主窗口/u);
+});
+
+test('串写检测：旧命名主源码（非绑定文件）声明窗口类不属于串写，绑定源码声明自己的类也正常', () => {
+  const project = {
+    windows: [
+      { className: '声明演示窗口', fileName: 'DllDeclareDemo.xml', title: '项目 DLL 命令声明演示' }
+    ]
+  };
+  const legacySource = '包 DLL命令声明演示\n类 声明演示窗口 : 窗口\n结束类\n';
+  // src/DLL命令声明演示.lcpp 不匹配绑定路径 src/声明演示窗口.lcpp，但内容是合法主源码。
+  assert.equal(describeWindowSourceClobber(project, 'src', 'src/DLL命令声明演示.lcpp', legacySource), null);
+  // 绑定源码声明自己的类 → 正常内容。
+  assert.equal(describeWindowSourceClobber(project, 'src', 'src/声明演示窗口.lcpp', legacySource), null);
+  // 与任何窗口类都无关的内容 → 不拦。
+  assert.equal(describeWindowSourceClobber(project, 'src', 'src/主窗口.lcpp', '包 演示\n类 完全无关 : 窗口\n结束类\n'), null);
+});
+
+test('旧命名主源码迁移：唯一声明窗口类的旧文件被识别；绑定文件已满足/多声明者/零声明者不迁移', () => {
+  const window = { className: '声明演示窗口', fileName: 'DllDeclareDemo.xml' };
+  const legacy = findLegacyWindowSourceFile([
+    { path: 'src/DLL命令声明演示.lcpp', content: '包 DLL命令声明演示\n类 声明演示窗口 : 窗口\n结束类\n' },
+    { path: 'src/项目DLL命令.lcpp', content: '包 项目DLL命令\nDLL命令库 user32\n结束DLL命令库\n' }
+  ], 'src', window);
+  assert.equal(legacy?.legacyPath, 'src/DLL命令声明演示.lcpp');
+  assert.equal(legacy?.conventionalPath, 'src/声明演示窗口.lcpp');
+
+  // 绑定路径本身已有声明该窗口类的源码（约定已满足）→ 无需迁移。
+  assert.equal(findLegacyWindowSourceFile([
+    { path: 'src/声明演示窗口.lcpp', content: '类 声明演示窗口 : 窗口\n结束类\n' },
+    { path: 'src/旧命名.lcpp', content: '类 声明演示窗口 : 窗口\n结束类\n' }
+  ], 'src', window), null);
+
+  // 两个文件都声明同一窗口类（真重复）→ 不静默迁移，交由诊断处理。
+  assert.equal(findLegacyWindowSourceFile([
+    { path: 'src/甲.lcpp', content: '类 声明演示窗口 : 窗口\n结束类\n' },
+    { path: 'src/乙.lcpp', content: '类 声明演示窗口 : 窗口\n结束类\n' }
+  ], 'src', window), null);
+
+  // 没有任何声明者 → 维持调用方既有的新建行为。
+  assert.equal(findLegacyWindowSourceFile([
+    { path: 'src/项目DLL命令.lcpp', content: '包 项目DLL命令\n' }
+  ], 'src', window), null);
+});
+
+test('项目 DLL 命令声明的虚拟模块在未知命令门禁前并入，声明命令不误报未知的命令（2026-10-02 回归）', () => {
+  // 回归（DLL命令声明演示 实测）：语义诊断在聚合内部执行、而虚拟模块在聚合后才合成，
+  // 未知命令门禁按未并入的模块表查命令表，把全部声明命令误报为「未知的命令」阻断构建。
+  const project: any = {
+    schemaVersion: 2,
+    id: 'adv-dll-declare-demo',
+    name: 'DLL命令声明演示',
+    windows: [{ id: 'declare-window', fileName: 'DllDeclareDemo.xml', className: '声明演示窗口', title: '项目 DLL 命令声明演示', width: 640, height: 540, background: '#1E1E24', description: '', controls: [] }]
+  };
+  const generated = generateLingCppNativeWin32Project(project, {
+    lingCppSources: [
+      { filePath: 'src/声明演示窗口.lcpp', sourceCode: '包 DLL命令声明演示\n类 声明演示窗口 : 窗口\n公开\n  事件 _声明演示窗口_创建完毕()\n    局部 整数型 结果 = 0\n    结果 = 加法计算(123, 456)\n    调试输出(格式化文本("{}", 结果))\n  结束\n结束类\n' },
+      { filePath: 'src/项目DLL命令.lcpp', sourceCode: '包 项目DLL命令\nDLL命令库 AdvancedMathDll\n  Win32 = "dll/Win32/AdvancedMathDll.dll"\n  x64 = "dll/x64/AdvancedMathDll.dll"\n  整数型 加法计算(整数型 被加数, 整数型 加数)\n结束DLL命令库\n' }
+    ],
+    enabledModules: []
+  });
+  assert.deepEqual(
+    generated.blockingDiagnostics.filter(message => message.includes('未知的命令')),
+    [],
+    `声明命令被误报未知的命令：${generated.blockingDiagnostics.join(' | ')}`
+  );
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
+  assert.match(cpp, /加法计算\(123, 456\)/u);
 });
