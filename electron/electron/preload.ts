@@ -22,7 +22,7 @@ contextBridge.exposeInMainWorld('lingBuilder', {
     openPath: (targetPath: string) => ipcRenderer.invoke('shell:open-path', targetPath),
     revealWorkspacePath: (targetPath: string) => ipcRenderer.invoke('shell:reveal-workspace-path', targetPath),
     openWorkspacePath: (relativePath = '.') => ipcRenderer.invoke('shell:open-workspace-path', relativePath),
-    copyFullPath: (target: { kind: 'solution'; solutionName: string } | { kind: 'project'; relativePath: string }) => ipcRenderer.invoke('shell:copy-full-path', target),
+    copyFullPath: (target: { kind: 'solution'; solutionName: string } | { kind: 'project'; relativePath: string } | { kind: 'file'; relativePath: string }) => ipcRenderer.invoke('shell:copy-full-path', target),
   },
   community: {
     openQQGroup: () => ipcRenderer.invoke('community:open-qq-group'),
@@ -53,9 +53,6 @@ contextBridge.exposeInMainWorld('lingBuilder', {
     openAiModuleGuide: () => ipcRenderer.invoke('docs:open-ai-module-guide'),
     readAiModuleGuide: () => ipcRenderer.invoke('docs:read-ai-module-guide'),
   },
-  cli: {
-    inspect: () => ipcRenderer.invoke('cli:inspect'),
-  },
   aiBridge: {
     status: () => ipcRenderer.invoke('ai-bridge:status'),
     start: (request: unknown) => ipcRenderer.invoke('ai-bridge:start', request),
@@ -65,36 +62,10 @@ contextBridge.exposeInMainWorld('lingBuilder', {
     stop: () => ipcRenderer.invoke('ai-bridge:stop'),
     rotateToken: () => ipcRenderer.invoke('ai-bridge:rotate-token'),
     revealToken: () => ipcRenderer.invoke('ai-bridge:reveal-token'),
-    clients: () => ipcRenderer.invoke('ai-bridge:clients'),
-    codexDesktopStatus: (permission?: string) => ipcRenderer.invoke('ai-bridge:codex-desktop-status', permission),
-    configureCodexDesktop: (request: unknown) => ipcRenderer.invoke('ai-bridge:configure-codex-desktop', request),
-    removeCodexDesktop: () => ipcRenderer.invoke('ai-bridge:remove-codex-desktop'),
-    openCodexDesktop: () => ipcRenderer.invoke('ai-bridge:open-codex-desktop'),
-    launchClient: (clientId: string) => ipcRenderer.invoke('ai-bridge:launch-client', clientId),
     onStatusChanged: (listener: (snapshot: unknown) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, snapshot: unknown) => listener(snapshot);
       ipcRenderer.on('ai-bridge:status-changed', handler);
       return () => ipcRenderer.removeListener('ai-bridge:status-changed', handler);
-    },
-  },
-  agentRuntime: {
-    status: () => ipcRenderer.invoke('agent-runtime:status'),
-    start: (request: unknown) => ipcRenderer.invoke('agent-runtime:start', request),
-    prompt: (request: unknown) => ipcRenderer.invoke('agent-runtime:prompt', request),
-    stop: () => ipcRenderer.invoke('agent-runtime:stop'),
-    getProviderSettings: () => ipcRenderer.invoke('agent-runtime:get-provider-settings'),
-    setProviderSettings: (request: unknown) => ipcRenderer.invoke('agent-runtime:set-provider-settings', request),
-    restart: (request?: unknown) => ipcRenderer.invoke('agent-runtime:restart', request),
-    probeProvider: (request: unknown) => ipcRenderer.invoke('agent-runtime:probe-provider', request),
-    onStatusChanged: (listener: (snapshot: unknown) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, snapshot: unknown) => listener(snapshot);
-      ipcRenderer.on('agent-runtime:status-changed', handler);
-      return () => ipcRenderer.removeListener('agent-runtime:status-changed', handler);
-    },
-    onEvent: (listener: (payload: unknown) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, payload: unknown) => listener(payload);
-      ipcRenderer.on('agent-runtime:event', handler);
-      return () => ipcRenderer.removeListener('agent-runtime:event', handler);
     },
   },
   skillKit: {
@@ -130,6 +101,9 @@ contextBridge.exposeInMainWorld('lingBuilder', {
     pickSourceDirectory: () => ipcRenderer.invoke('solution-import:pick-source-directory'),
     copyExternalProject: (projectFilePath: string) => ipcRenderer.invoke('solution-import:copy-external-project', projectFilePath),
   },
+  projectCreate: {
+    pickLocationDirectory: () => ipcRenderer.invoke('project-create:pick-location-directory'),
+  },
   designerAssets: {
     selectImage: () => ipcRenderer.invoke('designer-assets:select-image'),
     selectGif: () => ipcRenderer.invoke('designer-assets:select-gif'),
@@ -161,9 +135,6 @@ contextBridge.exposeInMainWorld('lingBuilder', {
     moduleEntitlements: () => ipcRenderer.invoke('cloud-modules:entitlements'),
     authorizeModule: (moduleId: string) => ipcRenderer.invoke('cloud-modules:authorize', moduleId),
     createModuleOrder: (value: { offerId: string; provider: 'wechat'|'alipay'; idempotencyKey: string }) => ipcRenderer.invoke('cloud-modules:create-order', value),
-    rechargePackages: () => ipcRenderer.invoke('cloud-credits:packages'),
-    createRechargeOrder: (value: { packageId: string; provider: 'wechat'|'alipay'; idempotencyKey: string }) => ipcRenderer.invoke('cloud-credits:create-order', value),
-    rechargeOrder: (orderId: string) => ipcRenderer.invoke('cloud-credits:order', orderId),
     downloadModule: (value: { moduleId: string; arch?: 'win32'|'x64'|'any' }) => ipcRenderer.invoke('cloud-modules:download', value),
     notifyNetworkRestored: () => ipcRenderer.invoke('cloud-modules:network-restored'),
     onModuleAccessNotice: (listener: (message: string) => void) => {

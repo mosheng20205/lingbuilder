@@ -3,24 +3,21 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 
-test('AI Bridge center exposes one-click lifecycle, clients, shared MCP, CLI, permissions, and accessible feedback', async () => {
-  const source = await fs.readFile(
-    path.resolve(import.meta.dirname, '../src/components/CliGuideDialog.tsx'),
-    'utf8'
-  );
+async function readSource(relative: string): Promise<string> {
+  return fs.readFile(path.resolve(import.meta.dirname, relative), 'utf8');
+}
+
+test('AI Bridge 连接中心收敛为状态行 + 通用 MCP 配置 + 高级设置，一键适配与 CLI 列表整体移除', async () => {
+  const source = await readSource('../src/components/CliGuideDialog.tsx');
   assert.match(source, /AI Bridge 连接中心/u);
   assert.match(source, /启动 AI Bridge/u);
-  assert.match(source, /连接并打开/u);
-  assert.match(source, /Codex CLI、Claude Code、Gemini CLI/u);
-  assert.match(source, /ChatGPT \/ Codex 桌面客户端/u);
-  assert.match(source, /配置并打开桌面版/u);
-  assert.match(source, /不保存 Token、不监听网络端口/u);
-  assert.match(source, /打开 Bridge 终端/u);
-  assert.match(source, /MCP（推荐）/u);
-  assert.match(source, /已连接客户端/u);
-  assert.match(source, /工具调用活动/u);
-  assert.match(source, /手动连接（高级）/u);
+  assert.match(source, /连接配置（通用 MCP）/u);
+  assert.match(source, /复制连接配置/u);
+  assert.match(source, /配置一次长期有效/u);
+  assert.match(source, /高级设置/u);
+  assert.match(source, /Bridge 启动设置/u);
   assert.match(source, /mcpServers/u);
+  assert.match(source, /灵码 Skill 正文/u);
   assert.match(source, /readonly/u);
   assert.match(source, /preview/u);
   assert.match(source, /yolo/u);
@@ -29,117 +26,108 @@ test('AI Bridge center exposes one-click lifecycle, clients, shared MCP, CLI, pe
   assert.match(source, /aria-live="polite"/u);
   assert.match(source, /event\.key === 'Escape'/u);
   assert.match(source, /event\.key === 'Tab'/u);
+  // 截图三区块物理移除：桌面客户端一键适配、外部 AI CLI 列表、Bridge 终端、STDIO 提示条。
+  assert.doesNotMatch(source, /连接并打开/u);
+  assert.doesNotMatch(source, /Codex 桌面/u);
+  assert.doesNotMatch(source, /ChatGPT \/ Codex 桌面客户端/u);
+  assert.doesNotMatch(source, /打开 Bridge 终端/u);
+  assert.doesNotMatch(source, /不保存 Token、不监听网络端口/u);
+  assert.doesNotMatch(source, /LINGBUILDER_AI_BRIDGE_TOKEN 环境变量/u);
+  assert.doesNotMatch(source, /ClientRow|CodexDesktopCard|ProbeErrorCard/u);
 });
 
-test('AI Bridge center persists settings on edit in stopped state without clobbering the running snapshot', async () => {
-  const [componentSource, mainSource, preloadSource, dtsSource] = await Promise.all([
-    fs.readFile(path.resolve(import.meta.dirname, '../src/components/CliGuideDialog.tsx'), 'utf8'),
-    fs.readFile(path.resolve(import.meta.dirname, '../electron/main.ts'), 'utf8'),
-    fs.readFile(path.resolve(import.meta.dirname, '../electron/preload.ts'), 'utf8'),
-    fs.readFile(path.resolve(import.meta.dirname, '../src/electron-api.d.ts'), 'utf8')
+test('通用 MCP 配置内嵌真实 Token（运行中取运行时，否则回落持久化 Token）', async () => {
+  const source = await readSource('../src/components/CliGuideDialog.tsx');
+  assert.match(source, /const connectionToken = runtimeToken \|\| savedToken;/u);
+  assert.match(source, /Authorization: `Bearer \$\{connectionToken/u);
+  assert.match(source, /revealToken/u);
+  assert.match(source, /setSavedToken\(saved\.token \|\| ''\)/u);
+});
+
+test('Bridge 随 IDE 启动自动拉起：主进程自启 + Token 默认持久化 + yolo 确认随设置持久化', async () => {
+  const [mainSource, settingsSource, componentSource, dtsSource] = await Promise.all([
+    readSource('../electron/main.ts'),
+    readSource('../electron/aiBridgeStartSettings.ts'),
+    readSource('../src/components/CliGuideDialog.tsx'),
+    readSource('../src/electron-api.d.ts')
   ]);
+  // 主进程：IDE 启动即自动拉起（不阻塞窗口创建），冒烟测试跳过。
+  assert.match(mainSource, /async function autoStartAiBridgeOnLaunch/u);
+  assert.match(mainSource, /void autoStartAiBridgeOnLaunch\(\)/u);
+  assert.match(mainSource, /process\.argv\.includes\('--smoke-test'\)/u);
+  // Token 持久化：没有持久化 Token 时先随机生成并落盘，再启动，保证客户端配置一次长期有效。
+  assert.match(mainSource, /crypto\.randomBytes\(32\)\.toString\('hex'\)/u);
+  assert.match(mainSource, /writeAiBridgeStartSettings/u);
+  // yolo 门禁：自动启动没有会话内确认框，只有持久化的确认标记才允许按 yolo 拉起，否则降级 preview。
+  assert.match(mainSource, /yoloConfirmed !== true \? 'preview'/u);
+  assert.match(mainSource, /启动设置即用户显式选择|持久化的权限即用户的显式选择/u);
+  // 设置模型：yoloConfirmed 进 normalize/read/write 全链。
+  assert.match(settingsSource, /yoloConfirmed: value\.yoloConfirmed === true/u);
+  assert.match(settingsSource, /yoloConfirmed: parsed\.yoloConfirmed === true/u);
+  assert.match(settingsSource, /yoloConfirmed: normalized\.yoloConfirmed/u);
+  // 渲染端：确认框状态随设置回填并参与防抖保存；启动接口继续要求 approvedYolo。
+  assert.match(componentSource, /setApprovedYolo\(saved\.yoloConfirmed === true\)/u);
+  assert.match(componentSource, /yoloConfirmed: approvedYolo/u);
+  assert.match(dtsSource, /yoloConfirmed/u);
   // 组件：打开连接中心时回填上次设置（运行中快照优先），停止态编辑防抖自动保存。
   assert.match(componentSource, /loadStartSettings/u);
   assert.match(componentSource, /停止态修改后自动保存到本机加密存储/u);
   assert.match(componentSource, /saveStartSettings/u);
   assert.match(componentSource, /bridgeRef\.current\.state === 'running'/u);
-  // 保存状态在 Token 字段旁内联徽标呈现（正在保存…/已保存到本机加密存储），失败回错误横幅，底部一次性 toast 已移除。
   assert.match(componentSource, /settingsSaveState/u);
   assert.match(componentSource, /正在保存…/u);
   assert.match(componentSource, /已保存到本机加密存储/u);
-  assert.doesNotMatch(componentSource, /启动设置已保存到本机加密存储/u);
-  // 「打开 Bridge 终端」附近必须讲清 ${LINGBUILDER_AI_BRIDGE_TOKEN} 占位符的生效条件（仅该终端启动的客户端）。
-  assert.match(componentSource, /LINGBUILDER_AI_BRIDGE_TOKEN 环境变量/u);
-  assert.match(componentSource, /\$\{LINGBUILDER_AI_BRIDGE_TOKEN\} 占位符完成鉴权/u);
-  // 权限选择只触发桌面客户端重新检测，不得连带回滚启动设置（effect 解耦）。
-  // bootstrap effect 允许带 loadSkillKit（打开时读一次正文状态），但绝不能依赖 refreshCodexDesktop。
-  assert.match(componentSource, /\}, \[desktopApi, loadBridgeStatus, loadSkillKit, open, refreshClients\]\);/u);
-  assert.doesNotMatch(componentSource, /\}, \[[^\]]*loadBridgeStatus[^\]]*refreshCodexDesktop[^\]]*\]\);/u);
-  assert.match(componentSource, /\}, \[desktopApi, open, refreshCodexDesktop\]\);/u);
   // 生命周期下拉在接线前属假设置，已从 UI 移除（内部固定 workspace）。
   assert.doesNotMatch(componentSource, /生命周期<select/u);
   // 主进程：start 成功后仍写设置并暴露独立 load/save IPC，保存失败回传 settingsError。
-  assert.match(mainSource, /writeAiBridgeStartSettings/u);
   assert.match(mainSource, /ai-bridge:start-settings:load/u);
   assert.match(mainSource, /ai-bridge:start-settings:save/u);
   assert.match(mainSource, /settingsError/u);
-  assert.match(preloadSource, /loadStartSettings: \(\) => ipcRenderer\.invoke\('ai-bridge:start-settings:load'\)/u);
-  assert.match(preloadSource, /saveStartSettings: \(settings: unknown\) => ipcRenderer\.invoke\('ai-bridge:start-settings:save', settings\)/u);
-  assert.match(dtsSource, /loadStartSettings/u);
-  assert.match(dtsSource, /saveStartSettings/u);
   // 本机授权代理与灵码 Skill 正文取物：主进程 IPC + preload 白名单 + 类型声明三处齐备。
   assert.match(mainSource, /ai-bridge:local-auth-status/u);
   assert.match(mainSource, /skill-kit:status/u);
   assert.match(mainSource, /skill-kit:check-update/u);
-  assert.match(preloadSource, /localAuthStatus: \(\) => ipcRenderer\.invoke\('ai-bridge:local-auth-status'\)/u);
-  assert.match(preloadSource, /status: \(\) => ipcRenderer\.invoke\('skill-kit:status'\)/u);
-  assert.match(preloadSource, /checkUpdate: \(\) => ipcRenderer\.invoke\('skill-kit:check-update'\)/u);
-  assert.match(dtsSource, /skillKit\?:/u);
-  assert.match(dtsSource, /LingBuilderSkillKitStatus/u);
-  assert.match(componentSource, /允许外部 AI 客户端使用本机授权/u);
-  assert.match(componentSource, /灵码 Skill 正文/u);
 });
 
-test('workbench and packaged desktop expose the managed Bridge center through discoverable entries and IPC', async () => {
-  const [appSource, mainSource, preloadSource, packageSource] = await Promise.all([
-    fs.readFile(path.resolve(import.meta.dirname, '../src/App.tsx'), 'utf8'),
-    fs.readFile(path.resolve(import.meta.dirname, '../electron/main.ts'), 'utf8'),
-    fs.readFile(path.resolve(import.meta.dirname, '../electron/preload.ts'), 'utf8'),
-    fs.readFile(path.resolve(import.meta.dirname, '../package.json'), 'utf8')
+test('工作台入口保留，被移除的 IPC/服务不再出现在 preload 与类型声明中', async () => {
+  const [appSource, mainSource, preloadSource, dtsSource, packageSource] = await Promise.all([
+    readSource('../src/App.tsx'),
+    readSource('../electron/main.ts'),
+    readSource('../electron/preload.ts'),
+    readSource('../src/electron-api.d.ts'),
+    readSource('../package.json')
   ]);
   assert.match(appSource, /workbench\.action\.help\.openCliGuide/u);
   assert.match(appSource, /AI Bridge 连接中心\.\.\./u);
   assert.match(appSource, /AiBridgeTitleBarBadge/u);
+  assert.doesNotMatch(appSource, /onOpenTerminal=\{message =>/u);
   assert.match(mainSource, /docs:open-cli-manual/u);
-  assert.match(mainSource, /cli:inspect/u);
   assert.match(mainSource, /ai-bridge:start/u);
-  assert.match(mainSource, /ai-bridge:launch-client/u);
-  assert.match(mainSource, /ai-bridge:configure-codex-desktop/u);
-  assert.match(mainSource, /ai-bridge:open-codex-desktop/u);
-  assert.match(mainSource, /requestRendererApi/u);
+  assert.doesNotMatch(mainSource, /ai-bridge:launch-client/u);
+  assert.doesNotMatch(mainSource, /ai-bridge:clients/u);
+  assert.doesNotMatch(mainSource, /codex-desktop/u);
+  assert.doesNotMatch(mainSource, /cli:inspect/u);
+  assert.doesNotMatch(mainSource, /aiClientIntegrationService|codexDesktopIntegrationService|cliIntegrationService/u);
   assert.match(preloadSource, /openCliManual/u);
-  assert.match(preloadSource, /inspect: \(\) => ipcRenderer\.invoke\('cli:inspect'\)/u);
-  assert.match(preloadSource, /launchClient/u);
-  assert.match(preloadSource, /configureCodexDesktop/u);
   assert.match(preloadSource, /onStatusChanged/u);
+  assert.doesNotMatch(preloadSource, /launchClient|codexDesktopStatus|configureCodexDesktop|removeCodexDesktop|openCodexDesktop|'ai-bridge:clients'|cli:inspect/u);
+  assert.doesNotMatch(dtsSource, /LingBuilderCodexDesktopStatus|LingBuilderExternalAiClientId/u);
+  assert.doesNotMatch(dtsSource, /launchClient|codexDesktopStatus/u);
   assert.match(packageSource, /AI_BRIDGE_CLI_USAGE\.md/u);
 });
 
-test('AI Bridge center degrades honestly outside desktop and never loses connect feedback', async () => {
-  const [componentSource, appSource, integrationSource] = await Promise.all([
-    fs.readFile(path.resolve(import.meta.dirname, '../src/components/CliGuideDialog.tsx'), 'utf8'),
-    fs.readFile(path.resolve(import.meta.dirname, '../src/App.tsx'), 'utf8'),
-    fs.readFile(path.resolve(import.meta.dirname, '../electron/aiClientIntegrationService.ts'), 'utf8')
-  ]);
-  assert.match(componentSource, /MonitorSmartphone/u);
-  assert.match(componentSource, /if \(!desktopApi\) \{\s*return \(/u);
-  assert.match(componentSource, /withProbeTimeout/u);
-  assert.match(componentSource, /重试获取状态/u);
-  assert.match(componentSource, /未检测到外部 AI CLI/u);
-  assert.match(componentSource, /onOpenTerminal\(result\.detail \|\|/u);
-  assert.match(appSource, /onOpenTerminal=\{message =>/u);
-  assert.match(appSource, /【AI Bridge】/u);
-  assert.match(integrationSource, /正在通过 LingBuilder 共享 MCP 连接当前工作区/u);
-  assert.match(integrationSource, /正在使用 LingBuilder 管理的临时 MCP 配置启动/u);
-  assert.match(integrationSource, /正在使用本次终端专属设置连接 LingBuilder Bridge/u);
-});
-
-test('AI Bridge center permissions are Chinese-labeled, destructive actions confirm, and dark-mode text stays readable', async () => {
-  const source = await fs.readFile(
-    path.resolve(import.meta.dirname, '../src/components/CliGuideDialog.tsx'),
-    'utf8'
-  );
+test('权限中文标签、破坏性操作确认与暗色可读性约束继续成立', async () => {
+  const source = await readSource('../src/components/CliGuideDialog.tsx');
   assert.match(source, /PERMISSION_LABELS/u);
   assert.match(source, /只读/u);
   assert.match(source, /预览确认/u);
   assert.match(source, /全自动/u);
-  assert.match(source, /Bridge 启动设置/u);
   assert.match(source, /当前配置：\$\{PERMISSION_LABELS\[permission\]\}/u);
   assert.match(source, /停止 AI Bridge/u);
   assert.match(source, /断开全部连接并中断进行中的 AI 操作/u);
   assert.match(source, /重新生成 Token/u);
   assert.match(source, /旧 Token 立即失效/u);
-  assert.match(source, /已复制\$\{label\}/u);
+  assert.match(source, /已复制/u);
   assert.doesNotMatch(source, /text-\[9px\]/u);
   assert.doesNotMatch(source, /text-\[10px\] font-semibold/u);
   assert.doesNotMatch(source, /text-\[1[01\]]px[^"`]*text-slate-500/u);

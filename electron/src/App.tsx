@@ -61,7 +61,6 @@ import Sidebar from './components/Sidebar';
 import DiffViewer, { DiffViewerHandle } from './components/DiffViewer';
 import MonacoCodeEditor from './components/MonacoCodeEditor';
 import type { MonacoCodeEditorHandle, MonacoEditorState } from './components/MonacoCodeEditor';
-import AiAssistant from './components/AiAssistant';
 import BottomPanel from './components/BottomPanel';
 import CommandPalette from './components/CommandPalette';
 import SettingsDialog from './components/SettingsDialog';
@@ -82,8 +81,6 @@ import ProjectTypeDialog from './components/ProjectTypeDialog';
 import RecentWorkspacesDialog from './components/RecentWorkspacesDialog';
 import WorkbenchConfirmDialog from './components/WorkbenchConfirmDialog';
 import CloudAccountLoginDialog from './components/CloudAccountLoginDialog';
-import CloudAccountRechargeDialog from './components/CloudAccountRechargeDialog';
-import CloudAccountTitleBarEntry from './components/CloudAccountTitleBarEntry';
 import {
   cancelCloudAccountLoginDialog,
   getActiveCloudAccountLoginDialog,
@@ -92,13 +89,6 @@ import {
   subscribeCloudAccountLoginDialog,
   type CloudAccountLoginRequest
 } from './services/workbench/cloudAccountLoginService';
-import {
-  getActiveCloudAccountRechargeDialog,
-  requestCloudAccountRecharge,
-  settleCloudAccountRechargeDialog,
-  subscribeCloudAccountRechargeDialog,
-  type CloudAccountRechargeRequest
-} from './services/workbench/cloudAccountRechargeService';
 import {
   getCloudAccountSessionState,
   signOutCloudAccount,
@@ -157,7 +147,6 @@ import type {
   WorkbenchConfigurationSnapshot
 } from './services/configuration';
 import { getWorkbenchConfigurationMutationTarget } from './services/configuration';
-import { onAiAgentRequest } from './services/ai/agentRequestBus';
 import {
   LEGACY_EDITOR_EXPERIENCE_MODE_KEY,
   LEGACY_EDITOR_FONT_SIZE_KEY,
@@ -171,8 +160,8 @@ import {
   WindowDesignerLingCppSourceRequestDetail,
   WindowDesignerBuildRunStateDetail
 } from './services/windowDesigner/windowDesignerCommands';
+import { describeWindowSourceClobber } from './services/windowDesigner/windowSourceClobber';
 import {
-  getEplEventSuffix,
   getLingWindowSourceFileName,
   getLingWindowSourceFilePath,
   readWindowDesignerState,
@@ -188,9 +177,8 @@ import {
 import type { WindowDesignerDirtyStateDetail } from './services/windowDesigner/windowDesignerService';
 import type { LingEmbeddedResource } from './services/windowDesigner/types';
 import {
-  formatControlEventParameters,
-  type OpenControlEventCodeDetail,
-  upgradeLegacyControlEventHandlerSignature
+  ensureLingCppControlEventHandler,
+  type OpenControlEventCodeDetail
 } from './services/windowDesigner/controlEventCodeService';
 import {
   deleteDesignerImageResource,
@@ -244,7 +232,7 @@ import type { BuildArchitecture, BuildConfiguration, BuildMode } from './service
 import { closeEditorGroupTab, collapseEditorGroups, moveEditorTab, restoreEditorGroupLayout, selectEditorGroupTab, splitEditorGroup, type EditorGroupLayout } from './services/editor/editorGroupLayout';
 import { getLingCppProblems } from './services/lingCpp/languageService';
 import { EditorExperienceMode, adaptProblemForBeginner } from './services/lingCpp/beginnerService';
-import { normalizeIdentifier, parseLingCpp } from './services/lingCpp/parser';
+import { parseLingCpp } from './services/lingCpp/parser';
 import { areDesignerProjectsEquivalent } from './services/lingCpp/aiEditService';
 import { collectProjectDeclarationContexts, EMPTY_PROJECT_GLOBALS_SOURCE, isProjectGlobalsFilePath, PROJECT_GLOBALS_FILE_NAME } from './services/lingCpp/projectGlobalService';
 import { executeProjectGlobalVariableCommand } from './services/lingCpp/projectGlobalCommandService';
@@ -405,9 +393,6 @@ const MAX_EDITOR_FONT_SIZE = 24;
 const DEFAULT_LEFT_SIDEBAR_WIDTH = 264;
 const MIN_LEFT_SIDEBAR_WIDTH = 160;
 const MAX_LEFT_SIDEBAR_WIDTH = 600;
-const DEFAULT_AI_PANEL_WIDTH = 360;
-const MIN_AI_PANEL_WIDTH = 280;
-const MAX_AI_PANEL_WIDTH = 640;
 
 const clampEditorFontSize = (value: number) => {
   return Math.max(MIN_EDITOR_FONT_SIZE, Math.min(MAX_EDITOR_FONT_SIZE, Math.round(value)));
@@ -415,10 +400,6 @@ const clampEditorFontSize = (value: number) => {
 
 const clampLeftSidebarWidth = (value: number) => {
   return Math.max(MIN_LEFT_SIDEBAR_WIDTH, Math.min(MAX_LEFT_SIDEBAR_WIDTH, Math.round(value)));
-};
-
-const clampAiPanelWidth = (value: number) => {
-  return Math.max(MIN_AI_PANEL_WIDTH, Math.min(MAX_AI_PANEL_WIDTH, Math.round(value)));
 };
 
 const getInitialEditorFontSize = () => {
@@ -442,8 +423,6 @@ const getInitialEditorExperienceMode = (): EditorExperienceMode => {
   }
 };
 
-const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
 /** Windows 路径不区分大小写；统一正斜杠比较，判断绝对路径是否位于工作区内。 */
 const isPathInsideWorkspace = (absolutePath: string, workspacePath: string): boolean => {
   const normalize = (value: string) => value.replace(/\\+/g, '/').replace(/\/+$/g, '').toLowerCase();
@@ -461,50 +440,6 @@ const toWorkspaceRelativeFrom = (absolutePath: string, workspacePath: string): s
   return normalizedPath.startsWith(`${normalizedRoot}/`) ? normalizedPath.slice(normalizedRoot.length + 1) : normalizedPath;
 };
 
-const sanitizeLingCppText = (value: string | undefined, fallback: string) => {
-  return (value || fallback)
-    .replace(/[\r\n]+/g, ' ')
-    .replace(/[“”"]/g, '')
-    .trim() || fallback;
-};
-
-const createLingCppControlEventBlock = (detail: Required<Pick<OpenControlEventCodeDetail, 'controlName' | 'eventName' | 'handlerName'>> & OpenControlEventCodeDetail) => {
-  const controlName = sanitizeLingCppText(detail.controlName, '控件');
-  const controlContent = sanitizeLingCppText(detail.controlContent, controlName);
-  const eventSuffix = getEplEventSuffix(detail.eventName);
-  const parameterText = formatControlEventParameters(detail);
-  const lines = [`    事件 ${detail.handlerName}(${parameterText})`];
-
-  if (detail.eventName === 'Click') {
-    lines.push(`        信息框("${controlContent}", 64, "事件触发")`);
-  }
-
-  if (detail.eventStarterStatements?.length) {
-    detail.eventStarterStatements.forEach(statement => lines.push(`        ${statement.trim()}`));
-  } else {
-    lines.push(`        调试输出("${controlName}${eventSuffix}")`);
-  }
-  lines.push('    结束');
-  return lines.join('\n');
-};
-
-const ensureLingCppControlEventHandler = (content: string, detail: OpenControlEventCodeDetail) => {
-  const controlName = detail.controlName?.trim();
-  const eventName = detail.eventName?.trim();
-  const handlerName = detail.handlerName?.trim();
-
-  if (!controlName || !eventName || !handlerName) return content;
-
-  const migration = upgradeLegacyControlEventHandlerSignature(content, { ...detail, handlerName, eventName });
-  if (migration.changed) return migration.content;
-
-  const handlerPattern = new RegExp(`(^|\\n)\\s*事件\\s+${escapeRegExp(handlerName)}\\s*[（(]`);
-  if (handlerPattern.test(content)) return content;
-
-  const nextBlock = createLingCppControlEventBlock({ ...detail, controlName, eventName, handlerName });
-  return `${content.replace(/\s*结束类\s*$/g, '').trimEnd()}\n\n${nextBlock}\n结束类`;
-};
-
 /** 比较两组已安装模块列表是否内容一致（顺序敏感，按 id@version + 安装路径 + 清单哈希 + 开发源链接态）。 */
 const areInstalledModuleListsEquivalent = (left: InstalledModule[] | undefined, right: InstalledModule[]) => {
   if (!Array.isArray(left) || left.length !== right.length) return false;
@@ -514,35 +449,6 @@ const areInstalledModuleListsEquivalent = (left: InstalledModule[] | undefined, 
 
 const getCurrentWindowDesignerProject = (projectId?: string) => readWindowDesignerState(projectId).project;
 const getCurrentWindowDesignerProjectId = (projectId?: string) => getCurrentWindowDesignerProject(projectId).id || projectId || 'lingbuilder-ui-project';
-
-interface WindowDesignerProjectShape {
-  windows: Array<{ className: string; fileName: string; title?: string }>;
-}
-
-/** 设计器窗口源码串写检测：文件是某设计器窗口的绑定源码、内容却声明了「另一个窗口」的类
- * 且未声明自己的类——即整文件被其它窗口源码覆盖的串写特征（lingbuilder-ui-project 实测：
- * MainWindow.lcpp 被写入 BrowserWindow 整文件内容，F5 构建前保存静默落盘后构建报类名重复）。
- * 返回中文串写描述；正常内容返回 null。 */
-const describeWindowSourceClobber = (
-  project: WindowDesignerProjectShape | undefined,
-  sourceRoot: string,
-  filePath: string,
-  content: string
-): string | null => {
-  if (!project || project.windows.length === 0) return null;
-  const normalizedPath = filePath.replace(/\\/gu, '/').toLocaleLowerCase();
-  const boundWindow = project.windows.find(win => (
-    getLingWindowSourceFilePath(sourceRoot, win.fileName, win.className)
-      .replace(/\\/gu, '/').toLocaleLowerCase() === normalizedPath
-  ));
-  if (!boundWindow) return null;
-  const declaredClasses = parseLingCpp(content).program.classes.map(cls => normalizeIdentifier(cls.name));
-  if (declaredClasses.includes(normalizeIdentifier(boundWindow.className))) return null;
-  const windowByClassName = new Map(project.windows.map(win => [normalizeIdentifier(win.className), win]));
-  const foreignWindow = declaredClasses.map(className => windowByClassName.get(className)).find(Boolean);
-  if (!foreignWindow) return null;
-  return `${filePath} 的内容是窗口「${foreignWindow.title || foreignWindow.className}」（类 ${foreignWindow.className}）的源码，而不是它绑定的窗口「${boundWindow.title || boundWindow.className}」`;
-};
 
 const inferFileLanguage = (filePath: string): CppFile['language'] => {
   const normalizedPath = filePath.toLowerCase();
@@ -1379,6 +1285,8 @@ export default function App() {
   const [createSolutionName, setCreateSolutionName] = useState('');
   const [createProjectLocation, setCreateProjectLocation] = useState('');
   const [createProjectError, setCreateProjectError] = useState('');
+  // 欢迎页打开时：对话框叠在欢迎页上，创建成功才进工作台，解决方案名称跟随项目名；工作台内保持旧语义。
+  const [createProjectDialogSource, setCreateProjectDialogSource] = useState<'welcome' | 'workbench'>('workbench');
   const createDialogSolutionNameTouchedRef = useRef(false);
   const [isCreatingSolutionProject, setIsCreatingSolutionProject] = useState(false);
   const createProjectAbortRef = useRef<AbortController | null>(null);
@@ -1395,10 +1303,7 @@ export default function App() {
   // LingBuilder 账号登录弹窗：标题栏、欢迎页、设置页、收费模块门禁与 AI 面板共用这一个入口。
   const [cloudAccountLoginDialog, setCloudAccountLoginDialog] = useState<CloudAccountLoginRequest | null>(() => getActiveCloudAccountLoginDialog());
   useEffect(() => subscribeCloudAccountLoginDialog(setCloudAccountLoginDialog), []);
-  // 点数充值弹窗：套餐、下单与到账轮询只在 CloudAccountRechargeDialog 内实现一次。
-  const [cloudAccountRechargeDialog, setCloudAccountRechargeDialog] = useState<CloudAccountRechargeRequest | null>(() => getActiveCloudAccountRechargeDialog());
-  useEffect(() => subscribeCloudAccountRechargeDialog(setCloudAccountRechargeDialog), []);
-  // 帮助菜单与标题栏共用同一份账号会话，避免菜单文案与实际登录态不一致。
+  // 帮助菜单共用同一份账号会话，避免菜单文案与实际登录态不一致。
   const [cloudAccountSession, setCloudAccountSession] = useState(getCloudAccountSessionState);
   useEffect(() => subscribeCloudAccountSession(() => setCloudAccountSession(getCloudAccountSessionState())), []);
   const pendingWorkspaceSearchRevealRef = useRef<WorkspaceSearchMatch | null>(null);
@@ -1839,10 +1744,9 @@ export default function App() {
 
   // Workspace layout toggles
   const [showLeftSidebar, setShowLeftSidebar] = useState(true);
-  const [showRightPanel, setShowRightPanel] = useState(false);
+  const [showBottomPanel, setShowBottomPanel] = useState(true);
   const [isDesignerViewActive, setIsDesignerViewActive] = useState(false);
   const [designerToolboxHost, setDesignerToolboxHost] = useState<HTMLElement | null>(null);
-  const [showBottomPanel, setShowBottomPanel] = useState(false);
   const [activeTabInBottom, setActiveTabInBottom] = useState<BottomPanelTabType>('output');
   // 新手查找「查找全部」的结果（文件/项目/解决方案范围），由 DiffViewer 派发事件送入。
   const [findResultsData, setFindResultsData] = useState<FindResultsData | null>(null);
@@ -1859,8 +1763,6 @@ export default function App() {
     const sidebarVisible = readValue('workbench.sidebar.visible');
     const sidebarWidth = readValue('workbench.sidebar.width');
     const panelVisible = readValue('workbench.panel.visible');
-    const aiPanelVisible = readValue('workbench.aiPanel.visible');
-    const aiPanelWidth = readValue('workbench.aiPanel.width');
     const shortcuts = readValue('keyboard.shortcuts');
     const autoCheck = readValue('updates.autoCheck');
     const experienceChannel = readValue('updates.experienceChannel');
@@ -1876,8 +1778,6 @@ export default function App() {
     if (typeof sidebarVisible === 'boolean') setShowLeftSidebar(sidebarVisible);
     if (typeof sidebarWidth === 'number') setLeftWidth(clampLeftSidebarWidth(sidebarWidth));
     if (typeof panelVisible === 'boolean') setShowBottomPanel(panelVisible);
-    if (typeof aiPanelVisible === 'boolean') setShowRightPanel(aiPanelVisible);
-    if (typeof aiPanelWidth === 'number') setAiPanelWidth(clampAiPanelWidth(aiPanelWidth));
     setShortcutOverrides(isStringRecord(shortcuts) ? shortcuts : {});
     if (typeof autoCheck === 'boolean') setUpdatesAutoCheck(autoCheck);
     if (typeof experienceChannel === 'boolean') setUpdatesExperienceChannel(experienceChannel);
@@ -2053,21 +1953,6 @@ export default function App() {
     configurationMutationRef.current('workbench.panel.visible', !showBottomPanel, 'user')
   ), [showBottomPanel]);
 
-  const toggleAiPanelVisibility = useCallback(async (): Promise<boolean> => (
-    configurationMutationRef.current('workbench.aiPanel.visible', !showRightPanel, 'user')
-  ), [showRightPanel]);
-
-  const [pendingAgentRequest, setPendingAgentRequest] = useState<{ id: number; prompt: string; origin?: string } | null>(null);
-  const agentRequestSeqRef = useRef(0);
-  const handleAgentRequestHandled = useCallback((id: number) => {
-    setPendingAgentRequest(current => (current && current.id === id ? null : current));
-  }, []);
-  useEffect(() => onAiAgentRequest(request => {
-    agentRequestSeqRef.current += 1;
-    setPendingAgentRequest({ id: agentRequestSeqRef.current, prompt: request.prompt, origin: request.origin });
-    if (!showRightPanel) void configurationMutationRef.current('workbench.aiPanel.visible', true, 'user');
-  }), [showRightPanel]);
-
   const toggleWorkbenchTheme = useCallback(async (): Promise<boolean> => (
     configurationMutationRef.current('workbench.colorTheme', isDarkMode ? 'light' : 'dark', 'user')
   ), [isDarkMode]);
@@ -2096,7 +1981,6 @@ export default function App() {
 
   // Resizable sidebars state
   const [leftWidth, setLeftWidth] = useState(DEFAULT_LEFT_SIDEBAR_WIDTH);
-  const [aiPanelWidth, setAiPanelWidth] = useState(DEFAULT_AI_PANEL_WIDTH);
   const [bottomHeight, setBottomHeight] = useState(260);
 
   const startResizeLeft = (e: React.MouseEvent) => {
@@ -2125,29 +2009,6 @@ export default function App() {
   const resetLeftSidebarWidth = () => {
     setLeftWidth(DEFAULT_LEFT_SIDEBAR_WIDTH);
     void configurationMutationRef.current('workbench.sidebar.width', DEFAULT_LEFT_SIDEBAR_WIDTH, 'user');
-  };
-
-  const startResizeAiPanel = (e: React.MouseEvent) => {
-    e.preventDefault();
-    let resizedWidth = aiPanelWidth;
-    let didResize = false;
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      resizedWidth = clampAiPanelWidth(window.innerWidth - moveEvent.clientX);
-      didResize = true;
-      setAiPanelWidth(resizedWidth);
-    };
-    const handleMouseUp = () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      if (didResize) void configurationMutationRef.current('workbench.aiPanel.width', resizedWidth, 'user');
-    };
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-  };
-
-  const resetAiPanelWidth = () => {
-    setAiPanelWidth(DEFAULT_AI_PANEL_WIDTH);
-    void configurationMutationRef.current('workbench.aiPanel.width', DEFAULT_AI_PANEL_WIDTH, 'user');
   };
 
   const startResizeBottom = (e: React.MouseEvent) => {
@@ -2788,6 +2649,95 @@ void DisplayStatus() {
     }
   };
 
+  /** 窗口源码一键迁移：把声明了窗口类的旧命名主源码（早于 src/<窗口类名>.lcpp 约定的项目）
+   * 重命名到约定绑定路径，内容原样保留。触发源见 Sidebar 的 legacy-window-source-found 事件；
+   * 走通用的 /api/window-designer/files/rename，不经过解决方案树「绑定窗口禁止改名」的
+   * UI 拦截——本操作正是把脱钩的文件名与窗口类名重新挂钩。 */
+  const migrateLegacyWindowSource = async (
+    windowModel: { title?: string; className: string; fileName?: string },
+    legacyPath: string,
+    conventionalPath: string
+  ): Promise<void> => {
+    if (!projectFilesReadyRef.current) {
+      appendEditorTransactionLog('【窗口源码迁移】项目文件仍在载入，请稍后再试。');
+      return;
+    }
+    if (editorOperationRef.current) {
+      appendEditorTransactionLog(`【窗口源码迁移】已有${getEditorOperationLabel(editorOperationRef.current)}任务正在进行，请稍后再试。`);
+      return;
+    }
+    const requestOwner = captureProjectMutationOwner();
+    const requestProjectId = requestOwner.projectId;
+    editorOperationRef.current = 'file-mutation';
+    try {
+      const flushState = await flushCurrentEditorDrafts();
+      if (!flushState.ok) {
+        throw new Error(flushState.diagnostics[0] || '新手代码提交失败，本次迁移未执行。');
+      }
+      if (!isCurrentProjectMutationOwner(requestOwner)) return;
+      const legacyFile = flushState.files.find(candidate => candidate.path === legacyPath)
+        || filesRef.current.find(candidate => candidate.path === legacyPath);
+      if (!legacyFile) throw new Error(`当前项目中找不到旧命名主源码：${legacyPath}`);
+
+      const response = await fetch('/api/window-designer/files/rename', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: requestProjectId,
+          sourcePath: legacyFile.path,
+          targetPath: conventionalPath
+        })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok === false) {
+        throw new Error(result.error || '磁盘文件重命名失败。');
+      }
+      const targetPath = typeof result.targetPath === 'string' ? result.targetPath : conventionalPath;
+      if (!isCurrentProjectMutationOwner(requestOwner)) {
+        appendEditorTransactionLog(`【窗口源码迁移】已在项目 ${requestProjectId} 中重命名 ${legacyFile.path}；当前项目已切换，将在下次载入时刷新。`);
+        return;
+      }
+
+      // 目标路径若残留此前误合成的模板缓冲（内存幻影条目），先弃用其文本模型再让位：
+      // applyProjectFileRename 不接受目标已存在，编辑器也不能继续展示模板内容。
+      if (filesRef.current.some(candidate => candidate.path === targetPath)) {
+        disposeWorkbenchTextModelsForSource(textModelIdentity(requestProjectId, targetPath));
+      }
+      const sourceIdentity = textModelIdentity(requestProjectId, legacyFile.path);
+      const targetIdentity = textModelIdentity(requestProjectId, targetPath);
+      workbenchTextModelService.ensure(sourceIdentity);
+      renameWorkbenchTextModelsForSource(sourceIdentity, targetIdentity);
+
+      const nextState = applyProjectFileRename({
+        files: filesRef.current.filter(candidate => candidate.path !== targetPath),
+        openTabs: openTabsRef.current,
+        activeFilePath: activeFileRef.current?.path || null
+      }, legacyFile.path, targetPath, inferFileLanguage(targetPath));
+      const migratedFile = nextState.files.find(candidate => candidate.path === targetPath);
+      if (!migratedFile) throw new Error('磁盘文件已迁移，但工作台状态更新失败。');
+      const nextOpenTabs = nextState.openTabs.includes(targetPath) ? nextState.openTabs : [...nextState.openTabs, targetPath];
+      filesRef.current = nextState.files;
+      openTabsRef.current = nextOpenTabs;
+      setFiles(nextState.files);
+      setOpenTabs(nextOpenTabs);
+      activeFileRef.current = migratedFile;
+      setActiveFile(migratedFile);
+      appendEditorTransactionLog(
+        `【窗口源码迁移】已将窗口「${windowModel.title || windowModel.className}」的旧命名主源码 ${legacyFile.path} 重命名为 ${targetPath}（内容原样保留），窗口源码绑定恢复一致。`
+      );
+      void refreshSourceControlStatus();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '窗口源码迁移失败。';
+      appendEditorTransactionLog(`【窗口源码迁移错误】${message}`);
+      await requestWorkbenchAlert({ title: '窗口源码迁移失败', description: message, confirmLabel: '知道了' });
+    } finally {
+      if (editorOperationRef.current === 'file-mutation') editorOperationRef.current = null;
+    }
+  };
+
+  const migrateLegacyWindowSourceRef = useRef(migrateLegacyWindowSource);
+  migrateLegacyWindowSourceRef.current = migrateLegacyWindowSource;
+
   const handleUpdateSourceContent = (content: string) => {
     if (!projectFilesReadyRef.current) return;
     const clobber = describeWindowSourceClobber(
@@ -3153,9 +3103,10 @@ void DisplayStatus() {
       targetFile = flushState.files.find(file => file.path === targetFile?.path) || targetFile;
 
       const currentContent = getCurrentFileContent(targetFile);
-      const ensuredContent = ensureLingCppControlEventHandler(currentContent, detail);
+      const ensured = ensureLingCppControlEventHandler(currentContent, detail);
+      const ensuredContent = ensured.content;
       if (hasLingCppEventHandler(currentContent, handlerName)) {
-        const signatureUpgraded = ensuredContent !== currentContent;
+        const signatureUpgraded = ensured.signatureUpgraded;
         const existingFile: CppFile = signatureUpgraded ? {
           ...targetFile,
           translatedContent: ensuredContent,
@@ -3171,11 +3122,13 @@ void DisplayStatus() {
         if (!selected) return;
         const switched = await setEditorExperienceMode('beginner');
         if (!switched) return;
+        // 容错命中时定位与提示都用源码里真实的处理器名（如裸「创建完毕」），不虚构请求名。
+        const matchedHandlerName = ensured.matchedHandlerName?.trim() || handlerName;
         setBuildLogs(prev => [
           ...prev,
-          `> [${new Date().toLocaleTimeString()}] 【事件代码】${handlerName} ${signatureUpgraded ? '已升级为强类型参数并定位' : '已存在，已直接定位'}。`
+          `> [${new Date().toLocaleTimeString()}] 【事件代码】${matchedHandlerName} ${signatureUpgraded ? '已升级为强类型参数并定位' : '已存在，已直接定位'}。`
         ]);
-        focusLingCppHandler(handlerName, existingFile.path);
+        focusLingCppHandler(matchedHandlerName, existingFile.path);
         return;
       }
 
@@ -3297,17 +3250,25 @@ void DisplayStatus() {
       }
     };
 
+    const handleLegacyWindowSourceFound = (event: Event) => {
+      const detail = (event as CustomEvent).detail || {};
+      if (!detail?.windowModel || !detail?.legacyPath || !detail?.conventionalPath) return;
+      void migrateLegacyWindowSourceRef.current(detail.windowModel, detail.legacyPath, detail.conventionalPath);
+    };
+
     window.addEventListener('designer-switch-window', handleDesignerSwitchWindow);
     window.addEventListener('open-control-event-code', handleOpenControlEventCode);
     window.addEventListener('window-added', handleWindowAdded);
     window.addEventListener('window-deleted', handleWindowDeleted);
     window.addEventListener('window-duplicated', handleWindowDuplicated);
+    window.addEventListener('legacy-window-source-found', handleLegacyWindowSourceFound);
     return () => {
       window.removeEventListener('designer-switch-window', handleDesignerSwitchWindow);
       window.removeEventListener('open-control-event-code', handleOpenControlEventCode);
       window.removeEventListener('window-added', handleWindowAdded);
       window.removeEventListener('window-deleted', handleWindowDeleted);
       window.removeEventListener('window-duplicated', handleWindowDuplicated);
+      window.removeEventListener('legacy-window-source-found', handleLegacyWindowSourceFound);
     };
   }, [activeSolutionProject.sourceRoot, captureProjectMutationOwner, flushCurrentEditorDrafts, focusLingCppHandler, handleSelectFile, isCurrentProjectMutationOwner]);
 
@@ -3945,23 +3906,19 @@ void DisplayStatus() {
         projectFileFormats[file.path] = format;
         savedStateByPath.set(file.path, { content, format });
       });
-      // 设计器窗口源码串写保护：每个设计器窗口绑定的 .lcpp 必须声明自己的窗口类。
-      // 若某文件的内容声明的是「另一个设计器窗口」的类，说明发生了窗口源码串写
+      // 设计器窗口源码串写保护：与 describeWindowSourceClobber 同口径——仅当文件本身是
+      // 某窗口的绑定源码、内容却声明了「另一个设计器窗口」的类且未声明自己的类时才算串写
       // （lingbuilder-ui-project 实测：MainWindow.lcpp 被写入 BrowserWindow 整文件内容，
-      // 构建前保存静默落盘，F5 报类名重复）——拒绝写入磁盘，保护磁盘上的正确内容。
+      // 构建前保存静默落盘，F5 报类名重复）。文件不是任何窗口的绑定源码时不拦：
+      // 早于 src/<窗口类名>.lcpp 约定的旧命名主源码内容合法，曾在此被误判串写而无法保存
+      // （DLL命令声明演示 实测），迁移入口见 legacyWindowSource / migrateLegacyWindowSource。
       if (designerProject) {
-        const windowByClassName = new Map(designerProject.windows.map(win => [normalizeIdentifier(win.className), win]));
         for (const [filePath, content] of Object.entries(projectFiles)) {
           if (!filePath.toLocaleLowerCase().endsWith('.lcpp')) continue;
-          const declaredClasses = parseLingCpp(content).program.classes.map(cls => normalizeIdentifier(cls.name));
-          const foreignWindow = declaredClasses
-            .map(className => windowByClassName.get(className))
-            .find(win => win && getLingWindowSourceFilePath(
-              activeSolutionProject.sourceRoot, win.fileName, win.className
-            ).replace(/\\/gu, '/').toLocaleLowerCase() !== filePath.replace(/\\/gu, '/').toLocaleLowerCase());
-          if (foreignWindow) {
+          const clobber = describeWindowSourceClobber(designerProject, activeSolutionProject.sourceRoot, filePath, content);
+          if (clobber) {
             appendEditorTransactionLog(
-              `【${reason}】检测到 ${filePath} 的内容是窗口「${foreignWindow.title || foreignWindow.className}」（类 ${foreignWindow.className}）的源码，而不是它绑定的窗口；已阻止写入磁盘。`
+              `【${reason}】检测到窗口源码串写：${clobber}；已阻止写入磁盘。`
               + '请关闭并重新打开该项目（或重启 IDE）让编辑器缓冲回到磁盘内容；该串写源头若再次出现，请把此提示发给开发者。'
             );
             return false;
@@ -4445,6 +4402,20 @@ void DisplayStatus() {
     }
   };
 
+  const handleOpenWorkspaceInNewWindow = async (): Promise<void> => {
+    try {
+      const result = await window.lingBuilder?.workspace?.openNewWindow();
+      if (!result) {
+        appendEditorTransactionLog('【新窗口错误】当前运行环境不支持在新窗口打开工作区。');
+        return;
+      }
+      if (result.ok && result.workspacePath) appendEditorTransactionLog(`【新窗口】已打开 ${result.workspacePath}。`);
+      else if (!result.ok && !result.canceled) appendEditorTransactionLog(`【新窗口错误】${result.error || '无法在新窗口打开目标。'}`);
+    } catch (error) {
+      appendEditorTransactionLog(`【新窗口错误】${error instanceof Error ? error.message : '无法在新窗口打开目标。'}`);
+    }
+  };
+
   const handleForgetRecentWorkspace = async (workspacePath: string): Promise<void> => {
     const workspaceApi = window.lingBuilder?.workspace;
     if (!workspaceApi?.forgetRecent) return;
@@ -4621,11 +4592,11 @@ void DisplayStatus() {
     window.dispatchEvent(new CustomEvent('show-window-designer'));
     setShowBottomPanel(true);
     setActiveTabInBottom('output');
+    // 如实播报：真实生成只在「生成（F5）/生成解决方案」构建链路发生，这里只是打开设计器。
+    // 此前这里写死三行「解析 DSL→生成完毕」假日志，对无设计器项目是纯误导。
     setBuildLogs(prev => [
       ...prev,
-      `> [${new Date().toLocaleTimeString()}] 【生成】正在根据当前窗口程序集解析中文可视化 DSL 结构...`,
-      `> [${new Date().toLocaleTimeString()}] 【生成】成功提取多个窗体、控件变量和中文事件注册...`,
-      `> [${new Date().toLocaleTimeString()}] 【生成】已重新生成每个窗口对应的 C++ 逻辑类定义。代码生成完毕。`
+      `> [${new Date().toLocaleTimeString()}] 【生成】已打开窗口设计器。C++ 工程与编译产物在点「生成」（F5）或「生成解决方案」时自动生成，无需单独生成代码。`
     ]);
   };
 
@@ -4686,18 +4657,25 @@ void DisplayStatus() {
     window.dispatchEvent(new CustomEvent('lingbuilder-compiler-diagnostics', { detail: { diagnostics } }));
   }, []);
 
-  const openCreateSolutionProjectDialog = useCallback((projectType: 'windows-ui' | 'windows-dll' | 'windows-console' = 'windows-ui') => {
-    setCreateProjectName(`LingBuilder项目${solution.projects.length + 1}`);
+  const openCreateSolutionProjectDialog = useCallback((projectType: 'windows-ui' | 'windows-dll' | 'windows-console' = 'windows-ui', source: 'welcome' | 'workbench' = 'workbench') => {
+    const defaultProjectName = `LingBuilder项目${solution.projects.length + 1}`;
+    setCreateProjectName(defaultProjectName);
     setCreateProjectTemplateId(projectType === 'windows-dll' ? 'windows-dll' : projectType === 'windows-console' ? 'windows-console' : 'blank-window');
-    setCreateSolutionName(solution.name?.trim() || '');
+    setCreateProjectDialogSource(source);
     createDialogSolutionNameTouchedRef.current = false;
+    if (source === 'welcome') {
+      // 欢迎页没有「当前解决方案」上下文：解决方案名称直接跟随项目名（未手改前同步），不再拉取上一个工作区的名称。
+      setCreateSolutionName(defaultProjectName);
+    } else {
+      setCreateSolutionName(solution.name?.trim() || '');
+      // 工作台内客户端 solution 状态可能滞后，打开后拉取服务端最新名称用于预填。
+      void fetchSolution().then(latest => {
+        if (!createDialogSolutionNameTouchedRef.current) setCreateSolutionName(latest.name?.trim() || '');
+      }).catch(() => undefined);
+    }
     setCreateProjectLocation('');
     setCreateProjectError('');
     setShowCreateProjectDialog(true);
-    // 欢迎页打开时客户端 solution 状态可能仍是初始默认值，打开后拉取服务端最新名称用于预填。
-    void fetchSolution().then(latest => {
-      if (!createDialogSolutionNameTouchedRef.current) setCreateSolutionName(latest.name?.trim() || '');
-    }).catch(() => undefined);
   }, [solution.name, solution.projects.length]);
 
   // 工作台内的「新建项目」与欢迎页同链路：先选项目类型，再进名称对话框。
@@ -4740,31 +4718,36 @@ void DisplayStatus() {
   const handleCreateSolutionProject = useCallback(async (
     name: string,
     templateId: 'blank-window' | 'windows-dll' | 'windows-console' = createProjectTemplateId,
-    options?: { solutionName?: string; projectDirectory?: string },
+    options?: { solutionName?: string; projectDirectory?: string; skipProjectReadinessGuard?: boolean },
     signal?: AbortSignal
   ): Promise<{ ok: boolean; workspacePath?: string }> => {
     if (!name.trim()) return { ok: false };
     // 项目文件载入失败/未就绪时必须给可操作的中文原因，不能把内部竞态守卫文案泄漏进对话框。
-    if (projectFileEditorAvailability !== 'ready') {
-      const message = projectFileEditorAvailability === 'error'
-        ? `当前项目文件载入失败，无法新建项目。${projectFileLoadState.error ? `原因：${projectFileLoadState.error} ` : ''}请先重试载入或处理文件问题后再试。`
-        : '项目文件正在载入，请等待载入完成后再新建项目。';
-      appendEditorTransactionLog(`【新建项目错误】${message}`);
-      setCreateProjectError(message);
-      return { ok: false };
-    }
-    const flushState = await flushCurrentEditorDrafts();
-    if (!flushState.ok) {
-      const message = describeProjectMutationBlockerMessage(flushState.diagnostics[0], '新手代码提交失败，未切换项目。');
-      appendEditorTransactionLog(`【新建项目错误】${message}`);
-      setCreateProjectError(message);
-      return { ok: false };
-    }
-    if (flushState.files.some(isEditorFileDirty) || designerDirtyRef.current) {
-      const saved = await handleSaveWorkspace('新建项目前保存');
-      if (!saved) {
-        setCreateProjectError('当前文件保存失败，已取消新建项目。');
+    // 欢迎页路径整组豁免：项目文件载入 effect 由进入工作台门控，欢迎页上永远 loading 且
+    // mutation-owner 守卫要求 projectFilesReady，而此时没有已载入项目、编辑器草稿与在途载入，
+    // 创建成功后才进入工作台加载新项目文件。
+    if (!options?.skipProjectReadinessGuard) {
+      if (projectFileEditorAvailability !== 'ready') {
+        const message = projectFileEditorAvailability === 'error'
+          ? `当前项目文件载入失败，无法新建项目。${projectFileLoadState.error ? `原因：${projectFileLoadState.error} ` : ''}请先重试载入或处理文件问题后再试。`
+          : '项目文件正在载入，请等待载入完成后再新建项目。';
+        appendEditorTransactionLog(`【新建项目错误】${message}`);
+        setCreateProjectError(message);
         return { ok: false };
+      }
+      const flushState = await flushCurrentEditorDrafts();
+      if (!flushState.ok) {
+        const message = describeProjectMutationBlockerMessage(flushState.diagnostics[0], '新手代码提交失败，未切换项目。');
+        appendEditorTransactionLog(`【新建项目错误】${message}`);
+        setCreateProjectError(message);
+        return { ok: false };
+      }
+      if (flushState.files.some(isEditorFileDirty) || designerDirtyRef.current) {
+        const saved = await handleSaveWorkspace('新建项目前保存');
+        if (!saved) {
+          setCreateProjectError('当前文件保存失败，已取消新建项目。');
+          return { ok: false };
+        }
       }
     }
     const result = await createSolutionProject(name.trim(), templateId, options, signal);
@@ -4827,7 +4810,8 @@ void DisplayStatus() {
     try {
       const created = await handleCreateSolutionProject(createProjectName, createProjectTemplateId, {
         solutionName: createSolutionName,
-        projectDirectory: createProjectLocation
+        projectDirectory: createProjectLocation,
+        skipProjectReadinessGuard: createProjectDialogSource === 'welcome'
       }, abortController.signal);
       if (!created.ok) return;
       if (created.workspacePath) {
@@ -4835,13 +4819,15 @@ void DisplayStatus() {
         if (!switched) return;
       }
       setShowCreateProjectDialog(false);
+      // 欢迎页路径：项目创建成功（含独立工作区切换已受理）后才进入工作台；取消则留在欢迎页。
+      if (createProjectDialogSource === 'welcome') enterWorkbench();
     } catch (error) {
       setCreateProjectError(error instanceof Error ? error.message : '新建项目失败。');
     } finally {
       if (createProjectAbortRef.current === abortController) createProjectAbortRef.current = null;
       setIsCreatingSolutionProject(false);
     }
-  }, [createProjectName, createProjectTemplateId, createSolutionName, createProjectLocation, handleCreateSolutionProject, isCreatingSolutionProject]);
+  }, [createProjectName, createProjectTemplateId, createSolutionName, createProjectLocation, createProjectDialogSource, handleCreateSolutionProject, isCreatingSolutionProject, enterWorkbench]);
 
   /** busy 期间用户点击「取消等待」：中止在途创建请求并关闭对话框；项目是否已落盘由解决方案资源管理器确认。 */
   const cancelCreateSolutionProject = useCallback(() => {
@@ -4854,6 +4840,24 @@ void DisplayStatus() {
       confirmLabel: '知道了'
     });
   }, [appendEditorTransactionLog]);
+
+  /** 创建位置「浏览…」：调起系统目录选择对话框并把绝对路径回填输入框；网页原型无此通道，按钮由对话框隐藏。 */
+  const handleBrowseProjectLocation = useCallback(async () => {
+    const pickApi = window.lingBuilder?.projectCreate;
+    if (!pickApi?.pickLocationDirectory) return;
+    try {
+      const picked = await pickApi.pickLocationDirectory();
+      if (picked.canceled) return;
+      if (!picked.ok || !picked.directoryPath) {
+        setCreateProjectError(picked.error || '选择创建位置失败。');
+        return;
+      }
+      setCreateProjectLocation(picked.directoryPath);
+      if (createProjectError) setCreateProjectError('');
+    } catch (error) {
+      setCreateProjectError(error instanceof Error ? error.message : '选择创建位置失败。');
+    }
+  }, [createProjectError]);
 
   const handleCreateSolutionFolder = useCallback((): boolean => {
     const suggestedName = `解决方案文件夹${(solution.folders?.length || 0) + 1}`;
@@ -5696,7 +5700,6 @@ void DisplayStatus() {
     openAccountRegister: () => { void requestCloudAccountLogin({ initialMode: 'register' }); return true; },
     openAccountResetPassword: () => { void requestCloudAccountLogin({ initialMode: 'reset' }); return true; },
     openAccountLogout: () => { void signOutCloudAccount(); return true; },
-    openAccountRecharge: () => { void requestCloudAccountRecharge(); return true; },
     openHelpCenter: () => { setShowHelpCenter(true); return true; },
     openSponsor: () => { setShowSponsorDialog(true); return true; },
     openQQGroup: async () => {
@@ -5752,7 +5755,6 @@ void DisplayStatus() {
     },
     toggleSidebar: toggleSidebarVisibility,
     togglePanel: toggleBottomPanelVisibility,
-    toggleAiPanel: toggleAiPanelVisibility,
     toggleTheme: toggleWorkbenchTheme,
     createProject: openProjectTypeDialog,
     createSolutionFolder: handleCreateSolutionFolder,
@@ -5855,7 +5857,6 @@ void DisplayStatus() {
     'editor.surface': editorState.surface,
     'view.sidebarVisible': showLeftSidebar,
     'view.panelVisible': showBottomPanel,
-    'view.aiPanelVisible': showRightPanel,
     'workbench.darkTheme': isDarkMode,
     ...(editorState.surface === 'designer' ? designerCommandContextRef.current : {})
   };
@@ -6340,7 +6341,7 @@ void DisplayStatus() {
         title: '账号：登录 LingBuilder 账号',
         aliases: ['Login LingBuilder Account', 'Sign In', 'Cloud Account'],
         category: '账号',
-        description: '登录 LingBuilder 云端账号；系统 AI 点数、收费模块权益与体验计划都绑定该账号。',
+        description: '登录 LingBuilder 云端账号；收费模块权益与体验计划都绑定该账号。',
         when: '!workbench.modalOpen',
         order: 31,
         handler: () => workbenchCommandHandlersRef.current.openAccountLogin()
@@ -6364,16 +6365,6 @@ void DisplayStatus() {
         when: '!workbench.modalOpen',
         order: 33,
         handler: () => workbenchCommandHandlersRef.current.openAccountResetPassword()
-      },
-      {
-        id: 'workbench.action.account.recharge',
-        title: '账号：充值系统 AI 点数',
-        aliases: ['Recharge Credits', 'Buy Points', 'Top Up'],
-        category: '账号',
-        description: '打开点数充值窗口，选择套餐后通过支付宝付款，到账自动刷新余额。',
-        when: '!workbench.modalOpen',
-        order: 34,
-        handler: () => workbenchCommandHandlersRef.current.openAccountRecharge()
       },
       {
         id: 'workbench.action.account.logout',
@@ -6536,15 +6527,6 @@ void DisplayStatus() {
         when: '!workbench.modalOpen',
         order: 41,
         handler: () => workbenchCommandHandlersRef.current.togglePanel()
-      },
-      {
-        id: 'workbench.action.toggleAiPanel',
-        title: '切换 AI 助手面板可见性',
-        aliases: ['Toggle AI Panel'],
-        category: '视图',
-        when: '!workbench.modalOpen',
-        order: 42,
-        handler: () => workbenchCommandHandlersRef.current.toggleAiPanel()
       },
       {
         id: 'workbench.action.toggleColorTheme',
@@ -6949,26 +6931,68 @@ void DisplayStatus() {
     );
   }
 
-  // 账号登录/充值对话框在欢迎页与工作台区都要挂载：欢迎页是冷启动用户的第一屏，
+  // 账号登录对话框在欢迎页与工作台区都要挂载：欢迎页是冷启动用户的第一屏，
   // 只挂在工作台里会让「登录/注册」入口在首屏点了没反应。
   const cloudAccountDialogs = (
-    <>
-      <CloudAccountLoginDialog
-        key={cloudAccountLoginDialog?.id ?? 'closed'}
-        open={Boolean(cloudAccountLoginDialog)}
-        title={cloudAccountLoginDialog?.title}
-        description={cloudAccountLoginDialog?.description}
-        initialMode={cloudAccountLoginDialog?.initialMode}
-        isDarkMode={isDarkMode}
-        onResult={settleCloudAccountLoginDialog}
-      />
-      <CloudAccountRechargeDialog
-        key={cloudAccountRechargeDialog?.id ?? 'closed'}
-        open={Boolean(cloudAccountRechargeDialog)}
-        isDarkMode={isDarkMode}
-        onResult={settleCloudAccountRechargeDialog}
-      />
-    </>
+    <CloudAccountLoginDialog
+      key={cloudAccountLoginDialog?.id ?? 'closed'}
+      open={Boolean(cloudAccountLoginDialog)}
+      title={cloudAccountLoginDialog?.title}
+      description={cloudAccountLoginDialog?.description}
+      initialMode={cloudAccountLoginDialog?.initialMode}
+      isDarkMode={isDarkMode}
+      onResult={settleCloudAccountLoginDialog}
+    />
+  );
+
+  // 新建解决方案项目对话框：欢迎页与工作台两个分支共用（欢迎页创建成功后才进工作台）。
+  const createSolutionProjectDialog = (
+    <ProjectNameDialog
+      open={showCreateProjectDialog}
+      value={createProjectName}
+      isDarkMode={isDarkMode}
+      title={createProjectTemplateId === 'windows-dll'
+        ? '新建 Windows DLL 项目'
+        : createProjectTemplateId === 'windows-console' ? '新建 Windows 控制台程序' : undefined}
+      description={createProjectTemplateId === 'windows-dll'
+        ? '将创建 MSVC DLL 源码、C ABI 导出示例和可复制的 Visual Studio 工程。'
+        : createProjectTemplateId === 'windows-console'
+          ? '将创建以“公开 启动()”子程序为主体的控制台项目，F5 生成并运行，输出显示在输出面板。'
+          : undefined}
+      confirmLabel={createProjectTemplateId === 'windows-dll'
+        ? '创建 DLL 项目'
+        : createProjectTemplateId === 'windows-console' ? '创建控制台项目' : undefined}
+      busy={isCreatingSolutionProject}
+      error={createProjectError || undefined}
+      solutionName={createSolutionName}
+      onSolutionNameChange={value => {
+        createDialogSolutionNameTouchedRef.current = true;
+        setCreateSolutionName(value);
+        if (createProjectError) setCreateProjectError('');
+      }}
+      solutionNameHint="留空表示沿用当前解决方案名称；修改后将重命名解决方案。"
+      location={createProjectLocation}
+      onLocationChange={value => {
+        setCreateProjectLocation(value);
+        if (createProjectError) setCreateProjectError('');
+      }}
+      locationPlaceholder={"例如：games/我的游戏 或 D:\\Projects\\我的游戏"}
+      locationHint="相对路径在当前工作区内创建项目；其他磁盘的绝对路径（单个反斜杠即可）将创建独立项目工作区并自动切换过去。"
+      onBrowseLocation={handleBrowseProjectLocation}
+      onChange={value => {
+        setCreateProjectName(value);
+        // 欢迎页路径：解决方案名称跟随项目名自动填充，直到用户手动改过解决方案名称为止。
+        if (createProjectDialogSource === 'welcome' && !createDialogSolutionNameTouchedRef.current) {
+          setCreateSolutionName(value);
+        }
+        if (createProjectError) setCreateProjectError('');
+      }}
+      onConfirm={submitCreateSolutionProject}
+      onCancelBusy={cancelCreateSolutionProject}
+      onClose={() => {
+        if (!isCreatingSolutionProject) setShowCreateProjectDialog(false);
+      }}
+    />
   );
 
   if (showWelcomePage) {
@@ -6983,8 +7007,8 @@ void DisplayStatus() {
           onToggleMaximize={handleWindowToggleMaximize}
           onClose={handleWindowCloseConfirmed}
           onCreateProject={projectType => {
-            enterWorkbench();
-            openCreateSolutionProjectDialog(projectType);
+            // 欢迎页路径：名称/解决方案/位置确认并创建成功后才进入工作台（见 submitCreateSolutionProject）。
+            openCreateSolutionProjectDialog(projectType, 'welcome');
           }}
           onOpenWorkspace={async () => {
             if (await executeWorkbenchCommand('workbench.action.files.openWorkspace')) enterWorkbench();
@@ -7013,6 +7037,7 @@ void DisplayStatus() {
           feedbackUrl={LINGBUILDER_QQ_GROUP_URL}
           onClose={() => setUpdateCheckState(null)}
         />
+        {createSolutionProjectDialog}
         {isWorkspaceSwitching && (
           <div className="fixed inset-0 z-[120] flex items-center justify-center bg-[#111116]/75 backdrop-blur-[2px]" role="status" aria-live="polite">
             <div className="flex min-w-[280px] items-center gap-3 rounded-lg border border-blue-400/30 bg-[#1f2028] px-5 py-4 text-sm text-slate-100 shadow-2xl">
@@ -7024,38 +7049,6 @@ void DisplayStatus() {
       </div>
     );
   }
-
-  // 模块面板等处把一句需求「交给本机 Agent」：工作台只负责展开 AI 助手侧栏并转交需求。
-  const renderAiAssistant = () => (
-    <AiAssistant
-      filePath={activeFile.path}
-      sourceCode={activeFile.translatedContent || activeFile.originalContent}
-      activeLanguage={activeFile.language}
-      projectId={activeProjectId}
-      projectMutationOwner={createProjectMutationOwner(
-        activeProjectId,
-        projectFileLoadGenerationRef.current
-      )}
-      agentRequest={pendingAgentRequest}
-      onAgentRequestHandled={handleAgentRequestHandled}
-      designerProject={activeProjectHasWindowDesigner ? windowDesignerState.project : undefined}
-      workspaceFiles={files.map(file => ({
-        filePath: file.path,
-        sourceCode: file.translatedContent || file.originalContent,
-        language: file.language
-      }))}
-      onApplyWorkspaceEdit={handleApplyWorkspaceEdit}
-      precheckApplyWorkspaceEdit={() => {
-        if (isCurrentProjectMutationOwner(captureProjectMutationOwner())) return '';
-        if (!projectFilesReadyRef.current || !loadedProjectIdRef.current) {
-          return '项目文件正在载入，尚未就绪；请等左下角状态变为「已就绪」后重新点击「应用提案」。';
-        }
-        return '项目上下文已变化（当前项目与设计器模型不一致），未应用该提案；请重新读取当前文件和设计器模型后再试。';
-      }}
-      commandService={commandServiceRef.current}
-      isDarkMode={isDarkMode}
-    />
-  );
 
   return (
     <div className={`workbench-shell ${isDarkMode ? 'theme-dark' : 'theme-light'} h-screen flex flex-col overflow-hidden font-sans select-none ${isDarkMode ? 'bg-[#1E1E1E] text-[#D4D4D4]' : 'bg-slate-50 text-slate-800'}`}>
@@ -7135,7 +7128,6 @@ void DisplayStatus() {
                 )}
               </div>
             )}
-            <CloudAccountTitleBarEntry isDarkMode={isDarkMode} />
           </div>
           <div
             onDoubleClick={e => e.stopPropagation()}
@@ -7170,7 +7162,7 @@ void DisplayStatus() {
                   <button onClick={() => { void handleImportSourceDirectory(); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     导入 C++ 源码目录（生成 CMake 工程）…
                   </button>
-                  <button onClick={() => { void window.lingBuilder?.workspace?.openNewWindow(); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                  <button onClick={() => { void handleOpenWorkspaceInNewWindow(); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     在新窗口打开工作区…
                   </button>
                   <button onClick={() => { void executeWorkbenchCommand('workbench.action.files.closeSolution'); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
@@ -7334,9 +7326,11 @@ void DisplayStatus() {
                     <span className="opacity-50 text-[10px]">{activeSolutionProject.name}</span>
                   </button>
                   <div className={`h-px my-1 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
-                  <button onClick={() => { handleGenerateCpp(); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
-                    <span>生成 C++ 宏定义类</span>
-                  </button>
+                  {!activeProjectIsDllOutput && (
+                    <button onClick={() => { handleGenerateCpp(); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                      <span>生成 C++ 宏定义类</span>
+                    </button>
+                  )}
                   <button onClick={() => { handleEnvCheck(); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     <span>项目环境开发自检</span>
                   </button>
@@ -7408,10 +7402,6 @@ void DisplayStatus() {
                   <div className={`h-px my-1 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
                   {cloudAccountSession.authenticated ? (
                     <>
-                      <button onClick={() => { setActiveDropdown(null); void executeWorkbenchCommand('workbench.action.account.recharge'); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
-                        <span>充值系统 AI 点数</span>
-                        <span className="opacity-50 text-[10px]">{cloudAccountSession.balance?.available || '0'} 点</span>
-                      </button>
                       <button onClick={() => { setActiveDropdown(null); void executeWorkbenchCommand('workbench.action.account.logout'); }} className={`px-3 py-1.5 text-left flex items-center justify-between gap-3 text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                         <span>退出 LingBuilder 账号</span>
                         <span className="min-w-0 truncate opacity-50 text-[10px]">{cloudAccountSession.email}</span>
@@ -7421,7 +7411,7 @@ void DisplayStatus() {
                     <>
                       <button onClick={() => { setActiveDropdown(null); void executeWorkbenchCommand('workbench.action.account.login'); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                         <span>登录 LingBuilder 账号</span>
-                        <span className="opacity-50 text-[10px]">系统 AI</span>
+                        <span className="opacity-50 text-[10px]">收费模块权益</span>
                       </button>
                       <button onClick={() => { setActiveDropdown(null); void executeWorkbenchCommand('workbench.action.account.register'); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                         <span>注册 LingBuilder 账号</span>
@@ -7615,15 +7605,17 @@ void DisplayStatus() {
           <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded border ${
             isDarkMode ? 'bg-[#1e1e1f] border-[#2d2d30]' : 'bg-white border-slate-200 shadow-sm'
           }`}>
-            <button
-              onClick={handleGenerateCpp}
-              className={`p-1 rounded cursor-pointer transition-all active:scale-95 ${
-                isDarkMode ? 'text-slate-400 hover:text-white hover:bg-[#2d2d30]' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-              }`}
-              title="生成 C++ (根据当前中文 DSL、设计器模型或项目配置生成 C++ 代码)"
-            >
-              <Cpu className="w-4 h-4 text-amber-500" />
-            </button>
+            {!activeProjectIsDllOutput && (
+              <button
+                onClick={handleGenerateCpp}
+                className={`p-1 rounded cursor-pointer transition-all active:scale-95 ${
+                  isDarkMode ? 'text-slate-400 hover:text-white hover:bg-[#2d2d30]' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+                title="生成 C++ (打开窗口设计器；C++ 工程与编译产物在「生成」（F5）时自动生成)"
+              >
+                <Cpu className="w-4 h-4 text-amber-500" />
+              </button>
+            )}
             {activeProjectIsDllOutput && (
               <button
                 id="btn-generate-dll"
@@ -7840,15 +7832,12 @@ void DisplayStatus() {
             </button>
             <button
               type="button"
-              onClick={() => void executeWorkbenchCommand('workbench.action.toggleAiPanel')}
-              aria-label="切换 AI 智能编程助手"
-              aria-pressed={showRightPanel}
+              onClick={() => void executeWorkbenchCommand('workbench.action.help.openCliGuide')}
+              aria-label="AI Bridge 连接中心"
               className={`p-1 rounded cursor-pointer transition-colors ${
-                showRightPanel
-                  ? isDarkMode ? 'bg-[#1E1E1E] text-cyan-300' : 'bg-cyan-100 text-cyan-800 font-medium'
-                  : isDarkMode ? 'text-slate-400 hover:text-cyan-300' : 'text-slate-500 hover:text-cyan-700'
+                isDarkMode ? 'text-slate-400 hover:text-cyan-300' : 'text-slate-500 hover:text-cyan-700'
               }`}
-              title="切换 AI 智能编程助手"
+              title="AI Bridge 连接中心"
             >
               <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
             </button>
@@ -8193,40 +8182,6 @@ void DisplayStatus() {
           )}
         </div>
 
-        {showRightPanel && (
-          <>
-            <div
-              className={`w-[6px] shrink-0 cursor-col-resize border-l select-none transition-colors hover:bg-blue-500/20 ${
-                isDarkMode ? 'border-[#2d2d34] bg-[#1c1c22]' : 'border-slate-200 bg-slate-100'
-              }`}
-              onMouseDown={startResizeAiPanel}
-              onDoubleClick={resetAiPanelWidth}
-              title="拖拽调整 AI 助手宽度，双击重置"
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="调整 AI 助手宽度"
-            />
-            <aside
-              className={`relative min-w-0 shrink-0 ${isDarkMode ? 'bg-[#1e1e24]' : 'bg-white'}`}
-              style={{ width: aiPanelWidth }}
-              aria-label="AI 智能编程助手"
-            >
-              <button
-                type="button"
-                onClick={() => void executeWorkbenchCommand('workbench.action.toggleAiPanel')}
-                className={`absolute right-2 top-2 z-10 flex h-6 w-6 items-center justify-center rounded border text-slate-400 hover:text-white ${
-                  isDarkMode ? 'border-[#42424c] bg-[#25252c] hover:bg-[#363642]' : 'border-slate-300 bg-white hover:bg-slate-100 hover:text-slate-700'
-                }`}
-                title="收起 AI 助手"
-                aria-label="收起 AI 助手"
-              >
-                <ChevronRight className="h-3.5 w-3.5" />
-              </button>
-              {renderAiAssistant()}
-            </aside>
-          </>
-        )}
-
       </div>
 
       <CommandPalette
@@ -8265,47 +8220,7 @@ void DisplayStatus() {
         onClose={() => setShowProjectTypeDialog(false)}
       />
 
-      <ProjectNameDialog
-        open={showCreateProjectDialog}
-        value={createProjectName}
-        isDarkMode={isDarkMode}
-        title={createProjectTemplateId === 'windows-dll'
-          ? '新建 Windows DLL 项目'
-          : createProjectTemplateId === 'windows-console' ? '新建 Windows 控制台程序' : undefined}
-        description={createProjectTemplateId === 'windows-dll'
-          ? '将创建 MSVC DLL 源码、C ABI 导出示例和可复制的 Visual Studio 工程。'
-          : createProjectTemplateId === 'windows-console'
-            ? '将创建以“公开 启动()”子程序为主体的控制台项目，F5 生成并运行，输出显示在输出面板。'
-            : undefined}
-        confirmLabel={createProjectTemplateId === 'windows-dll'
-          ? '创建 DLL 项目'
-          : createProjectTemplateId === 'windows-console' ? '创建控制台项目' : undefined}
-        busy={isCreatingSolutionProject}
-        error={createProjectError || undefined}
-        solutionName={createSolutionName}
-        onSolutionNameChange={value => {
-          createDialogSolutionNameTouchedRef.current = true;
-          setCreateSolutionName(value);
-          if (createProjectError) setCreateProjectError('');
-        }}
-        solutionNameHint="留空表示沿用当前解决方案名称；修改后将重命名解决方案。"
-        location={createProjectLocation}
-        onLocationChange={value => {
-          setCreateProjectLocation(value);
-          if (createProjectError) setCreateProjectError('');
-        }}
-        locationPlaceholder={"例如：games/我的游戏 或 D:\\Projects\\我的游戏"}
-        locationHint="相对路径在当前工作区内创建项目；其他磁盘的绝对路径（单个反斜杠即可）将创建独立项目工作区并自动切换过去。"
-        onChange={value => {
-          setCreateProjectName(value);
-          if (createProjectError) setCreateProjectError('');
-        }}
-        onConfirm={submitCreateSolutionProject}
-        onCancelBusy={cancelCreateSolutionProject}
-        onClose={() => {
-          if (!isCreatingSolutionProject) setShowCreateProjectDialog(false);
-        }}
-      />
+      {createSolutionProjectDialog}
 
 <WorkbenchConfirmDialog
         open={Boolean(workbenchDialog)}
@@ -8423,14 +8338,6 @@ void DisplayStatus() {
         open={showCliGuide}
         isDarkMode={isDarkMode}
         onClose={() => setShowCliGuide(false)}
-        onOpenTerminal={message => {
-          setShowCliGuide(false);
-          setShowBottomPanel(true);
-          setActiveTabInBottom('terminal');
-          if (message) {
-            setBuildLogs(previous => [...previous, `> [${new Date().toLocaleTimeString()}] 【AI Bridge】${message}`]);
-          }
-        }}
       />
 
       <HelpCenterDialog

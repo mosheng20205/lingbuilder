@@ -1,10 +1,11 @@
 /**
  * 模块文件「导入 module-build」的唯一受控出口。
  *
- * 2026-09-22 起「AI 生成模块」不再自带模型通道：一键生成把需求交给面板内嵌的
- * DeepSeek Harness（经 AI Bridge 的 module.scaffold → writeFiles → validate 链路直接写
- * module-build），系统 AI 与自定义 API 两条生成通道已删除。本文件因此只保留手动粘贴
- * 导入所需的解析结果结构与受控导入入口，禁止在这里重新接回任何模型调用。
+ * 2026-09-22 起「AI 生成模块」不再自带模型通道；2026-10-02 起面板内嵌 Agent（DeepSeek
+ * Harness）也整体退场。生成一律由外部 AI 完成：经 AI Bridge MCP 的模块封装链
+ * （module.scaffold → writeFiles → validate）直接写 module-build，或复制规范粘贴给任意 AI
+ * 后把回复粘回本面板导入。本文件只保留手动粘贴导入所需的解析结果结构与受控导入入口，
+ * 禁止在这里重新接回任何模型调用。
  */
 
 export interface AiModuleGeneratedFile { path: string; content: string; }

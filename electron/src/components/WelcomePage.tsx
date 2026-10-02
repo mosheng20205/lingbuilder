@@ -33,7 +33,6 @@ import BuildStampLabel from './BuildStampLabel';
 import CreateModuleDialog from './CreateModuleDialog';
 import RecentWorkspacesDialog, { workspaceLabel } from './RecentWorkspacesDialog';
 import { requestCloudAccountLogin } from '../services/workbench/cloudAccountLoginService';
-import { requestCloudAccountRecharge } from '../services/workbench/cloudAccountRechargeService';
 import {
   getCloudAccountSessionState,
   signOutCloudAccount,
@@ -321,15 +320,7 @@ export default function WelcomePage({
                     <span className="flex items-center gap-1.5" title={accountSession.email}>
                       <UserRound className="h-3 w-3" aria-hidden="true" />
                       <span className="max-w-[16rem] truncate">{accountSession.email}</span>
-                      <span className="opacity-70">· {accountSession.balance?.available || '0'} 点</span>
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => void requestCloudAccountRecharge()}
-                      className="cursor-pointer items-center gap-1 transition-colors hover:text-blue-400 hover:underline focus:outline-none focus-visible:text-blue-400 focus-visible:underline"
-                    >
-                      充值点数
-                    </button>
                     <button
                       type="button"
                       onClick={() => void signOutCloudAccount()}
@@ -342,7 +333,7 @@ export default function WelcomePage({
                   <>
                     <button
                       type="button"
-                      onClick={() => void requestCloudAccountLogin({ initialMode: 'login', description: '登录后可使用系统 AI、购买或启用收费模块；还没有账号可点「注册新账号」。' })}
+                      onClick={() => void requestCloudAccountLogin({ initialMode: 'login', description: '登录后可购买或启用收费模块；还没有账号可点「注册新账号」。' })}
                       className="flex cursor-pointer items-center gap-1 transition-colors hover:text-blue-400 hover:underline focus:outline-none focus-visible:text-blue-400 focus-visible:underline"
                     >
                       <UserRound className="h-3 w-3" aria-hidden="true" />

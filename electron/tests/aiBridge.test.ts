@@ -13,8 +13,7 @@ import { AiBridgeService, type AiBridgeProcessManager } from '../src/services/ai
 import { IDE_VERSION_ENV, IDE_VERSION_UNKNOWN, resolveIdeVersion, resetIdeVersionCacheForTest } from '../src/services/aiBridge/ideVersion';
 import { createProjectBuildCoordinator } from '../src/services/tasks/projectBuildCoordinator';
 import { createAiBridgeRouter } from '../src/services/aiBridge/httpRoutes';
-import { createAiBridgeMcpHttpGateway, createAiBridgeMcpProtocolServer, AGENT_MASKED_TOOLS } from '../src/services/aiBridge/mcpServer';
-import { deleteAgentProposal, isPersistableProposalId, persistAgentProposal, readAgentProposal } from '../src/services/lingCpp/agentProposalStore';
+import { createAiBridgeMcpHttpGateway, createAiBridgeMcpProtocolServer } from '../src/services/aiBridge/mcpServer';
 import { areDesignerProjectsEquivalent, getWorkspaceEditProposal } from '../src/services/lingCpp/aiEditService';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { AiBridgeServerOptions } from '../src/services/aiBridge/types';
@@ -142,6 +141,11 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.match(String(client.getInstructions() || ''), /键名错＝没设/u, 'instructions 必须警示 UI 形状键被静默跳过、应用成功不等于生效');
     assert.match(String(client.getInstructions() || ''), /隐藏自动化要传 false/u, 'instructions 必须写明 webdriver 虚拟值语义（传 true 反而暴露）');
     assert.match(String(client.getInstructions() || ''), /clearAllData:true 清空该档案全部数据/u, 'instructions 必须写明 clearAllData 只用于槽位重置、多开保登录态不要发');
+    assert.match(String(client.getInstructions() || ''), /二维码模块（lingbuilder\.qrcode）写作口径/u, 'instructions 必须给出二维码模块写作口径条目');
+    assert.match(String(client.getInstructions() || ''), /二维码_生成\(内容, 纠错级别, 边长像素, 空白边模块数\)/u, 'instructions 必须给出二维码生成标准调用形态');
+    assert.match(String(client.getInstructions() || ''), /不要自己估容量/u, 'instructions 必须写明版本自动选择、禁止外部估算容量');
+    assert.match(String(client.getInstructions() || ''), /二维码_自检\(\) 是生成\+识别闭环自检/u, 'instructions 必须引导写二维码代码前先跑闭环自检');
+    assert.match(String(client.getInstructions() || ''), /二维码_识别取修复码字数\(结果\) 如实上报/u, 'instructions 必须写明修复码字数如实上报口径');
     assert.match(String(client.getInstructions() || ''), /module\.scaffold/u, 'instructions 必须告知外部 AI 模块创作入口与六步链');
     assert.match(String(client.getInstructions() || ''), /module-build/u, 'instructions 必须说明欢迎页新建/打开的模块以开发源形式位于 module-build');
     assert.match(String(client.getInstructions() || ''), /无需重新打包安装/u, 'instructions 必须说明开发源模块改动即时生效、不要建议重复安装');
@@ -194,6 +198,14 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.match(String(client.getInstructions() || ''), /PB_字节集转文本树/u, 'instructions 必须给出 decode_raw 式文本树命令');
     assert.match(String(client.getInstructions() || ''), /PB_导出Proto草稿/u, 'instructions 必须给出 .proto 草稿推断命令');
     assert.match(String(client.getInstructions() || ''), /哈希_算法字节集/u, 'instructions 必须给出任意二进制摘要的字节集形态');
+    assert.match(String(client.getInstructions() || ''), /字节集_取无符号32/u, 'instructions 必须给出字级原语取无符号32');
+    assert.match(String(client.getInstructions() || ''), /字节集_按表映射/u, 'instructions 必须给出 256 项查表映射命令');
+    assert.match(String(client.getInstructions() || ''), /字节集_逐字循环左移32/u, 'instructions 必须给出整段逐字循环左移32');
+    assert.match(String(client.getInstructions() || ''), /对称_RC4加密裸/u, 'instructions 必须给出协议级裸 RC4 命令');
+    assert.match(String(client.getInstructions() || ''), /ARC4\.new/u, 'instructions 必须钉住裸 RC4 与 pycryptodome ARC4 逐字节一致口径');
+    assert.match(String(client.getInstructions() || ''), /网页_异步取返回协议头/u, 'instructions 必须给出异步网页访问读响应头命令');
+    assert.match(String(client.getInstructions() || ''), /软取消/u, 'instructions 必须写明 TLS 指纹路径的软取消语义');
+    assert.match(String(client.getInstructions() || ''), /socks5:\/\//u, 'instructions 必须写明指纹路径固定代理支持 socks5:// 与凭据命令');
     assert.match(String(client.getInstructions() || ''), /进程内存_写字节集/u, 'instructions 必须给出批量写进程内存命令');
     assert.match(String(client.getInstructions() || ''), /设置鼠标位置/u, 'instructions 必须给出鼠标坐标设置命令');
     assert.match(String(client.getInstructions() || ''), /lingcpp-inline-cpp-replaceable/u, 'instructions 必须告知内嵌 C++ 可替代警告诊断的存在');
@@ -212,6 +224,7 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.match(String(client.getInstructions() || ''), /projectHint/u, 'instructions 必须告知单项目工作区的 projectHint 消歧字段');
     assert.match(String(client.getInstructions() || ''), /solution\.json/u, 'instructions 必须给出 projects[] 缺失时的项目注册表读取路径');
     assert.match(String(client.getInstructions() || ''), /提前结束写 `返回\(\)`/u, 'instructions 必须告知无值提前结束写 返回()');
+    assert.match(String(client.getInstructions() || ''), /连续赋值\(值, 目标1, 目标2, \.\.\.\)/u, 'instructions 必须告知连续赋值语句的一值多目标写法（批量初始化/重置口径）');
     assert.match(String(client.getInstructions() || ''), /延时\(等待毫秒\)/u, 'instructions 必须告知不冻结界面的同步延时命令');
     assert.match(String(client.getInstructions() || ''), /延迟调用\(等待毫秒, &处理器\)/u, 'instructions 必须告知一次性延迟调用命令（&处理器 引用语法）');
     assert.match(String(client.getInstructions() || ''), /时钟_置周期\(组件, 0\)/u, 'instructions 必须告知时钟组件周期语义（0=停止）');
@@ -261,121 +274,6 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     await server.close();
     await service.shutdown();
   }
-});
-
-test('AI Bridge agent toolset hides write/execute tools so only the panel can apply and build', async () => {
-  const workspaceRoot = await createTempWorkspace();
-  const service = new AiBridgeService(createOptions(workspaceRoot, 'yolo', 'agent-toolset-token'));
-  const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair();
-  const server = createAiBridgeMcpProtocolServer(service, 'agent');
-  await server.connect(serverTransport);
-  const client = new Client({ name: 'lingbuilder-agent-toolset-test', version: '1.0.0' }, { capabilities: {} });
-  await client.connect(clientTransport);
-
-  const tools = await client.listTools();
-  const names = tools.tools.map(tool => tool.name);
-  assert.equal(names.length, 23 - AGENT_MASKED_TOOLS.size, 'agent 工具集必须恰好摘掉遮蔽清单里的工具');
-  for (const masked of ['lingbuilder.edit.apply', 'lingbuilder.build.run', 'lingbuilder.native.export', 'lingbuilder.native.preview', 'lingbuilder.project.create', 'lingbuilder.project.create.undo']) {
-    assert.ok(!names.includes(masked), `${masked} 不得出现在内嵌 Agent 工具集`);
-  }
-  // 模块封装链只写两个暂存目录、安装仍有预览与权益门禁，因此对 Agent 开放（用户拍板 2B）。
-  for (const kept of [
-    'lingbuilder.edit.propose', 'lingbuilder.lingcpp.diagnostics', 'lingbuilder.module.info',
-    'lingbuilder.file.read', 'lingbuilder.workspace.list',
-    'lingbuilder.module.scaffold', 'lingbuilder.module.writeFiles', 'lingbuilder.module.validate',
-    'lingbuilder.module.pack', 'lingbuilder.module.installPreview', 'lingbuilder.module.install'
-  ]) {
-    assert.ok(names.includes(kept), `${kept} 必须保留给内嵌 Agent`);
-  }
-
-  const instructions = String(client.getInstructions() || '');
-  assert.match(instructions, /内嵌 Agent 工具集/u, 'agent 工具集必须改写工作流口径，否则模型会按完整链空转');
-  assert.match(instructions, /用户确认/u, 'instructions 必须写明落盘由用户在面板确认后代执行');
-  assert.match(instructions, /窗口_取自身句柄/u, 'agent 工具集仍必须携带完整 LingBuilder 规则条款');
-
-  // 遮蔽不是只藏列表：直接点名调用也必须中文拒绝，绝不能落到 callTool 去写盘。
-  const denied = await client.callTool({ name: 'lingbuilder.edit.apply', arguments: { proposalId: 'not-exist', approved: true } });
-  assert.equal(denied.isError, true, '被遮蔽工具的直接调用必须报错');
-  assert.match(JSON.stringify(denied), /由 LingBuilder 面板在用户确认提案后代执行/u, '拒绝原因必须是中文可指导文案');
-  const deniedBuild = await client.callTool({ name: 'lingbuilder.build.run', arguments: { projectId: 'x', approved: true } });
-  assert.equal(deniedBuild.isError, true, 'build.run 同样不得被内嵌 Agent 直接触发');
-  assert.match(instructions, /模块封装链例外可用/u, 'instructions 必须写清模块链可直接执行，否则 Agent 会停在提案上空转');
-  assert.ok(!instructions.includes('module.writeFiles / module.pack / module.install）在本会话不可用'), '口径不得再把模块链算进不可用清单');
-
-  await client.close();
-  await service.shutdown();
-
-  // 默认 full 工具集（外部 AI 客户端 / HTTP MCP）不受影响。
-  const fullService = new AiBridgeService(createOptions(workspaceRoot, 'preview', 'full-toolset-token'));
-  const [fullServerTransport, fullClientTransport] = InMemoryTransport.createLinkedPair();
-  const fullServer = createAiBridgeMcpProtocolServer(fullService);
-  await fullServer.connect(fullServerTransport);
-  const fullClient = new Client({ name: 'lingbuilder-full-toolset-test', version: '1.0.0' }, { capabilities: {} });
-  await fullClient.connect(fullClientTransport);
-  assert.equal((await fullClient.listTools()).tools.length, 23, 'full 工具集必须仍是 23 个');
-  await fullClient.close();
-  await fullService.shutdown();
-});
-
-test('内嵌 Agent 提案经工作区交接目录被面板实例按同一 ID 取回并落盘', async () => {
-  const workspaceRoot = await createTempWorkspace();
-  const relativePath = 'src/handoff/MainWindow.lcpp';
-  await fs.mkdir(path.join(workspaceRoot, 'src', 'handoff'), { recursive: true });
-  await fs.writeFile(path.join(workspaceRoot, relativePath), '旧内容\n', 'utf8');
-  const service = new AiBridgeService({
-    ...createOptions(workspaceRoot, 'preview', 'handoff-token'),
-    agentProposalHandoff: true
-  });
-  const proposal = {
-    id: 'lingcpp-edit-11111111-2222-3333-4444-555555555555',
-    title: 'AI 中文 C++ 编辑预览',
-    summary: '交接测试',
-    createdAt: new Date().toISOString(),
-    explanation: '由另一进程的 Agent 运行时生成',
-    changes: [{
-      filePath: relativePath,
-      range: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 4 },
-      originalText: '旧内容',
-      newText: '新内容'
-    }]
-  };
-  await persistAgentProposal(workspaceRoot, proposal);
-  // 模拟「提案在别的进程里」：本进程内存 store 必须没有它，apply 仍要成功。
-  assert.equal(getWorkspaceEditProposal(proposal.id), undefined);
-
-  const result = await service.applyEdit({ proposalId: proposal.id, approved: true });
-  assert.equal(result.ok, true);
-  assert.equal((await fs.readFile(path.join(workspaceRoot, relativePath), 'utf8')).trim(), '新内容');
-  assert.equal(await readAgentProposal(workspaceRoot, proposal.id), undefined, '应用成功后必须删除交接文件，不留源码草稿');
-  await service.shutdown();
-});
-
-test('交接目录只接受合法提案 ID，拒绝任何路径形态', async () => {
-  const workspaceRoot = await createTempWorkspace();
-  assert.equal(isPersistableProposalId('lingcpp-edit-11111111-2222-3333-4444-555555555555'), true);
-  for (const bad of ['../../evil', 'lingcpp-edit-x', 'lingcpp-edit-11111111111111111111111111111111', '']) {
-    assert.equal(isPersistableProposalId(bad), false, `${bad} 不得作为提案 ID`);
-    await assert.rejects(() => persistAgentProposal(workspaceRoot, { id: bad } as never), /提案 ID 无效/u);
-    assert.equal(await readAgentProposal(workspaceRoot, bad), undefined);
-    assert.equal(await deleteAgentProposal(workspaceRoot, bad), false, '非法 ID 的删除必须直接返回 false，不得触达文件系统');
-  }
-});
-
-test('拒绝提案要立刻清掉交接目录里的草稿，不靠过期兜底', async () => {
-  const workspaceRoot = await createTempWorkspace();
-  const proposalId = 'lingcpp-edit-22222222-3333-4444-5555-666666666666';
-  assert.equal(await deleteAgentProposal(workspaceRoot, proposalId), false, '不存在时不得谎报删除成功');
-  await persistAgentProposal(workspaceRoot, {
-    id: proposalId,
-    title: 't',
-    summary: 's',
-    createdAt: new Date().toISOString(),
-    explanation: 'e',
-    changes: []
-  });
-  assert.notEqual(await readAgentProposal(workspaceRoot, proposalId), undefined);
-  assert.equal(await deleteAgentProposal(workspaceRoot, proposalId), true);
-  assert.equal(await readAgentProposal(workspaceRoot, proposalId), undefined);
 });
 
 function createModuleToolManifest(id: string): Record<string, unknown> {
@@ -1701,7 +1599,7 @@ test('AI Bridge 应用外部 AI 的布局提案时，面板画布的归一化模
   movedDesignerProject.windows[0].controls[0].y = 498;
 
   const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
-  // 不带 designerProject：与 `--mcp-toolset agent` 的 stdio 宿主完全同形（caller 只有磁盘视图）。
+  // 不带 designerProject：与外部 AI 的 stdio 宿主完全同形（caller 只有磁盘视图）。
   const proposal = await service.proposeEdit({
     filePath: sourcePath,
     projectId: 'demo',

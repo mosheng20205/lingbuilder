@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 
-import { createManagedBlock } from '../electron/codexDesktopIntegrationService';
+import { createManagedBlock } from '../electron/aiBridgeManagedBlock';
 
 const electronRoot = path.resolve(import.meta.dirname, '..');
 const skillKitRoot = path.join(electronRoot, 'skill-kit');

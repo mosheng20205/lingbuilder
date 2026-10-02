@@ -1,9 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
-import { renderToStaticMarkup } from 'react-dom/server';
 
-import CloudAccountTitleBarEntry from '../src/components/CloudAccountTitleBarEntry';
 import {
   applyCloudAccountBalance,
   applyCloudAccountSignedIn,
@@ -12,12 +10,6 @@ import {
   refreshCloudAccountSession,
   subscribeCloudAccountSession
 } from '../src/services/workbench/cloudAccountSessionStore';
-import {
-  getActiveCloudAccountRechargeDialog,
-  requestCloudAccountRecharge,
-  settleCloudAccountRechargeDialog,
-  subscribeCloudAccountRechargeDialog
-} from '../src/services/workbench/cloudAccountRechargeService';
 
 function readSource(relativePath: string): string {
   return fs.readFileSync(new URL(`../src/${relativePath}`, import.meta.url), 'utf8');
@@ -47,79 +39,47 @@ test('无桌面 IPC 时会话刷新落回未登录并给出中文提示', async 
   assert.match(state.error || '', /LingBuilder 桌面版/u);
 });
 
-test('充值对话框服务只保留一个挂起请求，旧请求按取消结算', async () => {
-  const received: Array<number | null> = [];
-  const unsubscribe = subscribeCloudAccountRechargeDialog(request => received.push(request?.id ?? null));
-
-  const first = requestCloudAccountRecharge();
-  assert.equal(received.at(-1), getActiveCloudAccountRechargeDialog()?.id);
-  const second = requestCloudAccountRecharge();
-  assert.equal((await first).cancelled, true, '新请求必须把旧请求按取消结算');
-  assert.notEqual(received[0], received.at(-1));
-
-  settleCloudAccountRechargeDialog({ paid: true });
-  assert.equal((await second).paid, true);
-  assert.equal(getActiveCloudAccountRechargeDialog(), null);
-  unsubscribe();
-});
-
-test('无挂起请求时结算充值对话框不产生副作用', () => {
-  settleCloudAccountRechargeDialog({ paid: true });
-  assert.equal(getActiveCloudAccountRechargeDialog(), null);
-});
-
-test('登录与注册入口常驻标题栏、欢迎页、帮助菜单与设置页', () => {
+test('登录与注册入口常驻欢迎页、帮助菜单与设置页，AI 点数入口已全部退场', () => {
   const app = readSource('App.tsx');
-  assert.match(app, /<CloudAccountTitleBarEntry isDarkMode=\{isDarkMode\} \/>/u, '标题栏必须常驻账号入口');
-  for (const commandId of ['login', 'register', 'resetPassword', 'recharge', 'logout']) {
+  for (const commandId of ['login', 'register', 'resetPassword', 'logout']) {
     assert.ok(app.includes(`workbench.action.account.${commandId}`), `命令面板必须注册 workbench.action.account.${commandId}`);
   }
+  assert.doesNotMatch(app, /workbench\.action\.account\.recharge/u, 'AI 编程助手已不需要点数，充值命令必须退场');
+  assert.doesNotMatch(app, /充值/u, '工作台不得再出现充值入口');
   assert.match(app, /executeWorkbenchCommand\('workbench\.action\.account\.login'\)/u, '帮助菜单必须有登录入口');
   assert.match(app, /executeWorkbenchCommand\('workbench\.action\.account\.register'\)/u, '帮助菜单必须有注册入口');
+  assert.match(app, /executeWorkbenchCommand\('workbench\.action\.account\.logout'\)/u, '帮助菜单必须有退出账号入口');
   // 账号对话框在欢迎页与工作台区都挂载，否则首屏入口点了没反应。
   assert.match(app, /\{cloudAccountDialogs\}\s*<UpdateDialog/u);
 
   const welcome = readSource('components/WelcomePage.tsx');
   assert.match(welcome, /登录账号/u);
   assert.match(welcome, /注册账号/u);
+  assert.doesNotMatch(welcome, /充值|点数/u, '欢迎页不得再展示点数与充值');
 
   const settings = readSource('components/SettingsDialog.tsx');
   assert.match(settings, /'工作台', '账号', '更新'/u, '设置页必须有账号分类');
   assert.match(settings, /<AccountSettings /u);
+  assert.doesNotMatch(settings, /充值|可用点数/u, '设置页不得再展示点数与充值');
 });
 
-test('登录表单与充值实现各只有一份，界面入口一律复用共享服务', () => {
-  const aiAssistant = readSource('components/AiAssistant.tsx');
-  assert.doesNotMatch(aiAssistant, /system-ai-email/u, 'AI 面板不得再自带一份登录表单');
-  assert.doesNotMatch(aiAssistant, /createRechargeOrder/u, '充值下单只能有一份实现');
-  assert.doesNotMatch(aiAssistant, /rechargePackages/u, '充值套餐加载不得在面板内重复实现');
+test('充值链路已整体下线，登录实现只有一份且界面入口一律复用共享服务', () => {
+  const workspaceRoot = new URL('../src/', import.meta.url);
+  assert.equal(fs.existsSync(new URL('components/CloudAccountRechargeDialog.tsx', workspaceRoot)), false, '充值弹窗组件必须删除');
+  assert.equal(fs.existsSync(new URL('components/CloudAccountTitleBarEntry.tsx', workspaceRoot)), false, '标题栏点数徽标组件必须删除');
+  assert.equal(fs.existsSync(new URL('services/workbench/cloudAccountRechargeService.ts', workspaceRoot)), false, '充值对话框服务必须删除');
+  assert.equal(fs.existsSync(new URL('components/AiAssistant.tsx', workspaceRoot)), false, 'AI 助手面板必须已删除（2026-10-02 退场），不得再自带登录表单');
 
   const loginDialog = readSource('components/CloudAccountLoginDialog.tsx');
   assert.match(loginDialog, /cloudAccount\.register/u, '注册必须由共享对话框实现');
   assert.match(loginDialog, /注册新账号/u);
 
-  const rechargeDialog = readSource('components/CloudAccountRechargeDialog.tsx');
-  assert.match(rechargeDialog, /createRechargeOrder/u);
-  assert.match(rechargeDialog, /applyCloudAccountBalance/u, '到账后必须写回共享会话');
-});
-
-test('标题栏账号徽标按会话状态显示登录入口或点数', () => {
-  // 组件只在 Electron 渲染进程挂载，node 下需要临时提供 window.lingBuilder.cloudAccount 桩。
-  const globalScope = globalThis as { window?: unknown };
-  globalScope.window = { lingBuilder: { cloudAccount: {} } };
-  try {
-    applyCloudAccountSignedOut();
-    const signedOut = renderToStaticMarkup(<CloudAccountTitleBarEntry isDarkMode />);
-    assert.match(signedOut, /登录 LingBuilder 账号/u);
-    assert.match(signedOut, />登录</u);
-
-    applyCloudAccountSignedIn('demo@lingbuilder.com', { available: '1250', reserved: '0' });
-    const signedIn = renderToStaticMarkup(<CloudAccountTitleBarEntry isDarkMode />);
-    assert.match(signedIn, /已登录 demo@lingbuilder\.com/u);
-    assert.match(signedIn, /1,250/u, '点数必须千分位显示');
-    assert.doesNotMatch(signedIn, /demo@lingbuilder\.com<\/span>/u, '徽标本体不显示邮箱，邮箱只在展开菜单里');
-  } finally {
-    delete globalScope.window;
-    applyCloudAccountSignedOut();
+  // 渲染层与主进程都不得再引用点数充值通道（云端 /v1/credits 接口保留不动）。
+  for (const relativePath of ['App.tsx', 'electron-api.d.ts']) {
+    assert.doesNotMatch(readSource(relativePath), /recharge|cloud-credits/iu, `${relativePath} 不得再引用充值通道`);
   }
+  const preload = fs.readFileSync(new URL('../electron/preload.ts', import.meta.url), 'utf8');
+  assert.doesNotMatch(preload, /recharge|cloud-credits/iu, 'preload 不得再暴露充值 IPC');
+  const main = fs.readFileSync(new URL('../electron/main.ts', import.meta.url), 'utf8');
+  assert.doesNotMatch(main, /cloud-credits/iu, '主进程不得再注册充值 IPC');
 });

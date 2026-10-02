@@ -1,9 +1,11 @@
 /**
  * LingBuilder 云端账号会话状态源。
  *
- * 标题栏账号入口、AI 助手面板、设置页和收费模块门禁必须消费同一份登录态，
+ * 帮助菜单、欢迎页、设置页和收费模块门禁必须消费同一份登录态，
  * 不得各自维护 cloudSession 副本——副本漂移是「已登录但界面仍显示未登录」的根因。
- * 首次订阅时惰性拉取一次，之后由登录/退出/充值等动作显式刷新。
+ * 首次订阅时惰性拉取一次，之后由登录/退出等动作显式刷新。
+ * balance 仍随云端会话返回并在此保存（收费模块权益与对账口径依赖），
+ * 但自 2026-10-01 起 IDE 界面不再展示点数，充值链路已整体退场。
  */
 
 export interface CloudAccountSessionState {
@@ -99,7 +101,7 @@ export function applyCloudAccountSignedOut(): CloudAccountSessionState {
   return publish({ authenticated: false, loading: false });
 }
 
-/** 充值或点数消耗后只更新点数，不改变登录态。 */
+/** 云端余额变化时只更新 balance 字段，不改变登录态（界面自 2026-10-01 起不再展示点数）。 */
 export function applyCloudAccountBalance(balance: { available: string; reserved: string }): CloudAccountSessionState {
   return publish({ ...state, balance });
 }

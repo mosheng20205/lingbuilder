@@ -26,7 +26,7 @@ const MCP_INSTRUCTIONS = [
   '9. HTTP 客户端模块 2.1 的 Cookie 分两层：`HTTP客户端_设置Cookie` 只是自动接收/回送 Set-Cookie 的会话罐开关，不提供注入口；要把浏览器或内存里已取得的 Cookie 发出去，按请求整体注入用 `HTTP客户端_请求置Cookie(请求, Cookie串)`（该请求含重定向只发这份手工 Cookie，自动罐回送同时关闭），长期按域/路径回送用 `HTTP客户端_置Cookie(客户端, 名称, 值, 域, 路径)`，回读与清空用 `HTTP客户端_取CookieJSON` / `HTTP客户端_删除全部Cookie`；`设置请求头`/`设置默认请求头` 仍拒绝 Cookie/Set-Cookie 等受管头，禁止生成「用设置请求头提交 Cookie」的写法。',
   '10. 运行期观测：lingbuilder.run.wait 等待进程退出并拿退出码，lingbuilder.run.log 读取运行输出，lingbuilder.build.stop 停止受控运行进程。GUI 程序的界面交互仍需用户确认。',
   '11. 模块创作：外部 AI 封装模块走 module.scaffold（可选 category/description 会写进清单，与用户在欢迎页「新建模块」看到的是同一 createModuleTemplate 骨架）→ module.writeFiles → module.validate → module.pack → module.installPreview → module.install 六步链。用户也可能从欢迎页「新建模块 / 打开 .lbmod 模块包」自行把模块放进 .lingbuilder/module-build 并登记为开发源——这类模块 installPath 指向源目录、模块列表标注开发源，清单与源码改动即时生效、无需重新打包安装；看到这类模块时不要建议用户重复安装，编辑-发布闭环走模块页「模块包导出」。',
-  '12. 返回语句写法：带返回值的返回统一写括号形态 `返回(表达式)`，如 `返回(合计)`、`返回(数值 * 数值工具.阶乘(数值 - 1))`；不带值提前结束写 `返回()`。不带括号的 `返回 表达式` 也合法且生成结果相同，但官方示例、教程与演示项目已统一为括号形态，生成或修改 .lcpp 时一律写括号形态，保持与示例风格一致。',
+  '12. 返回语句写法：带返回值的返回统一写括号形态 `返回(表达式)`，如 `返回(合计)`、`返回(数值 * 数值工具.阶乘(数值 - 1))`；不带值提前结束写 `返回()`。不带括号的 `返回 表达式` 也合法且生成结果相同，但官方示例、教程与演示项目已统一为括号形态，生成或修改 .lcpp 时一律写括号形态，保持与示例风格一致。批量初始化或批量重置同一批变量时用连续赋值语句 `连续赋值(值, 目标1, 目标2, ...)`（易语言同名命令同语义）：第 1 个参数是值，其后全是赋值目标，一值多目标、值只求值一次，目标支持变量、成员与数组元素（如 名单[1]），与逐条「目标 = 值」完全等价；不要为批量清零写多行重复赋值或 @ 内联 C++。',
   '13. 等待与定时（不冻结界面）：在事件处理器里需要「等一会儿再做事」时，禁止用 线程_协作等待 / 线程_等待（两者在界面线程调用会冻结窗口，多线程模块命令只在工作处理器里用），win32 基础模块提供三种不冻结界面的方式——① 延时(等待毫秒)：同步等待，但等待期间持续泵送界面消息（易语言 延时/程序_延时 同款语义），窗口不冻结、控件仍可点击，等待期间触发的事件处理器会先执行再回来继续下一行；② 延迟调用(等待毫秒, &处理器)：一次性延迟调用，到期后在界面线程调用 &处理器（无参子程序，& 引用语法），只触发一次，窗口销毁后不再触发；③ 设计器「时钟」非可视组件 + 时钟_启动/时钟_停止/时钟_置周期/时钟_取周期/时钟_是否已启动 命令族与「周期到期」事件（时钟_置周期(组件, 0) 表示停止计时，与易语言时钟周期语义一致），适合周期性任务，组件属性可设周期毫秒与「窗口创建后自动计时」。时钟组件只在窗口项目计时，控制台项目请在「启动」里配合 EdgeView_泵消息 用延迟调用，或改用多线程模块命令。',
   '14. 定时任务（cron 表达式调度）用 lingbuilder.cron 模块的 cron_定时_ 命令族，不要用时钟组件拼日历调度（时钟是固定毫秒周期）。三条路径按需选：① cron_定时_启动(表达式, &处理器)——到点在注册窗口 UI 线程执行，处理器签名 空 处理器(定时任务 任务)，可直接更新控件；② cron_定时_提交线程(表达式, &工作处理器, &完成处理器)——工作处理器在后台线程执行，禁止调用任何 UI/controlRef 命令，界面更新放完成处理器；③ crontab 表命令型：cron_定时_表添加(表达式, 命令行) 写表 + cron_定时_表载入运行() 注册为命令任务，或直接 cron_定时_守护启动()（自动载表并开启 0.5 秒守护线程；同一张系统表全机只允许一个进程持有守护，重复启动返回假）。表达式支持五段「分 时 日 月 周」、六段秒级（首段为秒）、*/n、a-b/n、逗号列表、@daily/@hourly/@reboot 等简写；日与周同时受限时命中其一即触发（标准 cron 语义）；写错用 cron_定时_取表达式错误 查中文原因、cron_定时_表达式说明 生成人话。系统级表在 %APPDATA%\\LingBuilder\\cron\\crontab.txt，MAILTO= 行指定通知邮箱；常驻等价 crontab 守护：cron_定时_开机自启(真) 写当前用户 Run 键，登录后系统以 --lingbuilder-cron-daemon 隐藏拉起本程序进入守护模式。MAILTO 邮件通知必须先 cron_定时_邮件配置(SMTP服务器, 端口, 账号, 授权码, 收件地址)（Windows 无本机邮件代理，需真实 SMTP 账号），命令任务退出码非 0 或有输出时发通知邮件，cron_定时_邮件测试 验证配置。命令行的命令任务经 cmd.exe /c 执行，输出被捕获用于邮件正文，禁止生成从工作处理器直接操作控件的代码。',
   '15. 动手前先自省工作区：lingbuilder.workspace.list 的返回首项是 type="workspace" 的合成根条目，其 workspaceRoot 字段即当前 Bridge 工作区根绝对路径（stdio 模式下=客户端启动目录），ideVersion 字段即当前 LingBuilder IDE 版本（涉及兼容性判断或问题报告时引用它）。与用户项目目录不符时不要继续生成或修改代码：让客户端切换到正确目录后重启 MCP 宿主；文件报「工作区中不存在」时，错误信息里也会带当前工作区路径与修法。',
@@ -48,9 +48,11 @@ const MCP_INSTRUCTIONS = [
   '⑪ 位运算族（std.math v1.2.0）：位_与/位_或/位_异或(甲, 乙)、位_取反(甲)、位_左移(甲, 位数)、位_右移(甲, 位数)（逻辑右移补 0）、位_算术右移(甲, 位数)（补符号位）、位_循环左移32(甲, 位数)（SM3/MD5 轮函数）、位_取字节(数值, 序号 0~7)、位_测试(数值, 位序)。红线：参数与返回值一律按 64 位补码位模式处理（与 unsigned long long 逐位兼容），移位位数对 64 取模（32 位循环对 32 取模）；protobuf zigzag = 位_异或(位_左移(n, 1), 位_算术右移(n, 63))。写哈希/签名/varint/校验类算法时禁止再写 @ 位运算。',
   '⑫ 文本↔字节的 RAW 编码（std.encoding）：编码_文本转字节集(文本, "RAW") / 编码_字节集转文本(数据, "RAW")（别名 LATIN1）按码点低 8 位直接截断/还原，不查任何代码页——签名算法里 wchar_t 逐字符截到低 8 位的语义用它，不要用 ANSI（走当前代码页映射，中文系统下是 GBK，结果不同）。',
   '⑬ 无 schema protobuf 与哈希字节集：抓包逆向没有 .proto 时用 lingbuilder.data.protobuf v1.1.0 的 wire 命令（不依赖 SDK）——拼装 PB_写字段_varint/固定32/固定64/字节集/文本/嵌套（值语义，返回拼接后新字节集；负数 varint 按补码 10 字节），读取 PB_取字段_varint/取字段_字节集（首个匹配），调试打印 PB_字段信息JSON(数据)（字段号/wire/varint/hex/utf8）与 PB_字节集转文本树(数据, 缩进)（decode_raw 式递归展开），类型推断 PB_导出Proto草稿(数据)；禁止再 @ 手写 varint 编解码。任意二进制的摘要用 哈希_算法字节集(数据)（MD5/SHA1/SHA256/SHA3_256/SM3/BLAKE2b/BLAKE3，大写 hex）；文本形态只适合合法 UTF-8 输入。批量写进程内存用 进程内存_写字节集(句柄, 地址, 数据)（需 打开 传真 允许写入），模拟点击坐标用 设置鼠标位置(横, 纵)。@ 行若已有中文命令可替代，lingcpp.diagnostics 会给 lingcpp-inline-cpp-replaceable 警告并列出替代命令；确实无替代的行可加行尾「// 允许: 原因」豁免，项目也可在解决方案 buildProperties.forbidInlineCpp 开启禁止门禁（inlineCppAllowFiles 整文件豁免）。完整对照表见仓库 docs/modules/内嵌C++替代对照表.md。',
+  '⑭ 字级字节集原语与裸 RC4（2026-10-02，魔改 MD5/AES/RC4 签名算法零内嵌 C++）：字节集与 32 位字数组互转用 std.bytes 1.3.0 字级族——字节集_取无符号32(数据, 偏移[, 大端=假])（返回长整数 0~4294967295，越界 -1）、字节集_置无符号32(数据, 偏移, 数值[, 大端=假])（原地写低 32 位）、字节集_取无符号16(数据, 偏移[, 大端=假])、字节集_字节序反转(数据, 每元素字节数 1/2/4/8)（bswap）、字节集_异或(甲, 乙)（按较短者输出）、字节集_按表映射(数据, 256 字节映射表)（AES S 盒一次查表）、字节集_逐字循环左移32(数据, 位数[, 大端=假])（整段 rotl32，MD5 用小端、SHA 族传大端）；单字节读仍用 字节集_取字节。流加密用 对称_RC4加密裸(密钥字节集, 数据字节集)（crypto.symmetric，drop=0、无填充、无自描述头、输出等长，与 pycryptodome ARC4.new(密钥) 逐字节一致，13 字节 ASCII 密钥用 编码_文本转字节集(文本, "RAW") 转入；解密用 对称_RC4解密裸 或同一命令）——旧版 对称_RC4加密 走 $lbce$ 信封+16 字节十六进制密钥+UTF-8 文本，不能用于协议流加密。网页_异步访问 族读响应头用 网页_异步取返回协议头(请求编号)（web.http 1.2.0）。Xy-Ter-Str 这类只出现在响应头的字段在 http-client 指纹通道用 HTTP客户端_取响应头(请求, "Xy-Ter-Str")；该通道取消是软取消（指纹路径请求会跑到超时上限才置「已取消」，UI 要等状态翻转），网关 302 到验证码页判定须先 HTTP客户端_设置重定向策略(客户端, 假, 假) 再只信状态码；SOCKS5 代理只在指纹客户端可用——固定代理地址直接写 socks5://主机:端口（socks5h:// 让代理解析域名），配 HTTP客户端_设置代理凭据 或 HTTP客户端请求_设置代理凭据。写这类算法禁止再写 @ 内联 C++（位运算继续用 ⑪ 的 位_ 族）。',
   '约束：所有写入与构建都限定在工作区内；独立一行「结束」是块结束标记不是退出命令，显式退出用 结束()。',
-  '21. 纯协议 HTTP 请求（Chromium 网络栈直发，TLS/HTTP2 指纹与内核浏览器一致，适合直连签名类接口）：启用 lingbuilder.cef3.browser + lingbuilder.cef3.network（窗口或控制台项目；进程内先 CEF3_创建无头浏览器 或窗口浏览器完成 CEF 初始化）。标准流程＝CEF3网络_创建请求客户端 → CEF3网络_创建请求 → CEF3网络_设置请求地址/设置请求方法/设置请求头（逐条调用，同名覆盖不同名累积）/设置请求正文（POST/PUT 字节集，单次≤64MiB）→ CEF3网络_发起请求(请求, 客户端, 0)（第三参为隔离会话上下文句柄，0=默认全局上下文，多账号隔离配 CEF3会话_ 系列）→ 轮询 CEF3网络_取请求状态（0=未知 1=成功 2=进行中 3=已取消 4=失败；-1=查询失败）→ CEF3网络_取响应对象 → 取响应状态码/取响应头/取响应头映射JSON（保序 [{"name","value"}] 数组，多值头重复出现）/取响应MIME类型/取响应地址（重定向后最终URL）→ 排空正文：循环 CEF3网络_取下载数据事件(客户端) 领事件任务（首次调用即「预约」，无事件返回进行中的预约任务，用 CEF3任务_取状态 区分），状态=2 时 CEF3网络_取下载块 拿缓冲（一次性）、CEF3缓冲_到十六进制 逐块拼接，最后 字节集_十六进制解码 + 编码_字节集转文本 一次性解码。四条红线：①受管句柄按长整数打印恒为负数，判空只能 <> 0，禁止 > 0；②.lcpp 带初始化的局部声明会被提升到子程序最前，多步句柄流程必须「先声明（不带初始化）后按序赋值」，否则 设置请求头/设置请求正文 会被提升到 发起请求 之后而失败（请求发起后请求对象只读）；③Chromium 不自动解压 CefURLRequest 正文（默认收到 gzip 原始字节），必须先 CEF3网络_设置请求头(请求, "Accept-Encoding", "identity") 让服务端回未压缩正文；④响应头/响应体在请求完成后读取。代理认证用 CEF3网络_取认证事件（必须在发起请求之前调用预约，否则认证被放弃）+ CEF3网络_回复认证(任务, 用户名, 密码)（空用户名=放弃认证）。分享短链/跳转口令解析用 lingbuilder.net.http-client 的 HTTP客户端_解析跳转链(客户端, 地址, 最大跳转次数)（手动跟随 3xx 返回最终地址，如 xhslink.com 短链 → 笔记页地址，再用 std.regex 提取 xsec_token 等参数）；多账号逐请求代理用 HTTP客户端请求_设置代理 / HTTP客户端请求_设置代理凭据（WinHTTP 路径，请求级覆盖客户端代理）。不依赖浏览器的纯协议 TLS 指纹（方案B）：HTTP客户端_设置TLS指纹(客户端, "chrome-131") 把客户端整体切到 curl-impersonate 仿真网络栈——真 Chrome TLS ClientHello/HTTP2 指纹与浏览器默认头，压缩正文自动解压，档案支持 chrome99～chrome150/edge/safari/firefox（以随包 libcurl-impersonate.dll 为准，未知档案给中文诊断）；仅 x64 构建，需随附 libcurl-impersonate.dll + cacert.pem（SHA-256 钉死校验）；设置后该客户端全部请求走同一套命令（文件上传/断点续传/运行中取消不支持，调用时中文阻断）。真机对照：同机同刻小红书 explore，指纹客户端 HTTP/2 200 直达正文（约 190KB 已解压），WinHTTP 被网关 302 到验证码页。FBro（指纹浏览器，CEF 135）同能力已补齐（lingbuilder.fbro.network 2.2.0，需要浏览器实例会话/指纹/代理隔离时优先用它）：启用 lingbuilder.fbro.browser + lingbuilder.fbro.network（窗口或控制台项目，先 FBro_启用无头模式 + FBro_后台创建 完成运行时初始化）→ FBro请求_创建 + FBro请求_设置地址/设置方法/设置头映射JSON → FBro异步请求_发起(浏览器控件, 请求)（本任务即完成事件，FBro任务_等待 后任务结果 JSON 含 urlRequest/status/error/cached）→ FBro任务_取对象(任务ID) 直取 URL 请求句柄 → FBro异步请求_取响应对象 + FBro响应_取状态码/取协议头/取协议头映射JSON（保序 [{"name","value"}] 数组，多值头重复出现）；正文排空＝循环 FBro网络_取下载数据事件(任务ID) 领事件任务（同领取/预约模型，请求完成后队列已排空时领取立即得到失败任务，循环以「FBro任务_取状态 <> 2」收尾）→ FBro网络_取下载块(事件任务) 一次性取缓冲 → FBro缓冲_转十六进制 逐块拼接 → 字节集_十六进制解码 + 编码_字节集转文本 一次性解码；四条红线与 CEF3 完全相同（句柄判空只能 <> 0；先声明（不带初始化）后按序赋值；先设 Accept-Encoding: identity；块拼接后一次性解码）。',
+  '21. 纯协议 HTTP 请求（Chromium 网络栈直发，TLS/HTTP2 指纹与内核浏览器一致，适合直连签名类接口）：启用 lingbuilder.cef3.browser + lingbuilder.cef3.network（窗口或控制台项目；进程内先 CEF3_创建无头浏览器 或窗口浏览器完成 CEF 初始化）。标准流程＝CEF3网络_创建请求客户端 → CEF3网络_创建请求 → CEF3网络_设置请求地址/设置请求方法/设置请求头（逐条调用，同名覆盖不同名累积）/设置请求正文（POST/PUT 字节集，单次≤64MiB）→ CEF3网络_发起请求(请求, 客户端, 0)（第三参为隔离会话上下文句柄，0=默认全局上下文，多账号隔离配 CEF3会话_ 系列）→ 轮询 CEF3网络_取请求状态（0=未知 1=成功 2=进行中 3=已取消 4=失败；-1=查询失败）→ CEF3网络_取响应对象 → 取响应状态码/取响应头/取响应头映射JSON（保序 [{"name","value"}] 数组，多值头重复出现）/取响应MIME类型/取响应地址（重定向后最终URL）→ 排空正文：循环 CEF3网络_取下载数据事件(客户端) 领事件任务（首次调用即「预约」，无事件返回进行中的预约任务，用 CEF3任务_取状态 区分），状态=2 时 CEF3网络_取下载块 拿缓冲（一次性）、CEF3缓冲_到十六进制 逐块拼接，最后 字节集_十六进制解码 + 编码_字节集转文本 一次性解码。四条红线：①受管句柄按长整数打印恒为负数，判空只能 <> 0，禁止 > 0；②.lcpp 带初始化的局部声明会被提升到子程序最前，多步句柄流程必须「先声明（不带初始化）后按序赋值」，否则 设置请求头/设置请求正文 会被提升到 发起请求 之后而失败（请求发起后请求对象只读）；③Chromium 不自动解压 CefURLRequest 正文（默认收到 gzip 原始字节），必须先 CEF3网络_设置请求头(请求, "Accept-Encoding", "identity") 让服务端回未压缩正文；④响应头/响应体在请求完成后读取。代理认证用 CEF3网络_取认证事件（必须在发起请求之前调用预约，否则认证被放弃）+ CEF3网络_回复认证(任务, 用户名, 密码)（空用户名=放弃认证）。分享短链/跳转口令解析用 lingbuilder.net.http-client 的 HTTP客户端_解析跳转链(客户端, 地址, 最大跳转次数)（手动跟随 3xx 返回最终地址，如 xhslink.com 短链 → 笔记页地址，再用 std.regex 提取 xsec_token 等参数）；多账号逐请求代理用 HTTP客户端请求_设置代理 / HTTP客户端请求_设置代理凭据（WinHTTP 路径，请求级覆盖客户端代理）。不依赖浏览器的纯协议 TLS 指纹（方案B）：HTTP客户端_设置TLS指纹(客户端, "chrome-131") 把客户端整体切到 curl-impersonate 仿真网络栈——真 Chrome TLS ClientHello/HTTP2 指纹与浏览器默认头，压缩正文自动解压，档案支持 chrome99～chrome150/edge/safari/firefox（以随包 libcurl-impersonate.dll 为准，未知档案给中文诊断）；仅 x64 构建，需随附 libcurl-impersonate.dll + cacert.pem（SHA-256 钉死校验）；设置后该客户端全部请求走同一套命令（文件上传正文/断点续传落盘不支持，请求启动前中文阻断；运行中取消是软取消——取消请求只把请求标记作废，传输会跑到 HTTP客户端_设置超时 的接收毫秒上限才置「已取消」并丢弃响应，UI 要轮询 HTTP客户端_取请求状态 等翻转，不要显示假象；固定代理地址支持 http:// 与 socks5://（或 socks5h://，域名由代理解析），代理认证用 设置代理凭据/请求_设置代理凭据，HTTPS 经代理自动 CONNECT 隧道，未设指纹的 WinHTTP 路径不支持 SOCKS）。真机对照：同机同刻小红书 explore，指纹客户端 HTTP/2 200 直达正文（约 190KB 已解压），WinHTTP 被网关 302 到验证码页。FBro（指纹浏览器，CEF 135）同能力已补齐（lingbuilder.fbro.network 2.2.0，需要浏览器实例会话/指纹/代理隔离时优先用它）：启用 lingbuilder.fbro.browser + lingbuilder.fbro.network（窗口或控制台项目，先 FBro_启用无头模式 + FBro_后台创建 完成运行时初始化）→ FBro请求_创建 + FBro请求_设置地址/设置方法/设置头映射JSON → FBro异步请求_发起(浏览器控件, 请求)（本任务即完成事件，FBro任务_等待 后任务结果 JSON 含 urlRequest/status/error/cached）→ FBro任务_取对象(任务ID) 直取 URL 请求句柄 → FBro异步请求_取响应对象 + FBro响应_取状态码/取协议头/取协议头映射JSON（保序 [{"name","value"}] 数组，多值头重复出现）；正文排空＝循环 FBro网络_取下载数据事件(任务ID) 领事件任务（同领取/预约模型，请求完成后队列已排空时领取立即得到失败任务，循环以「FBro任务_取状态 <> 2」收尾）→ FBro网络_取下载块(事件任务) 一次性取缓冲 → FBro缓冲_转十六进制 逐块拼接 → 字节集_十六进制解码 + 编码_字节集转文本 一次性解码；四条红线与 CEF3 完全相同（句柄判空只能 <> 0；先声明（不带初始化）后按序赋值；先设 Accept-Encoding: identity；块拼接后一次性解码）。',
   '22. FBro 指纹浏览器（多开防关联）写作口径（2026-09-29 真机验收，写指纹相关代码前必读）：①纯代码多开标准链＝FBro_后台创建("", 独立缓存目录, "") 建独立指纹会话 → FBroVIP_实例设置新窗口转标签页(实例, 1)（VIP 新建标签页能力，弹窗继承）→ FBroVIP_实例应用指纹JSON(实例, 指纹JSON) → FBro_实例打开原生UI(实例, "") 先弹 about:blank → FBroVIP_实例应用指纹JSON(弹窗, 指纹JSON) 对弹窗句柄再应用一次 → FBro_实例导航(弹窗, 主页)；指纹按浏览器生效，弹窗与来源实例共用缓存目录但是两个浏览器，两个句柄要各应用一次，代理同理 FBro_实例设置代理(句柄, 地址) 各设一次。收割登录态（扫码登录后取 cookie）用 FBro_实例取Cookie(句柄, "https://域名")：读含 HttpOnly 的全部 Cookie 返回 k=v; k=v 头串，后台实例没有控件名、FBro_取Cookie(控件名) 不适用。②后台实例与纯代码弹窗的事件不经窗口派发（FBro_实例绑定事件 只登记设计器控件与原生UI弹窗，后台句柄查不到返回 0），异步推进一律 延迟调用 + 「返回 0/-1 延迟重试」轮询（实例未就绪应用指纹返回 -1，VIP 授权失败 -5/-4 立即失败回收），重试设上限防死循环。③指纹 JSON 必须是桥 schema（与 FBroVIP_应用指纹JSON 同一份契约）：userAgent 传对象 {mainUserAgent, brands:[{name,value}], fullVersionList, platform, platformVersion, mobile}、timeZone{hour,minute,name,standardName}、webglVendor/webglRenderer（不是 glVendor/glRenderer）、fingerprints.{canvas,webgl,audio}{minimum,maximum,seed}（不是 canvasSeed 这类平铺键）、webrtc{publicIp,localIp,host,disable}、cssFontFingerprint{data,x,y}、rectFingerprint{x,y,width,height}、touchEmulation{enabled,maxTouchPoints}、battery{level}、performanceCheck{disabled}；UI 表单形状的键会被静默跳过——应用返回 ≥0 只代表调用成功，键名错＝没设，指纹读数以浏览器内检测页为准。④虚拟内核必须与 UA 声称的 Chrome 大版本一致：kernel/v8Kernel/webFeatureKernel/cssKernel 四键取 UA 的 Chrome/(\d+) 版本并钳位 116~135（官方易语言指纹示例同口径：内核开关_设置CSS内核/设置V8内核/设置Web内核 三开关同设）；写死真实内核 135 等于没设，JS 行为特征会与 UA 不符，browserscan 等检测站把 Browser 行标红。⑤webdriver 键是 navigator.webdriver 的虚拟值：隐藏自动化要传 false（传 true 反而暴露，易写反）；userAgentData 的 brands/fullVersionList 必须与 UA 主串同版本合成，不一致同样被检出。⑥clearAllData:true 清空该档案全部数据——只有「同一槽位复用要重置」才发；独立缓存目录的多开要保登录态就不要发。⑦已知限制：系统语言伪装不了（检测站的 Language mismatch 扣分是真实系统语言与页面语言的差异）；时区/语言要与出口 IP 匹配才能拿高真实性评分，这是配置纪律不是指纹缺陷。',
+  '23. 二维码模块（lingbuilder.qrcode）写作口径（2026-10-01 内置，x64/win32 双架构验收）：①生成＝局部 二维码句柄 码 = 二维码_生成(内容, 纠错级别, 边长像素, 空白边模块数)，级别 L/M/Q/H 不分大小写、边长像素 1～64（推荐 8）、空白边 0～32（推荐 4），输出边长上限 4096 像素；数字/字母数字/字节(UTF-8) 自动择短、版本 1-40 自动选最小，不要自己估容量。失败返回 0 并读 二维码_取错误()。②出图＝二维码_保存PNG(码, 路径, 前景色ARGB, 背景色ARGB)（中文路径安全，GDI+ 可直接打开）；窗口内显示用 控件_设置图片(图片框, 路径) 或 二维码_取位图 取 HBITMAP（随句柄缓存，二维码_释放 时一并销毁）。③识别＝二维码_识别PNG(路径)（PNG 与基线 JPEG 自动识别）或 二维码_识别字节集(像素集, 宽, 高, 通道)（1=灰度 3=BGR 4=BGRX，免落盘）；取文本 二维码_识别取文本(结果)，取原始字节 二维码_识别取字节(结果)，失败读 二维码_识别取错误()。④句柄必须显式释放：二维码_释放(码) / 二维码_识别释放(结果)（或 各自的 释放全部）。⑤二维码_自检() 是生成+识别闭环自检（format 已知答案、160 组 RS 伴随式、生成→渲染→识别逐字节、带损伤纠错），写二维码相关代码前或怀疑环境时先跑它。⑥二维码_识别取修复码字数(结果) 如实上报 RS 实际纠正的错误码字数（0=无损伤），不要把它当失败标志。⑦命令面 31 条全览用 lingbuilder.module.info 查 lingbuilder.qrcode。',
 ].join('\n');
 
 const TOOLS = [
@@ -112,59 +114,21 @@ export interface AiBridgeMcpHttpGateway {
 
 type ObserveActivity = (activity: Omit<AiBridgeMcpActivity, 'id' | 'timestamp'>) => void;
 
-/** MCP 工具集：full 是外部 AI 客户端的完整面，agent 是面板内嵌运行时的受限面。 */
-export type AiBridgeMcpToolset = 'full' | 'agent';
-
-/**
- * 内嵌 Agent 会话不暴露的「用户项目侧」写盘与执行工具。权限模式管不住它们：preview 下
- * 模型自己传 approved=true 就能落盘，所以项目源码/设计器/构建的「可预览、可确认、可撤销」
- * 只能靠把这些工具从可见面上摘掉、由 IDE 面板在用户点「应用提案」后代执行来保证。
- * 模块封装链不在其列：它只写 .lingbuilder/module-build 与 .lingbuilder/module-packages
- * 两个暂存目录，安装必须经 installPreview 预览 ID 与收费权益门禁，开放它不削弱上述防线。
- */
-export const AGENT_MASKED_TOOLS: ReadonlySet<string> = new Set([
-  'lingbuilder.edit.apply',
-  'lingbuilder.build.run',
-  'lingbuilder.native.preview',
-  'lingbuilder.native.export',
-  'lingbuilder.project.create',
-  'lingbuilder.project.create.undo'
-]);
-
-/** agent 工具集下追加到 instructions 的口径说明，避免模型按完整工作流空转。 */
-export const AGENT_TOOLSET_NOTICE = [
-  '【本会话为 LingBuilder 面板内嵌 Agent 工具集】用户项目侧的写盘与执行工具（edit.apply / build.run / native.preview / native.export / project.create / project.create.undo）在本会话不可用，也无需你调用：',
-  '你负责读现状、诊断与生成 edit.propose 提案；提案由 LingBuilder 面板展示给用户，用户点「应用提案」后由 IDE 代为落盘，构建与运行由用户在 IDE 内发起。',
-  '因此项目改造工作流为：lingcpp.diagnostics 读现状 → module.info 查命令契约 → edit.propose 生成提案（必须带完整改动，涉及布局时带 updatedDesignerProject）→ 在回复里说明预期变化并等待用户在界面确认。',
-  '不要为了「验证能编译」而反复尝试调用被遮蔽的工具；需要构建反馈时，明确告诉用户请在面板点击应用提案后再继续。',
-  '模块封装链例外可用：module.scaffold → module.writeFiles → module.validate → module.pack → module.installPreview → module.install 允许你直接执行（只写 .lingbuilder/module-build 与 .lingbuilder/module-packages 两个暂存目录，安装仍需 installPreview 预览 ID 与权益门禁）；但把模块命令接进用户项目源码时，仍然只能 edit.propose + 用户确认。'
-].join('\n');
-
 function createProtocolServer(
   service: AiBridgeService,
   observe?: ObserveActivity,
-  clientId = 'stdio',
-  toolset: AiBridgeMcpToolset = 'full'
+  clientId = 'stdio'
 ): Server {
   const server = new Server(
     { name: 'lingbuilder-ai-bridge', version: resolveIdeVersion() },
     {
       capabilities: { tools: {} },
-      instructions: toolset === 'agent' ? `${MCP_INSTRUCTIONS}\n${AGENT_TOOLSET_NOTICE}` : MCP_INSTRUCTIONS
+      instructions: MCP_INSTRUCTIONS
     }
   );
-  const visibleTools = toolset === 'agent' ? TOOLS.filter(tool => !AGENT_MASKED_TOOLS.has(tool.name)) : TOOLS;
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: visibleTools }));
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
   server.setRequestHandler(CallToolRequestSchema, async request => {
     const startedAt = Date.now();
-    if (toolset === 'agent' && AGENT_MASKED_TOOLS.has(request.params.name)) {
-      const message = `内嵌 Agent 会话不提供「${request.params.name}」：写入与构建由 LingBuilder 面板在用户确认提案后代执行，请生成 edit.propose 提案并等待用户确认。`;
-      observe?.({
-        transport: 'streamable-http', clientId, kind: 'tool', tool: request.params.name, ok: false,
-        durationMs: Date.now() - startedAt, message
-      });
-      return { isError: true, content: [{ type: 'text' as const, text: message }] };
-    }
     try {
       const result = await callTool(service, request.params.name, request.params.arguments || {});
       observe?.({
@@ -185,15 +149,14 @@ function createProtocolServer(
 }
 
 /**
- * 协议服务器工厂：stdio 宿主与测试都用它拿到指定工具集的服务端实例。
- * 内嵌 Agent 运行时必须传 'agent'，否则模型可以自己传 approved=true 绕过面板确认。
+ * 协议服务器工厂：stdio 宿主与测试都用它拿到服务端实例。
  */
-export function createAiBridgeMcpProtocolServer(service: AiBridgeService, toolset: AiBridgeMcpToolset = 'full'): Server {
-  return createProtocolServer(service, undefined, 'stdio', toolset);
+export function createAiBridgeMcpProtocolServer(service: AiBridgeService): Server {
+  return createProtocolServer(service, undefined, 'stdio');
 }
 
-export function startAiBridgeMcpServer(service: AiBridgeService, toolset: AiBridgeMcpToolset = 'full'): void {
-  const server = createProtocolServer(service, undefined, 'stdio', toolset);
+export function startAiBridgeMcpServer(service: AiBridgeService): void {
+  const server = createProtocolServer(service, undefined, 'stdio');
   void server.connect(new StdioServerTransport()).catch(error => {
     process.stderr.write(`LingBuilder MCP 启动失败：${error instanceof Error ? error.message : String(error)}\n`);
     process.exitCode = 1;

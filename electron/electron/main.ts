@@ -15,32 +15,19 @@ import {
 } from 'electron';
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { diskBuildDiffersFromRunning, readBuildMetaFile, resolveBuildMetaPath } from './buildIdentity';
-import { buildWorkspaceWindowLaunch, DesktopWorkspaceService, findWorkspaceFileArgument, getArgumentValue } from './workspaceService';
+import { buildWorkspaceWindowSpawnPlan, DesktopWorkspaceService, findWorkspaceFileArgument, getArgumentValue } from './workspaceService';
 import { CloudAccountService } from './cloudAccountService';
 import { checkLatestVersion, type VersionCheckResult } from './versionCheckService';
 import { UpdateDownloadService } from './updateDownloadService';
-import { inspectCliIntegration } from './cliIntegrationService';
 import { AiBridgeManagerService, type ManagedAiBridgePermission, type ManagedAiBridgeLifecycle } from './aiBridgeManagerService';
-import { removeLegacyBundledRuntimeTrees } from './agentRuntime/agentRuntimeBundle';
-import { AgentRuntimeService } from './agentRuntime/agentRuntimeService';
-import {
-  defaultAgentProviderSettings,
-  mergeAgentProviderKey,
-  normalizeAgentProviderSettings,
-  readAgentProviderSettings,
-  resolveAgentProviderSettingsPath,
-  writeAgentProviderSettings,
-  type AgentProviderSettings
-} from './agentRuntime/agentProviderSettings';
 import { normalizeAiBridgeStartSettings, readAiBridgeStartSettings, resolveAiBridgeStartSettingsPath, writeAiBridgeStartSettings } from './aiBridgeStartSettings';
+import { removeLegacyAgentRuntimeArtifacts } from './agentRuntimeLegacyCleanup';
 import { LocalAuthorizationService, type LocalAuthorizationSnapshot } from './localAuthorizationService';
 import { SkillKitService, resolveBundledSkillKitRoot } from './skillKit/skillKitService';
-import { createExternalAiLaunchPlan, detectExternalAiClients, type ExternalAiClientId } from './aiClientIntegrationService';
-import { CodexDesktopIntegrationService } from './codexDesktopIntegrationService';
 import { openPathWithExplorerFallback, selectShellWorkspaceRoot } from './shellPathService';
 import { restoreModulePermits } from './modulePermitRestoreService';
 import { ModulePermitMaintenanceService, type ModulePermitMaintenanceSweepResult } from './modulePermitMaintenanceService';
@@ -89,13 +76,6 @@ let shutdownPromise: Promise<void> | null = null;
 let pendingModulePackagePath: string | undefined;
 let workspaceService: DesktopWorkspaceService;
 let aiBridgeManager: AiBridgeManagerService;
-let agentRuntime: AgentRuntimeService;
-/**
- * 面板「本机 Agent」的模型通道配置缓存。密钥只留在主进程：渲染层拿到的永远是掩码视图，
- * 拉模型列表与测连通也由主进程代调本地服务（见 agent-runtime:list-models / test-provider）。
- */
-let agentProviderCache: AgentProviderSettings = defaultAgentProviderSettings();
-let agentProviderKeyUnavailable = false;
 let localAuthorization: LocalAuthorizationService | null = null;
 let moduleInfoWindow: ModuleInfoWindowService;
 let modulePermitMaintenance: ModulePermitMaintenanceService | undefined;
@@ -203,94 +183,54 @@ async function findCurrentSolutionEntryPath(workspaceRoot: string, solutionName:
   throw new Error('当前工作区中没有可复制的 LingBuilder 解决方案文件。');
 }
 
-function cliLauncherPath(): string {
-  return path.join(path.dirname(process.execPath), 'lingbuilder.cmd');
-}
-
 function cliEntryPath(): string {
   return app.isPackaged
     ? path.join(app.getAppPath(), 'dist', 'cli.cjs')
     : path.join(repoRoot(), 'electron', 'dist', 'cli.cjs');
 }
 
-function codexDesktopIntegration(): CodexDesktopIntegrationService {
-  return new CodexDesktopIntegrationService({
-    workspaceRoot: getShellWorkspaceRoot(),
-    runtimeExecutable: process.execPath,
-    cliEntryPath: cliEntryPath()
-  });
-}
-
-async function runFixedProcess(
-  executable: string,
-  args: string[],
-  environment: NodeJS.ProcessEnv = process.env,
-  timeoutMs = 10_000
-): Promise<string> {
-  return await new Promise<string>((resolve, reject) => {
-    const child = spawn(executable, args, {
-      env: environment,
-      windowsHide: true,
-      stdio: ['ignore', 'pipe', 'pipe']
-    });
-    const stdout: Buffer[] = [];
-    const stderr: Buffer[] = [];
-    let settled = false;
-    const finish = (action: () => void) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      action();
-    };
-    const timer = setTimeout(() => {
-      child.kill();
-      finish(() => reject(new Error(`命令运行超过 ${timeoutMs / 1000} 秒。`)));
-    }, timeoutMs);
-    child.stdout?.on('data', chunk => stdout.push(Buffer.from(chunk)));
-    child.stderr?.on('data', chunk => stderr.push(Buffer.from(chunk)));
-    child.once('error', error => finish(() => reject(error)));
-    child.once('exit', code => finish(() => {
-      const output = Buffer.concat(stdout).toString('utf8').trim();
-      const errorOutput = Buffer.concat(stderr).toString('utf8').trim();
-      if (code === 0) resolve(output);
-      else reject(new Error(errorOutput || output || `命令退出码：${code}`));
-    }));
-  });
-}
-
-async function readCurrentUserPath(): Promise<string> {
-  if (process.platform !== 'win32') return process.env.PATH || '';
-  const encoded = await runFixedProcess('powershell.exe', [
-    '-NoLogo',
-    '-NoProfile',
-    '-NonInteractive',
-    '-Command',
-    "$value=[Environment]::GetEnvironmentVariable('Path','User'); if ($null -eq $value) {$value=''}; [Console]::Out.Write([Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($value)))"
-  ], process.env, 5_000);
-  return Buffer.from(encoded, 'base64').toString('utf8');
-}
-
-async function inspectInstalledCli() {
-  const installDirectory = path.dirname(process.execPath);
-  let userPath = process.env.PATH || '';
+/**
+ * AI Bridge 随 IDE 启动自动拉起（2026-10-02）：连接中心只承担状态展示与「通用 MCP 配置」复制，
+ * 用户不再需要每次进连接中心点「启动」。没有持久化 Token 时先落一个持久 Token 再启动，
+ * 保证外部客户端里粘贴的 MCP 配置一次长期有效。任何失败都只进诊断日志与错误态徽标，不阻断 IDE。
+ */
+async function autoStartAiBridgeOnLaunch(): Promise<void> {
+  if (process.argv.includes('--smoke-test')) return;
   try {
-    userPath = await readCurrentUserPath();
-  } catch {
-    // PATH 读取失败时仍可继续验证启动器和内置 CLI。
-  }
-  return await inspectCliIntegration({
-    packaged: app.isPackaged,
-    installDirectory,
-    launcherPath: cliLauncherPath(),
-    userPath,
-    runVersion: async () => {
-      await fs.access(cliEntryPath());
-      return await runFixedProcess(process.execPath, [cliEntryPath(), '--version'], {
-        ...process.env,
-        ELECTRON_RUN_AS_NODE: '1'
-      });
+    const settingsPath = resolveAiBridgeStartSettingsPath(app.getPath('userData'));
+    const settings = await readAiBridgeStartSettings(settingsPath, safeStorage);
+    const port = settings?.port ?? 17860;
+    // 持久化的权限即用户的显式选择；但 yolo 必须连同确认标记一起持久化过才允许自动拉起，
+    // 否则降级为 preview（旧版本写入的 yolo 设置没有确认标记，首次自动启动按 preview 跑）。
+    const permission = settings?.permission === 'yolo' && settings?.yoloConfirmed !== true ? 'preview' : settings?.permission ?? 'preview';
+    if (settings?.permission === 'yolo' && permission === 'preview') {
+      logDiagnostic('warn', 'ai-bridge', '持久化设置为 yolo 但缺少确认标记，本次自动启动按 preview 权限拉起；可在连接中心重新确认。');
     }
-  });
+    let token = settings?.token || '';
+    if (!token) {
+      token = crypto.randomBytes(32).toString('hex');
+      await writeAiBridgeStartSettings(settingsPath, {
+        port,
+        permission: settings?.permission ?? 'preview',
+        lifecycle: 'workspace',
+        token,
+        externalModuleAccess: settings?.externalModuleAccess === true,
+        yoloConfirmed: settings?.yoloConfirmed === true
+      }, safeStorage);
+    }
+    await aiBridgeManager.start({
+      workspaceRoot: getShellWorkspaceRoot(),
+      port,
+      permission,
+      lifecycle: 'workspace',
+      token,
+      moduleAccessState: Buffer.from(JSON.stringify(await readModulePermitCache()), 'utf8').toString('base64url')
+    });
+    logDiagnostic('info', 'ai-bridge', `AI Bridge 已随 IDE 启动自动拉起（端口 ${port}，${permission} 权限）。`);
+  } catch (reason) {
+    // manager.start 失败时已把快照置为 error 态（标题栏徽标可见），这里只补诊断日志。
+    logDiagnostic('warn', 'ai-bridge', `AI Bridge 自动启动失败：${reason instanceof Error ? reason.message : String(reason)}`);
+  }
 }
 
 /** 内嵌资源选择：逐个 realpath 归一化并确认是普通文件（拒绝断链符号链接与目录）。 */
@@ -550,13 +490,6 @@ function shutdownAndExit(code: number): Promise<void> {
       console.error(error);
     }
     try {
-      // 内嵌 Agent 运行器是 dsh 子进程 + 它自己拉起的 MCP 子进程，退出必须回收。
-      await agentRuntime?.dispose();
-    } catch (error) {
-      exitCode = 1;
-      console.error(error);
-    }
-    try {
       // 退出必须撤掉本机授权代理并删除发现文件，避免陈旧端口被后来者误用。
       await localAuthorization?.stop();
       localAuthorization = null;
@@ -726,6 +659,18 @@ async function createMainWindow(): Promise<void> {
     if (savedWindowState?.maximized) mainWindow?.maximize();
     if (!smokeTest) mainWindow?.show();
   });
+  // 兜底：ready-to-show 依赖首帧绘制，个别启动形态下会永不触发（GPU 受限、子进程被
+  // CREATE_NO_WINDOW 拉起等），窗口停在 show:false 成为不可见进程并占住单实例锁，
+  // 后续同 userData 的启动全部秒退。超时仍未可见就强制显示，把这类故障从「永久隐藏」
+  // 降级为「晚几秒出窗口」；正常启动 ready-to-show 远早于此触发，兜底不参与。
+  setTimeout(() => {
+    if (smokeTest) return;
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+      logDiagnostic('warn', 'app', 'ready-to-show 未触发，已兜底显示主窗口。');
+      if (savedWindowState?.maximized) mainWindow.maximize();
+      mainWindow.show();
+    }
+  }, 10000);
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     void shell.openExternal(url);
     return { action: 'deny' };
@@ -773,26 +718,10 @@ async function runPackagedSmokeTest(window: BrowserWindow): Promise<void> {
       const timedFetch = (label, input, init) => withTimeout(fetch(input, init), label, 15000);
       const healthResponse = await timedFetch('本地服务健康检查', '/api/health');
       const modulesResponse = await timedFetch('已安装模块读取', '/api/modules/installed?projectId=lingbuilder-ui-project');
-      const aiResponse = await timedFetch('AI 本地安全提案', '/api/lingcpp/edit/propose', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          filePath: 'src/Smoke.lcpp',
-          sourceCode: '类 Smoke\\n结束类\\n',
-          instruction: '保持结构并生成安全提案',
-          aiConfig: {
-            provider: 'openai',
-            baseUrl: 'http://127.0.0.1:1',
-            apiKey: 'packaged-smoke',
-            modelName: 'packaged-smoke'
-          }
-        })
-      });
       const bridgeResponse = await timedFetch('共享 Bridge 路由隔离检查', '/api/ai-bridge/health');
       let managedBridgeStatus = 0;
       let managedMcpStatus = 0;
       let managedBridgeStopped = false;
-      let managedClientLaunched = false;
       let managedBridgeError = '';
       try {
         const bridgeApi = window.lingBuilder?.aiBridge;
@@ -810,8 +739,6 @@ async function runPackagedSmokeTest(window: BrowserWindow): Promise<void> {
         const refreshed = await withTimeout(bridgeApi.status(), '读取受管 AI Bridge 状态');
         managedBridgeStatus = started.state === 'running' && started.httpUrl && token.length >= 24 ? 200 : 0;
         managedMcpStatus = refreshed.state === 'running' && refreshed.mcpUrl && !refreshed.error ? 200 : 0;
-        const launched = await withTimeout(bridgeApi.launchClient('generic'), '启动受管 AI 客户端');
-        managedClientLaunched = launched.ok === true && Boolean(launched.sessionId);
         const stopped = await withTimeout(bridgeApi.stop(), '停止受管 AI Bridge');
         managedBridgeStopped = stopped.state === 'stopped';
         managedBridgeError = '';
@@ -850,32 +777,25 @@ async function runPackagedSmokeTest(window: BrowserWindow): Promise<void> {
       }
       const health = await healthResponse.json();
       const modules = await modulesResponse.json();
-      const ai = await aiResponse.json();
       return {
         ok: healthResponse.ok
           && modulesResponse.ok
-          && aiResponse.ok
           && bridgeResponse.status === 404
           && managedBridgeStatus === 200
           && managedMcpStatus === 200
           && managedBridgeStopped
-          && managedClientLaunched
           && health.status === 'ok'
           && Array.isArray(modules.modules)
-          && ai.ok === true
-          && Boolean(ai.proposal?.id)
           && terminalCreateResponse.status === 201
           && terminalSnapshot?.buffer?.includes('LINGBUILDER_PACKAGED_PTY_OK')
           && terminalResizeStatus === 200
           && terminalCloseStatus === 200,
         healthStatus: healthResponse.status,
         modulesStatus: modulesResponse.status,
-        aiStatus: aiResponse.status,
         bridgeStatus: bridgeResponse.status,
         managedBridgeStatus,
         managedMcpStatus,
         managedBridgeStopped,
-        managedClientLaunched,
         managedBridgeError,
         terminalStatus: terminalCreateResponse.status,
         terminalResizeStatus,
@@ -925,7 +845,6 @@ async function writePackagedSmokeProgress(stage: string): Promise<void> {
 async function switchWorkspace(workspacePath: string): Promise<void> {
   const candidateWorkspace = await workspaceService.validateWorkspace(workspacePath);
   if (aiBridgeManager?.snapshot().state !== 'stopped') await aiBridgeManager.stop('工作区即将切换');
-  if (agentRuntime && agentRuntime.snapshot().state !== 'stopped') await agentRuntime.dispose().catch(() => undefined);
   const result = await requestRendererApi('/api/workspace/switch', {
     method: 'POST',
     body: JSON.stringify({ workspacePath: candidateWorkspace })
@@ -1119,11 +1038,18 @@ function registerIpcHandlers(): void {
       } else if (request.kind === 'project') {
         const relativePath = typeof request.relativePath === 'string' ? request.relativePath.trim() : '';
         requestedPath = path.resolve(workspaceRoot, relativePath || '.');
+      } else if (request.kind === 'file') {
+        const relativePath = typeof request.relativePath === 'string' ? request.relativePath.trim() : '';
+        if (!relativePath) throw new Error('文件相对路径无效。');
+        requestedPath = path.resolve(workspaceRoot, relativePath);
       } else {
         throw new Error('不支持的复制路径目标。');
       }
 
-      const resolvedPath = await fs.realpath(requestedPath);
+      // 新建尚未落盘的文件也允许复制完整路径：realpath 失败时退回解析后的绝对路径。
+      const resolvedPath = request.kind === 'file'
+        ? await fs.realpath(requestedPath).catch(() => requestedPath)
+        : await fs.realpath(requestedPath);
       const relativeTarget = path.relative(workspaceRoot, resolvedPath);
       if (relativeTarget.startsWith('..') || path.isAbsolute(relativeTarget)) {
         throw new Error('目标路径超出当前工作区。');
@@ -1144,7 +1070,6 @@ function registerIpcHandlers(): void {
       return '';
     }
   });
-  ipcMain.handle('cli:inspect', async () => inspectInstalledCli());
   ipcMain.handle('ai-bridge:status', async () => await aiBridgeManager.refreshRuntime());
   ipcMain.handle('ai-bridge:start', async (_event, request: unknown) => {
     const value = request && typeof request === 'object' ? request as Record<string, unknown> : {};
@@ -1171,7 +1096,9 @@ function registerIpcHandlers(): void {
         lifecycle,
         token: token || '',
         // 外部 AI 授权开关独立于启动动作，必须原样保留，否则一次启动就把用户设置抹平。
-        externalModuleAccess: persisted?.externalModuleAccess === true
+        externalModuleAccess: persisted?.externalModuleAccess === true,
+        // yolo 确认随设置持久化：自动启动没有会话内确认框，靠这个标记决定是否按 yolo 拉起。
+        yoloConfirmed: permission === 'yolo' ? value.approvedYolo === true : false
       }, safeStorage);
     } catch (reason) {
       // 设置保存失败不阻断启动，但必须让用户可见（否则会出现「启动成功却记不住」）。
@@ -1201,141 +1128,6 @@ function registerIpcHandlers(): void {
   ipcMain.handle('ai-bridge:stop', async () => await aiBridgeManager.stop('用户停止'));
   ipcMain.handle('ai-bridge:rotate-token', async () => await aiBridgeManager.rotateToken());
   ipcMain.handle('ai-bridge:reveal-token', async () => aiBridgeManager.revealToken());
-  ipcMain.handle('ai-bridge:clients', async () => await detectExternalAiClients());
-  ipcMain.handle('agent-runtime:status', async () => agentRuntime?.snapshot());
-  ipcMain.handle('agent-runtime:start', async (_event, request: unknown) => {
-    const value = request && typeof request === 'object' ? request as Record<string, unknown> : {};
-    try {
-      const snapshot = await agentRuntime.start({
-        workspaceRoot: getShellWorkspaceRoot(),
-        provider: typeof value.provider === 'string' ? value.provider : undefined,
-        model: typeof value.model === 'string' ? value.model : undefined,
-        maxTokens: typeof value.maxTokens === 'number' ? value.maxTokens : undefined,
-        reasoningEffort: typeof value.reasoningEffort === 'string' ? value.reasoningEffort : undefined
-      });
-      return { ok: true, snapshot };
-    } catch (reason) {
-      return { ok: false, error: reason instanceof Error ? reason.message : String(reason) };
-    }
-  });
-  ipcMain.handle('agent-runtime:prompt', async (_event, request: unknown) => {
-    const value = request && typeof request === 'object' ? request as Record<string, unknown> : {};
-    try {
-      const result = await agentRuntime.prompt(
-        typeof value.prompt === 'string' ? value.prompt : '',
-        typeof value.sessionId === 'string' ? value.sessionId : undefined
-      );
-      return { ok: true, ...result };
-    } catch (reason) {
-      return { ok: false, error: reason instanceof Error ? reason.message : String(reason) };
-    }
-  });
-  ipcMain.handle('agent-runtime:stop', async () => {
-    try {
-      return { ok: true, snapshot: await agentRuntime.stop() };
-    } catch (reason) {
-      return { ok: false, error: reason instanceof Error ? reason.message : String(reason) };
-    }
-  });
-  // 模型通道配置：密钥只进主进程，渲染层拿到的永远是掩码视图（hasApiKey + 空串）。
-  ipcMain.handle('agent-runtime:get-provider-settings', async () => ({
-    ok: true,
-    settings: { ...agentProviderCache, apiKey: '' },
-    hasApiKey: Boolean(agentProviderCache.apiKey),
-    keyUnavailable: agentProviderKeyUnavailable
-  }));
-  ipcMain.handle('agent-runtime:set-provider-settings', async (_event, request: unknown) => {
-    const normalized = normalizeAgentProviderSettings(request);
-    if (!normalized.settings) return { ok: false, error: normalized.problem || '模型配置无效。' };
-    const settings = mergeAgentProviderKey(
-      normalized.settings, agentProviderCache,
-      (request as Record<string, unknown> | undefined)?.clearApiKey === true);
-    try {
-      const written = await writeAgentProviderSettings(
-        resolveAgentProviderSettingsPath(app.getPath('userData')), settings, safeStorage);
-      agentProviderCache = settings;
-      agentProviderKeyUnavailable = false;
-      return {
-        ok: true,
-        settings: { ...agentProviderCache, apiKey: '' },
-        hasApiKey: Boolean(agentProviderCache.apiKey),
-        problem: written.problem
-      };
-    } catch (reason) {
-      return { ok: false, error: `保存模型配置失败：${reason instanceof Error ? reason.message : String(reason)}` };
-    }
-  });
-  ipcMain.handle('agent-runtime:restart', async () => {
-    try {
-      const snapshot = await agentRuntime.restart({ workspaceRoot: getShellWorkspaceRoot() });
-      return { ok: true, snapshot };
-    } catch (reason) {
-      return { ok: false, error: reason instanceof Error ? reason.message : String(reason) };
-    }
-  });
-  // 拉模型列表 / 测连通由主进程代调本地服务：避免把已保存的密钥下发到渲染层再回传。
-  ipcMain.handle('agent-runtime:probe-provider', async (_event, request: unknown) => {
-    const value = request && typeof request === 'object' ? request as Record<string, unknown> : {};
-    const draft = normalizeAgentProviderSettings({
-      kind: value.kind, baseUrl: value.baseUrl, model: value.model, protocol: value.protocol,
-      // 渲染层留空表示沿用已保存的密钥，不重新下发一份。
-      apiKey: typeof value.apiKey === 'string' && value.apiKey.trim() ? value.apiKey : agentProviderCache.apiKey
-    });
-    if (!draft.settings) return { ok: false, error: draft.problem || '模型配置无效。' };
-    const settings = draft.settings;
-    const custom = settings.kind === 'custom-openai';
-    const aiConfig = {
-      provider: custom ? 'openai' : 'deepseek',
-      baseUrl: settings.baseUrl || (custom ? '' : 'https://api.deepseek.com'),
-      apiKey: settings.apiKey,
-      modelName: settings.model || (custom ? '' : 'deepseek-v4-flash')
-    };
-    const endpoint = value.action === 'models' ? '/api/ai/models' : '/api/ai/connect';
-    try {
-      const result = await requestRendererApi(endpoint, { method: 'POST', body: JSON.stringify({ aiConfig }) });
-      return { ok: true, result };
-    } catch (reason) {
-      return { ok: false, error: reason instanceof Error ? reason.message : String(reason) };
-    }
-  });
-  ipcMain.handle('ai-bridge:codex-desktop-status', async (_event, permission?: ManagedAiBridgePermission) => (
-    await codexDesktopIntegration().inspect(permission || 'preview')
-  ));
-  ipcMain.handle('ai-bridge:configure-codex-desktop', async (_event, request: unknown) => {
-    const value = request && typeof request === 'object' ? request as Record<string, unknown> : {};
-    const permission = String(value.permission || 'preview') as ManagedAiBridgePermission;
-    if (permission === 'yolo' && value.approvedYolo !== true) {
-      throw new Error('为 Codex 桌面版启用 yolo 前必须确认其可自动写入并执行受控构建。');
-    }
-    return await codexDesktopIntegration().configure({
-      permission,
-      replaceExisting: value.replaceExisting === true,
-      openApp: value.openApp !== false
-    });
-  });
-  ipcMain.handle('ai-bridge:remove-codex-desktop', async () => await codexDesktopIntegration().remove());
-  ipcMain.handle('ai-bridge:open-codex-desktop', async () => await codexDesktopIntegration().open());
-  ipcMain.handle('ai-bridge:launch-client', async (_event, clientId: ExternalAiClientId) => {
-    const snapshot = aiBridgeManager.snapshot();
-    if (snapshot.state !== 'running') throw new Error('请先启动 AI Bridge，再连接外部 AI CLI。');
-    const clients = clientId === 'generic'
-      ? [{ id: 'generic' as const, label: '通用终端', installed: true, executable: '', detail: '打开已注入 Bridge 地址和临时 Token 的 PowerShell。' }]
-      : await detectExternalAiClients();
-    const plan = await createExternalAiLaunchPlan({
-      clientId, clients, workspaceRoot: snapshot.workspaceRoot, mcpUrl: snapshot.mcpUrl,
-      httpUrl: snapshot.httpUrl, token: aiBridgeManager.revealToken()
-    });
-    const created = await requestRendererApi('/api/terminal/sessions', {
-      method: 'POST',
-      body: JSON.stringify({ profile: plan.profile, cwd: plan.cwd, cols: 100, rows: 30, env: plan.env, title: plan.title })
-    }) as { session?: { id?: string } };
-    const sessionId = created.session?.id;
-    if (!sessionId) throw new Error('集成终端没有返回有效会话。');
-    await requestRendererApi(`/api/terminal/sessions/${encodeURIComponent(sessionId)}/input`, {
-      method: 'POST', body: JSON.stringify({ data: `${plan.command}\r` })
-    });
-    return { ok: true, sessionId, detail: plan.detail };
-  });
   // 「导入 MSBuild/CMake 工程」：原生文件对话框与区外工程复制进工作区（桌面版专属通道）。
   ipcMain.handle('solution-import:pick-project', async () => {
     const owner = getFocusedWindow();
@@ -1357,6 +1149,21 @@ function registerIpcHandlers(): void {
         return { ok: false, canceled: false, error: '只能导入 CMakeLists.txt、.vcxproj 或 .sln 工程文件。' };
       }
       return { ok: true, canceled: false, filePath: selected };
+    } catch (error) {
+      return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+  // 「新建解决方案项目 → 创建位置」：原生目录选择对话框（桌面版专属通道；网页版由渲染层隐藏入口）。
+  ipcMain.handle('project-create:pick-location-directory', async () => {
+    const owner = getFocusedWindow();
+    const options: Electron.OpenDialogOptions = {
+      title: '选择创建位置',
+      properties: ['openDirectory', 'createDirectory']
+    };
+    const result = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
+    if (result.canceled || !result.filePaths[0]) return { ok: true, canceled: true };
+    try {
+      return { ok: true, canceled: false, directoryPath: await fs.realpath(result.filePaths[0]) };
     } catch (error) {
       return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) };
     }
@@ -1674,9 +1481,6 @@ function registerIpcHandlers(): void {
   ipcMain.handle('cloud-modules:catalog', () => cloudAccountService.moduleCatalog());
   ipcMain.handle('cloud-modules:entitlements', () => cloudAccountService.moduleEntitlements());
   ipcMain.handle('cloud-modules:create-order', (_event, value: any) => cloudAccountService.createModuleOrder(String(value?.offerId || ''), value?.provider === 'alipay' ? 'alipay' : 'wechat', String(value?.idempotencyKey || '')));
-  ipcMain.handle('cloud-credits:packages', () => cloudAccountService.rechargePackages());
-  ipcMain.handle('cloud-credits:create-order', (_event, value: any) => cloudAccountService.createRechargeOrder(String(value?.packageId || ''), value?.provider === 'alipay' ? 'alipay' : 'wechat', String(value?.idempotencyKey || '')));
-  ipcMain.handle('cloud-credits:order', (_event, orderId: string) => cloudAccountService.rechargeOrder(String(orderId || '')));
   ipcMain.handle('cloud-modules:download', (_event, value: any) => cloudAccountService.downloadModuleArtifact(String(value?.moduleId || ''), ['win32', 'x64'].includes(value?.arch) ? value.arch : 'any', activeWorkspace));
   ipcMain.handle('cloud-modules:authorize', async (_event, moduleId: string) => {
     try {
@@ -1778,13 +1582,20 @@ function registerIpcHandlers(): void {
 }
 
 function launchWorkspaceWindow(workspacePath: string): void {
-  const launch = buildWorkspaceWindowLaunch({
+  const launch = buildWorkspaceWindowSpawnPlan({
     packaged: app.isPackaged,
     executablePath: process.execPath,
     mainEntryPath: path.join(repoRoot(), 'electron', 'dist-electron', 'main.cjs'),
-    workspacePath
+    workspacePath,
+    windowUserDataRoot: path.join(app.getPath('userData'), 'workspace-window-runtime')
   });
-  const child = spawn(launch.command, launch.args, { detached: true, stdio: 'ignore', env: { ...process.env } });
+  // 实例 userData 目录先落盘，避免首启时单实例锁文件无父目录可写。
+  mkdirSync(launch.env.LINGBUILDER_REC_USER_DATA as string, { recursive: true });
+  // windowsHide 绝不能加：CREATE_NO_WINDOW 会抑制 GUI 子进程首帧绘制（moduleDemoService 2026-09-30 实锤同坑）。
+  const child = spawn(launch.command, launch.args, { detached: true, stdio: 'ignore', env: launch.env });
+  child.on('error', error => {
+    console.warn(`在新窗口打开工作区失败：${error instanceof Error ? error.message : String(error)}`);
+  });
   child.unref();
 }
 
@@ -1929,39 +1740,22 @@ app.whenReady().then(async () => {
   aiBridgeManager.subscribe(snapshot => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('ai-bridge:status-changed', snapshot);
   });
-  // 面板内嵌 Agent 运行时（DeepSeek Harness）：只作为规划/工具循环引擎，
-  // 写盘与构建由面板在用户确认提案后经 AiBridgeService 代执行。
-  const providerLoaded = await readAgentProviderSettings(resolveAgentProviderSettingsPath(app.getPath('userData')), safeStorage);
-  agentProviderCache = providerLoaded.settings;
-  agentProviderKeyUnavailable = providerLoaded.keyUnavailable;
-  agentRuntime = new AgentRuntimeService({
-    bridgeCommand: process.execPath,
-    cliEntryPath: cliEntryPath(),
-    profileDirectory: path.join(app.getPath('userData'), 'agent-runtime'),
-    // 随包运行时归档优先释放到安装目录（当前用户可写且演示实例共享），不可写回落 userData。
-    installDirectory: app.isPackaged ? path.dirname(process.resourcesPath) : '',
-    userDataDirectory: app.getPath('userData'),
-    environment: { ...process.env, LINGBUILDER_IDE_VERSION: app.getVersion() },
-    providerSettings: () => agentProviderCache
-  });
-  agentRuntime.subscribe(snapshot => {
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('agent-runtime:status-changed', snapshot);
-  });
-  agentRuntime.onEvent(payload => {
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('agent-runtime:event', payload);
-  });
   // 外部 AI 授权开关是持久化设置，IDE 启动即按上次选择恢复监听状态。
   await syncLocalAuthorizationService();
+  // AI Bridge 随 IDE 自动拉起：连接中心改为「配置一次、开箱即用」，不阻塞窗口创建。
+  void autoStartAiBridgeOnLaunch();
 
-  // 老版随包运行时散文件树（≤0.7.9 首包形态，约 2.6 万个文件）后台清理：在安装器里删
+  // 内嵌 Agent 运行时（DeepSeek Harness）已退场：后台静默清理安装目录与用户目录的
+  // 全部残留（随包归档、旧版散文件树、已释放运行时、加密模型配置）。在安装器里删
   // 会被杀软逐个拦截、把「正在安装」进度条冻结在尾部数分钟（0.7.9 首包真机实测），
-  // 移到应用启动 30 秒后异步删则完全无感；无 agent-runtime.json 的目录不是本产品布局，不误删。
-  void removeLegacyBundledRuntimeTrees({
+  // 必须留给应用启动 30 秒后异步删；清理失败绝不影响启动。
+  void removeLegacyAgentRuntimeArtifacts({
     resourcesPath: app.isPackaged ? process.resourcesPath : '',
+    userDataPath: app.getPath('userData'),
     delayMs: 30_000
   }).then(result => {
-    if (result.removed.length) console.log(`[agent-runtime] 已清理旧版随包运行时残留：${result.removed.join('、')}`);
-    if (result.problem) console.warn(`[agent-runtime] ${result.problem}`);
+    if (result.removed.length) console.log(`[agent-runtime] 已清理内嵌 Agent 退场残留：${result.removed.length} 项`);
+    for (const problem of result.problems) console.warn(`[agent-runtime] ${problem}`);
   }).catch(() => undefined);
 
   const managedDevelopmentServer = !app.isPackaged && process.argv.includes('--managed-dev-server');

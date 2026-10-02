@@ -65,7 +65,6 @@ test('workspace values override user values and snapshot exposes inspection, met
   assert.equal(service.get('editor.experienceMode'), 'professional');
   assert.equal(service.get('workbench.sidebar.width'), 264);
   assert.equal(service.get('workbench.panel.visible'), false);
-  assert.equal(service.get('workbench.aiPanel.visible'), false);
 
   const snapshot = service.snapshot();
   assert.equal(snapshot.schemaVersion, 1);
@@ -238,7 +237,6 @@ test('user and workspace updates persist independently and reload with the same 
 
   await service.update('editor.fontSize', 15, 'user');
   await service.update('editor.fontSize', 21, 'workspace');
-  await service.update('workbench.aiPanel.visible', false, 'user');
   await service.update('workbench.sidebar.width', 512, 'user');
   await service.update('workbench.panel.visible', false, 'workspace');
 
@@ -246,7 +244,6 @@ test('user and workspace updates persist independently and reload with the same 
     schemaVersion: 1,
     values: {
       'editor.fontSize': 15,
-      'workbench.aiPanel.visible': false,
       'workbench.sidebar.width': 512
     }
   });
@@ -262,7 +259,6 @@ test('user and workspace updates persist independently and reload with the same 
   await reloaded.initialize();
   assert.equal(reloaded.get('editor.fontSize'), 21);
   assert.equal(reloaded.get('workbench.sidebar.width'), 512);
-  assert.equal(reloaded.get('workbench.aiPanel.visible'), false);
   assert.equal(reloaded.get('workbench.panel.visible'), false);
   assert.equal(reloaded.inspect('editor.fontSize').source, 'workspace');
 });

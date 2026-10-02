@@ -157,7 +157,7 @@ test('CDP 客户端模块清单、文档与命令完整性', async () => {
 test('Win32 CDP 客户端生成多连接 runtime、会话路由与处理器引用', () => {
   const generated = generate([cdpModule]);
   assert.deepEqual(generated.blockingDiagnostics, []);
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.ok(mainCpp.includes('class LingCdpRuntime'));
   assert.ok(mainCpp.includes('namespace LingCdpJson'));
   assert.ok(mainCpp.includes('WinHttpWebSocketCompleteUpgrade'));
@@ -242,7 +242,7 @@ test('Win32 CDP 客户端生成多连接 runtime、会话路由与处理器引�
 test('new_emoji CDP 客户端复用同一 runtime 并创建消息窗口', () => {
   const generated = generate([newEmojiModule, cdpModule], 'new-emoji');
   assert.deepEqual(generated.blockingDiagnostics, []);
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.ok(mainCpp.includes('static LingCdpRuntime g_cdpClientRuntime'));
   assert.ok(mainCpp.includes('LB_NE_CreateCdpClientEventWindow'));
   assert.ok(mainCpp.includes('WM_LINGBUILDER_NE_CDP_CLIENT_EVENT'));
@@ -253,7 +253,7 @@ test('new_emoji CDP 客户端复用同一 runtime 并创建消息窗口', () => 
 
 test('未启用 CDP 模块时不注入 runtime 与消息号', () => {
   const generated = generate([]);
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.equal(mainCpp.includes('class LingCdpRuntime'), false);
   assert.equal(mainCpp.includes('LingCdpJson'), false);
   assert.equal(mainCpp.includes('#define LINGBUILDER_CDP_CLIENT_MODULE'), false);

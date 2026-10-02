@@ -26,8 +26,6 @@ type LingBuilderSkillKitStatus = {
   checkedAt: string;
   problem: string;
 };
-type LingBuilderExternalAiClientId = 'codex' | 'claude' | 'gemini' | 'generic';
-
 interface AppUpdateProgressSnapshot {
   state: 'idle' | 'downloading' | 'verifying' | 'ready' | 'launching' | 'error';
   version?: string;
@@ -38,24 +36,6 @@ interface AppUpdateProgressSnapshot {
   message?: string;
   error?: string;
   installerPath?: string;
-}
-
-interface LingBuilderCodexDesktopStatus {
-  state: 'not-installed' | 'not-configured' | 'configured' | 'restart-required' | 'repair-required' | 'conflict' | 'error';
-  installed: boolean;
-  running: boolean;
-  label: string;
-  packageFullName: string;
-  appUserModelId: string;
-  executable: string;
-  startedAt: string | null;
-  detail: string;
-  configured: boolean;
-  configPath: string;
-  workspaceRoot: string;
-  permission: LingBuilderAiBridgePermission;
-  restartRequired: boolean;
-  managed: boolean;
 }
 
 interface LingBuilderAiBridgeSnapshot {
@@ -80,41 +60,6 @@ interface LingBuilderAiBridgeSnapshot {
   settingsError?: string;
 }
 
-/** 面板内嵌 Agent 运行时（DeepSeek Harness）状态：只驱动规划与工具循环，不直接写盘。 */
-interface LingBuilderAgentRuntimeSnapshot {
-  state: 'stopped' | 'starting' | 'running' | 'busy' | 'stopping' | 'failed';
-  workspaceRoot: string;
-  nodePath: string;
-  nodeVersion: string;
-  dshBinPath: string;
-  pid: number | null;
-  sessionId: string;
-  provider: string;
-  model: string;
-  maskedToolRows: number;
-  problem: string;
-  logs: string[];
-  lastTurnEvents: number;
-}
-
-interface LingBuilderAgentProviderSettings {
-  kind: 'deepseek-official' | 'custom-openai';
-  /** 主进程永不下发已保存的密钥，读到的恒为空串；留空表示沿用已保存的那份。 */
-  apiKey: string;
-  baseUrl: string;
-  model: string;
-  protocol?: 'messages' | 'chat-completions';
-}
-
-interface LingBuilderAgentProviderView {
-  ok: boolean;
-  settings?: LingBuilderAgentProviderSettings;
-  hasApiKey?: boolean;
-  keyUnavailable?: boolean;
-  problem?: string;
-  error?: string;
-}
-
 declare global {
   interface Window {
     lingBuilder?: {
@@ -135,7 +80,7 @@ declare global {
         openPath: (targetPath: string) => Promise<string>;
         revealWorkspacePath: (targetPath: string) => Promise<string>;
         openWorkspacePath: (relativePath?: string) => Promise<string>;
-        copyFullPath: (target: { kind: 'solution'; solutionName: string } | { kind: 'project'; relativePath: string }) => Promise<{
+        copyFullPath: (target: { kind: 'solution'; solutionName: string } | { kind: 'project'; relativePath: string } | { kind: 'file'; relativePath: string }) => Promise<{
           ok: boolean;
           path?: string;
           error?: string;
@@ -172,19 +117,6 @@ declare global {
         openAiModuleGuide: () => Promise<string>;
         readAiModuleGuide: () => Promise<string>;
       };
-      cli?: {
-        inspect: () => Promise<{
-          supported: boolean;
-          packaged: boolean;
-          state: 'ready' | 'path-missing' | 'launcher-missing' | 'check-failed' | 'development';
-          launcherPath: string;
-          launcherExists: boolean;
-          pathConfigured: boolean;
-          commandAvailable: boolean;
-          version: string | null;
-          detail: string;
-        }>;
-      };
       aiBridge?: {
         status: () => Promise<LingBuilderAiBridgeSnapshot>;
         start: (request: {
@@ -201,6 +133,7 @@ declare global {
             lifecycle: LingBuilderAiBridgeLifecycle;
             token: string;
             externalModuleAccess: boolean;
+            yoloConfirmed: boolean;
           } | null;
           localAuthorization: LingBuilderLocalAuthorizationSnapshot | null;
         } | null>;
@@ -210,6 +143,7 @@ declare global {
           lifecycle: LingBuilderAiBridgeLifecycle;
           token: string;
           externalModuleAccess?: boolean;
+          yoloConfirmed?: boolean;
         }) => Promise<{
           ok: boolean;
           error?: string;
@@ -219,54 +153,7 @@ declare global {
         stop: () => Promise<LingBuilderAiBridgeSnapshot>;
         rotateToken: () => Promise<LingBuilderAiBridgeSnapshot>;
         revealToken: () => Promise<string>;
-        clients: () => Promise<Array<{
-          id: LingBuilderExternalAiClientId;
-          label: string;
-          installed: boolean;
-          executable: string;
-          detail: string;
-        }>>;
-        codexDesktopStatus: (permission?: LingBuilderAiBridgePermission) => Promise<LingBuilderCodexDesktopStatus>;
-        configureCodexDesktop: (request: {
-          permission: LingBuilderAiBridgePermission;
-          replaceExisting?: boolean;
-          openApp?: boolean;
-          approvedYolo?: boolean;
-        }) => Promise<LingBuilderCodexDesktopStatus>;
-        removeCodexDesktop: () => Promise<LingBuilderCodexDesktopStatus>;
-        openCodexDesktop: () => Promise<LingBuilderCodexDesktopStatus>;
-        launchClient: (clientId: LingBuilderExternalAiClientId) => Promise<{ ok: boolean; sessionId: string; detail: string }>;
         onStatusChanged: (listener: (snapshot: LingBuilderAiBridgeSnapshot) => void) => () => void;
-      };
-      agentRuntime?: {
-        status: () => Promise<LingBuilderAgentRuntimeSnapshot>;
-        start: (request: {
-          provider?: string;
-          model?: string;
-          maxTokens?: number;
-          reasoningEffort?: string;
-        }) => Promise<{ ok: boolean; snapshot?: LingBuilderAgentRuntimeSnapshot; error?: string }>;
-        prompt: (request: { prompt: string; sessionId?: string }) => Promise<{
-          ok: boolean;
-          sessionId?: string;
-          finalText?: string;
-          events?: Array<Record<string, unknown>>;
-          error?: string;
-        }>;
-        stop: () => Promise<{ ok: boolean; snapshot?: LingBuilderAgentRuntimeSnapshot; error?: string }>;
-        getProviderSettings: () => Promise<LingBuilderAgentProviderView>;
-        setProviderSettings: (settings: LingBuilderAgentProviderSettings) => Promise<LingBuilderAgentProviderView>;
-        restart: () => Promise<{ ok: boolean; snapshot?: LingBuilderAgentRuntimeSnapshot; error?: string }>;
-        probeProvider: (request: {
-          action: 'models' | 'connect';
-          kind: LingBuilderAgentProviderSettings['kind'];
-          baseUrl?: string;
-          model?: string;
-          apiKey?: string;
-          protocol?: LingBuilderAgentProviderSettings['protocol'];
-        }) => Promise<{ ok: boolean; result?: unknown; error?: string }>;
-        onStatusChanged: (listener: (snapshot: LingBuilderAgentRuntimeSnapshot) => void) => () => void;
-        onEvent: (listener: (payload: { sessionId: string; event: Record<string, unknown> }) => void) => () => void;
       };
       skillKit?: {
         status: () => Promise<LingBuilderSkillKitStatus | null>;
@@ -300,6 +187,9 @@ declare global {
         pickSourceDirectory: () => Promise<{ ok: boolean; canceled: boolean; filePath?: string; error?: string }>;
         copyExternalProject: (projectFilePath: string) => Promise<{ ok: boolean; projectFileRelative?: string; targetDir?: string; error?: string }>;
       };
+      projectCreate?: {
+        pickLocationDirectory: () => Promise<{ ok: boolean; canceled: boolean; directoryPath?: string; error?: string }>;
+      };
       designerAssets?: {
         selectImage: () => Promise<{ canceled: boolean; filePath?: string }>;
         selectGif: () => Promise<{ canceled: boolean; filePath?: string }>;
@@ -331,9 +221,6 @@ declare global {
         moduleEntitlements: () => Promise<{ ok: boolean; entitlements: Array<{ id: string; moduleId: string; source: string; startsAt: string; endsAt?: string; revokedAt?: string }> }>;
         authorizeModule: (moduleId: string) => Promise<{ ok: boolean; error?: string; code?: string; status?: { moduleId: string; paid: boolean; allowed: boolean; source?: string; expiresAt?: string; reason?: string } }>;
         createModuleOrder: (value: { offerId: string; provider: 'wechat'|'alipay'; idempotencyKey: string }) => Promise<{ ok: boolean; order: { id: string; moduleId: string; status: string; paymentUrl?: string; expiresAt: string } }>;
-        rechargePackages: () => Promise<{ ok: boolean; packages: Array<{ id: string; name: string; points: string; amountMinor: string; currency: string }> }>;
-        createRechargeOrder: (value: { packageId: string; provider: 'wechat'|'alipay'; idempotencyKey: string }) => Promise<{ ok: boolean; order: { id: string; status: string; points: string; packageName: string; paymentUrl?: string; paymentForm?: string | null; expiresAt: string } }>;
-        rechargeOrder: (orderId: string) => Promise<{ ok: boolean; order: { id: string; status: string; points: string; packageName: string; paymentUrl?: string; paidAt?: string; expiresAt: string } }>;
         downloadModule: (value: { moduleId: string; arch?: 'win32'|'x64'|'any' }) => Promise<{ ok: boolean; relativePath: string; artifact: { id: string; moduleId: string; version: string; arch: string; sha256: string } }>;
         /** 网络恢复在线时通知主进程立即巡检一次模块授权续期（未登录/无到期时主进程自行跳过）。 */
         notifyNetworkRestored: () => Promise<{ ok: boolean }>;

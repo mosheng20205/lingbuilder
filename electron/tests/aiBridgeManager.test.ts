@@ -7,7 +7,6 @@ import { PassThrough } from 'node:stream';
 import test from 'node:test';
 import type { spawn } from 'node:child_process';
 import { AiBridgeManagerService } from '../electron/aiBridgeManagerService';
-import { createExternalAiLaunchPlan, type ExternalAiClientStatus } from '../electron/aiClientIntegrationService';
 
 test('IDE-managed AI Bridge controls lifecycle, redacts token, and refreshes shared MCP clients', async t => {
   const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-managed-bridge-'));
@@ -83,25 +82,4 @@ test('startup failure relays the CLI stderr diagnosis and non-ASCII custom token
     () => manager.start({ workspaceRoot, port: 17861, permission: 'preview', lifecycle: 'workspace', token: '自定义口令-包含中文字符-0123456789ab' }),
     /可见 ASCII/u
   );
-});
-
-test('external AI launch plans keep tokens in terminal environment and avoid persistent user configuration', async t => {
-  const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-ai-client-'));
-  t.after(() => fs.rm(workspaceRoot, { recursive: true, force: true }));
-  const clients: ExternalAiClientStatus[] = [
-    { id: 'codex', label: 'Codex CLI', installed: true, executable: 'C:\\Tools\\codex.exe', detail: 'ok' },
-    { id: 'claude', label: 'Claude Code', installed: true, executable: 'C:\\Tools\\claude.exe', detail: 'ok' },
-    { id: 'gemini', label: 'Gemini CLI', installed: true, executable: 'C:\\Tools\\gemini.cmd', detail: 'ok' },
-    { id: 'generic', label: '通用终端', installed: true, executable: '', detail: 'ok' }
-  ];
-  const base = { clients, workspaceRoot, mcpUrl: 'http://127.0.0.1:17860/api/ai-bridge/mcp', httpUrl: 'http://127.0.0.1:17860/api/ai-bridge', token: 'temporary-secret-token-value' };
-  for (const clientId of ['codex', 'claude', 'gemini', 'generic'] as const) {
-    const plan = await createExternalAiLaunchPlan({ ...base, clientId });
-    assert.equal(plan.env.LINGBUILDER_AI_BRIDGE_TOKEN, base.token);
-    assert.equal(plan.command.includes(base.token), false);
-  }
-  const configDirectory = path.join(workspaceRoot, '.lingbuilder', 'ai-bridge-clients');
-  const persisted = `${await fs.readFile(path.join(configDirectory, 'claude.mcp.json'), 'utf8')}\n${await fs.readFile(path.join(configDirectory, 'gemini.settings.json'), 'utf8')}`;
-  assert.equal(persisted.includes(base.token), false);
-  assert.match(persisted, /LINGBUILDER_AI_BRIDGE_TOKEN/u);
 });

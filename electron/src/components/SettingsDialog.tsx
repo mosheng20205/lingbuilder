@@ -2,7 +2,6 @@ import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Eye, EyeOff, KeyRound, Keyboard, RefreshCw, RotateCcw, Search, Settings, ShieldCheck, Trash2, UserRound, X } from 'lucide-react';
 import { requestWorkbenchConfirm } from '../services/workbench/workbenchConfirmService';
 import { requestCloudAccountLogin } from '../services/workbench/cloudAccountLoginService';
-import { requestCloudAccountRecharge } from '../services/workbench/cloudAccountRechargeService';
 import {
   getCloudAccountSessionState,
   refreshCloudAccountSession,
@@ -547,10 +546,10 @@ function UpdatesSetting({
 }
 
 /**
- * 设置 → 账号：登录态、点数与登录/注册/充值/退出入口。
+ * 设置 → 账号：登录态与登录/注册/退出入口。
  *
- * 表单一律走顶层 cloudAccountLoginService / cloudAccountRechargeService，本页只呈现状态，
- * 不再复制一份邮箱密码输入，避免与标题栏、AI 面板的登录态漂移。
+ * 表单一律走顶层 cloudAccountLoginService，本页只呈现状态，
+ * 不再复制一份邮箱密码输入，避免与帮助菜单、欢迎页的登录态漂移。
  */
 function AccountSettings({ isDarkMode, fieldClass, mutedClass }: { isDarkMode: boolean; fieldClass: string; mutedClass: string }) {
   const [session, setSession] = useState(getCloudAccountSessionState);
@@ -563,7 +562,7 @@ function AccountSettings({ isDarkMode, fieldClass, mutedClass }: { isDarkMode: b
     <section aria-label="LingBuilder 账号" className={`rounded border p-4 ${isDarkMode ? 'border-[#3c3c3c] bg-[#202020]' : 'border-slate-200 bg-white'}`}>
       <h3 className="text-sm font-semibold">LingBuilder 账号</h3>
       <p className={`mt-1 text-[11px] leading-5 ${mutedClass}`}>
-        同一账号用于系统 AI 点数、收费模块权益与体验计划；本地编辑、构建与 Visual Studio 工程导出无需登录。
+        同一账号用于收费模块权益与体验计划；本地编辑、构建与 Visual Studio 工程导出无需登录。
       </p>
 
       {session.authenticated ? (
@@ -573,14 +572,9 @@ function AccountSettings({ isDarkMode, fieldClass, mutedClass }: { isDarkMode: b
               <UserRound className="h-3.5 w-3.5 text-violet-400" aria-hidden="true" />
               <span className="max-w-[22rem] truncate">{session.email}</span>
             </span>
-            <span>可用点数 <strong className="tabular-nums">{session.balance?.available || '0'}</strong></span>
-            {session.balance?.reserved && session.balance.reserved !== '0' && (
-              <span className={mutedClass}>冻结 <strong className="tabular-nums">{session.balance.reserved}</strong></span>
-            )}
           </div>
           {session.error && <p role="alert" className={`mt-2 text-[11px] ${isDarkMode ? 'text-rose-300' : 'text-rose-700'}`}>{session.error}</p>}
           <div className="mt-3 flex flex-wrap gap-2">
-            <button type="button" onClick={() => void requestCloudAccountRecharge()} className="rounded bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-500">充值点数</button>
             <button type="button" onClick={() => void signOutCloudAccount()} className={actionClass}>退出登录</button>
           </div>
         </>

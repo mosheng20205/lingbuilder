@@ -136,8 +136,8 @@ async function launchSmoke(name, documentsRoot, userDataRoot) {
 }
 
 function assertSmokeResult(result, expectedWorkspace) {
-  if (!result.ok || !result.hasRoot || result.healthStatus !== 200 || result.modulesStatus !== 200 || result.aiStatus !== 200 || result.bridgeStatus !== 404
-    || result.managedBridgeStatus !== 200 || result.managedMcpStatus !== 200 || !result.managedBridgeStopped || !result.managedClientLaunched
+  if (!result.ok || !result.hasRoot || result.healthStatus !== 200 || result.modulesStatus !== 200 || result.bridgeStatus !== 404
+    || result.managedBridgeStatus !== 200 || result.managedMcpStatus !== 200 || !result.managedBridgeStopped
     || result.terminalStatus !== 201 || result.terminalResizeStatus !== 200 || result.terminalCloseStatus !== 200 || !result.terminalPtyOutput) {
     throw new Error(`安装版接口冒烟失败：${JSON.stringify(result)}`);
   }

@@ -7,10 +7,15 @@ export interface AiBridgeStartSettings {
   port: number;
   permission: ManagedAiBridgePermission;
   lifecycle: ManagedAiBridgeLifecycle;
-  /** 自定义 Token；空串表示未设置（每次启动生成临时 Token）。 */
+  /** 自定义 Token；空串表示未设置（首次启动自动生成并持久化，保证外部客户端配置一次长期有效）。 */
   token: string;
   /** 是否允许本机外部 AI 客户端的 stdio 宿主向 IDE 换取模块授权与浏览器凭据；默认关闭。 */
   externalModuleAccess: boolean;
+  /**
+   * yolo 权限的用户确认是否随设置持久化。AI Bridge 随 IDE 自动启动后没有会话内确认框，
+   * 只有 yolo + yoloConfirmed 同时为真才按 yolo 拉起；否则自动启动降级为 preview。
+   */
+  yoloConfirmed: boolean;
 }
 
 export interface AiBridgeSafeStorageLike {
@@ -25,6 +30,7 @@ interface StoredStartSettings {
   permission: ManagedAiBridgePermission;
   lifecycle: ManagedAiBridgeLifecycle;
   externalModuleAccess?: boolean;
+  yoloConfirmed?: boolean;
   token?: { encoding: 'safeStorage' | 'plain'; value: string };
 }
 
@@ -46,7 +52,14 @@ export function normalizeAiBridgeStartSettings(input: unknown): AiBridgeStartSet
   if (!LIFECYCLE_VALUES.includes(lifecycle)) return undefined;
   const token = typeof value.token === 'string' ? value.token : '';
   if (/[^\x21-\x7e]/u.test(token) || token.length > 256 || (token.length > 0 && token.length < 24)) return undefined;
-  return { port, permission, lifecycle, token, externalModuleAccess: value.externalModuleAccess === true };
+  return {
+    port,
+    permission,
+    lifecycle,
+    token,
+    externalModuleAccess: value.externalModuleAccess === true,
+    yoloConfirmed: value.yoloConfirmed === true
+  };
 }
 
 export async function readAiBridgeStartSettings(
@@ -75,6 +88,7 @@ export async function readAiBridgeStartSettings(
       permission: parsed.permission,
       lifecycle: parsed.lifecycle,
       externalModuleAccess: parsed.externalModuleAccess === true,
+      yoloConfirmed: parsed.yoloConfirmed === true,
       token
     });
   } catch {
@@ -101,6 +115,7 @@ export async function writeAiBridgeStartSettings(
     permission: normalized.permission,
     lifecycle: normalized.lifecycle,
     externalModuleAccess: normalized.externalModuleAccess,
+    yoloConfirmed: normalized.yoloConfirmed,
     ...(storedToken ? { token: storedToken } : {})
   };
   await fs.mkdir(path.dirname(filePath), { recursive: true });

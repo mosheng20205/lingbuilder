@@ -61,7 +61,6 @@ import {
   toggleModuleFavorite as toggleModuleFavoriteById
 } from '../services/modules/moduleFavorites';
 import { importAiModuleFilesToWorkspace, type AiModuleImportOutcome } from '../services/modules/aiModuleGenerationFlow';
-import { requestAiAgentTurn } from '../services/ai/agentRequestBus';
 import {
   MODULE_DETAIL_ACTION_EVENT,
   openModuleDetailView,
@@ -162,7 +161,6 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
   const [aiImportResult, setAiImportResult] = useState<AiModuleImportResultForClipboard | null>(null);
   const [aiImportCopyState, setAiImportCopyState] = useState<'idle' | 'copying' | 'copied' | 'failed'>('idle');
   const aiImportCopyTimerRef = useRef<number | null>(null);
-  const [aiRequirement, setAiRequirement] = useState('');
   const [enableAfterInstall, setEnableAfterInstall] = useState(true);
   const onAddLogRef = useRef(onAddLog);
   const refreshRequestIdRef = useRef(0);
@@ -882,8 +880,9 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
     && parsedAiFiles.files.some(file => file.path === AI_MODULE_MANIFEST_FILE)
     && parsedAiFiles.diagnostics.length === 0;
 
-  // 手动粘贴导入是「AI 生成模块」的降级入口：解析「### 文件：」契约 → 写入 module-build → 校验。
-  // 一键生成已改由本机 Agent 承担（见下方 sendRequirementToAgent），本组件不再自带模型通道。
+  // 手动粘贴导入是「AI 生成模块」的入口：解析「### 文件：」契约 → 写入 module-build → 校验。
+  // 生成由外部 AI 经 AI Bridge MCP 的模块封装链（module.scaffold/writeFiles/validate）完成，
+  // 本组件不自带模型通道，导出 .lbmod 与安装仍由本面板承担。
   const applyAiModuleImportOutcome = (imported: AiModuleImportOutcome): string[] => {
     const moduleDir: string = imported.outDir;
     const diagnostics: string[] = imported.diagnostics;
@@ -903,27 +902,6 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
       setStatusText(`AI 模块导入未通过：${diagnostics.join('；')}`);
     }
     return diagnostics;
-  };
-
-  // 「AI 生成模块」不再自带模型通道：需求整体交给本机 Agent（内嵌 DeepSeek Harness）。
-  // AI 助手侧栏是唯一执行入口；Agent 经 AI Bridge 的模块封装链写 module-build，
-  // 导出 .lbmod 与安装仍由本面板承担，禁止在这里复制第二套编排。
-  const sendRequirementToAgent = () => {
-    const requirementText = aiRequirement.trim();
-    if (!requirementText) {
-      setStatusText('请先用中文描述你想生成的模块需求。');
-      return;
-    }
-    requestAiAgentTurn({
-      origin: '模块 → AI 生成模块',
-      prompt: `请把下面的需求封装成一个可安装的 .lbmod 模块（清单 v2）：
-
-${requirementText}
-
-按模块封装链执行：module.scaffold 建骨架 → module.writeFiles 写清单与源码/文档 → module.validate 校验；校验不通过就修正后重新校验，直到通过为止。中文命令必须同时登记 contributes.commands 与 bindings.commands，并随包附带 Markdown 文档。完成后用中文汇报模块 ID、module-build 目录与命令清单；不要打包安装，导出与安装由我在模块面板确认。`
-    });
-    setStatusText('已把模块需求交给本机 Agent；AI 助手侧栏会展开并显示它的执行过程。');
-    onAddLogRef.current(`> [${new Date().toLocaleTimeString()}] 【模块开发】已把模块需求交给本机 Agent（${requirementText.slice(0, 40)}）。`);
   };
 
   const importAiFilesFromPaste = async () => {
@@ -1065,7 +1043,7 @@ ${requirementText}
   };
 
   const subViewMeta: Record<ModuleSubViewId, { title: string; desc: string; icon: React.ReactNode }> = {
-    aiGenerate: { title: 'AI 生成模块', desc: '把需求交给面板内嵌的本机 Agent（DeepSeek Harness）按模块封装链创作；也支持复制规范给任意外部 AI 的手动流程。', icon: <Bot size={16} /> },
+    aiGenerate: { title: 'AI 生成模块', desc: '复制规范给任意外部 AI（或让其经 AI Bridge MCP 直接生成），再把回复粘贴回本页导入校验。', icon: <Bot size={16} /> },
     packageInstall: { title: '安装 .lbmod', desc: '拖入 .lbmod 文件，或填写本机绝对路径 / 工作区相对路径预览安装（桌面版自动把外部包复制进工作区）。', icon: <FileArchive size={16} /> },
     packageExport: { title: '模块包制作', desc: '把校验通过的模块目录打包为可分发的 .lbmod。', icon: <Archive size={16} /> },
     developer: { title: '模块开发者中心', desc: '面向会 C++ 的模块作者：模板、校验、迁移和本地市场索引。', icon: <Upload size={16} /> },
@@ -1298,49 +1276,16 @@ ${requirementText}
               <div className="p-3 grid gap-2.5">
                 <div
                   role="group"
-                  aria-label="AI 一键生成模块"
-                  className={`rounded border p-2.5 ${isDarkMode ? 'border-emerald-500/25 bg-emerald-500/5' : 'border-emerald-500/30 bg-emerald-500/5'}`}
-                >
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Bot size={14} className="shrink-0 text-emerald-400" aria-hidden="true" />
-                    <span className="text-xs font-semibold">交给本机 Agent 生成（内嵌 DeepSeek Harness）</span>
-                    <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${isDarkMode ? 'bg-emerald-500/15 text-emerald-300' : 'bg-emerald-500/10 text-emerald-700'}`}>推荐</span>
-                  </div>
-                  <p className={`mt-1 text-[10px] leading-4 ${subtleClass}`}>
-                    用中文描述需求，IDE 会展开 AI 助手侧栏并把需求交给本机 Agent：它按「模块骨架 → 写文件 → 校验」链路在 module-build 里创作，校验通过后你再回到本页导出与安装。
-                  </p>
-                  <textarea
-                    id={`${fieldIdPrefix}-ai-requirement`}
-                    value={aiRequirement}
-                    onChange={event => setAiRequirement(event.target.value)}
-                    placeholder="例如：做一个字符串工具模块，提供“取文本长度”“替换文本”“分割文本到列表”三个中文命令……"
-                    className={`mt-2 min-h-20 w-full rounded border px-3 py-2 text-xs outline-none ${inputClass}`}
-                    aria-label="模块需求描述"
-                  />
-                  <div className="mt-2 grid grid-cols-1 gap-2">
-                    <button
-                      type="button"
-                      onClick={sendRequirementToAgent}
-                      disabled={!aiRequirement.trim()}
-                      className={`h-9 w-full rounded bg-emerald-600 px-3 text-xs text-white inline-flex items-center justify-center gap-2 hover:bg-emerald-500 disabled:opacity-50 ${actionButtonClass}`}
-                    >
-                      <Bot size={14} />
-                      交给本机 Agent 生成模块
-                    </button>
-                  </div>
-                </div>
-                <div
-                  role="group"
                   aria-label="AI 生成模块入口"
                   className={`rounded border p-2.5 ${isDarkMode ? 'border-sky-500/25 bg-sky-500/5' : 'border-sky-500/30 bg-sky-500/5'}`}
                 >
                   <div className="flex flex-wrap items-center gap-2">
                     <Bot size={14} className="shrink-0 text-sky-400" aria-hidden="true" />
-                    <span className="text-xs font-semibold">手动模式：复制规范给任意外部 AI</span>
-                    <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${isDarkMode ? 'bg-sky-500/15 text-sky-300' : 'bg-sky-500/10 text-sky-700'}`}>复制粘贴降级</span>
+                    <span className="text-xs font-semibold">复制规范给任意外部 AI</span>
+                    <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${isDarkMode ? 'bg-sky-500/15 text-sky-300' : 'bg-sky-500/10 text-sky-700'}`}>复制粘贴导入</span>
                   </div>
                   <p className={`mt-1 text-[10px] leading-4 ${subtleClass}`}>
-                    一键生成不可用时的备选方案：复制规范粘贴给 ChatGPT、Claude、Cursor 等任意 AI，再用中文描述需求，最后把 AI 回复粘贴回下方导入。
+                    复制规范粘贴给 ChatGPT、Claude、Codex 等任意 AI（或让已连接 AI Bridge 的 CLI 经 MCP 工具直接生成），再用中文描述需求，最后把 AI 回复粘贴回下方导入。
                   </p>
                   <div className="mt-2 grid grid-cols-1 gap-2">
                     <button
@@ -1450,9 +1395,8 @@ ${requirementText}
                 <div className="grid gap-1">
                   <span className={`text-[11px] font-medium ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>使用步骤</span>
                   <ol className={`grid gap-1 text-[10px] leading-4 ${subtleClass}`}>
-                    <li>1.（推荐）在“一键生成”里用中文描述需求，选择系统 AI 或自定义 API，点击生成——IDE 会自动完成规范注入、解析、导入和校验。</li>
-                    <li>2.（手动）点击“复制 AI 开发规范”，粘贴给任意 AI 并用中文描述模块；把 AI 回复完整粘贴到“导入 AI 生成的文件”后点击导入，也可以手动保存到 .lingbuilder/module-build/&lt;模块ID&gt;/。</li>
-                    <li>3. 校验通过后在“模块包制作”导出并安装（导入成功后路径会自动填好）；也可以通过 AI Bridge MCP 工具让 Claude Code / Codex 等直接生成、打包并安装。</li>
+                    <li>1. 点击“复制 AI 开发规范”，粘贴给任意 AI（或让已连接 AI Bridge 的外部 CLI 经 MCP 工具直接生成）并用中文描述模块；把 AI 回复完整粘贴到“导入 AI 生成的文件”后点击导入，也可以手动保存到 .lingbuilder/module-build/&lt;模块ID&gt;/。</li>
+                    <li>2. 校验通过后在“模块包制作”导出并安装（导入成功后路径会自动填好）；也可以通过 AI Bridge MCP 工具让 Claude Code / Codex 等直接生成、打包并安装。</li>
                   </ol>
                 </div>
               </div>

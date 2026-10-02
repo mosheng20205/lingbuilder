@@ -10,7 +10,6 @@ import { collectControlReferenceAdmissionProblems, formatControlReferenceAdmissi
 import { collectArgumentTypeAdmissionProblems, formatArgumentTypeAdmissionBlock } from '../lingCpp/argumentTypeAdmission';
 import { buildInlineCppUsageSummaryLine, collectInlineCppLines, summarizeInlineCppUsage } from '../lingCpp/inlineCppKnowledge';
 import { collectInlineCppAdmissionProblems, formatInlineCppAdmissionBlock } from '../lingCpp/inlineCppAdmission';
-import { deleteAgentProposal, persistAgentProposal, readAgentProposal } from '../lingCpp/agentProposalStore';
 import { createProjectGlobalContext, isProjectGlobalsFilePath } from '../lingCpp/projectGlobalService';
 import { createProjectTypeContext, isProjectDataTypesFilePath } from '../lingCpp/projectDataTypeService';
 import { createFunctionLibraryTemplate, createProjectFunctionContext } from '../lingCpp/functionLibraryService';
@@ -76,9 +75,10 @@ import {
 } from '../windowDesigner/windowsExecutableIconService';
 import { detectNestedWorkspaceArtifacts, isNestedWorkspaceArtifactRelativePath, isProjectBuildArtifactRelativePath } from '../solution/nestedWorkspaceGuard';
 import { createSolutionService, DEFAULT_PROJECT_ID, type LingBuilderSolutionProject } from '../solution/solutionService';
+import { findSolutionEntryPath } from '../solution/solutionEntryFile';
 import { resolveExecutableNameParts } from '../solution/externalProjectService';
 import { resolveProjectBuildDirectories } from '../tasks/buildPathService';
-import { describeBuildOutputDirectory } from '../tasks/buildOutputLabel';
+import { describeBuildOutputDirectory, formatSuccessCompileChannel } from '../tasks/buildOutputLabel';
 import { createProjectCreationService, type ProjectCreationRequest, type ProjectCreationService } from '../solution/projectCreationService';
 import { SdkDependencyService } from '../sdkDependencies/sdkDependencyService';
 import { resolveSdkCacheRoot } from '../sdkDependencies/sdkDependencyCatalog';
@@ -523,11 +523,6 @@ export class AiBridgeService {
     const draft = planner ? await planner(context) : { summary: request.instruction || '外部 AI 编辑提案', explanation: '外部 AI 提供了完整文件草稿，LingBuilder 仅创建可预览提案。', files: proposedFiles, designerProject: request.updatedDesignerProject };
     if (draft.designerProject) await this.assertDesignerProjectRegistered(draft.designerProject.id);
     const proposal = proposeLingCppEdit(context, draft);
-    if (this.options.agentProposalHandoff) {
-      // 内嵌 Agent 的 MCP 子进程与 IDE 本地服务是两个进程，进程内提案 store 不共享：
-      // 落工作区交接目录后，面板才能按同一 proposalId 取回并在用户确认后代执行 apply。
-      await persistAgentProposal(this.workspaceRoot, proposal);
-    }
     // 响应瘦身：草稿全文不回传（服务端已留存，apply 只需 proposalId）。
     return {
       ok: true,
@@ -635,10 +630,6 @@ export class AiBridgeService {
     }
 
     rejectWorkspaceEdit(request.proposalId);
-    if (this.options.agentProposalHandoff) {
-      // 交接目录里只留未应用的提案：一旦落盘成功立即删除，避免源码草稿长期驻留工作区。
-      await deleteAgentProposal(this.workspaceRoot, request.proposalId).catch(() => undefined);
-    }
     return {
       ok: true,
       appliedFiles: persistedFiles.map(file => ({ filePath: file.filePath, bytes: Buffer.byteLength(file.sourceCode, 'utf8') })),
@@ -1890,13 +1881,17 @@ export class AiBridgeService {
         buildDir
       );
     }
+    let solutionEntryPathForLogs: string | undefined;
+    try {
+      solutionEntryPathForLogs = await findSolutionEntryPath(this.workspaceRoot, (await this.solutionService.getSolution()).name || '');
+    } catch {
+      // 解决方案尚未建立时省略该行，不阻断构建。
+    }
     const baseLogs = [
       ...preBuildLogs,
+      ...(solutionEntryPathForLogs ? [`解决方案：${solutionEntryPathForLogs}`] : []),
       `AI Bridge 已生成 Win32 C++ 工程：${buildDir}`,
-      `C++ 源码目录：${sourceDir}`,
-      `可复制生成目录：${exportDir}`,
-      `Visual Studio 解决方案：${buildVisualStudioProject.solutionPath}`,
-      `可复制 Visual Studio 解决方案：${exportVisualStudioProjectResult.solutionPath}`,
+      `可复制 Visual Studio 工程（含 .sln）：${exportDir}`,
       ...generatedProject.diagnostics,
       ...codeGeneratorResult.logs,
       ...projectDllBuildNotes,
@@ -1993,7 +1988,6 @@ export class AiBridgeService {
       `生成器指纹：${codeGeneratorResult.fingerprint} · IDE ${resolveIdeVersion()}${codeGeneratorResult.incrementalHit ? '（增量命中）' : ''}`,
       ...compilerDiagnosticLogs,
       `${describeBuildOutputDirectory(outputKind)}：${binDir}`,
-      `中间文件目录：${objDir}`,
       `编译器：${compiler.kind} (${compiler.command})`,
       executableNameParts.fileName !== 'LingBuilderPreview.exe' ? `项目自定义输出文件名：${executableNameParts.fileName}` : '',
       moduleNativePlan.runtimeFiles.length ? `已复制模块运行时文件：${moduleNativePlan.runtimeFiles.map(file => path.basename(file)).join(', ')}` : '',
@@ -2030,10 +2024,13 @@ export class AiBridgeService {
       );
     }
 
-    if (request.run !== false && outputType === 'dll') {
-      // 动态库没有运行入口：链接完成后不启动进程，产物即 dll + 导入库。
-      const importLibraryPath = exePath.replace(/\.dll$/iu, '.lib');
-      logs.push('动态库输出模式：编译完成后不启动运行进程。', `DLL 产物：${exePath}`, `导入库：${importLibraryPath}`);
+    if (outputType === 'dll') {
+      // 动态库没有运行入口：链接完成即产物。产物路径不再依赖 run 播报，
+      // run 请求也不再尝试把 .dll 当进程启动。
+      if (request.run !== false) logs.push('动态库输出模式：编译完成后不启动运行进程。');
+      logs.push(`DLL 产物：${exePath}`, `导入库：${exePath.replace(/\.dll$/iu, '.lib')}`);
+    } else {
+      logs.push(`程序产物：${exePath}`);
     }
     if (request.run !== false && outputType !== 'dll') {
       try {
@@ -2610,13 +2607,11 @@ export class AiBridgeService {
   }
 
   /**
-   * 按 ID 取提案：先查本进程内存 store，未命中再查工作区交接目录
-   * （内嵌 Agent 在另一进程生成提案）。agentProposalHandoff 关闭时绝不读盘。
+   * 按 ID 取提案：只查本进程内存 store。
    */
   private async resolveEditProposal(proposalId: string | undefined): Promise<WorkspaceEditProposal | undefined> {
     if (!proposalId) return undefined;
-    return getWorkspaceEditProposal(proposalId)
-      || (this.options.agentProposalHandoff ? await readAgentProposal(this.workspaceRoot, proposalId) : undefined);
+    return getWorkspaceEditProposal(proposalId);
   }
 
   private async resolveApplyWorkspaceFiles(request: AiBridgeEditApplyRequest): Promise<LingCppWorkspaceFile[]> {
@@ -3033,12 +3028,12 @@ async function compileWin32Preview(
     return {
       ok: true,
       logs: [
-        '编译成功。',
         ...resourceLogs,
-        compileResult.stdout?.trim() ? `stdout:\n${compileResult.stdout.trim()}` : '',
-        compileResult.stderr?.trim() ? `stderr:\n${compileResult.stderr.trim()}` : '',
-        linkResult?.stdout?.trim() ? `link stdout:\n${linkResult.stdout.trim()}` : '',
-        linkResult?.stderr?.trim() ? `link stderr:\n${linkResult.stderr.trim()}` : ''
+        '编译成功。',
+        formatSuccessCompileChannel('stdout', compileResult.stdout),
+        formatSuccessCompileChannel('stderr', compileResult.stderr),
+        formatSuccessCompileChannel('link stdout', linkResult?.stdout),
+        formatSuccessCompileChannel('link stderr', linkResult?.stderr)
       ].filter(Boolean)
     };
   } catch (error: any) {
@@ -3116,6 +3111,22 @@ async function compileMsvcPreviewWithModules(
       }
     };
     await walkHeaders(includeRoot);
+  }
+  // 生成目录里的头文件（如拆分形态的 lingbuilder_runtime.h）不经 /I 解析（#include "" 同目录优先），
+  // 但同样独立于 main.cpp 文本变化（裁剪/控件组合变化只改头文件）：不纳入指纹会在源文件未变时
+  // 错误复用旧 obj。只扫生成目录顶层，避免误吸 lcpp-sources/ 等子目录内容。
+  try {
+    const generatedDir = path.dirname(sourcePath);
+    const generatedEntries = (await fs.readdir(generatedDir, { withFileTypes: true })) as unknown as Array<{ name: string; isDirectory: () => boolean }>;
+    for (const entry of generatedEntries) {
+      if (entry.isDirectory()) continue;
+      if (!/\.(h|hpp)$/iu.test(entry.name)) continue;
+      const full = path.join(generatedDir, entry.name);
+      const digest = crypto.createHash('sha256').update(await fs.readFile(full)).digest('hex');
+      headerEntries.push(`${normalizeFilePath(full).toLocaleLowerCase()}:${digest}`);
+    }
+  } catch {
+    // 生成目录不可读时跳过该部分指纹（与 /I 目录缺失的处理口径一致）。
   }
   const headersFingerprint = crypto.createHash('sha256')
     .update(headerEntries.sort().join('\u0000'))
@@ -3218,8 +3229,10 @@ async function compileMsvcPreviewWithModules(
       foldedNotesTotal += foldedStdout.foldedNotes + foldedStderr.foldedNotes;
       if (result.stdout?.trim()) rawParts.push(result.stdout.trim());
       if (result.stderr?.trim()) rawParts.push(result.stderr.trim());
-      if (foldedStdout.text) outputs.push(`stdout:\n${foldedStdout.text}`);
-      if (foldedStderr.text) outputs.push(`stderr:\n${foldedStderr.text}`);
+      outputs.push(
+        formatSuccessCompileChannel('stdout', foldedStdout.text),
+        formatSuccessCompileChannel('stderr', foldedStderr.text)
+      );
     }
     // 源文件有变化时才需要链接；全部命中缓存且 exe 仍在时也要重链接（exe 每轮构建前会被删除）。
     const linkResult = await runMsvcCommand(compiler, linkArgs, cwd, signal);
@@ -3228,10 +3241,12 @@ async function compileMsvcPreviewWithModules(
     foldedNotesTotal += foldedLinkStdout.foldedNotes + foldedLinkStderr.foldedNotes;
     if (linkResult.stdout?.trim()) rawParts.push(linkResult.stdout.trim());
     if (linkResult.stderr?.trim()) rawParts.push(linkResult.stderr.trim());
-    if (foldedLinkStdout.text) outputs.push(`link stdout:\n${foldedLinkStdout.text}`);
-    if (foldedLinkStderr.text) outputs.push(`link stderr:\n${foldedLinkStderr.text}`);
+    outputs.push(
+      formatSuccessCompileChannel('link stdout', foldedLinkStdout.text),
+      formatSuccessCompileChannel('link stderr', foldedLinkStderr.text)
+    );
     const rawOutput = rawParts.join('\n');
-    const logs = ['编译成功。', ...cacheLogs, ...resourceLogs, ...outputs];
+    const logs = [...cacheLogs, ...resourceLogs, '编译成功。', ...outputs.filter(Boolean)];
     if (foldedNotesTotal > 0) logs.push(`已折叠 ${foldedNotesTotal} 条 note 备注/候选行，避免刷屏；错误/警告行全部保留。`);
     return { ok: true, logs, rawOutput };
   } catch (error: any) {

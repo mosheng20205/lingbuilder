@@ -316,7 +316,7 @@ export default function CloudAccountLoginDialog({
           )}
           <p className={`text-[10px] leading-4 ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>
             {mode === 'login'
-              ? '注册后需在邮箱中完成验证；点数与收费模块权益均绑定该账号。'
+              ? '注册后需在邮箱中完成验证；收费模块权益绑定该账号。'
               : mode === 'register'
                 ? '注册后需在邮箱中完成验证，验证通过才能登录。'
                 : '重置成功后该账号在所有设备上的登录状态都会被注销。'}
