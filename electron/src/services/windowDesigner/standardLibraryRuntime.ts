@@ -682,6 +682,88 @@ long long 字节集_分割(const std::vector<unsigned char>& bytes, const std::v
     return static_cast<long long>(out.size());
 }
 
+// 字级原语族（2026-10-02）：把「字节集 ↔ 32 位字数组」互转、整段异或、256 项查表映射与
+// 逐字循环移位下沉为单条命令，魔改 MD5/AES 类签名算法不再逐字节拼标量。
+static unsigned int LB_BytesLoadWord32(const std::vector<unsigned char>& bytes, size_t offset, bool bigEndian) {
+    return bigEndian
+        ? (static_cast<unsigned int>(bytes[offset]) << 24) | (static_cast<unsigned int>(bytes[offset + 1]) << 16)
+            | (static_cast<unsigned int>(bytes[offset + 2]) << 8) | static_cast<unsigned int>(bytes[offset + 3])
+        : static_cast<unsigned int>(bytes[offset]) | (static_cast<unsigned int>(bytes[offset + 1]) << 8)
+            | (static_cast<unsigned int>(bytes[offset + 2]) << 16) | (static_cast<unsigned int>(bytes[offset + 3]) << 24);
+}
+
+static void LB_BytesStoreWord32(std::vector<unsigned char>& bytes, size_t offset, unsigned int word, bool bigEndian) {
+    if (bigEndian) {
+        bytes[offset] = static_cast<unsigned char>(word >> 24);
+        bytes[offset + 1] = static_cast<unsigned char>(word >> 16);
+        bytes[offset + 2] = static_cast<unsigned char>(word >> 8);
+        bytes[offset + 3] = static_cast<unsigned char>(word);
+    } else {
+        bytes[offset] = static_cast<unsigned char>(word);
+        bytes[offset + 1] = static_cast<unsigned char>(word >> 8);
+        bytes[offset + 2] = static_cast<unsigned char>(word >> 16);
+        bytes[offset + 3] = static_cast<unsigned char>(word >> 24);
+    }
+}
+
+long long 字节集_取无符号32(const std::vector<unsigned char>& bytes, int offset, bool bigEndian) {
+    if (offset < 0 || static_cast<size_t>(offset) + 4 > bytes.size()) return -1;
+    return static_cast<long long>(LB_BytesLoadWord32(bytes, static_cast<size_t>(offset), bigEndian));
+}
+
+bool 字节集_置无符号32(std::vector<unsigned char>& bytes, int offset, long long value, bool bigEndian) {
+    if (offset < 0 || static_cast<size_t>(offset) + 4 > bytes.size()) return false;
+    LB_BytesStoreWord32(bytes, static_cast<size_t>(offset), static_cast<unsigned int>(static_cast<unsigned long long>(value)), bigEndian);
+    return true;
+}
+
+int 字节集_取无符号16(const std::vector<unsigned char>& bytes, int offset, bool bigEndian) {
+    if (offset < 0 || static_cast<size_t>(offset) + 2 > bytes.size()) return -1;
+    const size_t position = static_cast<size_t>(offset);
+    const unsigned int value = bigEndian
+        ? (static_cast<unsigned int>(bytes[position]) << 8) | static_cast<unsigned int>(bytes[position + 1])
+        : static_cast<unsigned int>(bytes[position]) | (static_cast<unsigned int>(bytes[position + 1]) << 8);
+    return static_cast<int>(value);
+}
+
+std::vector<unsigned char> 字节集_字节序反转(const std::vector<unsigned char>& bytes, int width) {
+    std::vector<unsigned char> result = bytes;
+    if (width != 2 && width != 4 && width != 8) return result;
+    const size_t element = static_cast<size_t>(width);
+    const size_t words = bytes.size() / element;
+    for (size_t index = 0; index < words; ++index) {
+        std::reverse(result.begin() + static_cast<std::ptrdiff_t>(index * element), result.begin() + static_cast<std::ptrdiff_t>((index + 1) * element));
+    }
+    return result;
+}
+
+std::vector<unsigned char> 字节集_异或(const std::vector<unsigned char>& first, const std::vector<unsigned char>& second) {
+    const size_t count = (std::min)(first.size(), second.size());
+    std::vector<unsigned char> result(count);
+    for (size_t index = 0; index < count; ++index) result[index] = static_cast<unsigned char>(first[index] ^ second[index]);
+    return result;
+}
+
+std::vector<unsigned char> 字节集_按表映射(const std::vector<unsigned char>& bytes, const std::vector<unsigned char>& table) {
+    if (table.size() != 256) return {};
+    std::vector<unsigned char> result(bytes.size());
+    for (size_t index = 0; index < bytes.size(); ++index) result[index] = table[bytes[index]];
+    return result;
+}
+
+std::vector<unsigned char> 字节集_逐字循环左移32(const std::vector<unsigned char>& bytes, int bits, bool bigEndian) {
+    std::vector<unsigned char> result = bytes;
+    const unsigned int shift = static_cast<unsigned int>(bits) & 31u;
+    if (shift == 0) return result;
+    const size_t words = bytes.size() / 4;
+    for (size_t index = 0; index < words; ++index) {
+        const size_t offset = index * 4;
+        const unsigned int word = LB_BytesLoadWord32(bytes, offset, bigEndian);
+        LB_BytesStoreWord32(result, offset, (word << shift) | (word >> (32u - shift)), bigEndian);
+    }
+    return result;
+}
+
 const wchar_t* 数值_到十六进制文本(int value) {
     wchar_t buffer[16] = {};
     if (value < 0) swprintf(buffer, 16, L"%08X", static_cast<unsigned int>(value));

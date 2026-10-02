@@ -1,0 +1,55 @@
+包 控制台程序
+
+类 程序
+公开
+  整数型 启动()
+    局部 文本型 样本路径 = "T:/electron/lingbuilder/.lingbuilder/tmp-mmkv-verify/com.xingin.xhs"
+    局部 MMKV实例 文件
+    文件 = MMKV_打开(样本路径)
+    如果 (文件 = 0)
+        调试输出("FATAL|打开失败|" + MMKV_取错误())
+        返回 (1)
+    如果结束
+    // ---- 读对拍 ----
+    调试输出("RESULT|key_count|" + 到文本(MMKV_取键数量(文件)))
+    调试输出("RESULT|session|" + MMKV_取文本(文件, "session", ""))
+    调试输出("RESULT|userID|" + MMKV_取文本(文件, "userID", ""))
+    调试输出("RESULT|中文键|" + MMKV_取文本(文件, "中文键", ""))
+    调试输出("RESULT|count_int|" + 到文本(MMKV_取整数(文件, "count_int", -999)))
+    调试输出("RESULT|neg_int|" + 到文本(MMKV_取整数(文件, "neg_int", -999)))
+    调试输出("RESULT|big_int|" + 到文本(MMKV_取整数(文件, "big_int", -999)))
+    调试输出("RESULT|ratio_double|" + 到文本(MMKV_取小数(文件, "ratio_double", 0)))
+    调试输出("RESULT|flag_bool|" + 到文本(MMKV_取逻辑(文件, "flag_bool", 假)))
+    调试输出("RESULT|dup_key|" + MMKV_取文本(文件, "dup_key", ""))
+    调试输出("RESULT|temp_key_exists|" + 到文本(MMKV_是否包含键(文件, "temp_key")))
+    局部 字节集 原始
+    原始 = MMKV_取字节集(文件, "bin_data")
+    调试输出("RESULT|bin_hex|" + 字节集_到十六进制文本(原始))
+    调试输出("RESULT|bin_len|" + 到文本(字节集_长度(原始)))
+    // 长键（150 字节，键长 varint 两字节）
+    局部 文本型 长键 = 文本_重复("长", 75)
+    调试输出("RESULT|long_key_value|" + MMKV_取文本(文件, 长键, ""))
+    // ---- 写回对拍：改 session/count/flag，删 neg_int，加新键 ----
+    MMKV_置文本(文件, "session", "改写后的session值")
+    MMKV_置整数(文件, "count_int", 777)
+    MMKV_置逻辑(文件, "flag_bool", 假)
+    MMKV_删除键(文件, "neg_int")
+    MMKV_置文本(文件, "新增键", "新增值001")
+    局部 逻辑型 保存结果
+    保存结果 = MMKV_保存(文件)
+    调试输出("RESULT|saved|" + 到文本(保存结果))
+    如果 (保存结果 = 假)
+        调试输出("FATAL|保存失败|" + MMKV_取错误())
+    如果结束
+    调试输出("RESULT|dirty_after_save|" + 到文本(MMKV_是否已修改(文件)))
+    // 同路径重复打开应被拒绝
+    局部 MMKV实例 第二实例
+    第二实例 = MMKV_打开(样本路径)
+    调试输出("RESULT|reopen_blocked|" + 到文本(第二实例 = 0))
+    如果 (第二实例 = 0)
+        调试输出("RESULT|reopen_error|" + MMKV_取错误())
+    如果结束
+    MMKV_关闭(文件, 假)
+    返回 (0)
+  结束
+结束类

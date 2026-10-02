@@ -712,6 +712,15 @@ private:
             std::lock_guard<std::mutex> lock(request->mutex);
             method = request->method; url = request->url; headerList = request->headers; body = request->body;
             cookieLine = request->cookieOverride;
+            // 仿真路径补 Content-Type：设置文本/二进制正文携带的 bodyMime 必须随请求发出
+            // （WinHTTP 路径手工拼头有它，此前仿真路径漏拼，curl 默认值会顶掉 "; charset=UTF-8" 形态）。
+            const bool hasContentTypeHeader = [&headerList]() {
+                for (const auto& item : headerList) { if (_wcsicmp(item.first.c_str(), L"Content-Type") == 0) return true; }
+                return false;
+            }();
+            if (!hasContentTypeHeader && !request->bodyMime.empty() && (!request->body.empty() || !request->uploadPath.empty())) {
+                headerList.push_back({ L"Content-Type", request->bodyMime });
+            }
         }
         URL_COMPONENTSW parts = {}; parts.dwStructSize = sizeof(parts);
         parts.dwSchemeLength = static_cast<DWORD>(-1); parts.dwHostNameLength = static_cast<DWORD>(-1);
@@ -759,7 +768,6 @@ private:
         // CA 证书包保活：BLOB 指针必须活到 perform 结束。
         std::vector<unsigned char> caBlobStorage;
         LBCurlBlob caBlob = { nullptr, 0, 1 };
-        std::vector<std::string> stringStorage;
         const auto keepUtf8 = [&](const std::wstring& value) -> const char* {
             stringStorage.push_back(LB_WideToUtf8(value.c_str()));
             return stringStorage.back().c_str();
@@ -854,6 +862,7 @@ private:
                     caBlob.data = caBlobStorage.data();
                     caBlob.len = caBlobStorage.size();
                     api.easySetopt(handle, LB_CURL_OPT_CAINFO_BLOB, &caBlob);
+                }
             }
         }
         if (!proxyText.empty()) {
@@ -868,7 +877,10 @@ private:
         std::vector<std::string> headerStorage;
         void* headerSlist = nullptr;
         const auto appendHeader = [&](const std::wstring& name, const std::wstring& value) {
-            headerStorage.push_back(LB_WideToUtf8((name + L": " + value).c_str()));
+            // 空值 = 移除语义："Name:"（冒号后无空格无值）让 curl 抑制该头，可裁掉仿真模板的
+            // Sec-Fetch-User / Upgrade-Insecure-Requests 等默认画像头，按请求组装真实浏览器画像。
+            if (value.empty()) headerStorage.push_back(LB_WideToUtf8((name + L":").c_str()));
+            else headerStorage.push_back(LB_WideToUtf8((name + L": " + value).c_str()));
             headerSlist = api.slistAppend(headerSlist, headerStorage.back().c_str());
         };
         for (const auto& item : headerList) appendHeader(item.first, item.second);

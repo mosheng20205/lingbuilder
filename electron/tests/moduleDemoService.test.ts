@@ -3,11 +3,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import type { ChildProcess, SpawnOptions } from 'node:child_process';
 
 import {
   buildModuleDemoSpawnPlan,
   isValidModuleDemoId,
   listModuleDemoIds,
+  openModuleDemoInNewInstance,
   prepareModuleDemoWorkspace,
   type ModuleDemoServiceOptions
 } from '../electron/moduleDemoService';
@@ -134,6 +136,47 @@ test('新 IDE 启动计划：独立 userData 绕开单实例锁，开发态显�
     demoUserDataDir: 'C:/userData/module-demo-runtime/lingbuilder.demo.alpha'
   });
   assert.deepEqual(packagedPlan.args, ['--workspace', workspacePath]);
+});
+
+test('打开例程：spawn 契约禁带 windowsHide，detached + 独立 userData', async () => {
+  const fixtureRoot = await createFixtureRoot();
+  const targetRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-module-demo-target-'));
+  const userDataRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-module-demo-userdata-'));
+  try {
+    const spawnCalls: Array<{ command: string; args: string[]; options: SpawnOptions }> = [];
+    const result = await openModuleDemoInNewInstance(
+      createOptions(fixtureRoot, targetRoot, userDataRoot),
+      'lingbuilder.demo.alpha',
+      {
+        isPackaged: true,
+        execPath: 'C:/Program Files/LingBuilder/LingBuilder.exe',
+        appPath: 'C:/Program Files/LingBuilder/resources/app.asar',
+        spawnProcess: (command, args, options) => {
+          spawnCalls.push({ command, args: [...args], options });
+          return { on: () => undefined, unref: () => undefined } as unknown as ChildProcess;
+        }
+      }
+    );
+    assert.equal(result.ok, true);
+    assert.equal(result.workspacePath, path.join(targetRoot, 'LingBuilder 例程', 'lingbuilder.demo.alpha'));
+    assert.equal(spawnCalls.length, 1);
+    const call = spawnCalls[0];
+    assert.equal(call.command, 'C:/Program Files/LingBuilder/LingBuilder.exe');
+    assert.deepEqual(call.args, ['--workspace', path.join(targetRoot, 'LingBuilder 例程', 'lingbuilder.demo.alpha')]);
+    assert.equal(call.options.detached, true);
+    assert.deepEqual(call.options.stdio, 'ignore');
+    // windowsHide（CREATE_NO_WINDOW）会抑制 GUI 子进程首帧绘制，ready-to-show 永不
+    // 触发：例程 IDE 变成不可见进程并占住单实例锁，后续点击全部秒退（2026-09-30 实锤）。
+    assert.ok(!('windowsHide' in call.options), 'spawn 例程 IDE 禁带 windowsHide');
+    assert.equal(
+      (call.options.env as NodeJS.ProcessEnv).LINGBUILDER_REC_USER_DATA,
+      path.join(userDataRoot, 'lingbuilder.demo.alpha')
+    );
+  } finally {
+    await fs.rm(fixtureRoot, { recursive: true, force: true });
+    await fs.rm(targetRoot, { recursive: true, force: true });
+    await fs.rm(userDataRoot, { recursive: true, force: true });
+  }
 });
 
 test('公开信息收集为随包例程模块补「示例」条目，未随包模块不受影响', () => {  const module = {

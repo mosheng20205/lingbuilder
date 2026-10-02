@@ -318,6 +318,34 @@ LB_LEGACY_WRAPPERS(三DES_CBC, "TripleDES/CBC/PKCS7", "3DES-CBC", 24)
 LB_LEGACY_WRAPPERS(RC4, "RC4", "RC4", 16)
 #undef LB_LEGACY_WRAPPERS
 
+// 协议级裸 RC4（2026-10-02）：标准 KSA/PRGA，drop=0、无填充、输出与输入等长、不写任何自描述头，
+// 与 pycryptodome 的 ARC4.new(key).encrypt(data) 逐字节一致（RC4("Key","Plaintext")=BBF316E8D940AF0AD3）。
+// 旧版 对称_RC4加密 走 $lbce$ 信封 + 16 字节十六进制密钥 + UTF-8 文本，不能用于协议流加密，两族并存。
+static std::vector<uint8_t> LB_RC4Raw(const std::vector<uint8_t>& key, const std::vector<uint8_t>& data) {
+    g_lbSymmetricError.clear();
+    if (key.empty() || key.size() > 256) { g_lbSymmetricError = L"RC4 裸密钥必须是 1～256 字节的字节集。"; return {}; }
+    std::vector<uint8_t> output = data;
+    if (data.empty()) return output;
+    unsigned char state[256];
+    for (int index = 0; index < 256; ++index) state[index] = static_cast<unsigned char>(index);
+    int j = 0;
+    for (int index = 0; index < 256; ++index) {
+        j = (j + state[index] + key[static_cast<size_t>(index) % key.size()]) & 0xff;
+        std::swap(state[index], state[j]);
+    }
+    int i = 0; j = 0;
+    for (size_t offset = 0; offset < output.size(); ++offset) {
+        i = (i + 1) & 0xff;
+        j = (j + state[i]) & 0xff;
+        std::swap(state[i], state[j]);
+        output[offset] = static_cast<uint8_t>(output[offset] ^ state[(state[i] + state[j]) & 0xff]);
+    }
+    return output;
+}
+
+std::vector<uint8_t> 对称_RC4加密裸(const std::vector<uint8_t>& key, const std::vector<uint8_t>& data) { return LB_RC4Raw(key, data); }
+std::vector<uint8_t> 对称_RC4解密裸(const std::vector<uint8_t>& key, const std::vector<uint8_t>& data) { return LB_RC4Raw(key, data); }
+
 #pragma comment(lib, "advapi32.lib")
 static bool LB_RC2CreateKey(const std::vector<uint8_t>& keyBytes, const std::vector<uint8_t>& iv, HCRYPTPROV& provider, HCRYPTKEY& key) {
     provider = 0; key = 0; if (!CryptAcquireContextW(&provider, nullptr, nullptr, PROV_RSA_AES, CRYPT_VERIFYCONTEXT)) { g_lbSymmetricError = L"RC2 密码服务提供程序初始化失败。"; return false; }

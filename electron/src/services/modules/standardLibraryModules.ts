@@ -79,7 +79,7 @@ const textModule = createStandardModule({
 const bytesModule = createStandardModule({
   id: 'lingbuilder.std.bytes',
   name: '字节与十六进制模块',
-  version: '1.2.0',
+  version: '1.3.0',
   category: '其他',
   description: '通过安全文本接口提供 UTF-8 字节长度、十六进制编解码和数值进制文本转换。',
   tags: ['字节', '十六进制'],
@@ -100,7 +100,7 @@ const byteArrayOperationsModule = createStandardModule({
   id: 'lingbuilder.std.bytes',
   name: '字节与十六进制模块',
   category: '其他',
-  description: '提供正式字节集值语义和边界安全的二进制操作。',
+  description: '提供正式字节集值语义、边界安全的二进制操作和「字节集 ↔ 32 位字数组」字级原语（取/置无符号字、字节序反转、整段异或、256 项查表映射、逐字循环移位），魔改 MD5/AES 一类签名算法不再需要逐字节拼标量。',
   tags: ['字节集'],
   commands: [
     { name: '字节集_长度', signature: '字节集_长度(数据)', description: '返回字节集长度。', insertText: '字节集_长度($1)', parameters: [{ name: '数据', type: 'bytes', description: '要统计的字节集；字节数超过整数上限时返回 2147483647。'}], returnType: 'int' },
@@ -122,7 +122,24 @@ const byteArrayOperationsModule = createStandardModule({
 ,
     { name: '字节集_从文本', signature: '字节集_从文本(文本)', description: '把文本按 UTF-8 编码转为字节集。', insertText: '字节集_从文本("$1")', parameters: [{ name: '文本', type: 'wideString', description: '要转换的文本；按 UTF-8 编码为字节序列，空文本返回空字节集。'}], returnType: 'bytes', example: '字节集_从文本("你好")' },
     { name: '字节集_重复', signature: '字节集_重复(次数, 数据)', description: '把字节集重复拼接指定次数；次数小于等于 0 或源为空时返回空字节集。', insertText: '字节集_重复(3, $1)', parameters: [{ name: '次数', type: 'int', description: '重复次数；小于等于 0，或重复结果超过 268435456 字节时返回空字节集。'}, { name: '数据', type: 'bytes', description: '要重复的字节集；空字节集直接返回空字节集。'}], returnType: 'bytes', example: '局部 字节集 原始数据\n原始数据 = 字节集_从文本("AB")' },
-    { name: '字节集_分割', signature: '字节集_分割(数据, 分隔字节集, 结果数组, 数目)', description: '把字节集按分隔字节集切分为多段写入字节集数组，返回分段数量；分隔字节集为空时按单个字节 0 分割。', insertText: '字节集_分割($1, $2, $3, 0)', parameters: [{ name: '数据', type: 'bytes', description: '待分割的字节集；空字节集返回 0 且不写数组。'}, { name: '分隔字节集', type: 'bytes', description: '分段边界的字节集；为空时按单个字节 0 分割，连续分隔符会产生空分段。'}, { name: '结果数组', type: 'array', description: '接收分段结果的字节集数组变量，调用前会先清空原有内容。'}, { name: '数目', type: 'int', description: '最多返回的分段数；小于等于 0 表示返回全部分段，达到数目后剩余内容整体作为最后一段。'}], returnType: 'int' }  ]
+    { name: '字节集_分割', signature: '字节集_分割(数据, 分隔字节集, 结果数组, 数目)', description: '把字节集按分隔字节集切分为多段写入字节集数组，返回分段数量；分隔字节集为空时按单个字节 0 分割。', insertText: '字节集_分割($1, $2, $3, 0)', parameters: [{ name: '数据', type: 'bytes', description: '待分割的字节集；空字节集返回 0 且不写数组。'}, { name: '分隔字节集', type: 'bytes', description: '分段边界的字节集；为空时按单个字节 0 分割，连续分隔符会产生空分段。'}, { name: '结果数组', type: 'array', description: '接收分段结果的字节集数组变量，调用前会先清空原有内容。'}, { name: '数目', type: 'int', description: '最多返回的分段数；小于等于 0 表示返回全部分段，达到数目后剩余内容整体作为最后一段。'}], returnType: 'int' }
+,
+    // 字级原语族（2026-10-02）：把「字节集 ↔ 32 位整数数组」的互转、整段异或、查表替换和逐字
+    // 循环移位下沉为单条命令，魔改 MD5/AES 等签名算法不再逐字节拼标量（调用次数 O(字数) 而非
+    // O(字节数×8)）。单字节读取直接用 字节集_取字节，不再另设 取无符号8。
+    { name: '字节集_取无符号32', signature: '字节集_取无符号32(数据, 偏移, 大端)', description: '从指定字节偏移一次读出一个 32 位无符号整数（0～4294967295，返回长整数型）；MD5/SHA 一类「字节集 ↔ 字数组」互转用它，不再逐字节拼。越界返回 -1。', insertText: '字节集_取无符号32($1, 0, 假)', parameters: [{ name: '数据', type: 'bytes', description: bytesArg}, { name: '偏移', type: 'int', description: '起始字节索引，从 0 起；为负或剩余不足 4 字节时返回 -1。'}, { name: '大端', type: 'bool', optional: true, defaultValue: false, description: '传真按大端读（高位字节在前，SHA 族常用），传假按小端读（低位字节在前，MD5/x86 常用）；省略时为假。'}], returnType: 'longLong', example: '调试输出(字节集_取无符号32(字节集_十六进制解码("78563412"), 0, 假))' },
+    { name: '字节集_置无符号32', signature: '字节集_置无符号32(数据, 偏移, 数值, 大端)', description: '把一个 32 位无符号整数按指定字节序写入字节集的指定偏移（原地改写，长度不变），与 字节集_置字节 同一写回风格。位置越界返回假且不改动数据。', insertText: '字节集_置无符号32($1, 0, $2, 假)', parameters: [{ name: '数据', type: 'bytes', description: '要修改的字节集；只改动偏移处的 4 个字节，长度不变。'}, { name: '偏移', type: 'int', description: '起始字节索引，从 0 起；为负或剩余不足 4 字节时返回假。'}, { name: '数值', type: 'longLong', description: '要写入的整数；只取低 32 位（按位模式，0～4294967295 之外的值按 32 位补码截断）。'}, { name: '大端', type: 'bool', optional: true, defaultValue: false, description: '传真按大端写（高位字节在前），传假按小端写；省略时为假。'}], returnType: 'bool' },
+    { name: '字节集_取无符号16', signature: '字节集_取无符号16(数据, 偏移, 大端)', description: '从指定字节偏移读出一个 16 位无符号整数（0～65535）；越界返回 -1。', insertText: '字节集_取无符号16($1, 0, 假)', parameters: [{ name: '数据', type: 'bytes', description: bytesArg}, { name: '偏移', type: 'int', description: '起始字节索引，从 0 起；为负或剩余不足 2 字节时返回 -1。'}, { name: '大端', type: 'bool', optional: true, defaultValue: false, description: '传真按大端读（高位字节在前），传假按小端读；省略时为假。'}], returnType: 'int' },
+    { name: '字节集_字节序反转', signature: '字节集_字节序反转(数据, 每元素字节数)', description: '把字节集按固定宽度元素逐个反转字节顺序（bswap）：宽度 4 即 32 位字 bswap，宽度 2/8 同理；返回反转后的新字节集，源数据不变。', insertText: '字节集_字节序反转($1, 4)', parameters: [{ name: '数据', type: 'bytes', description: '要反转的字节集；空字节集返回空字节集。'}, { name: '每元素字节数', type: 'int', description: '元素宽度，只允许 1、2、4、8；其它值原样返回（不改动）。末尾不足一个完整元素的字节保持原样。'}], returnType: 'bytes', example: '调试输出(字节集_到十六进制文本(字节集_字节序反转(字节集_十六进制解码("12345678ABCD"), 4)))' },
+    { name: '字节集_异或', signature: '字节集_异或(甲, 乙)', description: '把两个字节集按位置逐字节异或，返回新字节集；输出长度取两段中较短者（等长输入即整体异或，RC4/分组加密轮密钥异或用它）。任一为空返回空字节集。', insertText: '字节集_异或($1, $2)', parameters: [{ name: '甲', type: 'bytes', description: '参与异或的第一段字节集。'}, { name: '乙', type: 'bytes', description: '参与异或的第二段字节集；输出长度 = 较短一方的长度，较长一方的尾部不参与。'}], returnType: 'bytes' },
+    { name: '字节集_按表映射', signature: '字节集_按表映射(数据, 映射表)', description: '用 256 项映射表批量替换每个字节（结果[i] = 映射表[数据[i]]），AES S 盒/逆 S 盒每块每轮一次查表搞定，不必逐字节循环。', insertText: '字节集_按表映射($1, $2)', parameters: [{ name: '数据', type: 'bytes', description: '要映射的字节集；空字节集返回空字节集。'}, { name: '映射表', type: 'bytes', description: '必须恰好 256 字节的映射表字节集，下标即输入字节值、内容即输出字节值；长度不是 256 时返回空字节集。'}], returnType: 'bytes' },
+    { name: '字节集_逐字循环左移32', signature: '字节集_逐字循环左移32(数据, 位数, 大端)', description: '把字节集按 32 位字逐个循环左移（rotl）后返回新字节集，一次调用完成整段字的移位；MD5/SM3 轮函数、AES RotWord 类操作用它。源数据不变。', insertText: '字节集_逐字循环左移32($1, 7, 假)', parameters: [{ name: '数据', type: 'bytes', description: '要移位的字节集；末尾不足 4 字节的尾巴保持原样。'}, { name: '位数', type: 'int', description: '循环左移位数，按补码对 32 取模（0 到 31 生效）；0 位原样返回副本。'}, { name: '大端', type: 'bool', optional: true, defaultValue: false, description: '传真按大端解释每个 32 位字，传假按小端解释（MD5/x86 常用）；省略时为假。字内字节序与写出顺序一致。'}], returnType: 'bytes' }
+  ],
+  snippets: [{
+    label: '字级字节集处理（32 位字算法）',
+    insertText: '局部 字节集 数据\n数据 = 字节集_十六进制解码("78563412")\n调试输出(字节集_取无符号32(数据, 0, 假))\n字节集_置无符号32(数据, 0, 305419896, 假)\n调试输出(字节集_到十六进制文本(字节集_逐字循环左移32(数据, 8, 假)))\n调试输出(字节集_到十六进制文本(字节集_字节序反转(数据, 4)))',
+    description: '小端读出一个 32 位字、原地写回、整段循环左移 8 位并做 32 位 bswap；魔改 MD5/AES 的字级轮操作全部走这一族命令，不再逐字节拼标量。'
+  }  ]
 });
 
 const bytesModuleWithBinary: LingBuilderModuleManifest = {

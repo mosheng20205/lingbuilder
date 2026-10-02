@@ -15,7 +15,7 @@
  * Electron 侧依赖（app.getPath、process.resourcesPath）由 main.ts 注入。
  */
 
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess, type SpawnOptions } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -96,6 +96,8 @@ export interface ModuleDemoSpawnPlan {
   env: NodeJS.ProcessEnv;
 }
 
+export type ModuleDemoSpawnProcess = (command: string, args: readonly string[], options: SpawnOptions) => ChildProcess;
+
 /**
  * 组装「新 IDE 进程打开例程工作区」的启动计划。开发态 Electron 需要显式 app 路径参数，
  * 打包版可执行文件自带默认应用；两个形态都不经过单实例锁（独立 userData）。
@@ -126,7 +128,7 @@ export function buildModuleDemoSpawnPlan(input: {
 export async function openModuleDemoInNewInstance(
   options: ModuleDemoServiceOptions,
   moduleId: string,
-  spawnPlanInput: { isPackaged: boolean; execPath: string; appPath: string }
+  spawnPlanInput: { isPackaged: boolean; execPath: string; appPath: string; spawnProcess?: ModuleDemoSpawnProcess }
 ): Promise<{ ok: boolean; workspacePath?: string; error?: string }> {
   const prepared = await prepareModuleDemoWorkspace(options, moduleId);
   if (!prepared.ok || !prepared.workspacePath) return prepared;
@@ -141,11 +143,13 @@ export async function openModuleDemoInNewInstance(
   });
   try {
     await fs.mkdir(options.demoUserDataRoot, { recursive: true });
-    const child = spawn(plan.command, plan.args, {
+    // windowsHide 绝不能加：它以 CREATE_NO_WINDOW 拉起 GUI 进程会抑制首帧绘制，
+    // ready-to-show 永不触发，窗口永久隐藏还占住该例程的单实例锁（2026-09-30 实锤）。
+    const spawnProcess = spawnPlanInput.spawnProcess ?? spawn;
+    const child = spawnProcess(plan.command, plan.args, {
       env: plan.env,
       detached: true,
-      stdio: 'ignore',
-      windowsHide: true
+      stdio: 'ignore'
     });
     child.on('error', error => {
       // detached + unref 后主实例不再等待子进程；失败只能进父实例诊断日志。

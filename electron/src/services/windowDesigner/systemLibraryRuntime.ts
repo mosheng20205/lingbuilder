@@ -35,6 +35,17 @@ bool 文件_删除(const wchar_t* path) { std::error_code error; return std::fil
 long long 文件_取大小(const wchar_t* path) { std::error_code error; const auto size = std::filesystem::file_size(std::filesystem::path(LB_Wide(path)), error); return error ? -1 : static_cast<long long>(size); }
 bool 目录_创建(const wchar_t* path) { std::error_code error; const std::filesystem::path target(LB_Wide(path)); return std::filesystem::is_directory(target, error) || std::filesystem::create_directories(target, error); }
 bool 目录_删除空目录(const wchar_t* path) { std::error_code error; const std::filesystem::path target(LB_Wide(path)); return std::filesystem::is_directory(target, error) && std::filesystem::remove(target, error); }
+bool 目录_删除树(const wchar_t* path) {
+    std::error_code error;
+    if (path == nullptr || *path == L'\0') return false;
+    const std::filesystem::path target(LB_Wide(path));
+    const std::wstring normalized = target.lexically_normal().wstring();
+    if (normalized.empty() || normalized == L"." || normalized == L"..") return false;
+    if (target.has_root_path() && target.root_path().wstring() == normalized) return false;
+    if (!std::filesystem::is_directory(target, error)) return false;
+    const auto removed = std::filesystem::remove_all(target, error);
+    return !error && removed > 0;
+}
 `;
 
 const PATH_RUNTIME = String.raw`

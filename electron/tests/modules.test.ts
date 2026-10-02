@@ -496,12 +496,22 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       // 新增 FBro_实例取Cookie(实例句柄, 地址)（后台实例/弹窗句柄读含 HttpOnly 的域名 Cookie，
       // 桥导出 LB_FBro_GetCookies 本就收句柄，补清单/绑定/两处生成期运行时）。
       // 合计 +1 命令 +2 参数（实算摘要 57f4e987/3d2bbff2）。
-      modules: 101,
-      commands: 4026,
-      parameters: 7066,
+      // 基线 2026-10-01 写回（二维码模块）：新增 lingbuilder.qrcode（生成 13 命令 + 识别 18 命令，
+      // 参数 46 个，句柄类型 二维码句柄/二维码识别结果 均为 long long，无新增 controlRef）。
+      // 合计 +1 模块 +31 命令 +46 参数（实算摘要 ff7a4fe0/674c63ac）。
+      // 基线 2026-10-02 写回（目录_删除树）：fs.core 1.3.0 新增 目录_删除树（递归删除目录树，
+      // 危险操作红线写入 description；+1 命令 +1 参数，实算摘要 57f7e610/f56772bd）。
+      // 基线 2026-10-02 再写回（字级原语与裸 RC4 批次）：lingbuilder.std.bytes 1.2.0→1.3.0 新增
+      // 字级原语 7 条（取无符号32 3 参数/置无符号32 4 参数/取无符号16 3 参数/字节序反转 2 参数/
+      // 异或 2 参数/按表映射 2 参数/逐字循环左移32 3 参数，共 19 参数）；对称加密模块新增
+      // 对称_RC4加密裸/解密裸（各 2 参数）；网页访问模块 1.2.0 新增 网页_异步取返回协议头（1 参数）。
+      // 合计 +10 命令 +24 参数，无 controlRef（实算摘要 d855ea48/dc36b972）。
+      modules: 102,
+      commands: 4068,
+      parameters: 7137,
       controlReferences: 1345,
-      commandDigest: '57f4e987',
-      parameterDigest: '3d2bbff2'
+      commandDigest: 'd855ea48',
+      parameterDigest: 'dc36b972'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -642,7 +652,8 @@ test('模块源目录中的 controlRef 补全、示例和代码片段全部保�
   // 两个模块源文件，按当前工作区内容实算写回（全量字面量扫描 0 违规）。
   // 2026-09-29 写回 64→67：并行会话在途新增 moduleAccessService.ts / paidModuleAccessRecovery.ts 等
   // 模块源文件，按当前工作区内容实算写回（全量字面量扫描 0 违规）。
-  assert.equal(sourceFiles.length, 67, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
+  // 2026-10-01 写回 67→68：新增二维码模块 qrcodeModules.ts（全量字面量扫描 0 违规）。
+  assert.equal(sourceFiles.length, 68, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
   assert.deepEqual(violations, []);
 
   const unsafe = 'const command = { insertText: \'控件_设置文本("操作结果", "$2")\' };';
@@ -964,12 +975,19 @@ test('工作区已安装模块全部通过 controlRef 清单和示例门禁', as
       // 基线 2026-09-29 五写回（curl-impersonate 批次，并行会话）：内置 +2 命令 +3 参数（见上）；
       // 本机磁盘仍为 8 份清单，磁盘侧 0 漂移，本行按当前工作区实算。
       // 基线 2026-09-29 六写回（FBro 实例取 Cookie 批次）：内置 +1 命令 +2 参数（见上）。
-      modules: 109,
-      commands: 8051,
-      parameters: 19223,
+      // 基线 2026-10-01 写回（二维码模块批次）：内置 +1 模块 +31 命令 +46 参数
+      //（lingbuilder.qrcode 生成 13 + 识别 18，无新增 controlRef，见上）；本机磁盘仍为 8 份清单。
+      // 基线 2026-10-02 写回（目录_删除树批次）：内置 +1 命令 +1 参数（fs.core 目录_删除树，见上）；
+      // 本机磁盘 9 份清单（新装 lingbuilder.mmkv，+1 模块 +20 命令 +43 参数，官方 lbmod 包）。
+      // 基线 2026-10-02 再写回（字级原语与裸 RC4 批次）：内置 +10 命令 +24 参数
+      //（std.bytes 字级原语 7 条 + 对称_RC4加密裸/解密裸 + 网页_异步取返回协议头，见上一用例）；
+      // 本机磁盘仍为 9 份清单，磁盘侧 0 漂移（实算摘要 72067609/1e0acdbf）。
+      modules: 111,
+      commands: 8113,
+      parameters: 19337,
       controlReferences: 5111,
-      commandDigest: '906af887',
-      parameterDigest: '8f704983'
+      commandDigest: '72067609',
+      parameterDigest: '1e0acdbf'
   }, '内置、官方和当前工作区第三方模块的每个方法与参数都必须进入全量审计');
   // OpenCV 以内置清单为准：本机未装 SDK 时磁盘上的同名清单是只有骨架的占位包（0 命令、无 targets）。
   const manifest = BUILTIN_MODULES.find(module => module.id === OPENCV_MODULE_ID) || auditedManifests.get('lingbuilder.opencv.sdk');
@@ -992,7 +1010,7 @@ test('OpenCV 模块生成稳定 C ABI 包装且不暴露 cv::Mat', () => {
     enabledModules: [module],
     lingCppSourceCode: '类 MainWindow\n    事件 _MainWindow_创建完毕()\n        调试输出(OpenCV_取版本())\n    结束\n结束类'
   });
-  const cpp = generated.files.find(file => file.relativePath.endsWith('.cpp'))?.content || '';
+  const cpp = generated.files.filter(file => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp').map(file => file.content).join('\n');
   assert.match(cpp, /#include "LingBuilderOpenCvBridge\.h"/u);
   assert.match(cpp, /LB_OCV_AnalyzeGap/u);
   assert.match(cpp, /OpenCV_分析缺口/u);
@@ -1047,7 +1065,7 @@ test('字节集十六进制编码改名带别名，并提供一步到位的十�
       '结束类'
     ].join('\n')
   });
-  const cpp = generated.files.find(file => file.relativePath.endsWith('.cpp'))?.content || '';
+  const cpp = generated.files.filter(file => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp').map(file => file.content).join('\n');
   assert.ok(cpp.includes('编码结果 = 字节集_到十六进制字节集(数据);'), '旧名别名调用必须生成新名 C++ 函数');
   assert.ok(cpp.includes('调试输出(字节集_到十六进制文本(数据));'), '一步十六进制文本命令必须确定性生成');
   assert.ok(cpp.includes('const wchar_t* 字节集_到十六进制文本(const std::vector<unsigned char>& bytes)'), '运行时必须随包下发文本版实现');
@@ -1102,7 +1120,7 @@ test('数组操作模块对元素类型透明地提供成员数、增删改查�
     ].join('\n')
   });
   assert.deepEqual(generated.blockingDiagnostics, []);
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   [
     'template <typename T> int 数组_取成员数(const std::vector<T>& items)',
     'template <typename T, typename V> int 数组_加入成员(std::vector<T>& items, V&& value)',
@@ -1133,7 +1151,7 @@ test('数组操作模块对元素类型透明地提供成员数、增删改查�
       '    结束',
       '结束类'
     ].join('\n')
-  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(textComparison, /std::wstring\(LingCppWideArg\(数组_取成员\(名单, 0\)\)\)==LingCppWideArg\(L"张三"\)/u);
   // 整数数组不能被误判成文本，否则会把 int 塞进 LingCppWideArg。
   assert.match(textComparison, /if \(数组_取成员\(编号, 0\)==0\)/u);
@@ -1142,7 +1160,7 @@ test('数组操作模块对元素类型透明地提供成员数、增删改查�
   const withoutArrayModule = generateLingCppNativeWin32Project(sampleProject, {
     enabledModules: enabledModules.filter(module => module.manifest.id !== 'lingbuilder.std.array'),
     lingCppSourceCode: '类 MainWindow\n    事件 _MainWindow_创建完毕()\n        调试输出("无数组模块")\n    结束\n结束类'
-  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.doesNotMatch(withoutArrayModule, /数组_取成员数/u);
 });
 
@@ -1190,7 +1208,7 @@ test('JSON 数据模块 2.0 提供受管 DOM、Pointer、Patch、Schema 与可�
     ].join('\n')
   });
   assert.deepEqual(generated.blockingDiagnostics, []);
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   [
     'namespace LingBuilderJson', 'long long JSON_解析(const wchar_t* json)', 'bool JSON_对象_设置',
     'bool JSON_指针_设置', 'bool JSON_应用补丁', 'bool JSON_Schema验证', 'kMaxInputChars'
@@ -1213,7 +1231,7 @@ test('JSON 数据模块 2.0 提供受管 DOM、Pointer、Patch、Schema 与可�
       '    结束',
       '结束类'
     ].join('\n')
-  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(escapedJsonLocals, /std::wstring JSON文本 = L"/u);
   assert.match(escapedJsonLocals, /std::wstring 规则 = L"/u);
   assert.match(escapedJsonLocals, /JSON_解析\(LingCppWideArg\(JSON文本\)\)/u);
@@ -1250,7 +1268,7 @@ test('标准库模块生成独立 C++ 运行时并翻译嵌套中文调用', () 
     ].join('\n'),
     enabledModules
   });
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(mainCpp, /const wchar_t\* 文本_转大写\(const wchar_t\* text\)/u);
   assert.match(mainCpp, /const wchar_t\* 编码_Base64解码\(const wchar_t\* text\)/u);
   assert.match(mainCpp, /const wchar_t\* 编码_文本转UTF32BE\(const wchar_t\* text\)/u);
@@ -1284,7 +1302,7 @@ test('编码与 JSON 标准库运行时不依赖字节模块提供十六进制�
       };
     });
     const generated = generateLingCppNativeWin32Project(sampleProject, { enabledModules });
-    const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+    const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
     const helperDefinition = 'static int LB_HexDigit(wchar_t value)';
     const helperDefinitionIndex = mainCpp.indexOf(helperDefinition);
     const helperUseIndex = mainCpp.indexOf('LB_HexDigit(', helperDefinitionIndex + helperDefinition.length);
@@ -1331,7 +1349,7 @@ test('文件、配置、系统、进程、输入和窗口模块提供完整确�
     ].join('\n'),
     enabledModules
   });
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(mainCpp, /bool 文件_写入文本\(const wchar_t\* path, const wchar_t\* content\)/u);
   assert.match(mainCpp, /bool INI_写整数\(const wchar_t\* file/u);
   assert.match(mainCpp, /const wchar_t\* 系统_取Windows版本\(\)/u);
@@ -1406,7 +1424,7 @@ test('剪贴板模块支持图片字节集和保留动画帧的 GIF 剪贴板格
     enabledModules: [installed]
   });
   assert.equal(generated.blockingDiagnostics.length, 0, generated.blockingDiagnostics.join('\n'));
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /bool 剪贴板_置图片字节集\(const std::vector<unsigned char>& imageBytes\)/u);
   assert.match(cpp, /std::vector<unsigned char> 剪贴板_取图片字节集\(\)/u);
   assert.match(cpp, /bool 剪贴板_置GIF字节集\(const std::vector<unsigned char>& imageBytes\)/u);
@@ -1463,7 +1481,7 @@ test('键盘输入模块分类公开全局、前台与 HWND 后台能力', () =>
   });
   assert.equal(diagnostics.filter(item => item.level === 'error').length, 0, diagnostics.map(item => item.message).join('\n'));
   const generated = generateLingCppNativeWin32Project(sampleProject, { lingCppSourceCode: source, enabledModules: [installed] });
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(mainCpp, /bool 键盘_前台_输入文本\(const wchar_t\* text\)/u);
   assert.match(mainCpp, /bool 键盘_窗口_按下\(long long windowHandle, int keyCode, bool systemKey\)/u);
   assert.match(mainCpp, /PostMessageW\(window, message/u);
@@ -1521,7 +1539,7 @@ test('鼠标输入模块按前台、窗口消息和 UI Automation 三类公开�
     enabledModules: [installed]
   });
   assert.equal(generated.blockingDiagnostics.length, 0, generated.blockingDiagnostics.join('\n'));
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(mainCpp, /#include <UIAutomation\.h>/u);
   assert.match(mainCpp, /#include <wrl\.h>/u);
   assert.match(mainCpp, /#pragma comment\(lib, "uiautomationcore\.lib"\)/u);
@@ -1574,7 +1592,7 @@ test('磁盘信息模块完整公开卷、物理磁盘和分区的结构化只�
 
   const generated = generateLingCppNativeWin32Project(sampleProject, { lingCppSourceCode: source, enabledModules: [installed] });
   assert.equal(generated.blockingDiagnostics.length, 0, generated.blockingDiagnostics.join('\n'));
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   const typeIndex = cpp.indexOf('struct 磁盘容量信息');
   const runtimeIndex = cpp.indexOf('磁盘容量信息 磁盘_取容量信息');
   assert.ok(typeIndex >= 0 && runtimeIndex > typeIndex, '公开结构体必须先于磁盘运行时定义');
@@ -1670,7 +1688,7 @@ test('网络基础模块提供请求、状态、错误和关闭闭环', () => {
     lingCppSourceCode: ['类 MainWindow', '    事件 _MainWindow_创建完毕()', '        HTTP客户端_GET("https://example.com")', '        TCP_关闭()', '        UDP_关闭()', '        FTP_关闭()', '    结束', '结束类'].join('\n'),
     enabledModules
   });
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(mainCpp, /bool HTTP客户端_请求\(const wchar_t\* method/u);
   assert.match(mainCpp, /bool TCP_连接\(const wchar_t\* host/u);
   assert.match(mainCpp, /bool UDP_绑定\(int port\)/u);
@@ -1704,7 +1722,7 @@ test('数据、数据库、加密、图像和媒体模块提供可生成实现',
     lingCppSourceCode: ['类 MainWindow', '    事件 _MainWindow_创建完毕()', '        哈希_SHA256文本("LingBuilder")', '        ODBC_关闭()', '        SQLite_关闭()', '        MySQL_关闭全部()', '        图像_取宽度("图片.png")', '        音频_停止()', '    结束', '结束类'].join('\n'),
     enabledModules
   });
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(mainCpp, /const wchar_t\* CSV_取字段/u);
   assert.match(mainCpp, /LB_HASH_PAIR\(SHA256/u);
   assert.match(mainCpp, /const wchar_t\* 哈希_BLAKE3文本/u);
@@ -1794,7 +1812,7 @@ test('CSV 1.1 记录级解析与按编码读取：跨行引号字段、GBK 自�
     enabledModules
   });
   assert.deepEqual(generated.blockingDiagnostics, [], '表格数据 名义类型必须通过语义检查');
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(mainCpp, /CSV_打开文件\(L"员工\.csv", L"GBK"\);/u);
   assert.match(mainCpp, /数据表_列名\(表, 1\)/u);
   for (const symbol of [
@@ -1828,7 +1846,7 @@ test('CSV 1.1 记录级解析与按编码读取：跨行引号字段、GBK 自�
       }))
     });
     assert.deepEqual(snippetGenerated.blockingDiagnostics, [], `${label} 必须无阻断诊断`);
-    const snippetCpp = snippetGenerated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+    const snippetCpp = snippetGenerated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
     assert.ok(snippetCpp.includes(expect), `${label} 必须生成 ${expect}`);
   }
 });
@@ -1900,7 +1918,7 @@ test('SQLite 2.3 提供多连接、参数化查询、事务、WAL、备份、多
     enabledModules
   });
   assert.deepEqual(generated.blockingDiagnostics, []);
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   for (const runtimeSymbol of [
     'namespace LingBuilderSqlite', 'long long SQLite_打开连接', 'long long SQLite_准备',
     'bool SQLite_绑定字节集', 'std::vector<unsigned char> SQLite_取列字节集',
@@ -1944,7 +1962,7 @@ test('SQLite 2.3 提供多连接、参数化查询、事务、WAL、备份、多
     enabledModules
   });
   assert.deepEqual(encryptedGenerated.blockingDiagnostics, []);
-  const encryptedMainCpp = encryptedGenerated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const encryptedMainCpp = encryptedGenerated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   for (const runtimeSymbol of [
     'using FnKey = int(*)(sqlite3*, const char*, int);',
     'long long SQLite_打开加密连接(const wchar_t* path, const wchar_t* password, int mode, int waitMilliseconds)',
@@ -1975,7 +1993,7 @@ test('SQLite 2.3 提供多连接、参数化查询、事务、WAL、备份、多
     enabledModules
   });
   assert.deepEqual(algorithmGenerated.blockingDiagnostics, []);
-  const algorithmMainCpp = algorithmGenerated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const algorithmMainCpp = algorithmGenerated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   for (const runtimeSymbol of [
     'bool SQLite_设置加密算法(const wchar_t* algorithm)',
     'const wchar_t* SQLite_探测加密算法(const wchar_t* path, const wchar_t* password)',
@@ -2056,7 +2074,7 @@ test('MySQL 1.0 提供密码连接、参数化查询、事务和完整错误闭�
     enabledModules
   });
   assert.deepEqual(generated.blockingDiagnostics, []);
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   for (const runtimeSymbol of [
     'namespace LingBuilderMysql',
     'long long MySQL_连接(const wchar_t* host, int port, const wchar_t* user, const wchar_t* password, const wchar_t* database)',
@@ -2134,7 +2152,7 @@ test('Excel 表格模块 1.0 提供创建/打开双模式、单元格级读写�
     enabledModules
   });
   assert.deepEqual(generated.blockingDiagnostics, []);
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   for (const runtimeSymbol of [
     'namespace LingBuilderExcelBridge',
     'long long Excel_创建工作簿(const wchar_t* 文件路径)',
@@ -2147,7 +2165,9 @@ test('Excel 表格模块 1.0 提供创建/打开双模式、单元格级读写�
     assert.ok(mainCpp.includes(runtimeSymbol), `Excel 生成运行时缺少 ${runtimeSymbol}`);
   }
   assert.match(mainCpp, /Excel_创建工作簿\(L"报表\/月度\.xlsx"\)/u);
-  assert.match(mainCpp, /Excel_写一行\(报表, L"A1", L"姓名\t销量", L"\t"\)/u);
+  // 2026-10-01 转义根治后 wideString 纯字面量实参经统一出口：源码里的真实 TAB
+  // 确定性转义为 C++ \t 序列（编译值不变，生成源码不再含裸控制字符）。
+  assert.match(mainCpp, /Excel_写一行\(报表, L"A1", L"姓名\\t销量", L"\\t"\)/u);
 });
 test('平台扩展和高风险模块保持独立启用并具有确定性运行时', () => {
   assert.equal(PLATFORM_ADVANCED_MODULES.length, 13);
@@ -2157,7 +2177,7 @@ test('平台扩展和高风险模块保持独立启用并具有确定性运行�
   }
   const enabledModules: InstalledModule[] = PLATFORM_ADVANCED_MODULES.map(manifest => ({ manifest, installPath: `builtin://${manifest.id}`, isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] }));
   const generated = generateLingCppNativeWin32Project(sampleProject, { lingCppSourceCode: ['类 MainWindow', '    事件 _MainWindow_创建完毕()', '        IPC_关闭()', '        键盘钩子_停止()', '        COM_关闭(0)', '    结束', '结束类'].join('\n'), enabledModules });
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   ['压缩_ZIP创建', 'SMTP_发送普通邮件', 'IPC_创建管道服务端', '菜单_创建', '托盘_添加', '辅助_取名称', '内存_申请', '内存DLL_加载', '内存DLL_取函数地址', '内存DLL_卸载', '键盘钩子_启动', '进程内存_打开', 'COM_创建对象', 'CPU_取厂商', '设备_打开'].forEach(name => assert.ok(mainCpp.includes(name), `缺少 ${name} C++ 运行时`));
 });
 
@@ -2204,7 +2224,7 @@ test('进程内存扫描族命令登记清单与 binding，并生成真实运行
     ].join('\n'),
     enabledModules
   });
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   ['CreateToolhelp32Snapshot', '进程_按名称取ID列表', '进程_按名称取ID列表JSON', '系统_是否管理员', 'AllocateAndInitializeSid', 'CheckTokenMembership', '进程内存_读字节集', '进程内存_读到缓冲区', 'VirtualQueryEx', '进程内存_枚举区域JSON', '进程内存_扫描字节集', '进程内存_扫描字节集JSON', '进程内存_取错误码', '进程内存_取错误', 'ReadProcessMemory', '缓冲区_从字节集'].forEach(name => assert.ok(mainCpp.includes(name), `生成运行时缺少 ${name}`));
 });
 
@@ -2277,7 +2297,7 @@ test('COM 自动化模块 2.0 提供句柄制创建、免注册、OCX 宿主、�
   assert.ok(badHandlerDiagnostics.some(item => item.level === 'error'), '处理器必须使用 &引用语法');
 
   const generated = generateLingCppNativeWin32Project(sampleProject, { lingCppSourceCode: source, enabledModules: [comModule] });
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   ['LingComEventSink', 'LB_ComCreateRegistryFree', 'LB_ComCreateOcx', 'LB_ComDescribeObject', 'WM_LINGBUILDER_COM_EVENT', 'LB_ComDrainQueuedEvents', 'COM_关闭全部()'].forEach(name => assert.ok(mainCpp.includes(name), `缺少 COM v2 运行时 ${name}`));
   assert.ok(mainCpp.includes('LingDispatchComEventByName(const wchar_t* handler, long long userData, const wchar_t* paramsText) override'), '窗口类必须生成 COM 事件派发分支');
   assert.ok(mainCpp.includes('网页_状态文本改变(lbUserData, lbParams)'), '派发分支必须调用映射的中文处理器');
@@ -2382,7 +2402,7 @@ test('Win32基础模块贡献窗口事件上下文命令和确定性绑定', () 
     ].join('\n'),
     enabledModules: [module]
   });
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(mainCpp, /窗口_取消关闭\(\);/u);
   assert.match(mainCpp, /调试输出\(窗口_取拖入文件\(0\)\);/u);
   // 当前窗口自身三条必须有真实运行时符号，不得只有补全和 binding。
@@ -2598,7 +2618,7 @@ test('FBro English aliases participate in completion and deterministic binding r
     enabledModules: [module],
     lingCppSourceCode: '类 MainWindow\n    事件 _MainWindow_创建完毕()\n        LB_FBro_Navigate("FBro浏览器1", "https://example.com")\n    结束\n结束类'
   });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /FBro_导航\(L"FBro浏览器1", L"https:\/\/example\.com"\);/u);
 });
 
@@ -2766,7 +2786,7 @@ test('FBro Frame 使用类型化句柄并由普通 Win32 与 New_Emoji 共用官
     enabledModules: [{ manifest, installPath: 'builtin://lingbuilder.fbro.automation', isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] }],
     lingCppSourceCode: '类 MainWindow\n    事件 _MainWindow_创建完毕()\n        FBro框架_取主框架("FBro浏览器1")\n    结束\n结束类'
   });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /LB_FBro_BrowserGetMainFrame/u);
   assert.match(cpp, /LB_FBro_FrameGetIdentifier/u);
   assert.match(cpp, /LB_FBro_FrameExecuteJavaScript/u);
@@ -2951,7 +2971,7 @@ test('FBro Value、Dictionary、List、Stream、Image、Certificate 使用类型
       '结束类'
     ].join('\n')
   });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   for (const symbol of [
     'LB_FBro_ValueCreate', 'LB_FBro_ValueSetInt',
     'LB_FBro_ValueSetDictionary', 'LB_FBro_ValueGetBinary',
@@ -3757,7 +3777,7 @@ test('generateLingCppNativeWin32Project emits module dependency report', () => {
     enabledModules: [module]
   });
 
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   const moduleReport = generated.files.find(file => file.relativePath === 'module-dependencies.txt')?.content || '';
 
   assert.ok(mainCpp.includes('LingBuilder 模块: 原生扩展模块'));
@@ -3914,7 +3934,7 @@ test('built-in WebSocket client 2.0 contributes managed commands and determinist
   });
 
   assert.deepEqual(generated.blockingDiagnostics, []);
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   const moduleReport = generated.files.find(file => file.relativePath === 'module-dependencies.txt')?.content || '';
   assert.ok(mainCpp.includes('#include <winhttp.h>'));
   assert.ok(mainCpp.includes('#pragma comment(lib, "winhttp.lib")'));
@@ -3972,7 +3992,7 @@ test('built-in WebSocket client 2.0 contributes managed commands and determinist
     enabledModules: [newEmojiModule, module]
   });
   assert.deepEqual(newEmojiGenerated.blockingDiagnostics, []);
-  const newEmojiCpp = newEmojiGenerated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const newEmojiCpp = newEmojiGenerated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.ok(newEmojiCpp.includes('static LingWebSocketClientRuntime g_wsClientRuntime'));
   assert.ok(newEmojiCpp.includes('LB_NE_CreateWebSocketClientEventWindow'));
   assert.ok(newEmojiCpp.includes('static long long WS_创建连接();'));
@@ -4033,7 +4053,7 @@ test('built-in EdgeView module contributes HWND embedding, browser events and Ja
       '结束类'
     ].join('\n')
   });
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.ok(mainCpp.includes('#include <WebView2.h>'));
   assert.ok(mainCpp.includes('#define LINGBUILDER_EDGEVIEW_MODULE'));
   assert.ok(mainCpp.includes('int EdgeView_创建实例(int instanceId'));
@@ -4401,7 +4421,7 @@ test('EdgeView 1.4.0 多店铺弹窗与实例编号寻址命令进入清单、�
       '结束类'
     ].join('\n')
   });
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.ok(mainCpp.includes('int EdgeView_创建弹窗浏览器(int instanceId'), '缺少 创建弹窗浏览器 运行时定义');
   assert.ok(mainCpp.includes('int EdgeView_创建弹窗浏览器代理(int instanceId'), '缺少 创建弹窗浏览器代理 运行时定义');
   assert.ok(mainCpp.includes('L"LingBuilderEdgeViewPopup"'), '缺少弹窗窗口类名');
@@ -4443,7 +4463,7 @@ test('窗口级事件按 _类名_事件 常规命名自动接线（大小被改�
       '结束类'
     ].join('\n')
   });
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   // 事件表（GetWindowEventHandler 查询侧）与派发表（调用侧）必须同时接线，缺一处就是死接线。
   assert.ok(mainCpp.includes('SizeChanged=_MainWindow_大小被改变'), '窗口事件表缺少 SizeChanged 常规命名接线');
   assert.ok(mainCpp.includes('if (handler == L"_MainWindow_大小被改变")'), '窗口事件派发表缺少常规命名分支');
@@ -4493,7 +4513,7 @@ test('CEF3 与 FBro 多店铺能力：弹窗/枚举/关闭全部/实例代理进
       '结束类'
     ].join('\n')
   });
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.ok(mainCpp.includes('int CEF3_创建弹窗浏览器(int instanceId'), '缺少 CEF3_创建弹窗浏览器 运行时定义');
   assert.ok(mainCpp.includes('LB_CEF3_BrowserCreateChrome'), 'CEF3 弹窗未走 Chrome Runtime');
   assert.ok(mainCpp.includes('std::wstring CEF3_枚举实例JSON'), '缺少 CEF3_枚举实例JSON 运行时定义');
@@ -4566,7 +4586,7 @@ test('EdgeView 导出路径、响应正文时效、回调内同步等待与控�
     enabledModules: [module],
     lingCppSourceCode: ['类 MainWindow', '  事件 _MainWindow_创建完毕()', '    EdgeView_等待事件控件(浏览器1, "导航完成", 8000)', '  结束', '结束类'].join('\n')
   });
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.equal(generated.blockingDiagnostics.join('\n'), '');
   assert.match(mainCpp, /int EdgeView_等待事件控件\(const wchar_t\* controlName, const wchar_t\* eventName, int timeoutMilliseconds\)/u);
   assert.match(mainCpp, /EdgeView_等待事件控件\(L"浏览器1", L"导航完成", 8000\)/u);
@@ -4638,7 +4658,7 @@ test('EdgeView designer controls create multiple WebView2 children and bind to g
       '结束类'
     ].join('\n')
   });
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(mainCpp, /virtual void OnWindowCreated\(\) \{ EdgeView_创建控件\(nullptr\);/u);
   assert.match(mainCpp, /IsType\(control, L"EdgeBrowser"\)/u);
   assert.match(mainCpp, /EdgeView_创建核心\(control\.id, runtime->hwnd, false/u);
@@ -4712,7 +4732,7 @@ test('built-in threading module contributes managed task commands and C++ runtim
     ].join('\n'),
     enabledModules: [module]
   });
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   const moduleReport = generated.files.find(file => file.relativePath === 'module-dependencies.txt')?.content || '';
   assert.deepEqual(generated.blockingDiagnostics, []);
   assert.ok(mainCpp.includes('#include <thread>'));
@@ -4941,7 +4961,7 @@ test('built-in HTTP and WebSocket server modules contribute managed commands and
   });
   assert.deepEqual(generated.blockingDiagnostics, []);
 
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   const moduleReport = generated.files.find(file => file.relativePath === 'module-dependencies.txt')?.content || '';
   assert.ok(mainCpp.includes('#include <winsock2.h>'));
   assert.ok(mainCpp.includes('#include <wincrypt.h>'));
@@ -5028,7 +5048,7 @@ test('built-in HTTP and WebSocket server modules contribute managed commands and
     enabledModules: [newEmojiModule, modules[0]!, modules[1]!]
   });
   assert.deepEqual(newEmojiGenerated.blockingDiagnostics, []);
-  const newEmojiCpp = newEmojiGenerated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const newEmojiCpp = newEmojiGenerated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.ok(newEmojiCpp.includes('static LingWebSocketServerRuntime g_wssRuntime'));
   assert.ok(newEmojiCpp.includes('static LingHttpServerRuntime g_httpServerRuntime'));
   assert.ok(newEmojiCpp.includes('LB_NE_CreateHttpServerEventWindow'));
@@ -5241,7 +5261,7 @@ test('Win32 native builds never fall back to an incompatible module target', asy
 
   const generated = generateLingCppNativeWin32Project(sampleProject, { enabledModules: [module] });
   assert.ok(generated.diagnostics.some(message => message.includes('未提供兼容目标 windows-msvc-win32')));
-  assert.doesNotMatch(generated.files.find(file => file.relativePath === 'main.cpp')?.content || '', /liblinux\.a/);
+  assert.doesNotMatch(generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, ''), /liblinux\.a/);
 });
 
 test('web HTTP async command translates handler references and emits a UI-thread completion bridge', () => {
@@ -5300,7 +5320,7 @@ test('web HTTP async command translates handler references and emits a UI-thread
     '结束类'
   ].join('\n');
   const generated = generateLingCppNativeWin32Project(sampleProject, { lingCppSourceCode: source, enabledModules: [module] });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.ok(cpp.includes('网页_异步访问(L"https://ipinfo.io/json", 0, L"获取IP完成")'));
   assert.ok(cpp.includes('WM_LINGBUILDER_WEB_ASYNC_COMPLETE'));
@@ -5550,7 +5570,7 @@ test('CEF3 module exposes the complete event catalog and generates thread-safe h
   };
   const source = `包 测试\n使用 CEF3浏览器模块\n类 MainWindow : 窗口\n公开\n  事件 _MainWindow_创建完毕()\n    CEF3_绑定事件("浏览器1", "控制台消息", &浏览器1_控制台消息)\n  结束\n  事件 浏览器1_控制台消息()\n    调试输出(CEF3_取事件字段("浏览器1", "message"))\n  结束\n结束类`;
   const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [module] });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /WM_LINGBUILDER_CEF_EVENT/);
   for (const event of CEF3_BROWSER_EVENTS) {
     assert.ok(cpp.includes(`L"${event.name}"`), `生成运行时缺少 CEF3 事件：${event.name}`);
@@ -5700,7 +5720,7 @@ test('CEF3_取资源地址 同时登记清单与 binding，并在生成的 C++ �
   };
   const source = `包 测试\n使用 CEF3浏览器模块\n类 MainWindow : 窗口\n公开\n  事件 _MainWindow_创建完毕()\n    局部 文本型 地址 = CEF3_取资源地址("pages/index.html")\n    CEF3_导航(浏览器1, 地址)\n  结束\n结束类`;
   const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [module] });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   // 契约声称支持就必须有真实、可编译、可链接的运行时符号，不能只有补全和 binding。
   assert.match(cpp, /std::wstring CEF3_取资源地址\(const wchar_t\* relativePath\)/);
@@ -5756,7 +5776,7 @@ test('CEF3框架_* 命令族登记清单与 binding，并在生成的 C++ 里有
   };
   const source = `包 测试\n使用 CEF3自动化模块\n类 MainWindow : 窗口\n公开\n  事件 _MainWindow_创建完毕()\n    局部 长整数型 主框架 = CEF3框架_取主框架(浏览器1)\n    局部 长整数型 子框架 = CEF3框架_按名称取框架(浏览器1, "login")\n    CEF3框架_执行JS(子框架, "document.title = \\"改过的标题\\";", "", 1)\n    CEF3框架_载入地址(主框架, "https://example.com")\n    CEF3框架_释放(子框架)\n  结束\n结束类`;
   const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [module] });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   // 契约声称支持就必须有真实运行时符号：每个包装都必须落到 LB_CEF3_* 桥导出。
   assert.match(cpp, /long long CEF3框架_取主框架\(const wchar_t\* controlName\)/);
@@ -5816,7 +5836,7 @@ test('CEF3填表_写入命令族登记清单与 binding，并生成按帧执行�
   };
   const source = `包 测试\n使用 CEF3自动化模块\n类 MainWindow : 窗口\n公开\n  事件 _MainWindow_创建完毕()\n    局部 长整数型 主框架 = CEF3框架_取主框架(浏览器1)\n    CEF3填表_赋值(主框架, "input[name=user]", 0, "张三")\n    CEF3填表_置选择框(主框架, "#agree", 0, 真)\n    CEF3填表_触发事件(主框架, "input#kw", 0, "keydown", 13)\n  结束\n结束类`;
   const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [module] });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   // 忘记调用帧句柄就等于只改了主帧：写入必须落到 LB_CEF3_FrameExecuteJavaScript。
   assert.match(cpp, /CEF3填表_赋值\(long long frameHandle, const std::wstring& selector, int index, const std::wstring& value\)/);
@@ -5880,7 +5900,7 @@ test('CEF3 跨域白名单三条命令登记清单、binding 与生成期运行�
   };
   const source = `包 测试\n使用 CEF3平台工具模块\n类 MainWindow : 窗口\n公开\n  事件 _MainWindow_创建完毕()\n    CEF3平台_添加跨域白名单("https://a.example.com", "https", "b.example.com", 1)\n    CEF3平台_清空跨域白名单()\n  结束\n结束类`;
   const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [module] });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /int CEF3平台_添加跨域白名单\(const wchar_t\* sourceOrigin, const wchar_t\* targetProtocol,/);
   assert.match(cpp, /LB_CEF3_AddCrossOriginWhitelistEntry/);
   assert.match(cpp, /LB_CEF3_ClearCrossOriginWhitelist/);
@@ -5915,7 +5935,7 @@ test('CEF3_读资源响应正文 生成事件上下文约束和 Bridge 调用', 
   };
   const source = `包 测试\n使用 CEF3浏览器模块\n类 MainWindow : 窗口\n公开\n  事件 资源响应到达()\n    CEF3_读资源响应正文(浏览器1, 65536, &资源响应正文到达)\n  结束\n  事件 资源响应正文到达()\n    调试输出(CEF3_取事件字段(浏览器1, "bodyText"))\n  结束\n结束类`;
   const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [module] });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /int CEF3_读资源响应正文\(const wchar_t\* controlName, long long maxBytes, const wchar_t\* handler\)/);
   assert.match(cpp, /LB_CEF3_ResourceResponseBodyBegin/);
   assert.match(cpp, /只能在“资源响应到达”处理器中调用/);
@@ -5960,7 +5980,7 @@ test('CEF3 JS 交互：cefQuery 通道初始化前注册、查询事件派发与
   };
   const source = `包 测试\n使用 CEF3浏览器模块\n类 MainWindow : 窗口\n公开\n  事件 查询请求到达()\n    CEF3_查询应答(浏览器1, CEF3_取事件字段(浏览器1, "queryId"), "本地数据")\n  结束\n结束类`;
   const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [module] });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   // 生成期把控件属性 jsQueryFunctions 烘焙到 CEF3_初始化，且注册必须发生在 LB_CEF3_Initialize 之前。
   assert.match(cpp, /LB_CEF3_EnableJsQuery\(queryName\.c_str\(\), cancelName\.c_str\(\)\)/);
@@ -5990,7 +6010,7 @@ test('CEF3 JS 交互：cefQuery 通道初始化前注册、查询事件派发与
   };
   const multiCpp = generateLingCppNativeWin32Project(
     multiChannelProject, { lingCppSourceCode: source, enabledModules: [module] }
-  ).files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  ).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(multiCpp, /jsQueryFunctions \+= records\[0\]\[4\];/);
   assert.match(multiCpp, /std::vector<std::wstring> registeredChannels;/);
   assert.match(multiCpp, /if \(registered == queryName\) \{ duplicate = true; break; \}/);
@@ -6057,7 +6077,7 @@ test('CEF3_替换资源响应内容 在创建前排队并在桥接句柄就绪�
   // 这样初始导航的首个资源请求已经走替换过滤器。
   const source = `包 测试\n使用 CEF3浏览器模块\n类 MainWindow : 窗口\n公开\n  事件 _MainWindow_创建完毕()\n    CEF3_替换资源响应内容(浏览器1, "原始价格", "会员价格")\n    CEF3_导航(浏览器1, "https://example.com/demo")\n  结束\n结束类`;
   const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [module] });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /int CEF3_替换资源响应内容\(const wchar_t\* controlName, const wchar_t\* findText, const wchar_t\* replacementText\)/);
   assert.match(cpp, /int CEF3_应用资源响应替换\(CefBrowserInstance\* instance, const wchar_t\* findText, const wchar_t\* replacementText\)/);
   assert.match(cpp, /int CEF3_清除资源响应替换\(const wchar_t\* controlName\)/);
@@ -6094,7 +6114,7 @@ test('CEF3_清除资源响应替换 移除排队配置并向桥接传递空过�
   };
   const source = `包 测试\n使用 CEF3浏览器模块\n类 MainWindow : 窗口\n公开\n  事件 _MainWindow_创建完毕()\n    CEF3_替换资源响应内容(浏览器1, "原始价格", "会员价格")\n  结束\n  事件 _停止按钮_被单击()\n    CEF3_清除资源响应替换(浏览器1)\n  结束\n结束类`;
   const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [module] });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /LB_CEF3_ResourceRequestHandlerSetResponseFilter\(instance->bridgeHandle, 0\)/);
   assert.match(cpp, /instance->hasPendingReplace = false;/);
 });
@@ -6124,7 +6144,7 @@ test('CEF3_导航 在桥接句柄就绪前排队，并在浏览器创建完成�
   };
   const source = `包 测试\n使用 CEF3浏览器模块\n类 MainWindow : 窗口\n公开\n  事件 _MainWindow_创建完毕()\n    CEF3_导航(浏览器1, "https://example.com")\n  结束\n结束类`;
   const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [module] });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   // LB_CEF3_BrowserCreate 只把 CefBrowserHost::CreateBrowser 投递到 CEF UI 线程，句柄立刻返回，
   // 此刻 LB_CEF3_BrowserLoadUrl 会以「CEF3浏览器尚未创建完成」失败。创建完毕里发起的导航必须先排队，
@@ -6187,7 +6207,7 @@ test('FBro module contributes a toolbox designer control and C ABI generated run
     enabledModules: [module],
     lingCppSourceCode: '类 MainWindow\n    事件 FBro浏览器1_创建完成()\n        FBro_导航("FBro浏览器1", "https://example.com")\n        FBro_设置缩放级别("FBro浏览器1", 1.25)\n        FBro_设置静音("FBro浏览器1", 真)\n        FBro_设置焦点("FBro浏览器1", 真)\n        FBro_查找("FBro浏览器1", "LingBuilder", 真, 假, 假)\n        FBro_停止查找("FBro浏览器1", 真)\n        调试输出(FBro_是否可后退("FBro浏览器1"), FBro_是否可前进("FBro浏览器1"), FBro_是否加载中("FBro浏览器1"), FBro_取缩放级别("FBro浏览器1"), FBro_是否静音("FBro浏览器1"), FBro_是否打开开发者工具("FBro浏览器1"))\n        FBro_关闭开发者工具("FBro浏览器1")\n        FBro_打开谷歌原生UI浏览器("FBro浏览器1", "https://example.com")\n    结束\n结束类'
   });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /#include <LingBuilderFbroBridge\.h>/u);
   assert.ok(cpp.indexOf('#define LINGBUILDER_FBRO_MODULE') < cpp.indexOf('#if defined(LINGBUILDER_FBRO_MODULE) && __has_include(<LingBuilderFbroBridge.h>)'));
   assert.match(cpp, /IsType\(control, L"FBroBrowser"\)/u);
@@ -6257,7 +6277,7 @@ test('进程内 FBro 调试端口随 enableDevTools 开关并支持全关', () =
     const generated = generateLingCppNativeWin32Project(projectWithDevTools(enableDevTools), {
       enabledModules: [module], lingCppSourceCode: ''
     });
-    const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+    const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
     assert.match(cpp, /WSAStartup\(MAKEWORD\(2, 2\), &wsaData\)/u, `enableDevTools=${enableDevTools} 应预留调试端口`);
     assert.ok(!cpp.includes('不预留 CDP 调试端口'));
   }
@@ -6265,7 +6285,7 @@ test('进程内 FBro 调试端口随 enableDevTools 开关并支持全关', () =
   const disabled = generateLingCppNativeWin32Project(projectWithDevTools(false), {
     enabledModules: [module], lingCppSourceCode: ''
   });
-  const cpp = disabled.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = disabled.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.ok(!cpp.includes('WSAStartup(MAKEWORD(2, 2), &wsaData)'), 'enableDevTools=false 不得预留调试端口');
   assert.match(cpp, /不预留 CDP 调试端口/u);
   assert.match(cpp, /options\.remote_debugging_port = port;/u);
@@ -6273,7 +6293,7 @@ test('进程内 FBro 调试端口随 enableDevTools 开关并支持全关', () =
   const independent = generateLingCppNativeWin32Project(projectWithDevTools(undefined, 'independent-embedded'), {
     enabledModules: [module], lingCppSourceCode: ''
   });
-  const independentCpp = independent.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const independentCpp = independent.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.ok(!independentCpp.includes('if (!LB_FBroInitializeInProcess(fbroRuntimeDirectory))'));
 });
 
@@ -6524,7 +6544,7 @@ test('FBro_替换资源响应内容族 生成 VIP 资源规则调用与同步包
 结束类`;
   const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: modules });
   assert.deepEqual(generated.blockingDiagnostics, []);
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /int FBro_替换资源响应内容\(const wchar_t\* controlName, const wchar_t\* url, const wchar_t\* content\)/);
   assert.match(cpp, /LB_FBro_VipResourceCommandAsync\(instance->handle, command, args\.c_str\(\), nullptr, nullptr\)/);
   assert.match(cpp, /LB_FBro_BufferCreate\(utf8\.data\(\), utf8\.size\(\)\)/);
@@ -6582,7 +6602,7 @@ test('FBro_替换资源响应文本族 生成非 VIP 查找替换桥接调用', 
 结束类`;
   const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: modules });
   assert.deepEqual(generated.blockingDiagnostics, []);
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /int FBro_替换资源响应文本\(const wchar_t\* controlName, const wchar_t\* findText, const wchar_t\* replacementText\)/);
   assert.match(cpp, /int FBro_清除资源响应文本替换\(const wchar_t\* controlName\)/);
   // 非 VIP 路径：同步导出 + 受管缓冲，不经过 VIP 资源规则任务
@@ -6630,7 +6650,7 @@ test('FBro_读资源响应正文 生成事件上下文约束、桥接调用与�
   const source = `包 测试\n类 MainWindow : 窗口\n公开\n  事件 处理资源响应()\n    FBro_读资源响应正文(FBro浏览器1, 65536, &资源正文到达)\n  结束\n  事件 资源正文到达()\n    调试输出(FBro_取事件字段(FBro浏览器1, "body_text"))\n  结束\n结束类`;
   const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: modules });
   assert.deepEqual(generated.blockingDiagnostics, []);
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /int FBro_读资源响应正文\(const wchar_t\* controlName, long long maxBytes, const wchar_t\* handler\)/);
   assert.match(cpp, /LB_FBro_ResourceBodyBegin/);
   assert.match(cpp, /只能在“资源响应到达”处理器中调用/);
@@ -6684,7 +6704,7 @@ test('FBro v3 continuation JSON keeps escaped quotes inside one UTF-16 module ar
     lingCppSourceCode: '类 MainWindow\n    事件 测试()\n        FBro事件_完成延续(FBro_取事件延续(FBro浏览器1), "{\\"action\\":1}")\n    结束\n结束类'
   });
   assert.deepEqual(generated.blockingDiagnostics, []);
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /FBro事件_完成延续\(FBro_取事件延续\(L"FBro浏览器1"\), L"\{\\"action\\":1\}"\)/u);
 });
 
@@ -6745,7 +6765,7 @@ test('未启用 FBro 的公共 Win32 运行时仍具备自包含的事件 fallba
     lingCppSourceCode: '类 MainWindow\n    事件 _MainWindow_创建完毕()\n        调试输出("普通窗口")\n    结束\n结束类',
     enabledModules: []
   });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /#define LINGBUILDER_FBRO_AVAILABLE 0/u);
   assert.match(cpp, /using LB_FBRO_CONTINUATION_HANDLE = unsigned long long;/u);
   assert.match(cpp, /LB_FBRO_EVENT_CREATED = 1/u);
@@ -7300,7 +7320,7 @@ test('generated new_emoji bridge completions match binding parameter counts', as
       '结束类'
     ].join('\n')
   });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /EU_SetButtonStateColors\(/u);
   assert.match(cpp, /static void __stdcall LB_NE_Event_[^(]+\(int lb_element_id\)[\s\S]*信息框\(L"按钮", MB_OK \| MB_ICONINFORMATION, L"事件触发"\)/u);
   assert.match(cpp, /EU_SetElementClickCallback\(g_newEmojiWindow, ne_element_1, LB_NE_Event_/u);
@@ -7366,7 +7386,7 @@ test('generated new_emoji bridge completions match binding parameter counts', as
     enabledModules: [installedModule],
     lingCppSourceCode: '类 MainWindow\n结束类'
   });
-  const nonVirtualRichListCpp = nonVirtualRichListGenerated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const nonVirtualRichListCpp = nonVirtualRichListGenerated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(nonVirtualRichListCpp, /EU_SetRichListItems\(/u);
   assert.doesNotMatch(nonVirtualRichListCpp, /EU_SetRichListVirtualItemCount\([^\n]+, 0\);/u);
   assert.equal(nonVirtualRichListGenerated.blockingDiagnostics.length, 0);
@@ -7572,7 +7592,7 @@ test('new_emoji 数据桥接命令以 controlRef/宽字符声明并生成宽字�
     ].join('\n')
   });
   assert.equal(generated.blockingDiagnostics.length, 0);
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   // 数据桥接：调用点发宽字符，助手内经 LB_NE_ToUtf8 调原生导出。
   assert.match(cpp, /NE表格_设置行数据\(L"表格1", L"行数组文本"\);/u);
   assert.match(cpp, /static bool NE表格_设置行数据\(const wchar_t\* controlName, const std::wstring& rowsJson\)[\s\S]{0,240}EU_SetTableRowsEx\(g_newEmojiWindow, element->id,/u);
@@ -7677,7 +7697,7 @@ test('new_emoji Tabs can host one independent FBro HWND browser on each page', a
     enabledModules,
     lingCppSourceCode: '类 MainWindow\n    事件 _MainWindow_创建完毕()\n        FBro_导航(FBro浏览器1, "https://example.com")\n        调试输出("三个 FBro 标签页已创建")\n    结束\n结束类'
   });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.equal(generated.blockingDiagnostics.length, 0);
   assert.doesNotMatch(generated.diagnostics.join('\n'), /new_emoji 设计器暂不支持控件.*FBro/u);
   assert.match(cpp, /#include <LingBuilderFbroBridge\.h>/u);
@@ -8139,7 +8159,7 @@ test('源码常规命名控件事件自动接线，无需设计器绑定', async
 结束类`;
   const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [] });
   assert.deepEqual(generated.blockingDiagnostics, []);
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   // 常规命名事件自动并入控件事件派发表（设计器未绑定也生效）
   assert.match(cpp, /Click=_清除按钮_被单击/u);
   assert.match(cpp, /handler == L"_清除按钮_被单击"/u);
@@ -8150,7 +8170,7 @@ test('源码常规命名控件事件自动接线，无需设计器绑定', async
   const wired = JSON.parse(JSON.stringify(project));
   wired.windows[0].controls[0].events = { Click: '_清除按钮_被单击' };
   const generatedWired = generateLingCppNativeWin32Project(wired, { lingCppSourceCode: source, enabledModules: [] });
-  const cppWired = generatedWired.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cppWired = generatedWired.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.equal(cppWired.split('Click=_清除按钮_被单击').length - 1, 1);
 });
 
@@ -8185,7 +8205,7 @@ test('列表框常规命名选择项被改变事件自动接线（外部用户�
 结束类`;
   const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [] });
   assert.deepEqual(generated.blockingDiagnostics, []);
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   // 列表框的 SelectionChanged 事件即使设计器未绑定，也会派发到源码常规命名处理器
   assert.match(cpp, /SelectionChanged=_列表框1_选择项被改变/u);
   assert.match(cpp, /handler == L"_列表框1_选择项被改变"/u);
@@ -8202,7 +8222,7 @@ test('裸「创建完毕」事件经类名等价解析接线到窗口 Loaded', a
 结束类`;
   const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [] });
   assert.deepEqual(generated.blockingDiagnostics, []);
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   // findLingCppMethod 的类名前缀等价规则把裸「创建完毕」解析为 _类名_创建完毕 处理器，
   // 窗口 Loaded 必须接线到它，事件体在别名方法下生成而不是死代码。
   assert.match(cpp, /Loaded=_MainWindow_创建完毕/u);
@@ -8232,7 +8252,7 @@ test('自绘按钮运行期文本镜像进生成的运行时', async () => {
 结束类`;
   const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [] });
   assert.deepEqual(generated.blockingDiagnostics, []);
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   // 控件_设置文本正确翻译为 SetWindowTextW（控件名为不带引号的 controlRef 形态）
   assert.match(cpp, /SetWindowTextW/u);
   // 自绘 BUTTON 家族在 WM_SETTEXT 镜像覆盖文本并强制重绘，PaintOwnerButton 消费覆盖文本
@@ -8462,7 +8482,7 @@ test('EdgeView 实例级文档预注入与区域独立 UA 命令具备清单、�
     lingCppSourceCode: source,
     enabledModules: [{ manifest: edgeviewManifest, installPath: '', isInstalled: true, diagnostics: [] }]
   });
-  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.ok(cpp.includes('EdgeView_创建区域代理UA('), '生成运行时缺少区域独立 UA 变体');
   assert.ok(cpp.includes('EdgeView脚本_文档预注入实例异步('), '生成运行时缺少实例级文档预注入');
   assert.ok(cpp.includes('EdgeView脚本_移除文档预注入实例('), '生成运行时缺少实例级文档预注入移除');

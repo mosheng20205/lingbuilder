@@ -72,7 +72,7 @@ const specs: HttpClientCommandSpec[] = [
     parameters: [...client, parameter('允许重定向', 'bool', '传真自动跟随 3xx 重定向，传假把 3xx 原样交给调用方。'), parameter('允许HTTPS降级HTTP', 'bool', '传真才允许 HTTPS 请求被重定向到 HTTP；默认假，防止协议降级。')], returnType: 'bool', returnLabel: '逻辑型', category: '安全'
   },
   {
-    name: 'HTTP客户端_设置代理', signature: 'HTTP客户端_设置代理(客户端, 模式, 代理地址, 绕过列表)', description: '配置代理模式：0 系统默认、1 直连、2 固定代理；固定代理必须提供地址。',
+    name: 'HTTP客户端_设置代理', signature: 'HTTP客户端_设置代理(客户端, 模式, 代理地址, 绕过列表)', description: '配置代理模式：0 系统默认、1 直连、2 固定代理；固定代理必须提供地址。TLS 指纹客户端的固定代理支持 http:// 与 socks5://（或 socks5h://，域名由代理解析）并可用 设置代理凭据 认证；未设指纹的 WinHTTP 路径只支持 HTTP/HTTPS 代理、不支持 SOCKS。',
     parameters: [...client, parameter('模式', 'int', '代理模式：0 使用系统默认配置，1 直连不经代理，2 固定代理地址。'), parameter('代理地址', 'wideString', '固定代理地址，模式为 2 时必须提供且不能含换行。'), parameter('绕过列表', 'wideString', '不走代理的域名或 IP 列表，格式遵循 WinHTTP；不需要时传空文本。')], returnType: 'bool', returnLabel: '逻辑型', category: '客户端',
     insertText: 'HTTP客户端_设置代理($1, 0, "", "")'
   },
@@ -82,8 +82,8 @@ const specs: HttpClientCommandSpec[] = [
     insertText: 'HTTP客户端_解析跳转链($1, "https://xhslink.com/xxxx", 10)'
   },
   {
-    name: 'HTTP客户端请求_设置代理', signature: 'HTTP客户端请求_设置代理(请求, 代理地址)', description: '为单个请求覆盖客户端代理（固定代理模式）；空文本恢复继承客户端代理。必须在实际开始前调用。',
-    parameters: [...request, parameter('代理地址', 'wideString', '本请求使用的固定代理地址，如 "http://代理主机:端口"；空文本表示继承客户端设置。')], returnType: 'bool', returnLabel: '逻辑型', category: '请求'
+    name: 'HTTP客户端请求_设置代理', signature: 'HTTP客户端请求_设置代理(请求, 代理地址)', description: '为单个请求覆盖客户端代理（固定代理模式）；空文本恢复继承客户端代理。必须在实际开始前调用。地址支持 http:// 与 socks5://（SOCKS5 仅 TLS 指纹客户端生效；socks5h:// 由代理解析域名）。',
+    parameters: [...request, parameter('代理地址', 'wideString', '本请求使用的固定代理地址，如 "http://代理主机:端口" 或 "socks5://代理主机:端口"；空文本表示继承客户端设置。')], returnType: 'bool', returnLabel: '逻辑型', category: '请求'
   },
   {
     name: 'HTTP客户端请求_设置代理凭据', signature: 'HTTP客户端请求_设置代理凭据(请求, 用户名, 密码)', description: '为单个请求设置代理 Basic 凭据，优先于客户端代理凭据；凭据只驻留进程内存。',

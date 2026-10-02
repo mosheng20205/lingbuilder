@@ -57,7 +57,7 @@ function command(
 }
 
 const fsCore = createStandardModule({
-  id: 'lingbuilder.fs.core', name: '文件目录模块', version: '1.2.0', category: '系统',
+  id: 'lingbuilder.fs.core', name: '文件目录模块', version: '1.3.0', category: '系统',
   description: '提供 UTF-8 文本文件、常用文件目录操作、句柄式文件流读写、文件目录枚举和文件时间读取，所有路径均使用 Unicode。',
   tags: ['文件', '目录'],
   types: [
@@ -83,7 +83,8 @@ const fsCore = createStandardModule({
     command('文件_删除', [{ name: '路径', type: 'wideString', description: '要删除的文件路径；只有普通文件会被删除，目录返回假。'}], 'bool', '删除一个普通文件。'),
     command('文件_取大小', [{ name: '路径', type: 'wideString', description: '要统计的文件路径；路径不存在或不是文件时返回 -1。'}], 'longLong', '返回文件字节数，失败返回 -1。'),
     command('目录_创建', [{ name: '路径', type: 'wideString', description: '要创建的目录路径；缺失的父目录会逐级一起创建，目录已存在也算成功返回真。'}], 'bool', '递归创建目录；目录已经存在也返回真。'),
-    command('目录_删除空目录', [{ name: '路径', type: 'wideString', description: '要删除的目录路径；目录内仍有条目时返回假，不会递归删除内容。'}], 'bool', '只删除空目录，不执行递归删除。')
+    command('目录_删除空目录', [{ name: '路径', type: 'wideString', description: '要删除的目录路径；目录内仍有条目时返回假，不会递归删除内容。'}], 'bool', '只删除空目录，不执行递归删除。'),
+    command('目录_删除树', [{ name: '路径', type: 'wideString', description: '要删除的目录路径；目录自身与其下全部内容一起删除，删除后不可恢复。路径为空、盘符根（如 C:\\）或网络共享根时拒绝执行返回假，目录不存在也返回假。'}], 'bool', '递归删除整个目录树（目录自身及全部子目录和文件）；这是危险操作，调用前请确认路径。')
 ,
     command('文件_打开', [
       { name: '路径', type: 'wideString', description: '要打开的文件路径；路径为空或打不开时返回 0。'},

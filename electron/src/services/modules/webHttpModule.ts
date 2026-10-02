@@ -8,7 +8,7 @@ export const WEB_HTTP_MODULE: LingBuilderModuleManifest = {
   ...createStandardModule({
     id: 'lingbuilder.web.http',
     name: '网页访问模块',
-    version: '1.1.1',
+    version: '1.2.0',
     category: '网络',
     description: '基于 Windows WinHTTP 封装易语言风格的网页_访问_对象命令，支持 GET、POST、Cookie、请求头、响应头、状态码、代理、超时和重定向控制，并提供回到 UI 主线程的网页_异步访问后台线程命令族。',
     tags: ['网络', 'HTTP', 'HTTPS', 'WinHTTP', '易语言兼容', '异步'],
@@ -66,6 +66,14 @@ export const WEB_HTTP_MODULE: LingBuilderModuleManifest = {
         signature: '网页_异步取错误信息(请求编号)',
         description: '按请求编号读取异步访问的中文错误信息。',
         insertText: '网页_异步取错误信息($1)',
+        parameters: [{ name: '请求编号', type: 'int', description: '网页_异步访问 返回的请求编号。' }],
+        returnType: 'wideString'
+      },
+      {
+        name: '网页_异步取返回协议头',
+        signature: '网页_异步取返回协议头(请求编号)',
+        description: '按请求编号读取异步网页访问的完整响应协议头（首行状态行 + CRLF 响应头，形如 网页_取返回协议头 的异步版）；Xy-Ter-Str 这类只出现在响应头里的取值用它。请求尚未完成或编号不存在时返回空文本。需要 TLS 指纹/代理画像的场景请改用 net.http-client（网页_异步访问 走裸 WinHTTP，容易被网关 302 到验证码页）。',
+        insertText: '网页_异步取返回协议头($1)',
         parameters: [{ name: '请求编号', type: 'int', description: '网页_异步访问 返回的请求编号。' }],
         returnType: 'wideString'
       },
