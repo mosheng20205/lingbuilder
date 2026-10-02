@@ -85,6 +85,21 @@ function nextCommandName(libraries: LingCppDllLibrary[]): string {
   return `新命令${index}`;
 }
 
+/** 按文件路径读取持久化的折叠命令集合（损坏/缺失一律按「全部展开」处理）。 */
+function readStoredCollapsedKeys(filePath: string): Set<string> {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    const raw = window.localStorage.getItem(`lingbuilder.dllCommands.collapsed.v1:${filePath}`);
+    if (!raw) return new Set();
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? new Set(parsed.filter((item): item is string => typeof item === 'string'))
+      : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
 function parseLibraries(sourceCode: string): LingCppDllLibrary[] {
   const libraries = parseLingCpp(sourceCode).program.dllLibraries || [];
   return libraries.length > 0 ? libraries.map(library => ({ ...library })) : [createEmptyLibrary()];
@@ -131,8 +146,18 @@ export default function ProjectDllCommandsEditor(props: ProjectDllCommandsEditor
   const [feedback, setFeedback] = useState('');
   const [headerText, setHeaderText] = useState('');
   const [showHeaderImport, setShowHeaderImport] = useState(false);
-  /** 折叠的命令卡片（key = 库名::命令名，库内命令名唯一）。 */
-  const [collapsedKeys, setCollapsedKeys] = useState<Set<string>>(new Set());
+  /** 折叠的命令卡片（key = 库名::命令名，库内命令名唯一）；按文件记进 localStorage，
+   * 切到其它 .lcpp 再切回（组件卸载重建）、乃至重启 IDE 后仍保持原折叠/展开状态。 */
+  const [collapsedKeys, setCollapsedKeys] = useState<Set<string>>(() => readStoredCollapsedKeys(filePath));
+  const collapseStorageKey = `lingbuilder.dllCommands.collapsed.v1:${filePath}`;
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(collapseStorageKey, JSON.stringify([...collapsedKeys]));
+    } catch {
+      // 存储不可用（隐私模式/配额）时折叠记忆退化为会话内状态，不影响编辑。
+    }
+  }, [collapseStorageKey, collapsedKeys]);
   const [searchText, setSearchText] = useState('');
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   /** 卡片「库文件名」的输入草稿（onBlur/回车时提交移动）。 */
@@ -279,12 +304,13 @@ export default function ProjectDllCommandsEditor(props: ProjectDllCommandsEditor
       returnType: '整数型',
       parameters: [{ name: '参数1', type: '整数型' }],
       callingConvention: 'cdecl',
-      line: (header?.commands.length || 0) + 1
+      line: 1
     };
     // 搜索中新增的空名命令会被过滤掉，先清空搜索保证新卡片可见。
     setSearchText('');
-    setFocusRequest(`0::${header?.commands.length || 0}`);
-    applyModel(libraries.map((library, index) => index === 0 ? { ...library, commands: [...library.commands, command] } : library));
+    // 新命令插到列表最顶部（点「添加命令」的预期是新命令出现在第一条），定位到 0::0 聚焦命名。
+    setFocusRequest('0::0');
+    applyModel(libraries.map((library, index) => index === 0 ? { ...library, commands: [command, ...library.commands] } : library));
   };
 
   useEffect(() => {
@@ -296,6 +322,25 @@ export default function ProjectDllCommandsEditor(props: ProjectDllCommandsEditor
     const nameInput = card.querySelector('[data-dll-command-name-input]') as HTMLInputElement | null;
     nameInput?.focus({ preventScroll: true });
   }, [focusRequest]);
+
+  // 「库文件名」草稿只在失焦/回车时提交；切到其它文件时组件直接卸载、不触发 blur，
+  // 卸载前把未提交的草稿补提交，否则这一次移动静默丢失（同一时刻至多一行在编辑中：
+  // 聚焦另一行输入框会先 blur 当前行）。
+  const pendingLibraryDraftCommitRef = useRef<(() => void) | null>(null);
+  pendingLibraryDraftCommitRef.current = (() => {
+    const entries = Object.entries(libraryDrafts);
+    const [draftKey, draft] = entries[0] || [];
+    if (draft === undefined) return null;
+    const [libraryIndexRaw, commandIndexRaw] = draftKey.split('::');
+    const libraryIndex = Number(libraryIndexRaw);
+    const commandIndex = Number(commandIndexRaw);
+    if (!Number.isFinite(libraryIndex) || !Number.isFinite(commandIndex)) return null;
+    return () => {
+      setLibraryDrafts({});
+      moveCommandToLibrary(libraryIndex, commandIndex, draft);
+    };
+  })();
+  useEffect(() => () => pendingLibraryDraftCommitRef.current?.(), []);
 
   const removeCommand = (libraryIndex: number, commandIndex: number) => {
     applyModel(libraries.map((library, index) => {

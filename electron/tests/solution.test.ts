@@ -182,6 +182,32 @@ test('solution project templates produce deterministic designer and source files
   assert.match(await fs.readFile(path.join(root, 'src', 'hello-app', 'MainWindow.lcpp'), 'utf8'), /信息框/u);
 });
 
+test('新建窗口模板带强名创建完毕处理器，设计器模型显式绑定 events.Loaded', async () => {
+  const root = await createTempWorkspace();
+  const service = createSolutionService(root);
+  // 回归（2026-09-30 灵码1）：模板原先生成裸「事件 创建完毕」，设计器双击按强名
+  // 「_MainWindow_创建完毕」定位，两套名字对不上导致追加出第二个处理器。
+  const blank = await service.previewCreateProject({ name: '空白项目', projectId: 'blank-app', templateId: 'blank-window' });
+  assert.equal(blank.designerProject.windows[0].events?.Loaded, '_MainWindow_创建完毕');
+  const blankSource = blank.files.find(file => file.relativePath.endsWith('MainWindow.lcpp'))?.content || '';
+  assert.match(blankSource, /事件 _MainWindow_创建完毕\(\)/u);
+  assert.doesNotMatch(blankSource, /事件 创建完毕\(\)/u);
+
+  const hello = await service.previewCreateProject({ name: '问候2', projectId: 'hello-app-2', templateId: 'hello-window' });
+  const helloSource = hello.files.find(file => file.relativePath.endsWith('MainWindow.lcpp'))?.content || '';
+  assert.match(helloSource, /事件 _MainWindow_创建完毕\(\)/u);
+  assert.equal(hello.designerProject.windows[0].events?.Loaded, '_MainWindow_创建完毕');
+
+  const crud = await service.previewCreateProject({ name: '会员2', projectId: 'crud-app-2', templateId: 'sqlite-crud-window' });
+  const crudSource = crud.files.find(file => file.relativePath.endsWith('MainWindow.lcpp'))?.content || '';
+  assert.match(crudSource, /事件 _MainWindow_创建完毕\(\)/u);
+  assert.equal(crud.designerProject.windows[0].events?.Loaded, '_MainWindow_创建完毕');
+
+  // 控制台模板的窗口只是「启动()」生成宿主，不携带窗口事件绑定。
+  const consolePreview = await service.previewCreateProject({ name: '批处理2', projectId: 'batch-tool-2', templateId: 'windows-console' });
+  assert.equal(consolePreview.designerProject?.windows[0].events, undefined);
+});
+
 test('Windows DLL template creates a C ABI library project and DynamicLibrary Visual Studio files', async () => {
   const root = await createTempWorkspace();
   const service = createSolutionService(root);

@@ -15,6 +15,7 @@ import { EMPTY_PROJECT_DATA_TYPES_SOURCE, PROJECT_DATA_TYPES_FILE_NAME } from '.
 import { EMPTY_PROJECT_DLL_COMMANDS_SOURCE, PROJECT_DLL_COMMANDS_FILE_NAME } from '../lingCpp/projectDllCommandService';
 import { detectNestedWorkspaceArtifacts, isNestedWorkspaceArtifactPath, isProjectBuildArtifactRelativePath, type NestedWorkspaceArtifactPlan } from './nestedWorkspaceGuard';
 import type { Win32ControlPropertyValue } from '../windowDesigner/win32ControlRegistry';
+import { getWindowEventHandlerName } from '../windowDesigner/windowEventRegistry';
 import { detectLatestMsvcPlatformToolset } from '../windowDesigner/msvcPlatformToolset';
 import { createWindowsDllProjectFiles } from './windowsDllProjectService';
 
@@ -660,7 +661,21 @@ export class SolutionService {
     const removedDirs: string[] = [];
     const preservedDirs = validProjects.map(project => this.resolveWorkspacePath(`generated/cpp/${safeSegment(project.id)}`));
     const logs: string[] = [];
+    let cleanedDllProjectCount = 0;
     const buildConfiguration = await new BuildConfigurationService(this.workspaceRoot).read();
+    const removeDirectoryForClean = async (directory: string): Promise<void> => {
+      try {
+        await fs.rm(directory, { recursive: true, force: true });
+      } catch (error: any) {
+        if (error?.code === 'EBUSY' || error?.code === 'EPERM' || error?.code === 'ENOTEMPTY') {
+          throw new Error(
+            `清理失败：目录被其他程序占用，无法删除 ${directory}。` +
+            '请先关闭可能占用该目录的程序（例如上次生成的 exe 仍在运行、资源管理器打开了该目录），再重新执行。'
+          );
+        }
+        throw error;
+      }
+    };
 
     for (const project of validProjects) {
       const templates = {
@@ -682,9 +697,8 @@ export class SolutionService {
       // 配置变更后旧缺省目录里的残留也要一并清理，避免占用磁盘并干扰增量缓存。
       const legacyBuildDir = this.resolveWorkspacePath(`.lingbuilder-build/${safeSegment(project.id)}`);
       for (const buildDir of new Set([resolved.buildDir, legacyBuildDir])) {
-        await fs.rm(buildDir, { recursive: true, force: true });
+        await removeDirectoryForClean(buildDir);
         removedDirs.push(buildDir);
-        logs.push(`已清理项目 ${project.name} 的临时构建目录：${buildDir}`);
       }
       preservedDirs.push(resolved.exportDir);
       if (project.type === 'windows-dll' && project.projectFile) {
@@ -692,18 +706,19 @@ export class SolutionService {
         for (const architecture of ['Win32', 'x64'] as const) {
           for (const configuration of ['Debug', 'Release'] as const) {
             const dllBuildDir = path.join(projectRoot, architecture, configuration);
-            await fs.rm(dllBuildDir, { recursive: true, force: true });
+            await removeDirectoryForClean(dllBuildDir);
             removedDirs.push(dllBuildDir);
           }
         }
-        logs.push(`已清理项目 ${project.name} 的 DLL 配置输出目录。`);
+        cleanedDllProjectCount += 1;
       }
     }
 
     if (validProjects.length === 0) {
       logs.push('没有找到需要清理的项目。');
     } else {
-      logs.push('清理完成。generated/cpp 中的可复制 Visual Studio 工程已保留。');
+      const dllNote = cleanedDllProjectCount > 0 ? `（含 ${cleanedDllProjectCount} 个 DLL 项目的配置输出目录）` : '';
+      logs.push(`已清理 ${validProjects.length} 个项目的构建目录${dllNote}。generated/cpp 中的可复制 Visual Studio 工程已保留。`);
     }
 
     return {
@@ -1024,7 +1039,7 @@ function createSqliteCrudTemplateSource(className: string): string {
     '公开',
     '  SQLite连接 数据库',
     '',
-    '  事件 创建完毕()',
+    `  事件 _${className}_创建完毕()`,
     '    数据库 = SQLite_打开连接("members.db", 0, 5000)',
     '    如果 (数据库 == 0)',
     '      控件_设置文本(状态标签, 格式化文本("打开数据库失败：{}", SQLite_取错误()))',
@@ -1197,6 +1212,7 @@ function createDesignerProject(
 ): LingWindowProject {
   const windowTitle = normalizeWindowTitle(requestedWindowTitle, `${name}主窗口`);
   const browserShell = templateId === 'new-emoji-fbro-browser-shell';
+  const className = 'MainWindow';
   return {
     schemaVersion: 2,
     id: projectId,
@@ -1206,7 +1222,7 @@ function createDesignerProject(
       {
         id: 'main-window',
         fileName: 'MainWindow.xml',
-        className: 'MainWindow',
+        className,
         title: windowTitle,
         width: browserShell ? 1180 : 900,
         height: browserShell ? 760 : 560,
@@ -1222,14 +1238,20 @@ function createDesignerProject(
             flags: 0x3f,
             resizeBorder: { left: 6, top: 6, right: 6, bottom: 6 },
             cornerRadius: 10
-          },
-          events: {
-            Loaded: '_MainWindow_创建完毕',
-            SizeChanged: '_MainWindow_大小被改变',
-            KeyDown: '_MainWindow_按键被按下',
-            DpiChanged: '_MainWindow_DPI被改变'
           }
         } : {}),
+        // 新建项目即显式绑定「创建完毕」，与源码模板的强名处理器一一对应；
+        // 双击定位、事件面板与 C++ 生成都优先消费它，裸「创建完毕」只兜底旧项目。
+        ...(templateId === 'windows-console' ? {} : {
+          events: {
+            Loaded: getWindowEventHandlerName(className, 'Loaded'),
+            ...(browserShell ? {
+              SizeChanged: getWindowEventHandlerName(className, 'SizeChanged'),
+              KeyDown: getWindowEventHandlerName(className, 'KeyDown'),
+              DpiChanged: getWindowEventHandlerName(className, 'DpiChanged')
+            } : {})
+          }
+        }),
         controls: templateId === 'hello-window'
           ? createHelloWindowControls()
           : templateId === 'sqlite-crud-window'
@@ -1248,7 +1270,7 @@ function createTemplateLingCppSource(className: string, templateId: SolutionProj
   if (templateId === 'hello-window') {
     return [
       `类 ${className}`,
-      '    事件 创建完毕()',
+      `    事件 _${className}_创建完毕()`,
       '        调试输出("你好，LingBuilder 项目已启动。")',
       '    结束',
       '',
@@ -1261,7 +1283,7 @@ function createTemplateLingCppSource(className: string, templateId: SolutionProj
   }
   return [
     `类 ${className}`,
-    '    事件 创建完毕()',
+    `    事件 _${className}_创建完毕()`,
     '        调试输出("窗口创建完毕")',
     '    结束',
     '结束类',

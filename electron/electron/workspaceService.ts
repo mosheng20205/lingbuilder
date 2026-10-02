@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { createLcppSourcePackageService, isLcppSourcePackagePath } from './lcppSourcePackageService';
 
 export interface WorkspaceState {
@@ -300,15 +301,32 @@ export async function resolveWorkspaceDropTarget(targetPath: string): Promise<st
   return path.dirname(resolved);
 }
 
-export function buildWorkspaceWindowLaunch(options: {
+export interface WorkspaceWindowSpawnPlan {
+  command: string;
+  args: string[];
+  /** 传给子进程的完整环境（父环境 + LINGBUILDER_REC_USER_DATA 独立 userData 覆盖）。 */
+  env: NodeJS.ProcessEnv;
+}
+
+/**
+ * 组装「在新窗口打开工作区」的子进程启动计划。子进程必须带 LINGBUILDER_REC_USER_DATA
+ * 独立 userData（main.ts 同名机制），否则撞主实例单实例锁后被 second-instance 转交参数、
+ * 自己退出，新窗口永不出现（2026-10-02 修复，与 moduleDemoService 同一套机制）。
+ * 实例 userData 目录按工作区绝对路径稳定哈希：同一工作区重复拉起时，第二个子进程会撞
+ * 该实例目录自己的单实例锁、把焦点交回已开的窗口，天然防重复开。
+ */
+export function buildWorkspaceWindowSpawnPlan(input: {
   packaged: boolean; executablePath: string; mainEntryPath: string; workspacePath: string;
-}): { command: string; args: string[] } {
-  const workspacePath = path.resolve(options.workspacePath);
+  windowUserDataRoot: string; parentEnv?: NodeJS.ProcessEnv;
+}): WorkspaceWindowSpawnPlan {
+  const workspacePath = path.resolve(input.workspacePath);
+  const instanceDir = path.join(input.windowUserDataRoot, createHash('sha1').update(workspacePath).digest('hex').slice(0, 16));
   return {
-    command: options.executablePath,
-    args: options.packaged
+    command: input.executablePath,
+    args: input.packaged
       ? ['--workspace', workspacePath, '--new-window']
-      : [path.resolve(options.mainEntryPath), '--workspace', workspacePath, '--new-window', '--managed-dev-server']
+      : [path.resolve(input.mainEntryPath), '--workspace', workspacePath, '--new-window', '--managed-dev-server'],
+    env: { ...(input.parentEnv || process.env), LINGBUILDER_REC_USER_DATA: instanceDir }
   };
 }
 

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { buildWorkspaceWindowLaunch, DesktopWorkspaceService, findWorkspaceFileArgument, getArgumentValue, isWorkspaceFilePath, RECENT_WORKSPACES_LIMIT, resolveWorkspaceDropTarget } from '../electron/workspaceService';
+import { buildWorkspaceWindowSpawnPlan, DesktopWorkspaceService, findWorkspaceFileArgument, getArgumentValue, isWorkspaceFilePath, RECENT_WORKSPACES_LIMIT, resolveWorkspaceDropTarget } from '../electron/workspaceService';
 
 test('workspace service prefers --workspace and remembers it', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-workspace-arg-'));
@@ -189,12 +189,32 @@ test('second-instance transfer recognizes every associated workspace file argume
 });
 
 test('new workspace windows use an isolated process with an explicit workspace argument', () => {
-  const packaged = buildWorkspaceWindowLaunch({ packaged: true, executablePath: 'LingBuilder.exe', mainEntryPath: 'main.cjs', workspacePath: 'C:\\项目' });
+  const userDataRoot = path.join('C:\\用户数据', 'workspace-window-runtime');
+  const packaged = buildWorkspaceWindowSpawnPlan({ packaged: true, executablePath: 'LingBuilder.exe', mainEntryPath: 'main.cjs', workspacePath: 'C:\\项目', windowUserDataRoot: userDataRoot });
   assert.equal(packaged.command, 'LingBuilder.exe');
   assert.deepEqual(packaged.args.slice(-3), ['--workspace', path.resolve('C:\\项目'), '--new-window']);
-  const development = buildWorkspaceWindowLaunch({ packaged: false, executablePath: 'electron.exe', mainEntryPath: 'dist/main.cjs', workspacePath: 'C:\\项目' });
+  const development = buildWorkspaceWindowSpawnPlan({ packaged: false, executablePath: 'electron.exe', mainEntryPath: 'dist/main.cjs', workspacePath: 'C:\\项目', windowUserDataRoot: userDataRoot });
   assert.equal(development.args[0], path.resolve('dist/main.cjs'));
   assert.deepEqual(development.args.slice(-4), ['--workspace', path.resolve('C:\\项目'), '--new-window', '--managed-dev-server']);
+});
+
+test('new workspace window spawn plan isolates userData per workspace so the child survives the single-instance lock', () => {
+  const userDataRoot = path.join('C:\\用户数据', 'workspace-window-runtime');
+  const parentEnv = { ...process.env, LINGBUILDER_REC_USER_DATA: 'C:\\录制实例', LINGBUILDER_CUSTOM_VAR: '保留我' };
+  const plan = buildWorkspaceWindowSpawnPlan({ packaged: true, executablePath: 'LingBuilder.exe', mainEntryPath: 'main.cjs', workspacePath: 'C:\\项目A', windowUserDataRoot: userDataRoot, parentEnv });
+  // 子进程必须带独立 userData，否则撞主实例单实例锁后被 second-instance 转交、自己退出（2026-10-02 根因）。
+  const instanceDir = plan.env.LINGBUILDER_REC_USER_DATA;
+  assert.ok(instanceDir, '子进程环境必须携带 LINGBUILDER_REC_USER_DATA');
+  assert.notEqual(instanceDir, 'C:\\录制实例', '父进程的 LINGBUILDER_REC_USER_DATA 必须被子进程实例目录覆盖');
+  assert.equal(path.dirname(instanceDir as string), path.resolve(userDataRoot));
+  assert.match(path.basename(instanceDir as string), /^[0-9a-f]{16}$/u, '实例目录名必须是工作区路径的稳定短哈希');
+  // 同一工作区哈希稳定（重复点击复用同一实例目录 → 第二个子进程撞锁聚焦已开窗口）；不同工作区互不共享。
+  const planAgain = buildWorkspaceWindowSpawnPlan({ packaged: true, executablePath: 'LingBuilder.exe', mainEntryPath: 'main.cjs', workspacePath: 'C:\\项目A', windowUserDataRoot: userDataRoot, parentEnv });
+  assert.equal(planAgain.env.LINGBUILDER_REC_USER_DATA, instanceDir);
+  const planOther = buildWorkspaceWindowSpawnPlan({ packaged: true, executablePath: 'LingBuilder.exe', mainEntryPath: 'main.cjs', workspacePath: 'C:\\项目B', windowUserDataRoot: userDataRoot, parentEnv });
+  assert.notEqual(planOther.env.LINGBUILDER_REC_USER_DATA, instanceDir);
+  // 父环境其余变量原样透传。
+  assert.equal(plan.env.LINGBUILDER_CUSTOM_VAR, '保留我');
 });
 
 test('workspace switching reuses the current local service instead of reloading Electron', async () => {

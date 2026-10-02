@@ -22,6 +22,11 @@ interface ProjectNameDialogProps {
   onLocationChange?: (value: string) => void;
   locationPlaceholder?: string;
   locationHint?: string;
+  /**
+   * 可选：创建位置「浏览…」回调（桌面版调起系统目录选择对话框）。
+   * 不提供时按钮整体隐藏，保持纯手输的旧行为（网页原型）。
+   */
+  onBrowseLocation?: () => void | Promise<void>;
   onChange: (value: string) => void;
   onConfirm: () => void | Promise<void>;
   onClose: () => void;
@@ -52,6 +57,7 @@ export default function ProjectNameDialog({
   onLocationChange,
   locationPlaceholder,
   locationHint,
+  onBrowseLocation,
   onChange,
   onConfirm,
   onClose,
@@ -158,15 +164,32 @@ export default function ProjectNameDialog({
           {onLocationChange && (
             <div className="mt-3">
               <label htmlFor={`${inputId}-location`} className="mb-1.5 block text-xs font-medium">创建位置</label>
-              <input
-                id={`${inputId}-location`}
-                aria-label="创建位置"
-                value={location ?? ''}
-                placeholder={locationPlaceholder}
-                disabled={busy}
-                onChange={event => onLocationChange(event.target.value)}
-                className={inputClassName}
-              />
+              <div className="flex gap-2">
+                <input
+                  id={`${inputId}-location`}
+                  aria-label="创建位置"
+                  value={location ?? ''}
+                  placeholder={locationPlaceholder}
+                  disabled={busy}
+                  onChange={event => onLocationChange(event.target.value)}
+                  className={inputClassName}
+                />
+                {onBrowseLocation && (
+                  <button
+                    type="button"
+                    aria-label="浏览创建位置"
+                    disabled={busy}
+                    onClick={() => { void onBrowseLocation(); }}
+                    className={`shrink-0 rounded border px-3 py-2 text-xs outline-none disabled:cursor-not-allowed disabled:opacity-50 ${
+                      isDarkMode
+                        ? 'border-[#414149] bg-[#25252c] text-slate-100 hover:border-blue-500'
+                        : 'border-slate-300 bg-white text-slate-900 hover:border-blue-500'
+                    }`}
+                  >
+                    浏览…
+                  </button>
+                )}
+              </div>
               {locationHint && <p className={hintClassName}>{locationHint}</p>}
             </div>
           )}
