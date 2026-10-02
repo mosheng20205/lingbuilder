@@ -17,6 +17,7 @@ import { DATA_GRID_BINDINGS, DATA_GRID_COMMANDS } from './dataGridApiCatalog';
 import { FBRO_SUBMODULES } from './fbroModules';
 import { CEF3_SUBMODULES } from './cef3Modules';
 import { OPENCV_MODULE } from './opencvModules';
+import { QRCODE_MODULE } from './qrcodeModules';
 import { EMBEDDED_RESOURCE_MODULE } from './resourceEmbedModule';
 import { THREADING_MODULE } from './threadingModule';
 import { CRON_MODULE } from './cronModule';
@@ -558,6 +559,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
   ...NETWORK_LIBRARY_MODULES,
   ...DATA_MEDIA_MODULES,
   OPENCV_MODULE,
+  QRCODE_MODULE,
   EMBEDDED_RESOURCE_MODULE,
   ...PLATFORM_ADVANCED_MODULES,
   {
