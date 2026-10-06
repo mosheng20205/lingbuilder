@@ -72,10 +72,10 @@ import {
 import {
   buildLingCppControlReferenceSemanticTokenData,
   createLingCppControlReferenceEditorCss,
-  LINGCPP_COMMENT_TOKEN_COLORS,
-  LINGCPP_CONSTANT_TOKEN_COLORS,
+  getActiveLingCppTokenColorSettings,
   LINGCPP_CONTROL_REFERENCE_SEMANTIC_TOKEN,
-  LINGCPP_CONTROL_REFERENCE_TOKEN_COLORS
+  resolveLingCppTokenColors,
+  subscribeLingCppTokenColorSettings
 } from '../services/lingCpp/semanticTheme';
 
 // Keep the primary editor fully local/offline. Every language used here can
@@ -1294,58 +1294,8 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
       }
     }
 
-    // Configure themes
-    monaco.editor.defineTheme('epl-dark', {
-      base: 'vs-dark',
-      inherit: true,
-      semanticHighlighting: true,
-      rules: [
-        { token: 'keyword', foreground: '569cd6', fontStyle: 'bold' },
-        { token: 'predefined', foreground: '4ec9b0' },
-        { token: 'module.command', foreground: '22d3ee', fontStyle: 'bold' },
-        { token: 'native.marker', foreground: 'c586c0', fontStyle: 'bold' },
-        { token: 'type', foreground: '4fc1ff' },
-        { token: 'tag', foreground: 'c586c0', fontStyle: 'bold' },
-        { token: 'comment', foreground: LINGCPP_COMMENT_TOKEN_COLORS.dark.slice(1), fontStyle: 'italic' },
-        { token: 'string', foreground: 'ce9178' },
-        { token: 'number', foreground: 'b5cea8' }
-        ,{ token: LINGCPP_CONTROL_REFERENCE_SEMANTIC_TOKEN, foreground: LINGCPP_CONTROL_REFERENCE_TOKEN_COLORS.dark.slice(1), fontStyle: 'bold' }
-        ,{ token: 'constant', foreground: LINGCPP_CONSTANT_TOKEN_COLORS.dark.slice(1) }
-      ],
-      colors: {
-        'editor.background': '#1e1e24',
-        'editor.foreground': '#d4d4d4',
-        'editorLineNumber.foreground': '#5a5a6a',
-        'editorLineNumber.activeForeground': '#007acc',
-        'editor.lineHighlightBackground': '#2d2d34'
-      }
-    });
-
-    monaco.editor.defineTheme('epl-light', {
-      base: 'vs',
-      inherit: true,
-      semanticHighlighting: true,
-      rules: [
-        { token: 'keyword', foreground: '0000ff', fontStyle: 'bold' },
-        { token: 'predefined', foreground: '008080' },
-        { token: 'module.command', foreground: '006a7a', fontStyle: 'bold' },
-        { token: 'native.marker', foreground: '7a1fa2', fontStyle: 'bold' },
-        { token: 'type', foreground: '0000ff' },
-        { token: 'tag', foreground: '800080', fontStyle: 'bold' },
-        { token: 'comment', foreground: LINGCPP_COMMENT_TOKEN_COLORS.light.slice(1), fontStyle: 'italic' },
-        { token: 'string', foreground: 'a31515' },
-        { token: 'number', foreground: '098658' }
-        ,{ token: LINGCPP_CONTROL_REFERENCE_SEMANTIC_TOKEN, foreground: LINGCPP_CONTROL_REFERENCE_TOKEN_COLORS.light.slice(1), fontStyle: 'bold' }
-        ,{ token: 'constant', foreground: LINGCPP_CONSTANT_TOKEN_COLORS.light.slice(1) }
-      ],
-      colors: {
-        'editor.background': '#ffffff',
-        'editor.foreground': '#000000',
-        'editorLineNumber.foreground': '#a5a5a5',
-        'editorLineNumber.activeForeground': '#007acc',
-        'editor.lineHighlightBackground': '#f2f2f2'
-      }
-    });
+    // Configure themes from the active token color settings（设置 → 编辑器颜色）。
+    defineLingCppMonacoThemes(monaco);
 
     // Update active theme
     monaco.editor.setTheme(isDarkMode ? 'epl-dark' : 'epl-light');
@@ -1356,6 +1306,15 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
       monacoRef.current.editor.setTheme(isDarkMode ? 'epl-dark' : 'epl-light');
     }
   }, [isDarkMode]);
+
+  // 令牌配色设置变化（设置 → 编辑器颜色 保存）：重定义主题并刷新注入的控件引用 CSS。
+  useEffect(() => subscribeLingCppTokenColorSettings(() => {
+    const monaco = monacoRef.current;
+    if (!monaco) return;
+    defineLingCppMonacoThemes(monaco);
+    monaco.editor.setTheme(isDarkMode ? 'epl-dark' : 'epl-light');
+    injectLingCppEditorStyles();
+  }), [isDarkMode]);
 
   useEffect(() => {
     const monaco = monacoRef.current;
@@ -1543,6 +1502,73 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
 });
 
 export default MonacoCodeEditor;
+
+/**
+ * 按活动令牌配色设置（重）定义 epl-dark / epl-light 两个 Monaco 主题。
+ *
+ * 颜色唯一来源是 services/lingCpp/semanticTheme 的调色板（预设主题 + 用户覆盖），
+ * 与新手结构编辑器共用同一令牌色；「设置 → 编辑器颜色」保存后由订阅者再次调用本函数。
+ */
+function defineLingCppMonacoThemes(monaco: any): void {
+  const activeSettings = getActiveLingCppTokenColorSettings();
+  const paletteDark = resolveLingCppTokenColors(activeSettings, true);
+  const paletteLight = resolveLingCppTokenColors(activeSettings, false);
+  const rule = (token: string, foreground: string, fontStyle?: string) => (
+    fontStyle ? { token, foreground, fontStyle } : { token, foreground }
+  );
+
+  monaco.editor.defineTheme('epl-dark', {
+    base: 'vs-dark',
+    inherit: true,
+    semanticHighlighting: true,
+    rules: [
+      rule('keyword', paletteDark.keyword.slice(1), 'bold'),
+      rule('predefined', paletteDark.type.slice(1)),
+      rule('module.command', paletteDark.moduleCommand.slice(1), 'bold'),
+      rule('native.marker', paletteDark.nativeMarker.slice(1), 'bold'),
+      rule('type', paletteDark.type.slice(1)),
+      rule('tag', 'c586c0', 'bold'),
+      rule('comment', paletteDark.comment.slice(1), 'italic'),
+      rule('string', paletteDark.string.slice(1)),
+      rule('number', paletteDark.literal.slice(1)),
+      rule(LINGCPP_CONTROL_REFERENCE_SEMANTIC_TOKEN, paletteDark.controlReference.slice(1), 'bold'),
+      rule('constant', paletteDark.constant.slice(1))
+    ],
+    colors: {
+      'editor.background': '#1e1e24',
+      'editor.foreground': paletteDark.identifier.slice(1),
+      'editorLineNumber.foreground': '#5a5a6a',
+      'editorLineNumber.activeForeground': '#007acc',
+      'editor.lineHighlightBackground': '#2d2d34'
+    }
+  });
+
+  monaco.editor.defineTheme('epl-light', {
+    base: 'vs',
+    inherit: true,
+    semanticHighlighting: true,
+    rules: [
+      rule('keyword', paletteLight.keyword.slice(1), 'bold'),
+      rule('predefined', paletteLight.type.slice(1)),
+      rule('module.command', paletteLight.moduleCommand.slice(1), 'bold'),
+      rule('native.marker', paletteLight.nativeMarker.slice(1), 'bold'),
+      rule('type', paletteLight.type.slice(1)),
+      rule('tag', '800080', 'bold'),
+      rule('comment', paletteLight.comment.slice(1), 'italic'),
+      rule('string', paletteLight.string.slice(1)),
+      rule('number', paletteLight.literal.slice(1)),
+      rule(LINGCPP_CONTROL_REFERENCE_SEMANTIC_TOKEN, paletteLight.controlReference.slice(1), 'bold'),
+      rule('constant', paletteLight.constant.slice(1))
+    ],
+    colors: {
+      'editor.background': '#ffffff',
+      'editor.foreground': paletteLight.identifier.slice(1),
+      'editorLineNumber.foreground': '#a5a5a5',
+      'editorLineNumber.activeForeground': '#007acc',
+      'editor.lineHighlightBackground': '#f2f2f2'
+    }
+  });
+}
 
 function injectLingCppEditorStyles(): void {
   const existing = document.getElementById('lingcpp-editor-language-service-styles') as HTMLStyleElement | null;

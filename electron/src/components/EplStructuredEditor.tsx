@@ -4,8 +4,7 @@ import { Check, Plus, Trash2 } from 'lucide-react';
 import { requestWorkbenchConfirm } from '../services/workbench/workbenchConfirmService';
 import {
   tokenizeEplStatement,
-  EPL_TOKEN_COLORS_DARK,
-  EPL_TOKEN_COLORS_LIGHT,
+  getEplTokenColorTheme,
   type EplToken,
   type EplTokenColorTheme
 } from '../services/eplTokenizer';
@@ -2400,7 +2399,7 @@ function StatementAutocompleteInput({
   const [completionQuery, setCompletionQuery] = useState('');
   const [activeCompletionIndex, setActiveCompletionIndex] = useState(0);
   const clickPointRef = useRef<{ x: number; y: number } | null>(null);
-  const tokenColors = isDarkMode ? EPL_TOKEN_COLORS_DARK : EPL_TOKEN_COLORS_LIGHT;
+  const tokenColors = useMemo(() => getEplTokenColorTheme(isDarkMode), [isDarkMode]);
   const knownVariables = useMemo(() => new Set([...localVariables, ...programVariables]), [localVariables, programVariables]);
   const knownFunctions = useMemo(() => new Set(subprogramNames), [subprogramNames]);
 

@@ -79,11 +79,18 @@ test('designer event cards open existing handlers or create missing bindings wit
   assert.match(source, /await onChange\(\{[\s\S]*?\[eventName\]: handlerName/u);
   assert.match(source, /commitControlFieldsImmediately[\s\S]*?saveWindowDesignerState\(nextState\)/u);
   assert.match(source, /eventParameters: moduleControl \? \[\.\.\.\(eventInfo\?\.parameters \|\| \[\]\)\] : undefined/u);
+  assert.match(source, /eventLabel: eventInfo\?\.handlerSuffix/u);
+  assert.match(source, /aria-label="搜索控件事件"/u);
+  assert.match(source, /visibleEventInfos\.map\(eventInfo =>/u);
+  assert.match(source, /没有匹配「\{eventSearch\.trim\(\)\}」的事件。/u);
   assert.match(source, /onClick=\{\(\) => openEventCode\(definition\.name\)\}/u);
   assert.doesNotMatch(source, /placeholder=\{`如: \$\{suggestedHandler\}`\}/u);
   assert.doesNotMatch(appSource, /editorExperienceMode === 'beginner' && nextContent !== currentContent/u);
   assert.match(appSource, /【事件代码】已自动生成 \$\{handlerName\}/u);
-  assert.match(appSource, /lines\.push\('    结束'\)/u);
+  // 事件桩模板早已收敛到 controlEventCodeService.ts（createLingCppControlEventBlock），
+  // 旧断言在 App.tsx 里找 lines.push('    结束') 已过期（HEAD 存量红），改锚到唯一实现。
+  const stubServiceSource = await fs.readFile(path.resolve(import.meta.dirname, '../src/services/windowDesigner/controlEventCodeService.ts'), 'utf8');
+  assert.match(stubServiceSource, /lines\.push\('    结束'\)/u);
 });
 
 test('designer state is isolated by project identity across unmounts and project switches', async () => {

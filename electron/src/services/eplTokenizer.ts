@@ -5,7 +5,7 @@
  * This enables token-level syntax highlighting similar to Visual Studio.
  */
 
-import { LINGCPP_COMMENT_TOKEN_COLORS, LINGCPP_CONSTANT_TOKEN_COLORS } from './lingCpp/semanticTheme';
+import { getActiveLingCppTokenColorSettings, getLingCppCommentTokenColor, getLingCppConstantTokenColor, LINGCPP_COMMENT_TOKEN_COLORS, LINGCPP_CONSTANT_TOKEN_COLORS, resolveLingCppTokenColors } from './lingCpp/semanticTheme';
 
 // ── Token Types ──────────────────────────────────────────────────────────────
 
@@ -336,3 +336,29 @@ export const EPL_TOKEN_COLORS_LIGHT: EplTokenColorTheme = {
   paren:      '#0431fa',  // VS bracket blue
   comma:      '#000000',
 };
+
+/**
+ * 按活动令牌配色设置取 EPL 结构编辑器主题。
+ *
+ * 注释/常量/其余令牌角色与新手结构编辑器、Monaco 共用同一份调色板
+ * （设置 → 编辑器颜色 可自定义）；EPL 特有令牌（如括号金色）保留本文件缺省。
+ */
+export function getEplTokenColorTheme(isDarkMode: boolean): EplTokenColorTheme {
+  const palette = resolveLingCppTokenColors(getActiveLingCppTokenColorSettings(), isDarkMode);
+  const base = isDarkMode ? EPL_TOKEN_COLORS_DARK : EPL_TOKEN_COLORS_LIGHT;
+  return {
+    ...base,
+    keyword: palette.keyword,
+    command: palette.command,
+    string: palette.string,
+    comment: getLingCppCommentTokenColor(isDarkMode),
+    number: palette.literal,
+    operator: palette.operator,
+    variable: palette.local,
+    function: palette.procedure,
+    constant: getLingCppConstantTokenColor(isDarkMode),
+    identifier: palette.identifier,
+    dot: palette.operator,
+    comma: palette.operator
+  };
+}

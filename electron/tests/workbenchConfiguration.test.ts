@@ -228,6 +228,43 @@ test('workbench schema enforces font and sidebar bounds, experience modes, theme
   assert.equal(service.get('workbench.colorTheme'), 'light');
 });
 
+test('sidebar and panel font sizes default to 13/12, enforce 10-20 bounds and persist with the user scope', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-workbench-chrome-fonts-'));
+  const workspaceRoot = path.join(root, 'workspace');
+  const userSettingsPath = path.join(root, 'profile', 'settings.json');
+  const service = createWorkbenchConfigurationService({ workspaceRoot, userSettingsPath });
+  await service.initialize();
+
+  assert.equal(service.get('workbench.sidebar.fontSize'), 13);
+  assert.equal(service.get('workbench.panel.fontSize'), 12);
+
+  const snapshot = service.snapshot();
+  const sidebarMeta = snapshot.settings.find(item => item.metadata.key === 'workbench.sidebar.fontSize');
+  const panelMeta = snapshot.settings.find(item => item.metadata.key === 'workbench.panel.fontSize');
+  assert.equal(sidebarMeta?.metadata.category, '工作台');
+  assert.equal(sidebarMeta?.metadata.minimum, 10);
+  assert.equal(sidebarMeta?.metadata.maximum, 20);
+  assert.equal(panelMeta?.metadata.category, '工作台');
+  assert.equal(panelMeta?.metadata.minimum, 10);
+  assert.equal(panelMeta?.metadata.maximum, 20);
+
+  for (const key of ['workbench.sidebar.fontSize', 'workbench.panel.fontSize'] as const) {
+    for (const invalidValue of [9, 21, 12.5]) {
+      await assert.rejects(
+        () => service.update(key, invalidValue, 'user'),
+        (error: unknown) => assertValidationError(error, key)
+      );
+    }
+  }
+
+  await service.update('workbench.sidebar.fontSize', 15, 'user');
+  await service.update('workbench.panel.fontSize', 10, 'user');
+  const reloaded = createWorkbenchConfigurationService({ workspaceRoot, userSettingsPath });
+  await reloaded.initialize();
+  assert.equal(reloaded.get('workbench.sidebar.fontSize'), 15);
+  assert.equal(reloaded.get('workbench.panel.fontSize'), 10);
+});
+
 test('user and workspace updates persist independently and reload with the same priority', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-workbench-persistence-'));
   const workspaceRoot = path.join(root, 'workspace');
@@ -277,6 +314,54 @@ test('snapshot includes persisted-file diagnostics without leaking mutable servi
   assert.ok(snapshot.diagnostics.some(item => item.code === 'CORRUPT_FILE' && item.target === 'user'));
   snapshot.diagnostics[0].message = '被外部修改';
   assert.notEqual(service.getDiagnostics()[0].message, '被外部修改');
+});
+
+test('编辑器令牌配色设置：主题受预设枚举约束，颜色覆盖必须是 #rrggbb 映射并按作用域持久化', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-workbench-token-colors-'));
+  const workspaceRoot = path.join(root, 'workspace');
+  const userSettingsPath = path.join(root, 'profile', 'settings.json');
+  const workspaceSettingsPath = path.join(workspaceRoot, '.lingbuilder', 'settings.json');
+  const service = createWorkbenchConfigurationService({ workspaceRoot, userSettingsPath });
+  await service.initialize();
+
+  const snapshot = service.snapshot();
+  const themeMeta = snapshot.settings.find(item => item.metadata.key === 'editor.tokenTheme');
+  const overridesMeta = snapshot.settings.find(item => item.metadata.key === 'editor.tokenColorOverrides');
+  assert.equal(themeMeta?.metadata.category, '编辑器颜色');
+  assert.equal(overridesMeta?.metadata.category, '编辑器颜色');
+  assert.equal(service.get('editor.tokenTheme'), 'default');
+  assert.deepEqual(service.get('editor.tokenColorOverrides'), {});
+
+  await assert.rejects(
+    () => service.update('editor.tokenTheme', 'aurora', 'user'),
+    (error: unknown) => assertValidationError(error, 'editor.tokenTheme')
+  );
+  await assert.rejects(
+    () => service.update('editor.tokenColorOverrides', { 'local.light': 'blue' }, 'user'),
+    (error: unknown) => assertValidationError(error, 'editor.tokenColorOverrides')
+  );
+  await assert.rejects(
+    () => service.update('editor.tokenColorOverrides', { 'local.light': '#aabb' }, 'user'),
+    (error: unknown) => assertValidationError(error, 'editor.tokenColorOverrides')
+  );
+  await assert.rejects(
+    () => service.update('editor.tokenColorOverrides', ['local.light'], 'user'),
+    (error: unknown) => assertValidationError(error, 'editor.tokenColorOverrides')
+  );
+
+  await service.update('editor.tokenTheme', 'eyuyan', 'user');
+  await service.update('editor.tokenColorOverrides', { 'local.light': '#AABBCC' }, 'workspace');
+  assert.equal(service.get('editor.tokenTheme'), 'eyuyan');
+  assert.deepEqual(service.get('editor.tokenColorOverrides'), { 'local.light': '#AABBCC' });
+
+  const reloaded = createWorkbenchConfigurationService({ workspaceRoot, userSettingsPath });
+  await reloaded.initialize();
+  assert.equal(reloaded.get('editor.tokenTheme'), 'eyuyan');
+  assert.deepEqual(reloaded.get('editor.tokenColorOverrides'), { 'local.light': '#AABBCC' });
+  assert.equal(
+    JSON.parse(await fs.readFile(workspaceSettingsPath, 'utf8')).values['editor.tokenColorOverrides']['local.light'],
+    '#AABBCC'
+  );
 });
 
 async function writeSettings(

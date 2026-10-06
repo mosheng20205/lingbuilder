@@ -4,6 +4,7 @@ import {
   validateShortcutOverrides,
   WORKBENCH_DEFAULT_COMMAND_BINDINGS
 } from '../commands';
+import { LINGCPP_TOKEN_COLOR_PRESETS } from '../lingCpp/semanticTheme';
 import { ConfigurationService } from './configurationService';
 import { createJsonFileConfigurationStorageAdapter } from './storageAdapters';
 import {
@@ -19,6 +20,8 @@ import {
 export const WORKBENCH_CONFIGURATION_KEYS = [
   'editor.fontSize',
   'editor.experienceMode',
+  'editor.tokenTheme',
+  'editor.tokenColorOverrides',
   'files.autoSave',
   'files.autoSaveDelay',
   'updates.autoCheck',
@@ -27,13 +30,15 @@ export const WORKBENCH_CONFIGURATION_KEYS = [
   'workbench.colorTheme',
   'workbench.sidebar.visible',
   'workbench.sidebar.width',
+  'workbench.sidebar.fontSize',
   'workbench.panel.visible',
+  'workbench.panel.fontSize',
   'keyboard.shortcuts'
 ] as const;
 
 export type WorkbenchConfigurationKey = typeof WORKBENCH_CONFIGURATION_KEYS[number];
 
-export type WorkbenchConfigurationCategory = '编辑器' | '工作台' | '更新' | '键盘快捷键';
+export type WorkbenchConfigurationCategory = '编辑器' | '编辑器颜色' | '工作台' | '更新' | '键盘快捷键';
 
 export interface WorkbenchConfigurationEnumOption {
   value: string;
@@ -65,6 +70,23 @@ export const WORKBENCH_CONFIGURATION_SCHEMA: ConfigurationSchema = {
     default: 'beginner',
     enum: ['beginner', 'professional', 'native'],
     description: '中文代码编辑器的使用体验模式。'
+  },
+  'editor.tokenTheme': {
+    type: 'string',
+    default: 'default',
+    enum: LINGCPP_TOKEN_COLOR_PRESETS.map(preset => preset.id),
+    description: '中文代码编辑器的令牌配色主题（新手结构编辑器与专业编辑器共用）。'
+  },
+  'editor.tokenColorOverrides': {
+    type: 'object',
+    default: {},
+    additionalProperties: {
+      type: 'string',
+      minLength: 7,
+      maxLength: 7,
+      pattern: '^#[0-9a-fA-F]{6}$'
+    },
+    description: '令牌角色的自定义颜色覆盖，键为「角色.light/dark」，值为 #rrggbb 十六进制颜色。'
   },
   'files.autoSave': {
     type: 'string', default: 'off', enum: ['off', 'afterDelay'],
@@ -104,10 +126,24 @@ export const WORKBENCH_CONFIGURATION_SCHEMA: ConfigurationSchema = {
     maximum: 600,
     description: '左侧解决方案资源管理器的宽度，单位为像素。'
   },
+  'workbench.sidebar.fontSize': {
+    type: 'integer',
+    default: 13,
+    minimum: 10,
+    maximum: 20,
+    description: '左侧解决方案树行文字的字号，单位为像素。'
+  },
   'workbench.panel.visible': {
     type: 'boolean',
     default: false,
     description: '是否显示底部面板。默认收起，为编辑器保留主要工作空间。'
+  },
+  'workbench.panel.fontSize': {
+    type: 'integer',
+    default: 12,
+    minimum: 10,
+    maximum: 20,
+    description: '底部面板输出与调试日志正文的字号，单位为像素。'
   },
   'keyboard.shortcuts': {
     type: 'object',
@@ -145,6 +181,25 @@ export const WORKBENCH_CONFIGURATION_METADATA: readonly WorkbenchConfigurationMe
       { value: 'professional', label: '专业', description: '使用完整 Monaco 中文代码编辑器。' },
       { value: 'native', label: '原生预览', description: '查看确定性生成的原生 C++ 结果。' }
     ]
+  },
+  {
+    key: 'editor.tokenTheme',
+    category: '编辑器颜色',
+    title: '编辑器配色主题',
+    description: '选择新手结构编辑器与专业编辑器共用的令牌配色主题；可在下方逐色自定义覆盖。',
+    targets: USER_AND_WORKSPACE_TARGETS,
+    enumOptions: LINGCPP_TOKEN_COLOR_PRESETS.map(preset => ({
+      value: preset.id,
+      label: preset.label,
+      description: preset.description
+    }))
+  },
+  {
+    key: 'editor.tokenColorOverrides',
+    category: '编辑器颜色',
+    title: '编辑器自定义令牌颜色',
+    description: '按「角色.light / 角色.dark」覆盖当前主题的单个颜色（#rrggbb）；留空表示沿用主题色。',
+    targets: USER_AND_WORKSPACE_TARGETS
   },
   {
     key: 'files.autoSave', category: '编辑器', title: '自动保存',
@@ -202,11 +257,29 @@ export const WORKBENCH_CONFIGURATION_METADATA: readonly WorkbenchConfigurationMe
     maximum: 600
   },
   {
+    key: 'workbench.sidebar.fontSize',
+    category: '工作台',
+    title: '资源管理器字号',
+    description: '设置左侧解决方案树文字的大小（10-20 像素）。',
+    targets: USER_AND_WORKSPACE_TARGETS,
+    minimum: 10,
+    maximum: 20
+  },
+  {
     key: 'workbench.panel.visible',
     category: '工作台',
     title: '显示底部面板',
     description: '控制终端、输出和问题等底部面板是否可见；默认按需打开。',
     targets: USER_AND_WORKSPACE_TARGETS
+  },
+  {
+    key: 'workbench.panel.fontSize',
+    category: '工作台',
+    title: '底部面板字号',
+    description: '设置输出、调试日志等底部面板正文文字的大小（10-20 像素）。',
+    targets: USER_AND_WORKSPACE_TARGETS,
+    minimum: 10,
+    maximum: 20
   },
   {
     key: 'keyboard.shortcuts',

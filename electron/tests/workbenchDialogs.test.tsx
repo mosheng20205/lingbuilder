@@ -3,7 +3,11 @@ import assert from 'node:assert/strict';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import CommandPalette from '../src/components/CommandPalette';
-import SettingsDialog from '../src/components/SettingsDialog';
+import SettingsDialog, {
+  getNumberSettingDisplayValue,
+  resolveNumberSettingCommit,
+  resolveNumberSettingLiveSave
+} from '../src/components/SettingsDialog';
 import ProjectNameDialog from '../src/components/ProjectNameDialog';
 import ProjectTypeDialog from '../src/components/ProjectTypeDialog';
 import ProjectBuildPropertiesDialog, { resolveProjectBuildKindInfo } from '../src/components/ProjectBuildPropertiesDialog';
@@ -466,4 +470,28 @@ test('build properties dialog is read-only for window projects and flags module 
   assert.match(markup, /模块项目/u);
   assert.doesNotMatch(markup, /aria-label="构建模式"/u);
   assert.match(markup, /关闭/u);
+});
+
+test('number settings accept typed drafts: intermediates stay, bounds clamp on commit, spinner values save live', () => {
+  const bounds = { minimum: 10, maximum: 20, currentValue: 13 };
+
+  // 输入中的显示：有草稿显示草稿（不弹回），无草稿显示快照值
+  assert.equal(getNumberSettingDisplayValue(13, null), '13');
+  assert.equal(getNumberSettingDisplayValue(13, '1'), '1');
+  assert.equal(getNumberSettingDisplayValue(13, ''), '');
+
+  // 逐键即时保存：只放行范围内且与当前值不同的输入（上下箭头、补全的合法值）
+  assert.equal(resolveNumberSettingLiveSave('16', bounds), 16);
+  assert.equal(resolveNumberSettingLiveSave('1', bounds), null, '越界中间态不得触发保存（曾把受控值弹回导致无法键入）');
+  assert.equal(resolveNumberSettingLiveSave('99', bounds), null);
+  assert.equal(resolveNumberSettingLiveSave('', bounds), null);
+  assert.equal(resolveNumberSettingLiveSave('13', bounds), null, '与当前值相同不重复保存');
+  assert.equal(resolveNumberSettingLiveSave('16', { currentValue: 13 }), 16, '无范围元数据时放行合法整数');
+
+  // 失焦/回车提交：越界钳制到边界，清空还原不保存
+  assert.deepEqual(resolveNumberSettingCommit('16', bounds), { kind: 'save', value: 16 });
+  assert.deepEqual(resolveNumberSettingCommit('5', bounds), { kind: 'save', value: 10 }, '低于下限钳制到下限');
+  assert.deepEqual(resolveNumberSettingCommit('99', bounds), { kind: 'save', value: 20 }, '高于上限钳制到上限');
+  assert.deepEqual(resolveNumberSettingCommit('', bounds), { kind: 'noop' }, '清空提交视为还原，不保存');
+  assert.deepEqual(resolveNumberSettingCommit('13', bounds), { kind: 'noop' }, '钳制后与当前值相同不保存');
 });

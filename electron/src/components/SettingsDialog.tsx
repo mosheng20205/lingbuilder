@@ -1,5 +1,5 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { Eye, EyeOff, KeyRound, Keyboard, RefreshCw, RotateCcw, Search, Settings, ShieldCheck, Trash2, UserRound, X } from 'lucide-react';
+import { Crown, Eye, EyeOff, KeyRound, Keyboard, Palette, RefreshCw, RotateCcw, Search, Settings, ShieldCheck, Trash2, UserRound, X } from 'lucide-react';
 import { requestWorkbenchConfirm } from '../services/workbench/workbenchConfirmService';
 import { requestCloudAccountLogin } from '../services/workbench/cloudAccountLoginService';
 import {
@@ -8,6 +8,13 @@ import {
   signOutCloudAccount,
   subscribeCloudAccountSession
 } from '../services/workbench/cloudAccountSessionStore';
+import {
+  LINGCPP_TOKEN_COLOR_PRESETS,
+  LINGCPP_TOKEN_COLOR_ROLE_META,
+  normalizeLingCppTokenColorSettings,
+  resolveLingCppTokenColors
+} from '../services/lingCpp/semanticTheme';
+import type { LingCppTokenColorRole } from '../services/lingCpp/semanticTheme';
 
 import type { RegisteredCommand } from '../services/commands';
 import {
@@ -30,13 +37,15 @@ interface SettingsDialogProps {
   isDarkMode: boolean;
   loading: boolean;
   error?: string;
+  /** 打开时直达的分类（如标题栏 Pro 徽标跳「账号」）；留空保持默认编辑器分类。 */
+  initialCategory?: SettingsCategory | null;
   onUpdate: (key: WorkbenchConfigurationKey, value: ConfigurationValue, target: ConfigurationTarget) => Promise<boolean>;
   onReset: (key: WorkbenchConfigurationKey, target: ConfigurationTarget) => Promise<boolean>;
   onClose: () => void;
   onReload: () => Promise<void>;
 }
 
-const CATEGORIES = ['编辑器', '工作台', '账号', '更新', '浏览器凭据', '键盘快捷键'] as const;
+const CATEGORIES = ['编辑器', '编辑器颜色', '工作台', '账号', '更新', '浏览器凭据', '键盘快捷键'] as const;
 type SettingsCategory = typeof CATEGORIES[number];
 
 export default function SettingsDialog({
@@ -46,6 +55,7 @@ export default function SettingsDialog({
   isDarkMode,
   loading,
   error,
+  initialCategory,
   onUpdate,
   onReset,
   onClose,
@@ -56,6 +66,10 @@ export default function SettingsDialog({
   const searchRef = useRef<HTMLInputElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const [category, setCategory] = useState<SettingsCategory>('编辑器');
+  // 标题栏 Pro 徽标等入口带分类直达：打开时切到指定分类（如「账号」），未指定不影响默认。
+  useEffect(() => {
+    if (open && initialCategory) setCategory(initialCategory);
+  }, [open, initialCategory]);
   const [target, setTarget] = useState<ConfigurationTarget>('user');
   const [query, setQuery] = useState('');
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -272,7 +286,7 @@ export default function SettingsDialog({
                 aria-current={category === item ? 'page' : undefined}
                 className={`mb-1 flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${category === item ? isDarkMode ? 'bg-[#094771] text-white' : 'bg-sky-100 text-sky-950' : isDarkMode ? 'hover:bg-[#303030]' : 'hover:bg-slate-200'}`}
               >
-                {item === '键盘快捷键' ? <Keyboard className="h-4 w-4" aria-hidden="true" /> : item === '浏览器凭据' ? <KeyRound className="h-4 w-4" aria-hidden="true" /> : item === '更新' ? <RefreshCw className="h-4 w-4" aria-hidden="true" /> : item === '账号' ? <UserRound className="h-4 w-4" aria-hidden="true" /> : <Settings className="h-4 w-4" aria-hidden="true" />}
+                {item === '编辑器颜色' ? <Palette className="h-4 w-4" aria-hidden="true" /> : item === '键盘快捷键' ? <Keyboard className="h-4 w-4" aria-hidden="true" /> : item === '浏览器凭据' ? <KeyRound className="h-4 w-4" aria-hidden="true" /> : item === '更新' ? <RefreshCw className="h-4 w-4" aria-hidden="true" /> : item === '账号' ? <UserRound className="h-4 w-4" aria-hidden="true" /> : <Settings className="h-4 w-4" aria-hidden="true" />}
                 {item}
               </button>
             ))}
@@ -292,7 +306,7 @@ export default function SettingsDialog({
               </div>
             ))}
 
-            {!loading && category !== '键盘快捷键' && category !== '浏览器凭据' && category !== '更新' && category !== '账号' && (
+            {!loading && category !== '键盘快捷键' && category !== '浏览器凭据' && category !== '更新' && category !== '账号' && category !== '编辑器颜色' && (
               <div className="space-y-3">
                 {visibleSettings.length === 0 ? (
                   <div className={`py-12 text-center text-xs ${muted}`}>没有匹配的设置。</div>
@@ -311,6 +325,18 @@ export default function SettingsDialog({
                   </React.Fragment>
                 ))}
               </div>
+            )}
+
+            {!loading && category === '编辑器颜色' && (
+              <EditorColorSettings
+                snapshot={snapshot}
+                target={target}
+                isDarkMode={isDarkMode}
+                fieldClass={field}
+                mutedClass={muted}
+                onUpdate={onUpdate}
+                onReset={onReset}
+              />
             )}
 
             {!loading && category === '浏览器凭据' && (
@@ -395,6 +421,13 @@ interface UpdatesEntitlement {
   validUntil?: string | null;
   previewSuspended: boolean;
   application: { status: string; rejectReason: string; updatedAt?: string } | null;
+}
+
+/** Pro 年费到期日（短格式）；买断或无到期时返回空串。 */
+function formatProExpiry(endsAt?: string | null): string {
+  if (!endsAt) return '';
+  const date = new Date(endsAt);
+  return Number.isFinite(date.getTime()) ? date.toLocaleDateString('zh-CN') : '';
 }
 
 /** 「更新」设置分区：自动检查开关、体验计划资格卡片与预览渠道开关。 */
@@ -546,6 +579,254 @@ function UpdatesSetting({
 }
 
 /**
+ * 设置 → 编辑器颜色：令牌配色主题 + 逐角色颜色自定义。
+ *
+ * 主题与覆盖分别持久化在 editor.tokenTheme / editor.tokenColorOverrides；
+ * 颜色草稿只进本地 state 供即时预览，失焦/回车才提交，避免拾色器拖动期间高频写盘。
+ * 消费端（新手结构编辑器、Monaco、Diff）统一经 services/lingCpp/semanticTheme 解析。
+ */
+export function EditorColorSettings({
+  snapshot,
+  target,
+  isDarkMode,
+  fieldClass,
+  mutedClass,
+  onUpdate,
+  onReset
+}: {
+  snapshot: WorkbenchConfigurationSnapshot | null;
+  target: ConfigurationTarget;
+  isDarkMode: boolean;
+  fieldClass: string;
+  mutedClass: string;
+  onUpdate: (key: WorkbenchConfigurationKey, value: ConfigurationValue, target: ConfigurationTarget) => Promise<boolean>;
+  onReset: (key: WorkbenchConfigurationKey, target: ConfigurationTarget) => Promise<boolean>;
+}) {
+  const themeSetting = snapshot?.settings.find(item => item.metadata.key === 'editor.tokenTheme');
+  const overridesSetting = snapshot?.settings.find(item => item.metadata.key === 'editor.tokenColorOverrides');
+  const scopedThemeValue = target === 'user' ? themeSetting?.inspection.userValue : themeSetting?.inspection.workspaceValue;
+  const scopedOverridesValue = target === 'user' ? overridesSetting?.inspection.userValue : overridesSetting?.inspection.workspaceValue;
+  const inheritedTheme = scopedThemeValue === undefined;
+  const inheritedOverrides = scopedOverridesValue === undefined;
+  const effectiveThemeId = typeof themeSetting?.inspection.value === 'string' ? themeSetting.inspection.value : 'default';
+  const themeId = inheritedTheme ? effectiveThemeId : String(scopedThemeValue);
+  const baseOverrides = normalizeLingCppTokenColorSettings({
+    themeId,
+    overrides: inheritedOverrides ? overridesSetting?.inspection.value ?? {} : scopedOverridesValue
+  }).overrides;
+
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const scopeSignature = `${target}|${themeId}|${JSON.stringify(baseOverrides)}`;
+  useEffect(() => { setDrafts({}); }, [scopeSignature]);
+
+  const mergedOverrides = { ...baseOverrides };
+  for (const [key, value] of Object.entries(drafts)) {
+    if (/^#[0-9a-fA-F]{6}$/u.test(value)) mergedOverrides[key] = value.toLowerCase();
+  }
+  const lightPalette = resolveLingCppTokenColors({ themeId, overrides: mergedOverrides }, false);
+  const darkPalette = resolveLingCppTokenColors({ themeId, overrides: mergedOverrides }, true);
+  const palette = isDarkMode ? darkPalette : lightPalette;
+
+  const commitDraft = (key: string) => {
+    const value = drafts[key];
+    if (!value) return;
+    setDrafts(previous => {
+      const next = { ...previous };
+      delete next[key];
+      return next;
+    });
+    void onUpdate('editor.tokenColorOverrides', { ...baseOverrides, [key]: value.toLowerCase() }, target);
+  };
+
+  const resetCell = (key: string) => {
+    if (!(key in baseOverrides)) return;
+    const nextOverrides = { ...baseOverrides };
+    delete nextOverrides[key];
+    void onUpdate('editor.tokenColorOverrides', nextOverrides, target);
+  };
+
+  const resetAll = async () => {
+    await onReset('editor.tokenColorOverrides', target);
+    await onReset('editor.tokenTheme', target);
+  };
+
+  const sourceLabel = inheritedTheme && inheritedOverrides
+    ? `继承自${themeSetting?.inspection.source === 'workspace' ? '工作区' : themeSetting?.inspection.source === 'user' ? '用户' : '默认值'}`
+    : target === 'workspace' ? '工作区覆盖' : '用户覆盖';
+
+  return (
+    <div className="space-y-3">
+      <section className={`rounded border p-4 ${isDarkMode ? 'border-[#3c3c3c] bg-[#202020]' : 'border-slate-200 bg-white'}`}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <label htmlFor="editor-token-theme" className="text-xs font-semibold">配色主题</label>
+            <p className={`mt-1 text-[11px] leading-5 ${mutedClass}`}>
+              作用于新手结构编辑器、专业 Monaco 编辑器与 Diff 视图；可在下方对单个令牌颜色覆盖。当前作用域：{sourceLabel}。
+            </p>
+          </div>
+          <button type="button" onClick={() => void resetAll()} className={`inline-flex items-center gap-1 rounded px-2 py-1 text-[10px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${isDarkMode ? 'hover:bg-[#333]' : 'hover:bg-slate-100'}`}>
+            <RotateCcw className="h-3 w-3" aria-hidden="true" />恢复当前作用域默认
+          </button>
+        </div>
+        <select
+          id="editor-token-theme"
+          value={themeId}
+          onChange={event => void onUpdate('editor.tokenTheme', event.target.value, target)}
+          aria-label="配色主题"
+          className={`mt-3 h-9 w-full rounded border px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${fieldClass}`}
+        >
+          {LINGCPP_TOKEN_COLOR_PRESETS.map(preset => (
+            <option key={preset.id} value={preset.id}>{preset.label} — {preset.description}</option>
+          ))}
+        </select>
+        <TokenColorPreview lightPalette={lightPalette} darkPalette={darkPalette} />
+      </section>
+
+      {(['tokens', 'native'] as const).map(group => (
+        <section
+          key={group}
+          aria-label={group === 'tokens' ? '代码令牌颜色' : '内嵌 C++ 颜色'}
+          className={`rounded border p-4 ${isDarkMode ? 'border-[#3c3c3c] bg-[#202020]' : 'border-slate-200 bg-white'}`}
+        >
+          <h3 className="text-xs font-semibold">{group === 'tokens' ? '代码令牌' : '内嵌 C++（@ 行）'}</h3>
+          <p className={`mt-1 text-[11px] ${mutedClass}`}>拾色后失焦或按回车保存；示例文字按当前主题即时预览。</p>
+          <div className="mt-2">
+            {LINGCPP_TOKEN_COLOR_ROLE_META.filter(meta => meta.group === group).map(meta => {
+              const lightKey = `${meta.role}.light`;
+              const darkKey = `${meta.role}.dark`;
+              return (
+                <div key={meta.role} className={`flex flex-wrap items-center gap-x-4 gap-y-2 border-b py-2 last:border-b-0 ${isDarkMode ? 'border-[#3c3c3c]' : 'border-slate-200'}`}>
+                  <div className="min-w-[9rem] flex-1">
+                    <p className="text-xs font-medium">{meta.label}</p>
+                    <p className="font-mono text-[11px]" style={{ color: palette[meta.role] }}>{meta.sample}</p>
+                  </div>
+                  <TokenColorCell
+                    label="亮色"
+                    value={lightPalette[meta.role]}
+                    overridden={lightKey in baseOverrides}
+                    dirty={Boolean(drafts[lightKey])}
+                    disabled={themeSetting === undefined}
+                    isDarkModeValue={isDarkMode}
+                    fieldClass={fieldClass}
+                    mutedClass={mutedClass}
+                    onChange={value => setDrafts(previous => ({ ...previous, [lightKey]: value }))}
+                    onCommit={() => commitDraft(lightKey)}
+                    onReset={() => resetCell(lightKey)}
+                  />
+                  <TokenColorCell
+                    label="暗色"
+                    value={darkPalette[meta.role]}
+                    overridden={darkKey in baseOverrides}
+                    dirty={Boolean(drafts[darkKey])}
+                    disabled={themeSetting === undefined}
+                    isDarkModeValue={isDarkMode}
+                    fieldClass={fieldClass}
+                    mutedClass={mutedClass}
+                    onChange={value => setDrafts(previous => ({ ...previous, [darkKey]: value }))}
+                    onCommit={() => commitDraft(darkKey)}
+                    onReset={() => resetCell(darkKey)}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+const TOKEN_COLOR_PREVIEW_LINES: Array<Array<[LingCppTokenColorRole, string]>> = [
+  [
+    ['keyword', '如果'], ['operator', ' ('], ['local', '计数'], ['operator', ' < '], ['literal', '10'], ['operator', ')  '], ['comment', "' 循环注释"]
+  ],
+  [
+    ['operator', '    '], ['command', '信息框'], ['operator', '('], ['string', '"文本"'], ['operator', ', '], ['constant', '#提示'], ['operator', ', '], ['controlReference', '按钮1'], ['operator', ')']
+  ],
+  [
+    ['operator', '    '], ['moduleCommand', '数组_加入成员'], ['operator', '('], ['member', '程序集变量'], ['operator', ', '], ['type', '整数型'], ['operator', ', '], ['procedure', '子程序名'], ['operator', ')']
+  ]
+];
+
+function TokenColorPreview({
+  lightPalette,
+  darkPalette
+}: {
+  lightPalette: Record<LingCppTokenColorRole, string>;
+  darkPalette: Record<LingCppTokenColorRole, string>;
+}) {
+  const renderLine = (palette: Record<LingCppTokenColorRole, string>, tokens: Array<[LingCppTokenColorRole, string]>, lineIndex: number) => (
+    <div key={lineIndex} className="whitespace-pre font-mono text-[11px] leading-5">
+      {tokens.map(([role, text], index) => (
+        <span key={index} style={{ color: palette[role] }}>{text}</span>
+      ))}
+    </div>
+  );
+  return (
+    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+      <div aria-label="亮色预览" className="overflow-hidden rounded border border-slate-300 bg-white p-2">
+        {TOKEN_COLOR_PREVIEW_LINES.map((tokens, index) => renderLine(lightPalette, tokens, index))}
+      </div>
+      <div aria-label="暗色预览" className="overflow-hidden rounded border border-[#3c3d48] bg-[#1e1e24] p-2">
+        {TOKEN_COLOR_PREVIEW_LINES.map((tokens, index) => renderLine(darkPalette, tokens, index))}
+      </div>
+    </div>
+  );
+}
+
+function TokenColorCell({
+  label,
+  value,
+  overridden,
+  dirty,
+  disabled,
+  isDarkModeValue,
+  fieldClass,
+  mutedClass,
+  onChange,
+  onCommit,
+  onReset
+}: {
+  label: string;
+  value: string;
+  overridden: boolean;
+  dirty: boolean;
+  disabled: boolean;
+  isDarkModeValue: boolean;
+  fieldClass: string;
+  mutedClass: string;
+  onChange: (value: string) => void;
+  onCommit: () => void;
+  onReset: () => void;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className={`text-[10px] ${mutedClass}`}>{label}</span>
+      <input
+        type="color"
+        aria-label={`${label}颜色`}
+        value={value.toLowerCase()}
+        disabled={disabled}
+        onChange={event => onChange(event.target.value)}
+        onBlur={onCommit}
+        onKeyDown={event => { if (event.key === 'Enter') onCommit(); }}
+        className={`h-7 w-9 cursor-pointer rounded border bg-transparent p-0.5 ${fieldClass} ${dirty ? 'ring-2 ring-sky-400' : ''}`}
+      />
+      <button
+        type="button"
+        onClick={onReset}
+        disabled={disabled || !overridden}
+        aria-label={`恢复${label}默认`}
+        title={overridden ? `恢复${label}默认` : '未覆盖'}
+        className={`rounded p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-30 ${isDarkModeValue ? 'hover:bg-[#333]' : 'hover:bg-slate-100'}`}
+      >
+        <RotateCcw className="h-3 w-3" aria-hidden="true" />
+      </button>
+    </span>
+  );
+}
+
+/**
  * 设置 → 账号：登录态与登录/注册/退出入口。
  *
  * 表单一律走顶层 cloudAccountLoginService，本页只呈现状态，
@@ -572,6 +853,17 @@ function AccountSettings({ isDarkMode, fieldClass, mutedClass }: { isDarkMode: b
               <UserRound className="h-3.5 w-3.5 text-violet-400" aria-hidden="true" />
               <span className="max-w-[22rem] truncate">{session.email}</span>
             </span>
+            {session.pro && (
+              <span
+                title={session.pro.tier === 'perpetual'
+                  ? 'Pro 会员（永久买断）：生效期内可使用全部收费模块'
+                  : `Pro 会员：${formatProExpiry(session.pro.endsAt)}到期，可补差升级为永久买断`}
+                className="inline-flex items-center gap-1 rounded-full bg-amber-400/15 px-2 py-0.5 text-[10px] font-semibold text-amber-500 ring-1 ring-amber-400/40"
+              >
+                <Crown className="h-3 w-3" aria-hidden="true" />
+                {session.pro.tier === 'perpetual' ? 'PRO 永久' : `PRO · ${formatProExpiry(session.pro.endsAt)}到期`}
+              </span>
+            )}
           </div>
           {session.error && <p role="alert" className={`mt-2 text-[11px] ${isDarkMode ? 'text-rose-300' : 'text-rose-700'}`}>{session.error}</p>}
           <div className="mt-3 flex flex-wrap gap-2">
@@ -727,7 +1019,13 @@ function SettingRow({
             {item.metadata.enumOptions.map(option => <option key={option.value} value={option.value}>{option.label} — {option.description}</option>)}
           </select>
         ) : (
-          <input id={inputId} type="number" min={item.metadata.minimum} max={item.metadata.maximum} value={Number(value)} disabled={busy} onChange={event => { const next = Number.parseInt(event.target.value, 10); if (Number.isFinite(next)) onSave(next); }} className={`h-9 w-full rounded border px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${fieldClass}`} />
+          <NumberSettingInput
+            inputId={inputId}
+            item={item}
+            value={Number(value)}
+            fieldClass={fieldClass}
+            onSave={onSave}
+          />
         )}
       </div>
     </section>
@@ -739,6 +1037,89 @@ function isStringRecord(value: unknown): value is Record<string, string> {
     && typeof value === 'object'
     && !Array.isArray(value)
     && Object.values(value as Record<string, unknown>).every(item => typeof item === 'string');
+}
+
+export type NumberSettingCommit = { kind: 'save'; value: number } | { kind: 'noop' };
+
+/** 输入中的显示值：有本地草稿显示草稿，否则显示已保存的快照值。 */
+export function getNumberSettingDisplayValue(externalValue: number, draft: string | null): string {
+  return draft ?? String(externalValue);
+}
+
+/**
+ * 失焦/回车提交：可解析即钳制到 [min, max] 后保存；不可解析（清空、残缺）返回 noop 由调用方还原显示。
+ * 返回 save 前提是钳制结果与当前值不同，避免重复保存。
+ */
+export function resolveNumberSettingCommit(
+  rawDraft: string,
+  options: { minimum?: number; maximum?: number; currentValue: number }
+): NumberSettingCommit {
+  const parsed = Number.parseInt(rawDraft, 10);
+  if (!Number.isFinite(parsed)) return { kind: 'noop' };
+  const minimum = options.minimum ?? Number.NEGATIVE_INFINITY;
+  const maximum = options.maximum ?? Number.POSITIVE_INFINITY;
+  const clamped = Math.min(maximum, Math.max(minimum, parsed));
+  if (clamped === options.currentValue) return { kind: 'noop' };
+  return { kind: 'save', value: clamped };
+}
+
+/**
+ * 逐键即时保存判定：只放行「已在范围内且与当前值不同」的输入（上下箭头与补全的合法中间值），
+ * 范围外的中间输入（如目标 16 先敲出 1）只进本地草稿，交给失焦/回车钳制提交。
+ */
+export function resolveNumberSettingLiveSave(
+  rawDraft: string,
+  options: { minimum?: number; maximum?: number; currentValue: number }
+): number | null {
+  const parsed = Number.parseInt(rawDraft, 10);
+  if (!Number.isFinite(parsed)) return null;
+  if (options.minimum !== undefined && parsed < options.minimum) return null;
+  if (options.maximum !== undefined && parsed > options.maximum) return null;
+  return parsed === options.currentValue ? null : parsed;
+}
+
+function NumberSettingInput({
+  inputId,
+  item,
+  value,
+  fieldClass,
+  onSave
+}: {
+  inputId: string;
+  item: WorkbenchConfigurationSnapshotItem;
+  value: number;
+  fieldClass: string;
+  onSave: (value: ConfigurationValue) => void;
+}) {
+  // 旧实现是受控快照值 + 逐键异步保存：中间输入被受控值弹回（越界中间态还会被范围校验拒绝），
+  // 用户只能点上下箭头。现在输入过程只写本地草稿，提交规则见 resolveNumberSettingCommit/LiveSave。
+  const [draft, setDraft] = useState<string | null>(null);
+  const commitOptions = { minimum: item.metadata.minimum, maximum: item.metadata.maximum, currentValue: value };
+  const commitDraft = (rawDraft: string) => {
+    const commit = resolveNumberSettingCommit(rawDraft, commitOptions);
+    setDraft(null);
+    if (commit.kind === 'save') onSave(commit.value);
+  };
+  return (
+    <input
+      id={inputId}
+      type="number"
+      min={item.metadata.minimum}
+      max={item.metadata.maximum}
+      value={getNumberSettingDisplayValue(value, draft)}
+      onChange={event => {
+        const raw = event.target.value;
+        setDraft(raw);
+        const liveValue = resolveNumberSettingLiveSave(raw, commitOptions);
+        if (liveValue !== null) onSave(liveValue);
+      }}
+      onBlur={event => commitDraft(event.target.value)}
+      onKeyDown={event => {
+        if (event.key === 'Enter') commitDraft((event.target as HTMLInputElement).value);
+      }}
+      className={`h-9 w-full rounded border px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${fieldClass}`}
+    />
+  );
 }
 
 function safeId(value: string): string {
