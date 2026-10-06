@@ -337,6 +337,21 @@ const CONTROL_LABELS: Record<string, string> = Object.fromEntries([
   ['MenuBar', '窗口菜单栏']
 ]);
 
+// NE 等模块控件（有 designerType）的 type 可能不是 Win32 类型（如迁移落盘的 EditBox/IconButton），
+// CONTROL_LABELS 查不到会渲染成空；显示一律走这里：模块中文标签 → designerType 尾段 → Win32 标签 → 原始 type。
+function getControlTypeDisplayLabel(
+  control: Pick<LingControl, 'type' | 'designerType'>,
+  designerControlLabels?: Map<string, string>
+): string {
+  const designerLabel = control.designerType ? designerControlLabels?.get(control.designerType) : undefined;
+  if (designerLabel) return designerLabel;
+  if (control.designerType) {
+    const slash = control.designerType.lastIndexOf('/');
+    if (slash > 0) return control.designerType.slice(slash + 1);
+  }
+  return CONTROL_LABELS[control.type] || control.type;
+}
+
 const DEDICATED_CONTROL_PREVIEW_TYPES = new Set<LingControlType>([
   'Button', 'TextBox', 'Label', 'SysLink', 'CheckBox', 'RadioButton', 'ListBox',
   'ProgressBar', 'ComboBox', 'ComboBoxEx', 'GroupBox', 'Image', 'AnimatedImage',
@@ -1126,6 +1141,15 @@ const WpfDesigner = React.forwardRef<WpfDesignerHandle, WpfDesignerProps>(functi
   const newEmojiDesignerControls = useMemo(() => enabledDesignerModuleRecords
     .find(module => module.manifest.id === NEW_EMOJI_MODULE_ID)
     ?.manifest.contributes?.designerControls || [], [enabledDesignerModuleRecords]);
+  const designerControlLabelsByType = useMemo(() => {
+    const labels = new Map<string, string>();
+    for (const installed of enabledDesignerModuleRecords) {
+      for (const item of installed.manifest.contributes?.designerControls || []) {
+        labels.set(item.namespacedType || `${installed.manifest.id}/${item.type}`, item.label);
+      }
+    }
+    return labels;
+  }, [enabledDesignerModuleRecords]);
   const ensureDesignerModuleAccess = useCallback(async (force = false) => {
     if (!useNewEmojiDesigner && !force) return;
     const local = await fetch(`/api/module-access/status?moduleId=${encodeURIComponent(NEW_EMOJI_MODULE_ID)}`)
@@ -3553,9 +3577,10 @@ const WpfDesigner = React.forwardRef<WpfDesignerHandle, WpfDesignerProps>(functi
                     : 'radial-gradient(circle at 1px 1px, rgba(71, 85, 105, 0.24) 0.85px, transparent 0.95px)',
                 backgroundSize: '12px 12px',
                 backgroundPosition: '0 0',
-                borderRadius: activeWindow.cornerStyle === 'square'
+                // 圆角半径取窗口框架配置真值（与生成器 NE_设置窗口圆角 同源），不再写死 4/8px。
+                borderRadius: activeWindow.cornerStyle === 'square' || !(Number(activeWindow.windowFrame?.cornerRadius) > 0)
                   ? '0'
-                  : activeWindow.cornerStyle === 'small-rounded' ? '4px' : '8px',
+                  : `${Math.min(60, Math.max(2, Math.round(Number(activeWindow.windowFrame?.cornerRadius))))}px`,
                 ...(isFrameBorderStyle ? { outline: '3px double #9ca3af', outlineOffset: '-1px' } : {})
               }}
               onClick={() => {
@@ -4338,6 +4363,7 @@ const WpfDesigner = React.forwardRef<WpfDesignerHandle, WpfDesignerProps>(functi
                 selectedControlId={selectedControlId}
                 selectedControlIds={selectedControlIds}
                 isDarkMode={isDarkMode}
+                designerControlLabels={designerControlLabelsByType}
                 onSelectControls={(controlIds, primaryControlId) => {
                   setSelectedControlIds(controlIds);
                   setSelectedControlId(primaryControlId);
@@ -4541,6 +4567,7 @@ function LayoutHierarchy({
   selectedControlId,
   selectedControlIds,
   isDarkMode,
+  designerControlLabels,
   onSelectControls,
   onSelectTabPage,
   onReparentControls
@@ -4549,6 +4576,7 @@ function LayoutHierarchy({
   selectedControlId: string | null;
   selectedControlIds: string[];
   isDarkMode: boolean;
+  designerControlLabels?: Map<string, string>;
   onSelectControls: (controlIds: string[], primaryControlId: string | null) => void;
   onSelectTabPage: (tabControlId: string, pageId: string) => void;
   onReparentControls: (controlIds: string[], parentId?: string, containerSlot?: string) => void;
@@ -4779,7 +4807,7 @@ function LayoutHierarchy({
             <span className="shrink-0">{getControlIcon(node.control.type)}</span>
             <span className="min-w-0 flex-1 truncate">{node.control.name}</span>
             {selected && selectedControlIds.length > 1 && <Check className="h-3 w-3 shrink-0 text-sky-300" aria-hidden="true" />}
-            <span className="shrink-0 text-[9px] text-slate-500">{CONTROL_LABELS[node.control.type]}</span>
+            <span className="shrink-0 text-[9px] text-slate-500">{getControlTypeDisplayLabel(node.control, designerControlLabels)}</span>
           </button>
         </div>
         {hasChildren && expanded && (tabPages.length > 0 ? tabPages.map(page => {
@@ -7208,7 +7236,7 @@ function ControlProperties({
       <PropertyGroup title="控件 / 外观" isDarkMode={isDarkMode}>
         <PropertyRow label="控件类型" isDarkMode={isDarkMode}>
           <span className="rounded border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[11px] font-bold text-amber-500">
-            {CONTROL_LABELS[control.type]}
+            {moduleControl?.label || getControlTypeDisplayLabel(control)}
           </span>
         </PropertyRow>
         <TextField label="中文名称" value={control.name} isDarkMode={isDarkMode} onChange={handleNameChange} />
@@ -7701,6 +7729,13 @@ function ControlEvents({
   onChange: (fields: Partial<LingControl>) => void | Promise<void>;
 }) {
   const [openingEventName, setOpeningEventName] = useState<string | null>(null);
+  const [eventSearch, setEventSearch] = useState('');
+  // 切换控件时清空搜索词，避免上一个控件的过滤词让新控件的事件列表看起来是空的。
+  const eventSearchControlIdRef = useRef<string | null>(null);
+  if (control && eventSearchControlIdRef.current !== control.id) {
+    eventSearchControlIdRef.current = control.id;
+    if (eventSearch) setEventSearch('');
+  }
   if (!control) {
     return (
       <div className={`h-40 flex flex-col items-center justify-center text-center text-xs p-4 border border-dashed rounded ${
@@ -7760,6 +7795,7 @@ function ControlEvents({
       controlType: control.type,
       eventName,
       handlerName,
+      eventLabel: eventInfo?.handlerSuffix,
       eventParameters: moduleControl ? [...(eventInfo?.parameters || [])] : undefined,
       eventStarterStatements: eventInfo?.starterStatements ? [...eventInfo.starterStatements] : undefined,
       windowFileName: windowModel.fileName,
@@ -7769,18 +7805,46 @@ function ControlEvents({
     globalThis.window.dispatchEvent(new CustomEvent<OpenControlEventCodeDetail>('open-control-event-code', { detail }));
   };
 
+  const normalizedEventSearch = eventSearch.trim().toLocaleLowerCase();
+  const visibleEventInfos = normalizedEventSearch
+    ? eventInfos.filter(eventInfo => [eventInfo.label, eventInfo.name, eventInfo.handlerSuffix || '']
+      .some(value => value.toLocaleLowerCase().includes(normalizedEventSearch)))
+    : eventInfos;
+
   return (
     <div className="space-y-3">
       <div className={`text-[11px] border-b pb-1.5 flex items-center gap-1.5 ${isDarkMode ? 'text-slate-400 border-slate-800' : 'text-slate-600 border-slate-200'}`}>
         <Zap className="w-3.5 h-3.5 text-amber-500" />
         <span className="font-semibold">事件绑定：{control.name}</span>
       </div>
+      {eventInfos.length > 6 && (
+        <input
+          type="search"
+          value={eventSearch}
+          onChange={event => setEventSearch(event.target.value)}
+          placeholder="搜索事件（中文标签或英文名）…"
+          aria-label="搜索控件事件"
+          className={`w-full rounded border px-2.5 py-1.5 text-xs focus:border-amber-500 focus:outline-none ${
+            isDarkMode ? 'border-[#2d2d34] bg-[#1b1b20] text-slate-200' : 'border-slate-300 bg-white text-slate-800'
+          }`}
+        />
+      )}
       {eventInfos.length === 0 && (
         <div role="status" className={`rounded border border-dashed px-3 py-4 text-center text-[10px] leading-relaxed ${isDarkMode ? 'border-slate-700 text-slate-500' : 'border-slate-300 text-slate-500'}`}>
           当前组件目录中的事件尚无已验证的原生回调映射，因此不会生成无效处理器绑定。
         </div>
       )}
-      {eventInfos.map(eventInfo => {
+      {normalizedEventSearch && visibleEventInfos.length === 0 && (
+        <div role="status" className={`rounded border border-dashed px-3 py-4 text-center text-[10px] leading-relaxed ${isDarkMode ? 'border-slate-700 text-slate-500' : 'border-slate-300 text-slate-500'}`}>
+          没有匹配「{eventSearch.trim()}」的事件。
+        </div>
+      )}
+      {normalizedEventSearch && visibleEventInfos.length > 0 && (
+        <div className={`text-[10px] ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>
+          匹配 {visibleEventInfos.length} / {eventInfos.length} 个事件
+        </div>
+      )}
+      {visibleEventInfos.map(eventInfo => {
         const currentHandler = control.events?.[eventInfo.name] || '';
         const suggestedHandler = getEplEventHandlerName(control.name, eventInfo.handlerSuffix || eventInfo.name);
         const isBound = Boolean(currentHandler.trim());

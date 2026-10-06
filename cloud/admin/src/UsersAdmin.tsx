@@ -19,7 +19,7 @@ function sessionState(row: any): { label: string; tone: 'ok' | 'off' | 'danger' 
 }
 
 export function UsersAdmin({ data, request, reload }: Props) {
-  const users = (data?.users || []) as any[];
+  const users = (Array.isArray(data?.users) ? data.users : []) as any[];
   const [query, setQuery] = useState('');
   const [error, setError] = useState('');
   const [sessionsUser, setSessionsUser] = useState<any | null>(null);

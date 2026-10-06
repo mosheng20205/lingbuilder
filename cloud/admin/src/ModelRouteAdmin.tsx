@@ -15,7 +15,7 @@ function yuanPreview(points: string): string {
 }
 
 export function ModelRouteAdmin({ data, request, reload }: Props) {
-  const models = (data?.models || []) as any[];
+  const models = (Array.isArray(data?.models) ? data.models : []) as any[];
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
