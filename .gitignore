@@ -175,6 +175,11 @@ COMPONENT_CARDS_PLAN.md
 # 本机排查/演示工作区与临时产物（不入库）
 /.attack-tmp/
 /AI/
+# 根目录下划线开头的一次性脚本/数据（录屏、排查、抓取中间产物）
+/_*
+# IDE 工作区解决方案登记文件（活跃状态，不入库）
+/UI_CppLocProj.lbsln
+/未命名解决方案.lbsln
 /electron/2026-08-08：AI
 /electron/2026-08-09：
 /electron/数据/
