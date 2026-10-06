@@ -11,7 +11,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import ListViewDesignerPreview from '../src/components/ListViewDesignerPreview';
 import HeaderDesignerPreview from '../src/components/HeaderDesignerPreview';
 import TabControlDesignerPreview from '../src/components/TabControlDesignerPreview';
-import { selectControlEventTargetFile } from '../src/services/windowDesigner/controlEventTargetFile';
+import { hasLingCppEventHandler, selectControlEventTargetFile } from '../src/services/windowDesigner/controlEventTargetFile';
 import { describeWindowSourceClobber } from '../src/services/windowDesigner/windowSourceClobber';
 import { findLegacyWindowSourceFile } from '../src/services/windowDesigner/legacyWindowSource';
 import { ensureLingCppControlEventHandler } from '../src/services/windowDesigner/controlEventCodeService';
@@ -3384,6 +3384,87 @@ test('new_emoji 17–24 预览按原生属性渲染而不伪造示意内容', ()
   assert.doesNotMatch(richListMarkup, /富列表项目/u);
 });
 
+test('new_emoji Select/Input 预览消费 options/content/字号且不伪造键盘图标（对齐引擎绘制）', () => {
+  const theme = getNewEmojiThemePreview('#242941');
+  const renderPreview = (kind: string, overrides: Partial<LingControl> = {}) => renderToStaticMarkup(React.createElement(NewEmojiDesignerControlPreview, {
+    control: {
+      ...createControl(`preview-${kind}`, undefined, 'Label'),
+      designerType: `lingbuilder.new_emoji.ui/${kind}`,
+      ...overrides
+    },
+    isEnabled: true,
+    theme
+  }));
+
+  // 历史缺陷：Select 只渲染 items[0]（本控件的选项在 options，缺失时兜底「选项一」），
+  // content 标签与 selectedIndex 完全不消费；引擎实际绘制 = content 灰标签 + 选中项 + 箭头。
+  const selectMarkup = renderPreview('Select', {
+    content: '选择代理类型', width: 300, fontSize: 14,
+    properties: { options: ['0（SOCKS5 代理）', '1（HTTP 代理）'], selectedIndex: 0 }
+  });
+  assert.match(selectMarkup, /选择代理类型/u);
+  assert.match(selectMarkup, /0（SOCKS5 代理）/u);
+  assert.doesNotMatch(selectMarkup, /选项一/u);
+  assert.match(selectMarkup, /font-size:14px/u);
+
+  const selectEmptyMarkup = renderPreview('Select', { properties: {} });
+  assert.match(selectEmptyMarkup, /请选择/u);
+
+  // 历史缺陷：Input 写死 text-[11px] 且伪造 ⌨ 键盘图标；引擎无此图标，字号应跟随控件。
+  const inputMarkup = renderPreview('Input', {
+    content: '', fontSize: 14, properties: { placeholder: 'chrome.exe，纯数字按 PID' }
+  });
+  assert.match(inputMarkup, /chrome\.exe，纯数字按 PID/u);
+  assert.doesNotMatch(inputMarkup, /⌨/u);
+  assert.match(inputMarkup, /color:var\(--ne-muted\)/u);
+
+  const inputValueMarkup = renderPreview('Input', {
+    content: '127.0.0.1:7890', properties: { placeholder: 'IP:端口' }
+  });
+  assert.match(inputValueMarkup, />127\.0\.0\.1:7890</u);
+});
+
+test('new_emoji 按钮预览按 variant/plain/显式背景镜像 NE 引擎默认态绘制', () => {
+  let sequence = 0;
+  const renderButton = (mode: 'dark' | 'light', overrides: Partial<LingControl> = {}, properties: Record<string, unknown> = {}) => {
+    sequence += 1;
+    return renderToStaticMarkup(React.createElement(NewEmojiDesignerControlPreview, {
+      control: {
+        ...createControl(`preview-button-${sequence}`, undefined, 'Button'),
+        designerType: 'lingbuilder.new_emoji.ui/Button',
+        width: 264,
+        height: 48,
+        ...overrides
+      },
+      isEnabled: true,
+      theme: mode === 'dark' ? getNewEmojiThemePreview('#242941') : getNewEmojiThemePreview('#EFF1F5')
+    }));
+  };
+
+  // 进程代理工作台三键（查本机IP/开启代理/停止代理 = variant 6/2/4）逐值对齐 theme.cpp。
+  assert.match(renderButton('dark', { properties: { variant: '6' } }), /background-color:#0EA5E9/u);
+  assert.match(renderButton('dark', { properties: { variant: '2' } }), /background-color:#16A34A/u);
+  assert.match(renderButton('dark', { properties: { variant: '4' } }), /background-color:#DC2626/u);
+  // variant 0 走默认底；显式背景只在 variant=0 生效，variant>=1 一律主题色实底。
+  assert.match(renderButton('dark', { properties: { variant: '0' } }), /background-color:#45475A/u);
+  assert.match(renderButton('dark', { background: '#FF123456', properties: { variant: '0' } }), /background-color:#123456/u);
+  assert.match(renderButton('dark', { background: '#FF123456', properties: { variant: '2' } }), /background-color:#16A34A/u);
+  assert.doesNotMatch(renderButton('dark', { properties: { variant: '2' } }), /var\(--ne-button\)/u);
+  // 警告态文字用深色；亮色主题主要键用亮色 accent。
+  assert.match(renderButton('dark', { properties: { variant: '3' } }), /color:#1F2937/u);
+  assert.match(renderButton('light', { properties: { variant: '1' } }), /background-color:#1E66F5/u);
+  // plain：同色低透明底 + 同色字（暗色 alpha 0x2A）；variant=5 纯文本透明底、未显式设前景走 accent。
+  assert.match(renderButton('dark', { properties: { variant: '2', plain: true } }), /background-color:rgba\(22, 163, 74, 0\.165\)/u);
+  assert.match(renderButton('dark', { properties: { variant: '2', plain: true } }), /color:#16A34A/u);
+  const textMarkup = renderButton('dark', { foreground: 'transparent', properties: { variant: '5' } });
+  assert.match(textMarkup, /background-color:transparent/u);
+  assert.match(textMarkup, /color:#89B4FA/u);
+  // round/circle 圆角与引擎半径公式一致（round=h*0.45、circle=min(w,h)/2）；size 2/3 按引擎比例缩字号。
+  assert.match(renderButton('dark', { properties: { variant: '2', round: true } }), /border-radius:21\.6px/u);
+  assert.match(renderButton('dark', { properties: { variant: '2', circle: true } }), /border-radius:24px/u);
+  assert.match(renderButton('dark', { properties: { variant: '0', size: '2' } }), /font-size:11\.142857/u);
+});
+
 test('选项卡注册隐藏表头属性且默认保持显示', () => {
   const tabControl = WIN32_CONTROL_DEFINITIONS.find(definition => definition.type === 'TabControl');
   const hideHeader = tabControl?.properties.find(property => property.key === 'hideHeader');
@@ -4846,6 +4927,73 @@ test('文本类型转换命令族在 Win32 与 new_emoji 两后端确定性生�
   }
 });
 
+test('SunnyNet 网络中间件命令族在 new_emoji 后端放行并携带消息窗口运行时', () => {
+  const sunnyNetModule: InstalledModule = {
+    manifest: BUILTIN_MODULES.find(module => module.id === 'lingbuilder.sunnynet')!,
+    installPath: 'builtin',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const newEmojiModule: InstalledModule = {
+    manifest: {
+      schemaVersion: 2,
+      id: 'lingbuilder.new_emoji.ui',
+      name: 'new_emoji 原生界面库',
+      version: '2.0.0',
+      category: '界面',
+      description: '测试模块',
+      targets: [{ id: 'windows-msvc-x64', platform: 'windows', arch: 'x64', toolchain: 'msvc' }]
+    },
+    installPath: 'C:/modules/lingbuilder.new_emoji.ui',
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const source = '类 MainWindow\n    事件 创建完毕()\n        局部 网络中间件 中间件\n        中间件 = 网络中间件_创建()\n        调试输出(网络中间件_取版本())\n    结束\n结束类';
+  assert.deepEqual(
+    getUiBackendCommandDiagnostics(NEW_EMOJI_UI_BACKEND_ID, parseLingCpp(source).program, [sunnyNetModule, newEmojiModule]),
+    []
+  );
+
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'new-emoji-sunnynet-project',
+    name: 'new_emoji 网络中间件契约',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: 'MainWindow', title: '契约测试',
+      width: 640, height: 420, background: '#111827', description: '', designerBackend: 'new-emoji', controls: []
+    }]
+  };
+  const generated = generateLingCppNativeWin32Project(project, {
+    lingCppSourceCode: source,
+    enabledModules: [sunnyNetModule, newEmojiModule]
+  });
+  assert.deepEqual(generated.blockingDiagnostics, []);
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
+  assert.match(cpp, /WM_LINGBUILDER_NE_SUNNYNET_EVENT/u);
+  assert.match(cpp, /网络中间件_创建\(/u);
+
+  // 网页访问（WinHTTP）族未接入 new_emoji 后端：必须生成前阻断，并直接给出 HTTP 客户端替代指引。
+  const webHttpModule: InstalledModule = {
+    manifest: BUILTIN_MODULES.find(module => module.id === 'lingbuilder.web.http')!,
+    installPath: 'builtin',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const webHttpDiagnostics = getUiBackendCommandDiagnostics(
+    NEW_EMOJI_UI_BACKEND_ID,
+    parseLingCpp('类 MainWindow\n    事件 创建完毕()\n        网页_异步访问("https://example.com", 0, &访问完成)\n    结束\n结束类').program,
+    [webHttpModule, newEmojiModule]
+  );
+  assert.equal(webHttpDiagnostics.length, 1);
+  assert.match(webHttpDiagnostics[0], /new_emoji 后端暂未接入“网页_异步访问”/u);
+  assert.match(webHttpDiagnostics[0], /HTTP客户端_GET异步/u);
+});
+
 test('ListView 完整数据接口、批量更新和 OWNERDATA 虚拟模式确定性生成', () => {
   const normalList = {
     ...createControl('normal-list', undefined, 'ListView'),
@@ -5136,6 +5284,40 @@ test('new_emoji FBro browser shell template generates one real HWND host per tab
   assert.match(cpp, /static bool 浏览器外壳_选择列表键/u);
   assert.match(cpp, /static bool 浏览器外壳_按配置重建当前/u);
   assert.match(cpp, /LB_NE_FbroProcessText\(browser, L"getCookies"/u);
+});
+
+test('new_emoji 系统窗口预设的圆角配置照常下发 NE_设置窗口圆角（历史缺陷：只对自定义框架生效）', async t => {
+  const moduleRoot = path.resolve('..', '.lingbuilder', 'modules', 'lingbuilder.new_emoji.ui');
+  let newEmojiManifest: InstalledModule['manifest'];
+  try {
+    newEmojiManifest = JSON.parse(await fs.readFile(path.join(moduleRoot, 'lingbuilder.module.json'), 'utf8')) as InstalledModule['manifest'];
+  } catch {
+    t.skip('当前环境未安装 new_emoji 模块，跳过系统窗口圆角生成回归测试。');
+    return;
+  }
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'rounded-system-window',
+    name: '系统窗口圆角',
+    windows: [{
+      id: 'main-window', fileName: 'MainWindow.xml', className: '程序',
+      title: '系统窗口圆角', width: 600, height: 860, background: '#0B1220',
+      description: '', designerBackend: 'new-emoji', controls: [],
+      cornerStyle: 'rounded', borderStyle: 'normal-resizable',
+      windowFrame: { preset: 'system', flags: 0, resizeBorder: { left: 6, top: 6, right: 6, bottom: 6 }, cornerRadius: 10 }
+    }]
+  };
+  const source = '类 程序\n公开\n  整数型 启动()\n    返回 (0)\n  结束\n结束类';
+  const generated = generateLingCppNativeWin32Project(project, {
+    lingCppSourceCode: source,
+    enabledModules: [{ manifest: newEmojiManifest, installPath: moduleRoot, isInstalled: true, isEnabledForProject: true, diagnostics: [] }]
+  });
+  assert.deepEqual(generated.blockingDiagnostics, []);
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.match(cpp, /NE_创建深色窗口\(L"系统窗口圆角"/u);
+  assert.match(cpp, /NE_设置窗口圆角\(g_newEmojiWindow, 1, 10\);/u);
+  // 系统预设不由项目代码下发缩放边框（引擎自绘标题栏与缩放边）。
+  assert.doesNotMatch(cpp, /NE_设置窗口缩放边框/u);
 });
 
 test('原生生成优先按当前源码文件选择窗口并忽略过期设计器活动窗口', () => {
@@ -5766,6 +5948,77 @@ test('双击定位事件：精确名已存在时原样返回', () => {
   assert.equal(ensured.content, source);
   assert.equal(ensured.signatureUpgraded, false);
   assert.equal(ensured.matchedHandlerName, '_MainWindow_创建完毕');
+});
+
+// ===== 事件桩插入位置与可读性（2026-10-05 FBro 三种宿主模式示例回归） =====
+// 背景：示例工程源码在 结束类 之后带注释行（如「// 本集口播命令」），旧的「剥掉文件末尾的
+// 结束类再追加」把新桩放到类外并多出一个 结束类——Monaco 报「类外语句/多余的类结束语句」
+// 波浪线，新手画布按类结构渲染则完全不显示新桩，表现为「生成并打开没反应」。
+
+test('事件桩：结束类后带尾注释时插入到最后一个结束类之前，尾注释保留且只有一个结束类', () => {
+  const source = [
+    '类 MainWindow',
+    '    事件 创建完毕()',
+    '        调试输出("窗口创建完毕")',
+    '    结束',
+    '结束类',
+    '',
+    '// 本集口播命令：FBro_导航',
+    ''
+  ].join('\n');
+  const ensured = ensureLingCppControlEventHandler(source, {
+    controlName: '进程内浏览器',
+    controlType: 'FBroBrowser',
+    eventName: 'fbro.event.fbrohsbroevent.onloadend.c8c0f60bf036',
+    handlerName: '_进程内浏览器_加载完成',
+    windowClassName: 'MainWindow'
+  });
+  const classEndCount = (ensured.content.match(/结束类/gu) || []).length;
+  assert.equal(classEndCount, 1, `应只有一个 结束类：\n${ensured.content}`);
+  const classEndLine = ensured.content.split('\n').findIndex(line => line.trim() === '结束类');
+  const handlerLine = ensured.content.split('\n').findIndex(line => line.includes('事件 _进程内浏览器_加载完成'));
+  assert.ok(handlerLine >= 0, '事件桩必须存在');
+  assert.ok(handlerLine < classEndLine, '事件桩必须位于 结束类 之前（类内）');
+  assert.ok(ensured.content.trimEnd().endsWith('// 本集口播命令：FBro_导航'), '尾注释必须保留在 结束类 之后');
+  // 类结构合法：解析器能把新事件识别为类内事件方法。
+  assert.equal(hasLingCppEventHandler(ensured.content, '_进程内浏览器_加载完成'), true);
+});
+
+test('事件桩：eventLabel 优先作为调试输出后缀，不把模块事件原始 ID 拼进字符串', () => {
+  const source = '类 MainWindow\n结束类\n';
+  const ensured = ensureLingCppControlEventHandler(source, {
+    controlName: '进程内浏览器',
+    controlType: 'FBroBrowser',
+    eventName: 'fbro.event.fbrohsbroevent.onloadend.c8c0f60bf036',
+    handlerName: '_进程内浏览器_加载完成',
+    eventLabel: '加载完成',
+    windowClassName: 'MainWindow'
+  });
+  assert.match(ensured.content, /调试输出\("进程内浏览器加载完成"\)/u);
+  assert.doesNotMatch(ensured.content, /fbro\.event\./u, '原始事件 ID 不应出现在生成的桩里');
+});
+
+test('事件桩：多个浏览器控件各生成同名事件的独立处理器，互不冲突', () => {
+  const first = ensureLingCppControlEventHandler('类 MainWindow\n结束类\n', {
+    controlName: '进程内浏览器',
+    controlType: 'FBroBrowser',
+    eventName: 'fbro.event.fbrohsbroevent.onloadend.c8c0f60bf036',
+    handlerName: '_进程内浏览器_加载完成',
+    eventLabel: '加载完成',
+    windowClassName: 'MainWindow'
+  });
+  const second = ensureLingCppControlEventHandler(first.content, {
+    controlName: '独立进程浏览器',
+    controlType: 'FBroBrowser',
+    eventName: 'fbro.event.fbrohsbroevent.onloadend.c8c0f60bf036',
+    handlerName: '_独立进程浏览器_加载完成',
+    eventLabel: '加载完成',
+    windowClassName: 'MainWindow'
+  });
+  assert.equal(hasLingCppEventHandler(second.content, '_进程内浏览器_加载完成'), true);
+  assert.equal(hasLingCppEventHandler(second.content, '_独立进程浏览器_加载完成'), true);
+  assert.match(second.content, /事件 _进程内浏览器_加载完成\(\)/u);
+  assert.match(second.content, /事件 _独立进程浏览器_加载完成\(\)/u);
 });
 
 

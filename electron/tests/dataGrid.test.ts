@@ -119,6 +119,12 @@ test('new_emoji Table designer preview renders structured columns, rows and alig
   assert.match(markup, /text-align:right/u);
   assert.match(markup, /单元格 A1/u);
   assert.match(markup, /单元格 B2/u);
+  // 表头/行高与字号按引擎口径渲染：表头默认 46（钳制 26..90），行高默认 32，字号跟随控件（历史缺陷：写死 9px）。
+  assert.match(markup, /height:46px/u);
+  assert.match(markup, /height:32px/u);
+  assert.match(markup, /font-size:12px/u);
+  // 暗色主题表头底色与引擎 element_table_paint.cpp 一致（#282A3A）。
+  assert.match(markup, /#282A3A/u);
   // 不可见列与旧演示占位都不出现。
   assert.doesNotMatch(markup, /隐藏列/u);
   assert.doesNotMatch(markup, /示例项目/u);

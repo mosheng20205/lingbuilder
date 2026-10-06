@@ -11,6 +11,7 @@ const MODULE_ID = 'lingbuilder.new_emoji.ui';
 const MODULE_NAME = 'new_emoji 原生界面库';
 const DEFAULT_SOURCE = 'T:\\github\\new_emoji';
 const EXPECTED_DESIGNER_COMPONENT_COUNT = 93;
+const { commandNames: NEW_EMOJI_COMMAND_NAMES, commandDescriptions: NEW_EMOJI_COMMAND_DESCRIPTIONS } = require('./generate-new-emoji-command-names.cjs');
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -269,8 +270,20 @@ function buildCommands(exports, prototypes, apiManifest, callbackTypes) {
 
   for (const exportName of exports) {
     const prototype = prototypes.get(exportName) || { returnType: 'int', params: [] };
-    let name = commandNamesByExport.get(exportName) || `NE_${exportName}`;
-    if (seen.has(name)) name = `NE_${exportName}`;
+    const registeredName = commandNamesByExport.get(exportName);
+    const mappedName = NEW_EMOJI_COMMAND_NAMES[exportName];
+    let name;
+    let aliases;
+    if (registeredName) {
+      name = registeredName;
+    } else if (mappedName) {
+      name = mappedName;
+      // 旧名（NE_EU_* 兜底名）进别名，存量源码/AI 生成代码继续可编译。
+      aliases = [`NE_${exportName}`];
+    } else {
+      throw new Error(`new_emoji 导出 ${exportName} 未登记中文命令名：请补进 api_manifest.full.json 或 electron/scripts/generate-new-emoji-command-names.cjs 后重新生成（禁止静默产生 NE_EU_* 英文兜底命令）。`);
+    }
+    if (seen.has(name)) throw new Error(`new_emoji 命令名重复：${name}（导出 ${exportName}）。`);
     seen.add(name);
     const nativeParameters = prototype.params.map(parameter => {
       const callback = callbackTypes.get(parameter.type);
@@ -278,8 +291,9 @@ function buildCommands(exports, prototypes, apiManifest, callbackTypes) {
     });
     commands.push({
       name,
+      ...(aliases ? { aliases } : {}),
       signature: `${name}(${prototype.params.map(param => param.name).join(', ')})`,
-      description: `${MODULE_NAME} 底层导出 ${exportName}。文本参数使用 UTF-8 字节指针和长度，高级调用前请确认参数类型。`,
+      description: NEW_EMOJI_COMMAND_DESCRIPTIONS[exportName] || `${MODULE_NAME} 底层导出 ${exportName}。文本参数使用 UTF-8 字节指针和长度，高级调用前请确认参数类型。`,
       insertText: `${name}(${prototype.params.map((_, index) => `$${index + 1}`).join(', ')})`,
       returnType: mapReturnType(prototype.returnType),
       runtimeName: exportName,
@@ -384,7 +398,8 @@ function buildManifest(commands, designerCatalog, designerCatalogSha256) {
         controlBindingContext
       )),
       returnType: mapBindingReturnType(command.returnType),
-      encoding: command.name.startsWith('NE_EU_') ? 'raw' : 'wide',
+      // EU_* 导出是 UTF-8 字节指针 ABI（与命令展示名无关，按 runtimeName 判定）；桥接/数据桥/属性桥命令是宽字符封装。
+      encoding: /^EU_/u.test(runtimeName) ? 'raw' : 'wide',
       example: command.insertText || command.signature
     };
   }), ...portableControlCommands.map(item => item.binding), ...dataBridgeCommands.map(item => item.binding), ...propertyBridgeCommands.map(item => item.binding), {
@@ -697,11 +712,11 @@ function newEmojiDataBridgeCommands(designerControls) {
   const windowParameter = { name: '窗口句柄', type: 'handle', description: 'new_emoji 窗口句柄。' };
   return [
     build('NE表格_设置列', 'NE表格_设置列(控件, 列配置)',
-      '设置 new_emoji 表格列。列配置为 new_emoji 高阶列 kv 协议文本（与 NE_EU_SetTableColumnsEx 一致）：每行一列，字段用制表符分隔，支持 title=标题 key=标识 width=宽度 align=对齐(left/center/right) type=类型(text/selection/switch/combo/buttons/progress 等) fixed=left(冻结) sortable=1 filterable=1 options=选项1|选项2。',
+      '设置 new_emoji 表格列。列配置为 new_emoji 高阶列 kv 协议文本（与 NE表格_设置列扩展 一致）：每行一列，字段用制表符分隔，支持 title=标题 key=标识 width=宽度 align=对齐(left/center/right) type=类型(text/selection/switch/combo/buttons/progress 等) fixed=left(冻结) sortable=1 filterable=1 options=选项1|选项2。',
       '逻辑型', [controlParameter(tableType, '当前窗口中的 NE表格 控件。'), { name: '列配置', type: 'wideString', description: '表格列 kv 协议文本，每行一列（title=…\tkey=…\twidth=…\talign=…），不是 JSON。' }],
       'NE表格_设置列(表格1, "title=名称\\tkey=name\\twidth=180\\talign=center\\ntitle=状态\\tkey=status\\twidth=120\\talign=left")'),
     build('NE表格_设置行数据', 'NE表格_设置行数据(控件, 行数据)',
-      '整体替换 new_emoji 表格行数据。行数据为 new_emoji 高阶行 kv 协议文本（与 NE_EU_SetTableRowsEx 一致）：每行一条记录，字段用制表符分隔，支持 key=行键 disabled=1 align=对齐，单元格按列序号写入 c0=第1列 c1=第2列……。',
+      '整体替换 new_emoji 表格行数据。行数据为 new_emoji 高阶行 kv 协议文本（与 NE表格_设置行列表扩展 一致）：每行一条记录，字段用制表符分隔，支持 key=行键 disabled=1 align=对齐，单元格按列序号写入 c0=第1列 c1=第2列……。',
       '逻辑型', [controlParameter(tableType, '当前窗口中的 NE表格 控件。'), { name: '行数据', type: 'wideString', description: '表格行 kv 协议文本，每行一条（key=…\tc0=…\tc1=…），不是 JSON。' }],
       'NE表格_设置行数据(表格1, "key=r1\\tc0=订单 A\\tc1=待处理\\nkey=r2\\tc0=订单 B\\tc1=已发货")'),
     build('NE表格_添加行', 'NE表格_添加行(控件, 行数据)',
@@ -713,11 +728,11 @@ function newEmojiDataBridgeCommands(designerControls) {
       '整数型', [controlParameter(tableType, '当前窗口中的 NE表格 控件。'), { name: '行号', type: 'int', description: '插入位置，从 0 开始。' }, { name: '行数据', type: 'wideString', description: '单行 kv 协议文本（key=…\tc0=…），不是 JSON。' }],
       'NE表格_插入行(表格1, 0, "key=r0\\tc0=置顶订单\\tc1=已发货")'),
     build('NE富列表_设置模板', 'NE富列表_设置模板(控件, 模板JSON)',
-      '设置 new_emoji 富列表节点模板。模板为 new_emoji 高阶模板 JSON 文本，与 NE_EU_SetRichListTemplate 一致。',
+      '设置 new_emoji 富列表节点模板。模板为 new_emoji 高阶模板 JSON 文本，与 NE富列表_设置模板直调 一致。',
       '整数型', [controlParameter(richListType, '当前窗口中的 NE富列表 控件。'), { name: '模板JSON', type: 'wideString', description: '富列表节点模板 JSON 文本。' }],
       'NE富列表_设置模板(富列表1, 模板文本)'),
     build('NE富列表_设置条目', 'NE富列表_设置条目(控件, 条目JSON)',
-      '整体替换 new_emoji 富列表条目。条目为 new_emoji 高阶条目 JSON 数组文本，与 NE_EU_SetRichListItems 一致。',
+      '整体替换 new_emoji 富列表条目。条目为 new_emoji 高阶条目 JSON 数组文本，与 NE富列表_设置项 一致。',
       '整数型', [controlParameter(richListType, '当前窗口中的 NE富列表 控件。'), { name: '条目JSON', type: 'wideString', description: '富列表条目 JSON 数组文本。' }],
       'NE富列表_设置条目(富列表1, 条目文本)'),
     build('NE富列表_添加条目', 'NE富列表_添加条目(控件, 条目JSON)',
@@ -725,15 +740,15 @@ function newEmojiDataBridgeCommands(designerControls) {
       '整数型', [controlParameter(richListType, '当前窗口中的 NE富列表 控件。'), { name: '条目JSON', type: 'wideString', description: '单个条目 JSON 文本。' }],
       'NE富列表_添加条目(富列表1, 条目文本)'),
     build('NE富列表_设置选中键', 'NE富列表_设置选中键(控件, 选中键JSON)',
-      '设置 new_emoji 富列表当前选中条目的 key JSON 数组文本，与 NE_EU_SetRichListSelectedKeys 一致。',
+      '设置 new_emoji 富列表当前选中条目的 key JSON 数组文本，与 NE富列表_设置选中键直调 一致。',
       '整数型', [controlParameter(richListType, '当前窗口中的 NE富列表 控件。'), { name: '选中键JSON', type: 'wideString', description: '选中 key 的 JSON 数组文本。' }],
       'NE富列表_设置选中键(富列表1, "[\\"item1\\"]")'),
     build('NE富列表_设置倒计时', 'NE富列表_设置倒计时(控件, 键, 节点, 目标毫秒, 格式, 是否暂停)',
-      '为 new_emoji 富列表条目设置倒计时。目标毫秒为 Unix 毫秒时间戳，格式为时间显示格式文本，与 NE_EU_SetRichListCountdown 一致。',
+      '为 new_emoji 富列表条目设置倒计时。目标毫秒为 Unix 毫秒时间戳，格式为时间显示格式文本，与 NE富列表_设置倒计时直调 一致。',
       '整数型', [controlParameter(richListType, '当前窗口中的 NE富列表 控件。'), { name: '键', type: 'wideString', description: '条目 key。' }, { name: '节点', type: 'wideString', description: '倒计时节点选择器。' }, { name: '目标毫秒', type: 'int', description: '目标 Unix 毫秒时间戳。' }, { name: '格式', type: 'wideString', description: '倒计时显示格式。' }, { name: '是否暂停', type: 'bool', description: '是否暂停倒计时。' }],
       'NE富列表_设置倒计时(富列表1, "item1", ".countdown", 1790000000000, "HH:mm:ss", 假)'),
     build('NE富列表_设置倒计时状态', 'NE富列表_设置倒计时状态(控件, 键, 节点, 是否暂停)',
-      '更新 new_emoji 富列表已有倒计时的暂停/继续状态，与 NE_EU_SetRichListCountdownState 一致。',
+      '更新 new_emoji 富列表已有倒计时的暂停/继续状态，与 NE富列表_设置倒计时状态直调 一致。',
       '整数型', [controlParameter(richListType, '当前窗口中的 NE富列表 控件。'), { name: '键', type: 'wideString', description: '条目 key。' }, { name: '节点', type: 'wideString', description: '倒计时节点选择器。' }, { name: '是否暂停', type: 'bool', description: '是否暂停倒计时。' }],
       'NE富列表_设置倒计时状态(富列表1, "item1", ".countdown", 假)'),
     build('NE富列表_设置虚拟行数据', 'NE富列表_设置虚拟行数据(行数据)',
@@ -741,115 +756,115 @@ function newEmojiDataBridgeCommands(designerControls) {
       '空', [{ name: '行数据', type: 'wideString', description: '本次返回的条目 JSON 文本。' }],
       'NE富列表_设置虚拟行数据(条目文本)'),
     build('NE菜单_设置项目', 'NE菜单_设置项目(控件, 项目文本)',
-      '设置 new_emoji 菜单项目。项目文本为 new_emoji 高阶菜单协议文本（换行分隔项目，> 前缀表示子菜单层级），与 NE_EU_SetMenuItems 一致。',
+      '设置 new_emoji 菜单项目。项目文本为 new_emoji 高阶菜单协议文本（换行分隔项目，> 前缀表示子菜单层级），与 NE菜单_设置项 一致。',
       '空', [controlParameter(menuType, '当前窗口中的 NE菜单 控件。'), { name: '项目文本', type: 'wideString', description: '菜单项目协议文本。' }],
       'NE菜单_设置项目(菜单1, "文件\\n>新建\\n>打开\\n视图")'),
     build('NE菜单_设置项目图标', 'NE菜单_设置项目图标(控件, 项目索引, 图标)',
-      '设置 new_emoji 菜单指定项目（从 0 开始）的图标，与 NE_EU_SetMenuItemIcon 一致。',
+      '设置 new_emoji 菜单指定项目（从 0 开始）的图标，与 NE菜单_设置项图标 一致。',
       '空', [controlParameter(menuType, '当前窗口中的 NE菜单 控件。'), { name: '项目索引', type: 'int', description: '菜单项目索引，从 0 开始。' }, { name: '图标', type: 'wideString', description: '图标资源文本。' }],
       'NE菜单_设置项目图标(菜单1, 0, "📁")'),
     build('NE菜单_设置项目快捷键', 'NE菜单_设置项目快捷键(控件, 项目索引, 快捷键)',
-      '设置 new_emoji 菜单指定项目（从 0 开始）的快捷键提示文本，与 NE_EU_SetMenuItemShortcut 一致。',
+      '设置 new_emoji 菜单指定项目（从 0 开始）的快捷键提示文本，与 NE菜单_设置项快捷键 一致。',
       '空', [controlParameter(menuType, '当前窗口中的 NE菜单 控件。'), { name: '项目索引', type: 'int', description: '菜单项目索引，从 0 开始。' }, { name: '快捷键', type: 'wideString', description: '快捷键提示文本，如 Ctrl+O。' }],
       'NE菜单_设置项目快捷键(菜单1, 1, "Ctrl+O")'),
     build('NE菜单_设置项目元数据', 'NE菜单_设置项目元数据(控件, 图标列表, 分组列表, 链接列表, 目标列表, 命令列表)',
-      '批量设置 new_emoji 菜单项目元数据（图标、分组、链接、目标、稳定命令），参数为 new_emoji 高阶协议 JSON 文本，空文本表示不设置，与 NE_EU_SetMenuItemMetaUtf8 一致。',
+      '批量设置 new_emoji 菜单项目元数据（图标、分组、链接、目标、稳定命令），参数为 new_emoji 高阶协议 JSON 文本，空文本表示不设置，与 NE菜单_设置项元信息JSON 一致。',
       '空', [controlParameter(menuType, '当前窗口中的 NE菜单 控件。'), { name: '图标列表', type: 'wideString', description: '图标协议 JSON 文本，空文本表示不设置。' }, { name: '分组列表', type: 'wideString', description: '分组协议 JSON 文本，空文本表示不设置。' }, { name: '链接列表', type: 'wideString', description: '链接协议 JSON 文本，空文本表示不设置。' }, { name: '目标列表', type: 'wideString', description: '目标协议 JSON 文本，空文本表示不设置。' }, { name: '命令列表', type: 'wideString', description: '稳定命令协议 JSON 文本，空文本表示不设置。' }],
       'NE菜单_设置项目元数据(菜单1, "", "", "", "", 命令文本)'),
     build('NE徽标_设置文本', 'NE徽标_设置文本(控件, 文本)',
-      '设置 new_emoji 徽标显示文本（如 "3"、"new"），与 NE_EU_SetBadgeValue 一致；纯数字可用控件_设置数值。',
+      '设置 new_emoji 徽标显示文本（如 "3"、"new"），与 NE徽标_设置值 一致；纯数字可用控件_设置数值。',
       '空', [controlParameter(badgeType, '当前窗口中的 NE徽标 控件。'), { name: '文本', type: 'wideString', description: '徽标显示文本。' }],
       'NE徽标_设置文本(徽标1, "new")'),
     build('NE标签页_设置激活索引', 'NE标签页_设置激活索引(控件, 索引)',
-      '设置 new_emoji 标签页当前激活的项目索引（从 0 开始），与 NE_EU_SetTabsActive 一致。',
+      '设置 new_emoji 标签页当前激活的项目索引（从 0 开始），与 NE标签页_设置活动 一致。',
       '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '索引', type: 'int', description: '要激活的项目索引，从 0 开始。' }],
       'NE标签页_设置激活索引(标签页1, 1)'),
     build('NE标签页_取激活索引', 'NE标签页_取激活索引(控件)',
-      '读取 new_emoji 标签页当前激活的项目索引，与 NE_EU_GetTabsActive 一致。',
+      '读取 new_emoji 标签页当前激活的项目索引，与 NE标签页_取活动 一致。',
       '整数型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。')],
       'NE标签页_取激活索引(标签页1)'),
     build('NE标签页_取激活标题', 'NE标签页_取激活标题(控件)',
-      '读取 new_emoji 标签页当前激活项目的标题文本，与 NE_EU_GetTabsActiveName 一致。',
+      '读取 new_emoji 标签页当前激活项目的标题文本，与 NE标签页_取活动名称 一致。',
       '文本型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。')],
       'NE标签页_取激活标题(标签页1)'),
     build('NE标签页_取项目数量', 'NE标签页_取项目数量(控件)',
-      '读取 new_emoji 标签页项目总数，与 NE_EU_GetTabsItemCount 一致。',
+      '读取 new_emoji 标签页项目总数，与 NE标签页_取项数量 一致。',
       '整数型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。')],
       'NE标签页_取项目数量(标签页1)'),
     build('NE标签页_添加项目', 'NE标签页_添加项目(控件, 标题)',
-      '向 new_emoji 标签页末尾追加一个项目，与 NE_EU_AddTabsItem 一致。',
+      '向 new_emoji 标签页末尾追加一个项目，与 NE标签页_添加项 一致。',
       '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '标题', type: 'wideString', description: '新项目标题文本。' }],
       'NE标签页_添加项目(标签页1, "新标签页")'),
     build('NE标签页_关闭项目', 'NE标签页_关闭项目(控件, 索引)',
-      '关闭 new_emoji 标签页指定项目（从 0 开始），与 NE_EU_CloseTabsItem 一致。',
+      '关闭 new_emoji 标签页指定项目（从 0 开始），与 NE标签页_关闭项 一致。',
       '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '索引', type: 'int', description: '要关闭的项目索引，从 0 开始。' }],
       'NE标签页_关闭项目(标签页1, 0)'),
     build('NE标签页_设置滚动偏移', 'NE标签页_设置滚动偏移(控件, 偏移)',
-      '设置 new_emoji 标签页表头滚动偏移，与 NE_EU_SetTabsScroll 一致。',
+      '设置 new_emoji 标签页表头滚动偏移，与 NE标签页_设置滚动 一致。',
       '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '偏移', type: 'int', description: '表头滚动偏移像素。' }],
       'NE标签页_设置滚动偏移(标签页1, 40)'),
     build('NE标签页_滚动', 'NE标签页_滚动(控件, 增量)',
-      '让 new_emoji 标签页表头按增量滚动，正数向右、负数向左，与 NE_EU_TabsScroll 一致。',
+      '让 new_emoji 标签页表头按增量滚动，正数向右、负数向左，与 NE标签页_滚动直调 一致。',
       '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '增量', type: 'int', description: '滚动增量像素。' }],
       'NE标签页_滚动(标签页1, -32)'),
     build('NE标签页_设置标签样式', 'NE标签页_设置标签样式(控件, 样式)',
-      '设置 new_emoji 标签页样式：0 线条、1 卡片、2 边框卡片，与 NE_EU_SetTabsType 一致。',
+      '设置 new_emoji 标签页样式：0 线条、1 卡片、2 边框卡片，与 NE标签页_设置类型 一致。',
       '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '样式', type: 'int', description: '0 线条、1 卡片、2 边框卡片。' }],
       'NE标签页_设置标签样式(标签页1, 1)'),
     build('NE标签页_设置标签位置', 'NE标签页_设置标签位置(控件, 位置)',
-      '设置 new_emoji 标签页表头位置：0 顶部、1 右侧、2 底部、3 左侧，与 NE_EU_SetTabsPosition 一致。',
+      '设置 new_emoji 标签页表头位置：0 顶部、1 右侧、2 底部、3 左侧，与 NE标签页_设置位置 一致。',
       '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '位置', type: 'int', description: '0 顶部、1 右侧、2 底部、3 左侧。' }],
       'NE标签页_设置标签位置(标签页1, 2)'),
     build('NE标签页_设置表头对齐', 'NE标签页_设置表头对齐(控件, 对齐)',
-      '设置 new_emoji 标签页表头文字对齐：0 左对齐、1 居中、2 右对齐，与 NE_EU_SetTabsHeaderAlign 一致。',
+      '设置 new_emoji 标签页表头文字对齐：0 左对齐、1 居中、2 右对齐，与 NE标签页_设置标签头对齐 一致。',
       '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '对齐', type: 'int', description: '0 左对齐、1 居中、2 右对齐。' }],
       'NE标签页_设置表头对齐(标签页1, 1)'),
     build('NE标签页_设置表头可见', 'NE标签页_设置表头可见(控件, 可见)',
-      '设置 new_emoji 标签页是否显示表头，与 NE_EU_SetTabsHeaderVisible 一致。',
+      '设置 new_emoji 标签页是否显示表头，与 NE标签页_设置标签头可见 一致。',
       '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '可见', type: 'bool', description: '是否显示表头。' }],
       'NE标签页_设置表头可见(标签页1, 假)'),
     build('NE标签页_设置可编辑', 'NE标签页_设置可编辑(控件, 可编辑)',
-      '设置 new_emoji 标签页是否允许双击重命名项目，与 NE_EU_SetTabsEditable 一致。',
+      '设置 new_emoji 标签页是否允许双击重命名项目，与 NE标签页_设置可编辑直调 一致。',
       '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '可编辑', type: 'bool', description: '是否允许双击重命名。' }],
       'NE标签页_设置可编辑(标签页1, 真)'),
     build('NE标签页_设置内容可见', 'NE标签页_设置内容可见(控件, 可见)',
-      '设置 new_emoji 标签页内容区是否可见，与 NE_EU_SetTabsContentVisible 一致。',
+      '设置 new_emoji 标签页内容区是否可见，与 NE标签页_设置内容可见直调 一致。',
       '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '可见', type: 'bool', description: '内容区是否可见。' }],
       'NE标签页_设置内容可见(标签页1, 真)'),
     build('NE标签页_启用浏览器模式', 'NE标签页_启用浏览器模式(控件, 启用)',
-      '启用 new_emoji 标签页的浏览器式（Chrome）绘制，与 NE_EU_SetTabsChromeMode 一致。',
+      '启用 new_emoji 标签页的浏览器式（Chrome）绘制，与 NE标签页_设置浏览器模式 一致。',
       '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '启用', type: 'bool', description: '是否启用浏览器模式。' }],
       'NE标签页_启用浏览器模式(标签页1, 真)'),
     build('NE标签页_设置浏览器度量', 'NE标签页_设置浏览器度量(控件, 最小宽度, 最大宽度, 固定宽度, 标题高度, 重叠)',
-      '设置 new_emoji 标签页浏览器模式的标签宽度、高度和重叠度量，与 NE_EU_SetTabsChromeMetrics 一致。',
+      '设置 new_emoji 标签页浏览器模式的标签宽度、高度和重叠度量，与 NE标签页_设置浏览器尺寸参数 一致。',
       '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '最小宽度', type: 'int', description: '单个标签最小逻辑宽度。' }, { name: '最大宽度', type: 'int', description: '单个标签最大逻辑宽度。' }, { name: '固定宽度', type: 'int', description: '固定（钉住）标签的逻辑宽度。' }, { name: '标题高度', type: 'int', description: '标签标题的逻辑高度。' }, { name: '重叠', type: 'int', description: '相邻标签重叠的逻辑像素。' }],
       'NE标签页_设置浏览器度量(标签页1, 96, 220, 46, 32, 0)'),
     build('NE标签页_设置项目图标', 'NE标签页_设置项目图标(控件, 索引, 图标)',
-      '设置 new_emoji 标签页指定项目的图标，与 NE_EU_SetTabsItemIcon 一致。',
+      '设置 new_emoji 标签页指定项目的图标，与 NE标签页_设置项图标 一致。',
       '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '索引', type: 'int', description: '项目索引，从 0 开始。' }, { name: '图标', type: 'wideString', description: '图标资源文本。' }],
       'NE标签页_设置项目图标(标签页1, 0, "📁")'),
     build('NE标签页_设置项目可关闭', 'NE标签页_设置项目可关闭(控件, 索引, 可关闭)',
-      '设置 new_emoji 标签页指定项目是否显示关闭按钮，与 NE_EU_SetTabsItemClosable 一致。',
+      '设置 new_emoji 标签页指定项目是否显示关闭按钮，与 NE标签页_设置项可关闭 一致。',
       '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '索引', type: 'int', description: '项目索引，从 0 开始。' }, { name: '可关闭', type: 'bool', description: '是否允许关闭。' }],
       'NE标签页_设置项目可关闭(标签页1, 0, 假)'),
     build('NE标签页_设置项目状态', 'NE标签页_设置项目状态(控件, 索引, 加载中, 固定, 静音, 提醒)',
-      '批量设置 new_emoji 标签页项目的加载中、固定、静音、提醒状态（浏览器模式视觉），与 NE_EU_SetTabsItemChromeState 一致。',
+      '批量设置 new_emoji 标签页项目的加载中、固定、静音、提醒状态（浏览器模式视觉），与 NE标签页_设置项浏览器状态 一致。',
       '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '索引', type: 'int', description: '项目索引，从 0 开始。' }, { name: '加载中', type: 'bool', description: '是否显示加载中。' }, { name: '固定', type: 'bool', description: '是否固定标签。' }, { name: '静音', type: 'bool', description: '是否显示静音。' }, { name: '提醒', type: 'bool', description: '是否显示提醒圆点。' }],
       'NE标签页_设置项目状态(标签页1, 1, 假, 真, 假, 真)'),
     build('NE标签页_设置新建按钮可见', 'NE标签页_设置新建按钮可见(控件, 可见)',
-      '设置 new_emoji 标签页浏览器模式的「新建标签页」按钮是否可见，与 NE_EU_SetTabsNewButtonVisible 一致。',
+      '设置 new_emoji 标签页浏览器模式的「新建标签页」按钮是否可见，与 NE标签页_设置新建按钮可见直调 一致。',
       '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '可见', type: 'bool', description: '新建按钮是否可见。' }],
       'NE标签页_设置新建按钮可见(标签页1, 假)'),
     build('NE标签页_设置拖拽选项', 'NE标签页_设置拖拽选项(控件, 允许重排, 允许分离)',
-      '设置 new_emoji 标签页是否允许拖拽重排和拖出分离，与 NE_EU_SetTabsDragOptions 一致。',
+      '设置 new_emoji 标签页是否允许拖拽重排和拖出分离，与 NE标签页_设置拖拽选项直调 一致。',
       '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '允许重排', type: 'bool', description: '是否允许拖动改变顺序。' }, { name: '允许分离', type: 'bool', description: '是否允许拖出当前窗口。' }],
       'NE标签页_设置拖拽选项(标签页1, 真, 假)'),
     build('NE_设置窗口图标', 'NE_设置窗口图标(窗口句柄, 图标路径)',
-      '从本地 .ico 文件路径设置 new_emoji 窗口图标，与 NE_EU_SetWindowIcon 一致。',
+      '从本地 .ico 文件路径设置 new_emoji 窗口图标，与 NE窗口_设置图标 一致。',
       '整数型', [windowParameter, { name: '图标路径', type: 'wideString', description: '窗口图标文件完整路径。' }],
       'NE_设置窗口图标(窗口1, "C:\\\\icons\\\\app.ico")'),
     build('NE_设置主题令牌', 'NE_设置主题令牌(窗口句柄, 令牌名, 颜色值)',
-      '设置 new_emoji 主题令牌颜色（0xAARRGGBB），与 NE_EU_SetThemeToken 一致。',
+      '设置 new_emoji 主题令牌颜色（0xAARRGGBB），与 NE主题_设置令牌 一致。',
       '整数型', [windowParameter, { name: '令牌名', type: 'wideString', description: '主题令牌名称，如 panel.bg。' }, { name: '颜色值', type: 'int', description: '0xAARRGGBB 颜色值。' }],
       'NE_设置主题令牌(窗口1, "panel.bg", 4288621312)'),
     build('NE_显示消息框', 'NE_显示消息框(窗口句柄, 标题, 文本, 确认文本, 处理器)',
@@ -894,7 +909,7 @@ function newEmojiDataBridgeCommands(designerControls) {
       '整数型', [controlParameter(menuType, '当前窗口中的 NE菜单 控件。'), { name: '项目索引', type: 'int', description: '菜单项目索引，从 0 开始。' }, { name: '快捷键', type: 'wideString', description: '快捷键提示文本，如 Ctrl+O。' }],
       'NE菜单_投递项目快捷键(菜单1, 1, "Ctrl+O")'),
     build('NE菜单_投递展开状态', 'NE菜单_投递展开状态(控件, 展开索引JSON)',
-      '向界面线程投递设置 new_emoji 多级菜单展开项（可在工作线程调用），展开索引为 JSON 数组文本，与 NE_EU_PostSetMenuExpandedUtf8 一致。',
+      '向界面线程投递设置 new_emoji 多级菜单展开项（可在工作线程调用），展开索引为 JSON 数组文本，与 NE菜单_投递设置展开JSON 一致。',
       '整数型', [controlParameter(menuType, '当前窗口中的 NE菜单 控件。'), { name: '展开索引JSON', type: 'wideString', description: '展开项索引 JSON 数组文本。' }],
       'NE菜单_投递展开状态(菜单1, "[0,2]")'),
     build('NE徽标_投递设置文本', 'NE徽标_投递设置文本(控件, 文本)',
@@ -914,7 +929,7 @@ function newEmojiDataBridgeCommands(designerControls) {
       '整数型', [controlParameter(richListType, '当前窗口中的 NE富列表 控件。'), { name: '条目JSON', type: 'wideString', description: '单个条目 JSON 文本。' }],
       'NE富列表_投递添加条目(富列表1, 条目文本)'),
     build('NE富列表_投递更新条目', 'NE富列表_投递更新条目(控件, 键, 条目JSON)',
-      '向界面线程投递按键更新 new_emoji 富列表条目（可在工作线程调用），与 NE_EU_PostUpdateRichListItem 一致。',
+      '向界面线程投递按键更新 new_emoji 富列表条目（可在工作线程调用），与 NE富列表_投递更新项 一致。',
       '整数型', [controlParameter(richListType, '当前窗口中的 NE富列表 控件。'), { name: '键', type: 'wideString', description: '条目 key。' }, { name: '条目JSON', type: 'wideString', description: '新条目 JSON 文本。' }],
       'NE富列表_投递更新条目(富列表1, "item1", 条目文本)'),
     build('NE富列表_投递删除条目', 'NE富列表_投递删除条目(控件, 键)',
@@ -922,7 +937,7 @@ function newEmojiDataBridgeCommands(designerControls) {
       '整数型', [controlParameter(richListType, '当前窗口中的 NE富列表 控件。'), { name: '键', type: 'wideString', description: '条目 key。' }],
       'NE富列表_投递删除条目(富列表1, "item1")'),
     build('NE富列表_投递条目覆盖', 'NE富列表_投递条目覆盖(控件, 键, 覆盖JSON)',
-      '向界面线程投递设置 new_emoji 富列表条目节点级覆盖（可在工作线程调用），与 NE_EU_PostSetRichListItemOverride 一致。',
+      '向界面线程投递设置 new_emoji 富列表条目节点级覆盖（可在工作线程调用），与 NE富列表_投递设置项覆盖 一致。',
       '整数型', [controlParameter(richListType, '当前窗口中的 NE富列表 控件。'), { name: '键', type: 'wideString', description: '条目 key。' }, { name: '覆盖JSON', type: 'wideString', description: '节点覆盖 JSON 文本。' }],
       'NE富列表_投递条目覆盖(富列表1, "item1", 覆盖文本)'),
     build('NE富列表_投递设置选中键', 'NE富列表_投递设置选中键(控件, 选中键JSON)',
@@ -987,7 +1002,7 @@ function newEmojiDataBridgeCommands(designerControls) {
       '文本型', [controlParameter(richListType, '当前窗口中的 NE富列表 控件。'), { name: '键', type: 'wideString', description: '条目 key。' }, { name: '节点', type: 'wideString', description: '倒计时节点选择器。' }],
       'NE富列表_取倒计时状态(富列表1, "item1", ".countdown")'),
     build('NE富列表_更新条目', 'NE富列表_更新条目(控件, 键, 条目JSON)',
-      '按键更新 new_emoji 富列表条目内容，与 NE_EU_UpdateRichListItem 一致。',
+      '按键更新 new_emoji 富列表条目内容，与 NE富列表_更新项 一致。',
       '整数型', [controlParameter(richListType, '当前窗口中的 NE富列表 控件。'), { name: '键', type: 'wideString', description: '条目 key。' }, { name: '条目JSON', type: 'wideString', description: '新条目 JSON 文本。' }],
       'NE富列表_更新条目(富列表1, "item1", 条目文本)'),
     build('NE富列表_删除条目', 'NE富列表_删除条目(控件, 键)',
@@ -995,11 +1010,11 @@ function newEmojiDataBridgeCommands(designerControls) {
       '整数型', [controlParameter(richListType, '当前窗口中的 NE富列表 控件。'), { name: '键', type: 'wideString', description: '条目 key。' }],
       'NE富列表_删除条目(富列表1, "item1")'),
     build('NE富列表_条目覆盖', 'NE富列表_条目覆盖(控件, 键, 覆盖JSON)',
-      '设置 new_emoji 富列表条目节点级覆盖 JSON 文本，与 NE_EU_SetRichListItemOverride 一致。',
+      '设置 new_emoji 富列表条目节点级覆盖 JSON 文本，与 NE富列表_设置项覆盖 一致。',
       '整数型', [controlParameter(richListType, '当前窗口中的 NE富列表 控件。'), { name: '键', type: 'wideString', description: '条目 key。' }, { name: '覆盖JSON', type: 'wideString', description: '节点覆盖 JSON 文本。' }],
       'NE富列表_条目覆盖(富列表1, "item1", 覆盖文本)'),
     build('NE富列表_追加倒计时', 'NE富列表_追加倒计时(控件, 键, 节点, 追加毫秒)',
-      '为 new_emoji 富列表已有倒计时追加毫秒数（负数回拨），与 NE_EU_AddRichListCountdownTime 一致。',
+      '为 new_emoji 富列表已有倒计时追加毫秒数（负数回拨），与 NE富列表_添加倒计时时间 一致。',
       '整数型', [controlParameter(richListType, '当前窗口中的 NE富列表 控件。'), { name: '键', type: 'wideString', description: '条目 key。' }, { name: '节点', type: 'wideString', description: '倒计时节点选择器。' }, { name: '追加毫秒', type: 'int', description: '追加的毫秒数，可为负。' }],
       'NE富列表_追加倒计时(富列表1, "item1", ".countdown", 60000)'),
     build('NE富列表_清空条目', 'NE富列表_清空条目(控件)',
@@ -1008,7 +1023,7 @@ function newEmojiDataBridgeCommands(designerControls) {
       'NE富列表_清空条目(富列表1)'),
     // ===== 特殊运行时能力 =====
     build('NE_设置窗口图标字节', 'NE_设置窗口图标字节(窗口句柄, 图标字节集)',
-      '从内存字节集设置 new_emoji 窗口图标（.ico/.png 字节），与 NE_EU_SetWindowIconFromBytes 一致。',
+      '从内存字节集设置 new_emoji 窗口图标（.ico/.png 字节），与 NE窗口_设置图标字节 一致。',
       '整数型', [windowParameter, { name: '图标字节集', type: 'bytes', description: '图标文件完整字节集。' }],
       'NE_设置窗口图标字节(窗口1, 图标字节)'),
     build('NE_显示提问框', 'NE_显示提问框(窗口句柄, 标题, 文本, 占位文本, 初始值, 校验模式, 错误提示, 确认文本, 取消文本, 框类型, 居中, 富文本, 区分取消关闭, 处理器)',
@@ -1028,11 +1043,11 @@ function newEmojiDataBridgeCommands(designerControls) {
       '空', [windowParameter, { name: '加载编号', type: 'int', description: 'NE_显示加载遮罩 返回的编号。' }],
       'NE_关闭加载遮罩(窗口1, 加载编号)'),
     build('NE表格_导出Excel', 'NE表格_导出Excel(控件, 文件路径, 标志)',
-      '把 new_emoji 表格导出为 Excel 文件，与 NE_EU_ExportTableExcel 一致。',
+      '把 new_emoji 表格导出为 Excel 文件，与 NE表格_导出Excel直调 一致。',
       '整数型', [controlParameter(tableType, '当前窗口中的 NE表格 控件。'), { name: '文件路径', type: 'wideString', description: '目标 .xlsx 文件完整路径。' }, { name: '标志', type: 'int', description: '导出标志位。' }],
       'NE表格_导出Excel(表格1, "D:\\\\data\\\\订单.xlsx", 0)'),
     build('NE表格_导入Excel', 'NE表格_导入Excel(控件, 文件路径, 标志)',
-      '从 Excel 文件导入数据到 new_emoji 表格，与 NE_EU_ImportTableExcel 一致。',
+      '从 Excel 文件导入数据到 new_emoji 表格，与 NE表格_导入Excel直调 一致。',
       '整数型', [controlParameter(tableType, '当前窗口中的 NE表格 控件。'), { name: '文件路径', type: 'wideString', description: '来源 .xlsx 文件完整路径。' }, { name: '标志', type: 'int', description: '导出标志位。' }],
       'NE表格_导入Excel(表格1, "D:\\\\data\\\\订单.xlsx", 0)'),
     // ===== 鼠标光标与悬停高亮（2026-09-29 新增导出族） =====
@@ -1071,7 +1086,7 @@ const HAND_BRIDGE_EU_CALLS = new Set([
 
 // 属性命令自动生成：把每个控件属性面板背后的 EU_Set* 宽字符 setter 封装成
 // `NE<类型>_设置<属性中文>` 运行时命令（只封装带 UTF-8 字节指针参数的 setter；
-// 纯数值 setter 已可经 NE_EU_* 直调）。C++ 助手由 lingCppWin32Project 按
+// 纯数值 setter 已可经 底层直调命令）。C++ 助手由 lingCppWin32Project 按
 // control.runtime.propertyBridgeCommands 描述符统一生成。
 function newEmojiPropertyBridgeCommands(designerControls, existingCommandNames) {
   const result = [];
@@ -1134,7 +1149,7 @@ function newEmojiPropertyBridgeCommands(designerControls, existingCommandNames) 
         command: {
           name,
           signature,
-          description: `设置 ${control.label} 的${keys || '属性'}。对应 ${setter.command} 的宽字符封装，禁止改调 NE_EU_${setter.command}。`,
+          description: `设置 ${control.label} 的${keys || '属性'}。对应 ${setter.command} 的宽字符封装，禁止改调底层直调命令${NEW_EMOJI_COMMAND_NAMES[setter.command] ? ` ${NEW_EMOJI_COMMAND_NAMES[setter.command]}` : ''}。`,
           insertText: buildInsertTextFromSignature(name, signature),
           returnType: '逻辑型',
           visibility: 'default'
@@ -2744,7 +2759,7 @@ function moduleReadme(exportCount) {
 - 默认 F5 预览平台：Win32
 - 当前 .lib 导入库需要 MSVC/Visual Studio Build Tools 链接
 
-推荐在 .lcpp 中优先使用 NE_ 前缀的中文桥接命令；NE_EU_* 命令是底层高级入口，参数仍遵循 new_emoji DLL 的 UTF-8 字节指针和长度规则。Tabs 的“显示标签页表头”属性对应 EU_SetTabsHeaderVisible，关闭后内容区占满标签页区域。
+推荐在 .lcpp 中优先使用 NE_ 前缀的中文桥接命令；底层直调命令是高级入口（中文主名，旧 NE_EU_* 名以别名兼容），参数仍遵循 new_emoji DLL 的 UTF-8 字节指针和长度规则。Tabs 的“显示标签页表头”属性对应 EU_SetTabsHeaderVisible，关闭后内容区占满标签页区域。
 
 ## 运行时控件引用
 
@@ -2752,7 +2767,7 @@ function moduleReadme(exportCount) {
 
 标记始终可省略。文本标记会先去除首尾空白，空文本表示未设置，并按区分大小写的 UTF-16 文本精确匹配；整数标记是有符号 32 位值，0 和负数都有效。非空标记在“当前窗口 + 具体控件类型 + 标记类别”范围内唯一，重复创建返回无效引用并输出中文原因。只传整数标记时，文本位置传 \`""\`。
 
-\`控件_是否有效\`用于检查创建或查找结果。窗口销毁后引用自动失效；对无效引用执行操作会安全失败，不访问旧元素 ID。通用命令、专属 \`NE_EU_*\` 命令和成员语法都接受兼容的控件变量；专属命令会按具体控件类型诊断错误变量。原生元素 ID 参数在 binding 中使用 \`controlRef(stableId)\`，输出指针、请求 ID、索引和 ID 数组仍保持原 ABI 类型。
+\`控件_是否有效\`用于检查创建或查找结果。窗口销毁后引用自动失效；对无效引用执行操作会安全失败，不访问旧元素 ID。通用命令、专属 \`底层直调命令\` 命令和成员语法都接受兼容的控件变量；专属命令会按具体控件类型诊断错误变量。原生元素 ID 参数在 binding 中使用 \`controlRef(stableId)\`，输出指针、请求 ID、索引和 ID 数组仍保持原 ABI 类型。
 
 \`\`\`lcpp
 局部 NE按钮 动态按钮 = 控件_创建NE按钮(当前窗口, 20, 20, 120, 36, "确定", "确认", 1002)
@@ -2769,7 +2784,7 @@ RichList / 富列表已作为命名空间设计器控件提供，设计器属性
 
 ## 数据桥接命令（宽字符版）
 
-下列命令为底层 UTF-8 字节指针导出的宽字符封装，\`.lcpp\` 直接传字符串即可，生成器自动完成 UTF-8 转换；请勿改调参数相同的 \`NE_EU_*\` 底层命令（宽指针与字节指针 ABI 不匹配，无法编译）：
+下列命令为底层 UTF-8 字节指针导出的宽字符封装，\`.lcpp\` 直接传字符串即可，生成器自动完成 UTF-8 转换；请勿改调参数相同的 \`底层直调命令\` 底层命令（宽指针与字节指针 ABI 不匹配，无法编译）：
 
 - 表格数据：\`NE表格_设置列\` / \`NE表格_设置行数据\` / \`NE表格_添加行\` / \`NE表格_插入行\`。列与行使用 new_emoji 高阶 kv 协议文本（不是 JSON）：列每行一条 \`title=标题\u005ctkey=标识\u005ctwidth=宽度\u005ctalign=对齐(left/center/right)\u005cttype=类型\`，行每行一条 \`key=行键\u005ctc0=第1列\u005ctc1=第2列\`，字段用制表符分隔、记录用换行分隔；单元格文本中的制表符、换行、反斜杠、竖线需写成 \u005ct、\u005cn、\u005c\u005c、\u005c| 转义。
 - 富列表数据：\`NE富列表_设置模板\` / \`NE富列表_设置条目\` / \`NE富列表_添加条目\` / \`NE富列表_设置选中键\` / \`NE富列表_设置倒计时\` / \`NE富列表_设置倒计时状态\`；虚拟列表在 \`NE富列表_绑定虚拟数据源\` 的处理器中调用 \`NE富列表_设置虚拟行数据("条目 JSON")\` 回填（与表格的 \`NE_设置表格虚拟行数据\` 同范式）。

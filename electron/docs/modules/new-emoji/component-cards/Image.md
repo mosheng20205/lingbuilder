@@ -5,9 +5,9 @@
 - 预览大图不要自己再开一个窗口：`previewEnabled`/`previewOpen`/`previewList`/`previewIndex` 已提供内置预览与列表翻页。
 - 加载占位与失败态必须显式配置：`placeholderIcon`/`placeholderText` 与 `errorIcon`/`errorText`，否则图挂了就是一片空白，用户以为界面坏了。
 - 长列表里的缩略图开 `lazy` + `cacheEnabled`；批量换图要节流，逐条 `控件_设置图片` 会连续触发重绘。
-- 想「图片上可点」不要在图片上绑事件，同坐标叠一个 `NE图标按钮` 当热区（画廊横幅就是这个做法），并 `NE_EU_SetIconButtonColors(..., 0)` 把底色透明化。
+- 想「图片上可点」不要在图片上绑事件，同坐标叠一个 `NE图标按钮` 当热区（画廊横幅就是这个做法），并 `NE图标按钮_设置配色(..., 0)` 把底色透明化。
 
 ```lcpp
 局部 NE图片 横幅 = 控件_创建NE图片(根容器, 264, 48, 138, 48, "🐧 交流群", "QQ横幅图片", 4)
-NE_EU_SetImageStyle(当前窗口, 横幅, 0, 0, 0, 4, 0)
+NE图片_设置样式(当前窗口, 横幅, 0, 0, 0, 4, 0)
 ```

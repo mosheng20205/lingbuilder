@@ -252,3 +252,19 @@ test('富列表与树数据编辑器用真实工程控件渲染出三页签与�
   assert.match(tree, /2 个节点/u);
 });
 
+
+test('属性面板与层级树的控件类型显示对 NE 控件永不留空', () => {
+  // 迁移落盘的 NE 控件 type 可能直接是 EditBox/IconButton/Segmented 等非 Win32 类型，
+  // 裸用 CONTROL_LABELS[type] 会在「控件类型」徽标与层级树类型列渲染成空。
+  const source = fs.readFileSync(path.join(here, '..', 'src', 'components', 'WpfDesigner.tsx'), 'utf8');
+  assert.match(source, /function getControlTypeDisplayLabel/u);
+  assert.match(source, /moduleControl\?\.label \|\| getControlTypeDisplayLabel\(control\)/u);
+  assert.match(source, /designerControlLabels\?\.get\(control\.designerType\)/u);
+  assert.match(source, /getControlTypeDisplayLabel\(node\.control, designerControlLabels\)/u);
+  // designerType 尾段兜底必须存在（模块标签缺失时仍显示 EditBox 之类的类型名）
+  assert.match(source, /const slash = control\.designerType\.lastIndexOf\('\/'\)/u);
+  assert.match(source, /return control\.designerType\.slice\(slash \+ 1\)/u);
+  assert.match(source, /CONTROL_LABELS\[control\.type\] \|\| control\.type/u);
+  // 层级树接收模块控件标签映射
+  assert.match(source, /designerControlLabels\?: Map<string, string>/u);
+});

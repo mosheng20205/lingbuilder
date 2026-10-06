@@ -3742,7 +3742,7 @@ function getModuleRawParameterDiagnostics(source: string, moduleContext?: LingCp
           level: 'error',
           message: `命令 ${binding.command} 的参数 ${parameter?.name || `第 ${index + 1} 个`} 是 UTF-8 字节指针，不能直接传字符串（生成 C++ 无法编译）。`,
           codeSnippet: invocation.lineText,
-          suggestion: '请改用模块提供的宽字符高层命令（如 NE表格_/NE富列表_/NE菜单_/NE徽标_/NE_显示消息框 系列）；底层 NE_EU_* 命令仅用于句柄与数值类高级调用。'
+          suggestion: '请改用模块提供的宽字符高层命令（如 NE表格_/NE富列表_/NE菜单_/NE徽标_/NE_显示消息框 系列）；底层直调命令仅用于句柄与数值类高级调用。'
         });
       });
     });

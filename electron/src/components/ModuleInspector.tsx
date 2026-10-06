@@ -1152,7 +1152,7 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
               window.localStorage.setItem('lingbuilder.modules.showAdvancedApi', String(value));
               window.dispatchEvent(new CustomEvent('lingbuilder-module-api-visibility-changed', { detail: { showAdvancedApi: value } }));
             }} />
-            显示底层高级 API（NE_EU_*）
+            显示底层高级 API（底层直调命令）
           </label>
           <div className="flex gap-2">
             <div className={`h-8 min-w-0 flex-1 px-2 flex items-center gap-2 rounded border ${inputClass}`}>

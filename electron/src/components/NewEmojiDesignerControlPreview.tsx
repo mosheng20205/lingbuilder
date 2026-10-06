@@ -125,6 +125,34 @@ function nativeRegionStyle(control: LingControl, theme: NewEmojiThemePreview, pr
   } as React.CSSProperties;
 }
 
+/**
+ * NE 引擎 theme.cpp 的按钮 variant 主题色，亮/暗两套逐值对齐：
+ * 0=默认底 1=主要(accent) 2=成功 3=警告 4=危险 6=信息；5=纯文本走 accent。
+ */
+const NEW_EMOJI_BUTTON_VARIANT_THEMES: Record<'dark' | 'light', {
+  button: string; border: string; textPrimary: string; accent: string; solid: Record<number, string>;
+}> = {
+  dark: { button: '#45475A', border: '#45475A', textPrimary: '#CDD6F4', accent: '#89B4FA', solid: { 0: '#45475A', 1: '#89B4FA', 2: '#16A34A', 3: '#F59E0B', 4: '#DC2626', 6: '#0EA5E9' } },
+  light: { button: '#CCD0DA', border: '#BCC0CC', textPrimary: '#4C4F69', accent: '#1E66F5', solid: { 0: '#CCD0DA', 1: '#1E66F5', 2: '#16A34A', 3: '#F59E0B', 4: '#DC2626', 6: '#0EA5E9' } }
+};
+
+const NEW_EMOJI_BUTTON_WARNING_TEXT = '#1F2937';
+
+function flagValue(value: unknown) {
+  return value === true || value === 1 || value === '1';
+}
+
+function isNewEmojiUnsetColor(value: unknown) {
+  if (typeof value !== 'string') return true;
+  const normalized = value.trim().toLowerCase();
+  return !normalized || normalized === 'transparent' || normalized === '#00000000' || normalized === '0x00000000';
+}
+
+/** plain 态实底按 NE 引擎 with_alpha(solid, 暗 0x2A / 亮 0x18) 换算成 rgba。 */
+function newEmojiButtonPlainBackground(solid: string, mode: 'dark' | 'light') {
+  return toNewEmojiCssColor(`#${mode === 'dark' ? '2A' : '18'}${solid.slice(1)}`, solid);
+}
+
 function Shell({ children, className = '', style }: { children: React.ReactNode; className?: string; style?: React.CSSProperties }) {
   return <div className={`h-full w-full overflow-hidden rounded-md border ${className}`} style={{ backgroundColor: 'var(--ne-panel)', borderColor: 'var(--ne-border)', color: 'var(--ne-text)', ...style }}>{children}</div>;
 }
@@ -145,8 +173,9 @@ function ClockIcon() {
   return <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="1.7"/><path d="M12 7v5l3 2" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>;
 }
 
-function InputShell({ children }: { children: React.ReactNode }) {
-  return <Shell className="flex items-center justify-between gap-2 px-3 text-[11px]" style={{ backgroundColor: 'var(--ne-edit)' }}>{children}</Shell>;
+// 画布字号必须跟随 control.fontSize（历史缺陷：写死 11px 导致设计器与运行窗口字号不一致）。
+function InputShell({ children, fontSize }: { children: React.ReactNode; fontSize?: number }) {
+  return <Shell className="flex items-center justify-between gap-2 px-3" style={{ backgroundColor: 'var(--ne-edit)', ...(fontSize ? { fontSize: `${Math.max(10, fontSize)}px` } : {}) }}>{children}</Shell>;
 }
 
 export function getNewEmojiPreviewKind(control: LingControl) {
@@ -158,6 +187,8 @@ export default function NewEmojiDesignerControlPreview({ control, isEnabled, isS
   if (!kind) return null;
   const p = control.properties ?? {};
   const content = textValue(control.content, kind);
+  // 控件真实内容（空串保持空串）：Input/Select 的标签语义必须区分「未填」与「兜底类名」。
+  const rawContent = typeof control.content === 'string' ? control.content.trim() : '';
   const items = listValue(p.items, ['选项一', '选项二', '选项三']);
   const tabItems = listValue(p.tabs, items);
   const activeTabIndex = Math.max(0, Math.min(tabItems.length - 1, Math.trunc(numberValue(p.activeIndex, numberValue(p.selectedIndex, 0)))));
@@ -201,20 +232,75 @@ export default function NewEmojiDesignerControlPreview({ control, isEnabled, isS
     case 'Text':
       preview = <div className="flex h-full w-full items-center overflow-hidden" style={{ justifyContent: p.align === '1' ? 'center' : p.align === '2' ? 'flex-end' : 'flex-start' }}><span className="truncate">{content}</span></div>;
       break;
-    case 'Button':
-      preview = <Shell className="flex items-center justify-center font-medium" style={{ backgroundColor: 'var(--ne-button)' }}>{content}</Shell>;
+    case 'Button': {
+      // 逐条镜像 NE 引擎 element_button.cpp 默认态绘制：显式背景只在 variant=0 普通态生效，
+      // variant 1/2/3/4/6 用主题色实底，plain 用低透明同色底+同色字，variant=5 纯文本（透明底无边框），
+      // 警告态文字用深色。size 只按引擎比例微调字号（1=默认 2=13/14 3=12/14）。
+      const variant = Math.trunc(numberValue(p.variant, 0));
+      const plain = flagValue(p.plain) && variant !== 5;
+      const circle = variant !== 5 && flagValue(p.circle);
+      const round = variant !== 5 && !circle && flagValue(p.round);
+      const palette = NEW_EMOJI_BUTTON_VARIANT_THEMES[theme.mode];
+      const solid = palette.solid[variant] ?? palette.button;
+      const explicitBackground = isNewEmojiUnsetColor(control.background) ? '' : toNewEmojiCssColor(control.background, '');
+      const explicitForeground = isNewEmojiUnsetColor(control.foreground) ? '' : toNewEmojiCssColor(control.foreground, '');
+      let backgroundColor: string;
+      let borderColor: string;
+      let foregroundColor: string;
+      if (variant === 5) {
+        backgroundColor = 'transparent';
+        borderColor = 'transparent';
+        foregroundColor = explicitForeground || palette.accent;
+      } else if (plain) {
+        backgroundColor = variant === 0 ? 'transparent' : newEmojiButtonPlainBackground(solid, theme.mode);
+        borderColor = variant === 0 ? palette.border : solid;
+        foregroundColor = variant === 0 ? palette.textPrimary : solid;
+      } else if (variant >= 1) {
+        backgroundColor = solid;
+        borderColor = solid;
+        foregroundColor = variant === 3 ? NEW_EMOJI_BUTTON_WARNING_TEXT : '#FFFFFF';
+      } else {
+        backgroundColor = explicitBackground || palette.button;
+        borderColor = palette.border;
+        foregroundColor = explicitForeground || palette.textPrimary;
+      }
+      const radius = circle
+        ? Math.min(control.width, control.height) / 2
+        : round ? Math.max(6, control.height * 0.45) : 6;
+      const size = Math.trunc(numberValue(p.size, 0));
+      const buttonFontSize = size === 2 ? control.fontSize * 13 / 14 : size === 3 ? control.fontSize * 12 / 14 : control.fontSize;
+      preview = <Shell className="flex items-center justify-center font-medium" style={{ backgroundColor, borderColor, color: foregroundColor, borderRadius: `${radius}px`, fontSize: `${Math.max(9, buttonFontSize)}px` }}>{content}</Shell>;
       break;
-    case 'Input':
-      preview = <InputShell><span className="truncate text-slate-400">{textValue(p.placeholder, content || '请输入内容')}</span><span className="text-slate-500">⌨</span></InputShell>;
+    }
+    case 'Input': {
+      // 逐条镜像引擎 element_input.cpp：有值显示值（主文字色），空值显示占位（次文字色），
+      // prefix/suffix 有值才渲染；引擎输入框没有键盘图标，画布不得伪造。
+      const inputValue = rawContent;
+      const placeholderText = textValue(p.placeholder, '请输入内容');
+      preview = <InputShell fontSize={control.fontSize}>
+        {textValue(p.prefix, '') ? <span className="shrink-0" style={{ color: 'var(--ne-muted)' }}>{String(p.prefix)}</span> : null}
+        <span className="min-w-0 flex-1 truncate" style={{ color: inputValue ? undefined : 'var(--ne-muted)' }}>{inputValue || placeholderText}</span>
+        {textValue(p.suffix, '') ? <span className="shrink-0" style={{ color: 'var(--ne-muted)' }}>{String(p.suffix)}</span> : null}
+      </InputShell>;
       break;
+    }
     case 'EditBox':
-      preview = <Shell className="px-3 py-2 text-left text-[11px] text-slate-300"><span>{textValue(p.placeholder, content)}</span><span className="ml-0.5 animate-pulse text-violet-300">│</span></Shell>;
+      preview = <Shell className="px-3 py-2 text-left" style={{ fontSize: `${Math.max(10, control.fontSize)}px`, color: 'var(--ne-muted)' }}><span>{textValue(p.placeholder, rawContent)}</span><span className="ml-0.5 animate-pulse" style={{ color: 'var(--ne-focus)' }}>│</span></Shell>;
       break;
     case 'Table': {
       // 画布预览必须与结构化编辑器实时一致：列（宽度/对齐/类型）与行数据都来自控件属性，
       // 不再使用硬编码演示数据（历史问题：设计器里配置的列与行不渲染）。
+      // 表头/行高/配色逐条镜像引擎 element_table_paint.cpp：表头高=钳制(26..90)且不小于字号×2.15，
+      // 行高=钳制(24..80)且不小于字号×2，暗色表头 #282A3A、斑马纹 #242637（亮色 #F5F7FA/#FAFAFA）。
       const tableModel = loadNewEmojiTableModel(p as Record<string, unknown>);
       const tableColumns = tableModel.columns.filter(column => column.visible !== false);
+      const striped = flagValue(p.striped);
+      const bordered = flagValue(p.bordered);
+      const tableFontSize = Math.max(10, control.fontSize);
+      const headerHeight = Math.max(Math.max(26, Math.min(90, Math.trunc(numberValue(p.headerHeight, 46)))), Math.round(control.fontSize * 2.15));
+      const rowHeight = Math.max(Math.max(24, Math.min(80, Math.trunc(numberValue(p.rowHeight, 32)))), Math.round(control.fontSize * 2));
+      const headerBackground = theme.mode === 'dark' ? '#282A3A' : '#F5F7FA';
+      const stripeBackground = theme.mode === 'dark' ? '#242637' : '#FAFAFA';
       const alignText = (alignment: string) => alignment === 'right' ? 'right' : alignment === 'left' ? 'left' : 'center';
       const cellText = (column: (typeof tableColumns)[number], value: unknown): string => {
         if (column.type === 'checkbox') return value === null || value === undefined || value === '' ? '▢' : value === true || value === '1' || value === 'true' ? '☑' : '☐';
@@ -223,15 +309,15 @@ export default function NewEmojiDesignerControlPreview({ control, isEnabled, isS
         if (column.type === 'buttons') return (column.buttons || []).map(button => button.text).join(' ') || String(value ?? '');
         return String(value ?? '');
       };
-      preview = <Shell className="flex flex-col text-[9px]">
-        <div className="flex shrink-0 border-b border-slate-600 bg-slate-800 font-semibold">
-          {tableColumns.map(column => <span key={column.id} className="truncate border-l border-slate-600 px-1.5 py-1 first:border-l-0" style={{ width: column.width, flex: '0 0 auto', textAlign: alignText(column.alignment) }}>{column.title || column.id}</span>)}
+      preview = <Shell className="flex flex-col" style={{ fontSize: `${tableFontSize}px` }}>
+        <div className="flex shrink-0" style={{ height: `${headerHeight}px`, backgroundColor: headerBackground, color: 'var(--ne-muted)' }}>
+          {tableColumns.map(column => <span key={column.id} className={`flex items-center overflow-hidden px-2 ${bordered ? 'border-l' : ''}`} style={{ width: column.width, flex: '0 0 auto', textAlign: alignText(column.alignment), borderColor: 'var(--ne-border)' }}>{column.title || column.id}</span>)}
         </div>
         <div className="min-h-0 flex-1 overflow-hidden">
-          {tableModel.rows.slice(0, 60).map(row => <div key={row.key} className="flex border-b border-slate-800/70 text-slate-400" style={{ opacity: row.enabled === false ? 0.45 : 1 }}>
-            {tableColumns.map(column => <span key={column.id} className="truncate border-l border-slate-800/70 px-1.5 py-1 first:border-l-0" style={{ width: column.width, flex: '0 0 auto', textAlign: alignText(column.alignment) }}>{cellText(column, row.cells[column.id])}</span>)}
+          {tableModel.rows.slice(0, 60).map((row, rowIndex) => <div key={row.key} className="flex" style={{ height: `${rowHeight}px`, opacity: row.enabled === false ? 0.45 : 1, backgroundColor: striped && rowIndex % 2 === 1 ? stripeBackground : 'transparent' }}>
+            {tableColumns.map(column => <span key={column.id} className={`flex items-center overflow-hidden truncate px-2 ${bordered ? 'border-l' : ''}`} style={{ width: column.width, flex: '0 0 auto', textAlign: alignText(column.alignment), borderColor: 'var(--ne-border)' }}>{cellText(column, row.cells[column.id])}</span>)}
           </div>)}
-          {tableModel.rows.length === 0 && <div className="p-2 text-center text-slate-600">{tableModel.emptyText}</div>}
+          {tableModel.rows.length === 0 && <div className="flex h-full items-center justify-center" style={{ color: 'var(--ne-muted)' }}>{tableModel.emptyText}</div>}
         </div>
       </Shell>;
       break;
@@ -339,9 +425,22 @@ export default function NewEmojiDesignerControlPreview({ control, isEnabled, isS
     case 'Slider':
       preview = <div className="relative flex h-full w-full items-center px-2"><div className="h-1 w-full rounded bg-slate-700"><div className="relative h-full rounded bg-violet-500" style={{ width: `${value}%` }}><span className="absolute -right-2 -top-1.5 h-4 w-4 rounded-full border-2 border-violet-400 bg-white shadow"/></div></div><span className="absolute right-1 top-0 text-[8px] text-violet-300">{value}</span></div>;
       break;
-    case 'Select':
-      preview = <InputShell><span className="truncate">{items[0]}</span><Chevron /></InputShell>;
+    case 'Select': {
+      // 逐条镜像引擎 element_select.cpp 主区绘制：content 作为左侧灰色标签（宽 ≤ 34% 且 ≤ 120×字号/14），
+      // 其后是选中项文本（无选中显示占位/请选择），右侧箭头。选项属性是 options（不是 items）。
+      const selectOptions = listValue(p.options, []);
+      const selectIndex = Math.trunc(numberValue(p.selectedIndex, -1));
+      const selectValue = selectIndex >= 0 && selectIndex < selectOptions.length
+        ? selectOptions[selectIndex]
+        : textValue(p.placeholder, '请选择');
+      const labelMaxWidth = rawContent ? Math.max(0, Math.round(Math.min(control.width * 0.34, 120 * control.fontSize / 14))) : 0;
+      preview = <InputShell fontSize={control.fontSize}>
+        {rawContent ? <span className="shrink-0 truncate" style={{ maxWidth: `${labelMaxWidth}px`, color: 'var(--ne-muted)' }}>{rawContent}</span> : null}
+        <span className="min-w-0 flex-1 truncate">{selectValue}</span>
+        <Chevron />
+      </InputShell>;
       break;
+    }
     case 'SelectV2':
       preview = <Shell className="flex flex-col text-[9px]"><div className="flex h-7 items-center justify-between border-b border-slate-600 px-2"><span>{items[0]}</span><Chevron /></div><div className="flex flex-1 items-center justify-center text-slate-500">虚拟列表 · {numberValue(p.itemCount, 1000)} 项</div></Shell>;
       break;

@@ -5647,12 +5647,47 @@ test('LingCpp dynamic-library output exports 公开 methods via DllMain entry an
   assert.ok(!cpp.includes('int WINAPI wWinMain'), '动态库模式不应生成 wWinMain 入口');
   assert.match(cpp, /BOOL WINAPI DllMain\(HINSTANCE instance, DWORD reason, LPVOID reserved\)/u);
   assert.match(cpp, /LingBuilder_EnsureRuntimeInitialized\(\)/u);
-  assert.match(cpp, /extern "C" __declspec\(dllexport\) int 加法计算\(int 被加数, int 加数\)/u);
+  assert.match(cpp, /extern "C" __declspec\(dllexport\) int __stdcall 加法计算\(int 被加数, int 加数\)/u);
   // 文本参数必须以 const& 跨界、文本返回经 thread_local 缓冲以 const wchar_t* 交出（按值跨界会跨 CRT 堆损坏）。
-  assert.match(cpp, /extern "C" __declspec\(dllexport\) const wchar_t\* 问候生成\(const wchar_t\* 姓名\)/u);
+  assert.match(cpp, /extern "C" __declspec\(dllexport\) const wchar_t\* __stdcall 问候生成\(const wchar_t\* 姓名\)/u);
+  // 全部导出名都是非 ASCII：不生成 exports.def，包装保留 dllexport 装饰名兜底（x86 _名@参数字节数）。
+  assert.ok(!generated.files.some(file => file.relativePath === 'exports.def'), '无 ASCII 导出名时不应生成空导出表');
   assert.match(cpp, /LingBuilder_Dll文本返回缓冲 = LingBuilder_应用单例_游戏主窗体\(\)\.问候生成\(姓名\);/u);
   assert.match(cpp, /LingBuilder_应用单例_游戏主窗体\(\)\.加法计算\(被加数, 加数\)/u);
   assert.ok(!cpp.includes('dllexport) 整数型 内部翻倍'), '私有子程序不应出现在导出包装中');
+});
+
+test('LingCpp dynamic-library output emits exports.def with undecorated stdcall aliases for ASCII names', () => {
+  const source = [
+    '类 游戏主窗体 : 窗口',
+    '公开',
+    '  整数型 add_numbers(整数型 被加数, 整数型 加数)',
+    '    局部 整数型 合计 = 0',
+    '    合计 = 被加数 + 加数',
+    '    返回 合计',
+    '  结束',
+    '  整数型 加法计算(整数型 被加数, 整数型 加数)',
+    '    返回 (被加数)',
+    '  结束',
+    '结束类'
+  ].join('\n');
+  const generated = generateLingCppNativeWin32Project(sampleProject, { lingCppSourceCode: source, outputKind: 'dynamic-library' });
+  assert.equal(generated.blockingDiagnostics.length, 0, generated.blockingDiagnostics.join('\n'));
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'main.cpp' ? acc + file.content : acc, '');
+  // ASCII 导出名：包装不带 dllexport，仅由 exports.def 无装饰导出（避免 x64 双导出告警）。
+  assert.match(cpp, /extern "C" int __stdcall add_numbers\(int 被加数, int 加数\)/u);
+  assert.ok(!cpp.includes('dllexport) int __stdcall add_numbers'), 'ASCII 导出名不应再走 dllexport 自动导出');
+  // 非 ASCII 导出名：dllexport 装饰名兜底 + 中文诊断提示。
+  assert.match(cpp, /extern "C" __declspec\(dllexport\) int __stdcall 加法计算/u);
+  assert.ok(generated.diagnostics.some(message => message.includes('导出名不是 ASCII 标识符')), generated.diagnostics.join('\n'));
+  const definition = generated.files.find(file => file.relativePath === 'exports.def');
+  assert.ok(definition, '存在 ASCII 导出名时必须生成 exports.def');
+  // def 全文件必须纯 ASCII：链接器按 ANSI（GBK）读 def，注释里的中文 UTF-8 字节会让
+  // EXPORTS 条目被按 LNK4017 逐条作废（真机实测）；注释语法用分号，`//` 本身也不是合法语句。
+  assert.doesNotMatch(definition.content, /[^\x00-\x7f]/u, 'exports.def 必须全文件纯 ASCII');
+  assert.match(definition.content, /^; /u);
+  assert.match(definition.content, /EXPORTS\n    add_numbers\n?$/u);
+  assert.ok(!definition.content.includes('加法计算'), '非 ASCII 导出名不得写入 exports.def（链接器按 ANSI 读取，会 LNK2001）');
 });
 
 test('LingCpp dynamic-library output blocks non-POD export signatures', () => {
