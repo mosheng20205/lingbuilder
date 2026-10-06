@@ -364,7 +364,9 @@ async function startManagedRendererServer(workspaceRoot: string): Promise<Server
       PORT: '0',
       LINGBUILDER_WORKSPACE_ROOT: workspaceRoot,
       LINGBUILDER_RESOURCE_ROOT: app.isPackaged ? process.resourcesPath : path.join(repoRoot(), 'electron'),
-      LINGBUILDER_SDK_CACHE_ROOT: path.join(app.getPath('userData'), 'sdk-cache'),
+      // SDK 缓存目录不再随 userData 注入：由 server 端 resolveSdkCacheRoot() 统一解析为
+      // 机器级共享目录（%LOCALAPPDATA%\LingBuilder\sdk-cache），主窗口、「在新窗口打开工作区」/
+      // 例程实例（独立 userData）与 AI Bridge ai-server 全部同源，SDK 只下载一次全机生效。
       LINGBUILDER_USER_SETTINGS_PATH: path.join(app.getPath('userData'), 'settings.json'),
       LINGBUILDER_STATIC_ROOT: rendererStaticRoot(),
       LINGBUILDER_RULEBOOK_PATH: rulebookPath(),
@@ -1731,7 +1733,8 @@ app.whenReady().then(async () => {
       ...process.env,
       // Bridge 子进程据此在 health / workspace.list / MCP serverInfo 上回报 IDE 版本。
       LINGBUILDER_IDE_VERSION: app.getVersion(),
-      LINGBUILDER_SDK_CACHE_ROOT: path.join(app.getPath('userData'), 'sdk-cache'),
+      // SDK 缓存目录不再随 userData 注入：ai-server 端 resolveSdkCacheRoot() 统一解析为
+      // 机器级共享目录，与主窗口、「在新窗口打开工作区」/例程实例同源。
       // 供 protobufSdkLocation 等只读定位 IDE 随包资源（随包 Protobuf SDK 等）。
       LINGBUILDER_RESOURCE_ROOT: app.isPackaged ? process.resourcesPath : path.join(repoRoot(), 'electron')
     }

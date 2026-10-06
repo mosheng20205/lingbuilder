@@ -52,6 +52,9 @@
 .sponsor-support h2{margin:0;font-size:26px}
 .sponsor-support p{max-width:660px;margin:12px 0 0;color:var(--web-muted);font-size:13px;line-height:1.85}
 .sponsor-support img{display:block;justify-self:center;width:100%;max-width:320px;border:1px solid var(--web-line);border-radius:10px}
+.sponsor-pro-banner{margin-bottom:22px;padding:24px 28px;border:1px solid var(--t-ok-line);border-radius:12px;background:var(--t-ok-bg)}
+.sponsor-pro-banner strong{color:var(--t-ok);font-size:14px}
+.sponsor-pro-banner p{max-width:860px;margin:9px 0 0;color:var(--web-muted);font-size:12px;line-height:1.85}
 .sponsor-count{padding:14px 2px 12px;color:var(--t-faint);font-size:11px}
 .sponsor-list{border:1px solid var(--web-line);border-radius:13px;background:var(--web-panel);overflow:hidden}
 .sponsor-row{display:flex;align-items:center;gap:16px;padding:16px 24px;border-bottom:1px solid var(--t-line-soft)}

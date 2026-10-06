@@ -191,6 +191,7 @@ interface SidebarProps {
   assistantContent?: React.ReactNode;
   onSetStatus?: (id: string, status: 'translated' | 'skipped' | 'pending') => void;
   drawerWidth?: number;
+  fontSize?: number;
   onDeleteFile?: (file: CppFile) => boolean | Promise<boolean>;
   onRenameFile?: (file: CppFile, newName: string) => boolean | Promise<boolean>;
   sourceControlStatus?: SourceControlStatus | null;
@@ -244,6 +245,7 @@ export default function Sidebar({
   assistantContent,
   onSetStatus,
   drawerWidth = 264,
+  fontSize = 13,
   onDeleteFile,
   onRenameFile,
   sourceControlStatus = null,
@@ -783,7 +785,7 @@ export default function Sidebar({
           event.preventDefault();
           copyFunctionLibraryToClipboard(file);
         }}
-        className={`group flex items-center justify-between gap-2 py-1.5 px-3 pl-8 text-[13px] cursor-pointer border-l-2 transition-all ${
+        className={`group flex items-center justify-between gap-2 py-1.5 px-3 pl-8 text-[length:var(--lb-sidebar-font-size,13px)] cursor-pointer border-l-2 transition-all ${
           isActive
             ? isDarkMode 
               ? 'bg-[#37373D] border-[#007ACC] text-[#007ACC] font-medium'
@@ -1035,7 +1037,7 @@ export default function Sidebar({
         }}
         title={`打开窗口设计器：${windowModel.title} (${windowModel.fileName})`}
         aria-label={`打开窗口设计器：${windowModel.title}`}
-        className={`group w-full flex items-center justify-between gap-2 py-1.5 px-3 pl-8 text-[13px] cursor-pointer border-l-2 transition-all text-left ${
+        className={`group w-full flex items-center justify-between gap-2 py-1.5 px-3 pl-8 text-[length:var(--lb-sidebar-font-size,13px)] cursor-pointer border-l-2 transition-all text-left ${
           isActive
             ? isDarkMode
               ? 'bg-[#37373D] border-amber-500 text-amber-300 font-medium'
@@ -1805,8 +1807,8 @@ export default function Sidebar({
 
       {/* 2. Main Expanded Content Drawer (Only visible when expanded) */}
       {(
-        <div 
-          style={{ width: `${drawerWidth}px` }} 
+        <div
+          style={{ width: `${drawerWidth}px`, '--lb-sidebar-font-size': `${fontSize}px` } as React.CSSProperties}
           className={`${showLeftSidebar ? 'flex' : 'hidden'} h-full flex-col overflow-hidden border-r ${
             isDarkMode ? 'border-[#2d2d34]' : 'border-slate-200'
           }`}
@@ -1889,7 +1891,7 @@ export default function Sidebar({
               </div>
 
               {/* Solution Tree */}
-              <div className="flex-1 overflow-y-auto py-2 font-mono text-[13px]">
+              <div className="flex-1 overflow-y-auto py-2 font-mono text-[length:var(--lb-sidebar-font-size,13px)]">
                 <div>
                   <div
                     onClick={() => setIsSolutionOpen(!isSolutionOpen)}
@@ -1915,14 +1917,14 @@ export default function Sidebar({
                       setModuleContextMenu(null);
                       setSolutionContextMenu({ x: event.clientX, y: event.clientY, target: 'solution' });
                     }}
-                    className={`flex items-center gap-1.5 px-2.5 py-1.5 cursor-pointer text-[13px] font-semibold font-sans transition-colors ${
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 cursor-pointer text-[length:var(--lb-sidebar-font-size,13px)] font-semibold font-sans transition-colors ${
                       solutionDropTarget === 'root'
                         ? 'bg-blue-500/20 text-blue-200 ring-1 ring-inset ring-blue-400/70'
                         : isDarkMode ? 'hover:bg-[#2A2D2E]/40 text-slate-200' : 'hover:bg-slate-100 text-slate-700'
                     }`}
                   >
                     {isSolutionOpen ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
-                    <span className="truncate text-slate-300 text-[13px] font-semibold font-sans">解决方案 '{solution?.name || 'UI_CppLocProj'}'</span>
+                    <span className="truncate text-slate-300 text-[length:var(--lb-sidebar-font-size,13px)] font-semibold font-sans">解决方案 '{solution?.name || 'UI_CppLocProj'}'</span>
                   </div>
 
                   {isSolutionOpen && (
@@ -1954,7 +1956,7 @@ export default function Sidebar({
                                 const projectId = event.dataTransfer.getData('application/x-lingbuilder-solution-project') || draggedSolutionProjectId;
                                 void moveDraggedProject(projectId, folder.id);
                               }}
-                              className={`mb-1 flex min-h-8 items-center gap-1.5 rounded px-2 py-1.5 text-[13px] font-semibold font-sans cursor-pointer transition-colors ${
+                              className={`mb-1 flex min-h-8 items-center gap-1.5 rounded px-2 py-1.5 text-[length:var(--lb-sidebar-font-size,13px)] font-semibold font-sans cursor-pointer transition-colors ${
                                 isDropTarget
                                   ? 'bg-blue-500/20 text-blue-100 ring-1 ring-inset ring-blue-400/80'
                                   : isDarkMode ? 'text-amber-200 hover:bg-[#2A2D2E]/60' : 'text-amber-800 hover:bg-amber-50'
@@ -2029,7 +2031,7 @@ export default function Sidebar({
                             event.preventDefault();
                             void onPasteFunctionLibrary?.(project.id);
                           }}
-                          className={`flex min-h-8 items-center gap-1.5 px-2 py-2 text-[13px] font-semibold font-sans cursor-pointer border-l-2 transition-colors ${
+                          className={`flex min-h-8 items-center gap-1.5 px-2 py-2 text-[length:var(--lb-sidebar-font-size,13px)] font-semibold font-sans cursor-pointer border-l-2 transition-colors ${
                             isStartupProject
                               ? 'bg-violet-500/10 text-violet-300'
                               : isDarkMode ? 'text-slate-300 hover:bg-[#2A2D2E]/40' : 'text-slate-700 hover:bg-slate-100'
@@ -2068,7 +2070,7 @@ export default function Sidebar({
                           <button
                             type="button"
                             onClick={() => void onOpenProjectGlobalVariables?.(project.id)}
-                            className={`flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-[13px] font-sans transition-colors ${
+                            className={`flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-[length:var(--lb-sidebar-font-size,13px)] font-sans transition-colors ${
                               isDarkMode ? 'text-slate-300 hover:bg-[#2A2D2E]/50' : 'text-slate-700 hover:bg-slate-100'
                             }`}
                             title="打开当前项目固定的变量与常量文件"
@@ -2080,7 +2082,7 @@ export default function Sidebar({
                           <button
                             type="button"
                             onClick={() => void onOpenProjectDataTypes?.(project.id)}
-                            className={`flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-[13px] font-sans transition-colors ${
+                            className={`flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-[length:var(--lb-sidebar-font-size,13px)] font-sans transition-colors ${
                               isDarkMode ? 'text-slate-300 hover:bg-[#2A2D2E]/50' : 'text-slate-700 hover:bg-slate-100'
                             }`}
                             title="打开项目级记录型数据类型；旧项目会在首次编辑时创建文件"
@@ -2095,7 +2097,7 @@ export default function Sidebar({
                           <button
                             type="button"
                             onClick={() => void onOpenProjectDllCommands?.(project.id)}
-                            className={`flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-[13px] font-sans transition-colors ${
+                            className={`flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-[length:var(--lb-sidebar-font-size,13px)] font-sans transition-colors ${
                               isDarkMode ? 'text-slate-300 hover:bg-[#2A2D2E]/50' : 'text-slate-700 hover:bg-slate-100'
                             }`}
                             title="声明项目自带 DLL 的导出函数为中文命令；旧项目会在首次编辑时创建文件"
@@ -2114,7 +2116,7 @@ export default function Sidebar({
                       {isProjectOpen && <div className="pl-6 mt-1">
                         <div
                           onClick={() => setIsProjectModulesOpen(!isProjectModulesOpen)}
-                          className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer text-[13px] font-sans transition-colors ${
+                          className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer text-[length:var(--lb-sidebar-font-size,13px)] font-sans transition-colors ${
                             isDarkMode ? 'hover:bg-[#2A2D2E]/50 text-slate-300' : 'hover:bg-slate-100 text-slate-700'
                           }`}
                           title="查看和配置当前项目所使用的模块"
@@ -2164,7 +2166,7 @@ export default function Sidebar({
                                         setWindowContextMenu(null);
                                         setModuleContextMenu({ x: event.clientX, y: event.clientY, module });
                                       }}
-                                      className={`group w-[calc(100%-4px)] flex items-center gap-1.5 px-1.5 py-1.5 ml-1 rounded text-[13px] font-sans text-left cursor-pointer transition-colors ${
+                                      className={`group w-[calc(100%-4px)] flex items-center gap-1.5 px-1.5 py-1.5 ml-1 rounded text-[length:var(--lb-sidebar-font-size,13px)] font-sans text-left cursor-pointer transition-colors ${
                                         isDarkMode ? 'text-slate-300 hover:bg-[#2A2D2E]/40' : 'text-slate-700 hover:bg-slate-100'
                                       }`}
                                       title={`${module.manifest.name} ${module.manifest.version}\n${isModuleExpanded ? '点击折叠模块接口树' : '点击展开模块接口树'}；右键打开模块菜单。\n${module.manifest.description}`}
@@ -2224,7 +2226,7 @@ export default function Sidebar({
                               target: 'group'
                             });
                           }}
-                          className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer text-[13px] font-sans transition-colors ${
+                          className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer text-[length:var(--lb-sidebar-font-size,13px)] font-sans transition-colors ${
                             isDarkMode ? 'hover:bg-[#2A2D2E]/50 text-slate-300' : 'hover:bg-slate-100 text-slate-700'
                           }`}
                           title="展开查看所有窗口，点击窗口可直接进入窗口设计器"
@@ -2263,7 +2265,7 @@ export default function Sidebar({
                               void refreshProjectImageResources(project.id);
                             }
                           }}
-                          className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer text-[13px] font-sans transition-colors ${
+                          className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer text-[length:var(--lb-sidebar-font-size,13px)] font-sans transition-colors ${
                             isDarkMode ? 'hover:bg-[#2A2D2E]/50 text-slate-300' : 'hover:bg-slate-100 text-slate-700'
                           }`}
                           title="查看项目 assets 目录中的全部图片资源"
@@ -2310,7 +2312,7 @@ export default function Sidebar({
                                     setSolutionContextMenu(null);
                                     setResourceContextMenu({ x: event.clientX, y: event.clientY, resource, project });
                                   }}
-                                  className={`group w-full flex items-center gap-2 py-1.5 px-3 pl-7 text-[13px] cursor-pointer transition-colors font-sans ${
+                                  className={`group w-full flex items-center gap-2 py-1.5 px-3 pl-7 text-[length:var(--lb-sidebar-font-size,13px)] cursor-pointer transition-colors font-sans ${
                                     resourcePreview?.projectId === project.id && resourcePreview.resource.relativePath === resource.relativePath
                                       ? isDarkMode ? 'bg-cyan-500/10 text-cyan-200' : 'bg-cyan-50 text-cyan-800'
                                       : isDarkMode ? 'text-[#CCCCCC] hover:bg-[#2A2D2E] hover:text-white' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'
@@ -2330,7 +2332,7 @@ export default function Sidebar({
                       {isProjectOpen && <div className="pl-6 mt-1.5">
                         <div
                           onClick={() => setIsEmbeddedResourcesOpen(!isEmbeddedResourcesOpen)}
-                          className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer text-[13px] font-sans transition-colors ${
+                          className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer text-[length:var(--lb-sidebar-font-size,13px)] font-sans transition-colors ${
                             isDarkMode ? 'hover:bg-[#2A2D2E]/50 text-slate-300' : 'hover:bg-slate-100 text-slate-700'
                           }`}
                           title="构建期以 RCDATA 打进 EXE 的项目内嵌资源（跨窗口共享），运行期用 资源_* 命令按逻辑名读取"
@@ -2388,7 +2390,7 @@ export default function Sidebar({
                                       setResourceContextMenu(null);
                                       setEmbeddedResourceContextMenu({ x: event.clientX, y: event.clientY, name: resource.name, file: resource.file });
                                     }}
-                                    className={`group w-full flex items-center gap-2 py-1.5 px-3 pl-7 text-[13px] cursor-pointer transition-colors font-sans ${
+                                    className={`group w-full flex items-center gap-2 py-1.5 px-3 pl-7 text-[length:var(--lb-sidebar-font-size,13px)] cursor-pointer transition-colors font-sans ${
                                       isDarkMode ? 'text-[#CCCCCC] hover:bg-[#2A2D2E] hover:text-white' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'
                                     }`}
                                     title={`逻辑名：${resource.name}\n源文件：${resource.file}${resource.extract === true ? '\n启动释放：程序启动时释放到 %TEMP%\\lingbuilder-embedded\\<工程 ID>\\' : ''}\n${sourceFile ? '单击打开源文件' : '源文件不是文本文件：单击打开内嵌资源配置对话框'}`}
@@ -2412,7 +2414,7 @@ export default function Sidebar({
                       {isProjectOpen && <div className="pl-6 mt-1.5">
                         <div
                           onClick={() => setIsFunctionLibraryOpen(!isFunctionLibraryOpen)}
-                          className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer text-[13px] font-sans transition-colors ${
+                          className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer text-[length:var(--lb-sidebar-font-size,13px)] font-sans transition-colors ${
                             isDarkMode ? 'hover:bg-[#2A2D2E]/50 text-slate-300' : 'hover:bg-slate-100 text-slate-700'
                           }`}
                           title="独立、无状态、可跨项目复制的 .lcpp 功能库"
@@ -2435,7 +2437,7 @@ export default function Sidebar({
                       {isProjectOpen && <div className="pl-6 mt-1.5">
                         <div
                           onClick={() => setIsSrcOpen(!isSrcOpen)}
-                          className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer text-[13px] font-sans transition-colors ${
+                          className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer text-[length:var(--lb-sidebar-font-size,13px)] font-sans transition-colors ${
                             isDarkMode ? 'hover:bg-[#2A2D2E]/50 text-slate-300' : 'hover:bg-slate-100 text-slate-700'
                           }`}
                         >
@@ -2458,7 +2460,7 @@ export default function Sidebar({
                       {isProjectOpen && <div className="pl-6 mt-1.5">
                         <div
                           onClick={() => setIsConfigOpen(!isConfigOpen)}
-                          className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer text-[13px] font-sans transition-colors ${
+                          className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer text-[length:var(--lb-sidebar-font-size,13px)] font-sans transition-colors ${
                             isDarkMode ? 'hover:bg-[#2A2D2E]/50 text-slate-300' : 'hover:bg-slate-100 text-slate-700'
                           }`}
                         >
@@ -2964,7 +2966,7 @@ function ResourceDeleteConfirmDialog({
             <p className={`truncate text-[11px] ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>{target.resource.relativePath}</p>
           </div>
         </header>
-        <div className="px-4 py-3 text-[13px]">
+        <div className="px-4 py-3 text-[length:var(--lb-sidebar-font-size,13px)]">
           {references.length > 0 ? (
             <>
               <p>

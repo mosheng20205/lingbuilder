@@ -12,6 +12,7 @@ import type { TerminalEvent, TerminalSessionSnapshot } from '../services/termina
 interface TerminalPanelProps {
   isDarkMode: boolean;
   commandService?: CommandService;
+  fontSize?: number;
 }
 
 interface TerminalServerMessage {
@@ -23,7 +24,7 @@ interface TerminalServerMessage {
 
 type TerminalClientMessage = { type: 'input'; id: string; data: string } | { type: 'resize'; id: string; cols: number; rows: number };
 
-export default function TerminalPanel({ isDarkMode, commandService }: TerminalPanelProps) {
+export default function TerminalPanel({ isDarkMode, commandService, fontSize = 13 }: TerminalPanelProps) {
   const hostRef = useRef<HTMLDivElement>(null); const terminalRef = useRef<Terminal | undefined>(undefined); const fitRef = useRef<FitAddon | undefined>(undefined);
   const activeRef = useRef(''); const socketRef = useRef<WebSocket | null>(null); const connectedRef = useRef(false);
   const pendingRef = useRef<string[]>([]); const snapshotsRef = useRef(new Map<string, TerminalSessionSnapshot>()); const sequencesRef = useRef(new Map<string, number>());
@@ -187,7 +188,7 @@ export default function TerminalPanel({ isDarkMode, commandService }: TerminalPa
 
   useEffect(() => {
     if (!hostRef.current) return;
-    const terminal = new Terminal({ cursorBlink: true, convertEol: false, fontFamily: 'Cascadia Mono, Consolas, monospace', fontSize: 13,
+    const terminal = new Terminal({ cursorBlink: true, convertEol: false, fontFamily: 'Cascadia Mono, Consolas, monospace', fontSize,
       theme: isDarkMode ? { background: '#0d0d10', foreground: '#d4d4d4', cursor: '#ffffff' } : { background: '#ffffff', foreground: '#1f2937', cursor: '#111827' } });
     const fit = new FitAddon(); terminal.loadAddon(fit); terminal.open(hostRef.current); terminalRef.current = terminal; fitRef.current = fit;
 
@@ -220,7 +221,7 @@ export default function TerminalPanel({ isDarkMode, commandService }: TerminalPa
     const active = activeRef.current; const snapshot = active ? snapshotsRef.current.get(active) : undefined;
     if (active && snapshot) terminal.write(snapshot.buffer);
     return () => { observer.disconnect(); input.dispose(); terminal.dispose(); terminalRef.current = undefined; fitRef.current = undefined; };
-  }, [isDarkMode, sendClient, pasteClipboard, copySelection]);
+  }, [isDarkMode, fontSize, sendClient, pasteClipboard, copySelection]);
 
   useEffect(() => {
     const terminal = terminalRef.current; if (!terminal || !activeId) return;

@@ -48,8 +48,9 @@ export class WebsiteContentService {
 
   async publicBootstrap() {
     const [downloads, guides, demos, groups, sponsors] = await Promise.all([
+      // 官网下载页只展示稳定版：preview 渠道的抢先体验版只走 IDE 更新检查（latest-version 的渠道门禁），不上公开下载页。
       this.prisma.websiteDownloadRelease.findMany({
-        where: { publicationStatus: 'PUBLISHED' },
+        where: { publicationStatus: 'PUBLISHED', channel: 'stable' },
         include: { mirrors: { where: { enabled: true }, orderBy: [{ sortOrder: 'asc' }, { label: 'asc' }] } },
         orderBy: [{ sortOrder: 'desc' }, { publishedAt: 'desc' }]
       }),

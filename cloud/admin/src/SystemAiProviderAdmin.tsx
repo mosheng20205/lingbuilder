@@ -10,7 +10,7 @@ interface ProviderRecord { id:string; name:string; kind:'OPENAI_COMPATIBLE'|'ANT
 const initialForm = {providerId:'',name:'DeepSeek 系统 AI',preset:'deepseek-v4' as Preset,protocol:'openai-compatible' as Protocol,baseUrl:'https://api.deepseek.com/',apiKey:'',modelName:'',displayName:'',enabled:true};
 
 export function SystemAiProviderAdmin({data,request,reload}:{data:any;request:Request;reload:()=>Promise<void>}){
- const providers=(data?.providers||[]) as ProviderRecord[]; const[form,setForm]=useState(initialForm);const[busy,setBusy]=useState(false);const[message,setMessage]=useState('');const[error,setError]=useState('');const editing=Boolean(form.providerId);
+ const providers=(Array.isArray(data?.providers)?data.providers:[]) as ProviderRecord[]; const[form,setForm]=useState(initialForm);const[busy,setBusy]=useState(false);const[message,setMessage]=useState('');const[error,setError]=useState('');const editing=Boolean(form.providerId);
  const activeRoutes=useMemo(()=>providers.reduce((count,provider)=>count+(provider.enabled?provider.routes.filter(route=>route.enabled).length:0),0),[providers]);
  const update=<K extends keyof typeof form>(key:K,value:(typeof form)[K])=>setForm(current=>({...current,[key]:value}));
  const selectPreset=(preset:Preset)=>setForm(current=>preset==='deepseek-v4'?{...current,preset,name:current.providerId?current.name:'DeepSeek 系统 AI',protocol:'openai-compatible',baseUrl:'https://api.deepseek.com/',modelName:'',displayName:''}:{...current,preset,name:current.providerId?current.name:'自定义系统 AI',baseUrl:'',modelName:'',displayName:''});

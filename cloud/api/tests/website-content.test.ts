@@ -167,6 +167,8 @@ test('public bootstrap publishes only enabled sponsors ordered by sponsorship ti
     prisma[key] = { findMany: async (args: any) => { captured[key] ||= args; return []; } };
   }
   const result: any = await new WebsiteContentService(prisma).publicBootstrap();
+  assert.equal(captured.websiteDownloadRelease.where.publicationStatus, 'PUBLISHED');
+  assert.equal(captured.websiteDownloadRelease.where.channel, 'stable');
   assert.equal(captured.websiteSponsor.where.enabled, true);
   assert.deepEqual(captured.websiteSponsor.orderBy, [{ sponsoredAt: 'asc' }, { createdAt: 'asc' }]);
   assert.deepEqual(result.sponsors, []);

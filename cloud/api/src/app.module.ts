@@ -34,10 +34,12 @@ import { SkillCatalogService } from './website/skill-catalog.service.js';
 import { ModuleArtifactService } from './modules/module-artifact.service.js';
 import { CreditRechargeService } from './billing/credit-recharge.service.js';
 import { CreditRechargeController } from './billing/credit-recharge.controller.js';
+import { ProMembershipAdminController } from './pro/pro-membership.controller.js';
+import { ProMembershipService } from './pro/pro-membership.service.js';
 
 @Module({
   imports: [JwtModule.register({ global: true, secret: getConfig().jwtSecret, signOptions: { issuer: 'lingbuilder-cloud', audience: 'lingbuilder-clients' }, verifyOptions: { issuer: 'lingbuilder-cloud', audience: 'lingbuilder-clients' } })],
-  controllers: [HealthController, AuthController, MeController, AiController, UsageController, AdminController, ModuleCommerceController, PaymentsController, CreditRechargeController, ModuleAdminController, WebsiteContentController, WebsiteContentAdminController, SdkCatalogController, SdkCatalogAdminController, SkillCatalogController, SkillCatalogAdminController, BetaProgramController, BetaProgramAdminController],
-  providers: [PrismaService, RedisService, SecretVaultService, BillingService, PromotionService, AuthService, ProviderService, RulebookService, SystemAiProviderService, AiService, PaymentProviderService, ModuleCommerceService, ModuleArtifactService, WebsiteContentService, SdkCatalogService, SkillCatalogService, CreditRechargeService, BetaProgramService, { provide: APP_GUARD, useClass: AuthGuard }, { provide: APP_FILTER, useClass: CloudExceptionFilter }]
+  controllers: [HealthController, AuthController, MeController, AiController, UsageController, AdminController, ModuleCommerceController, PaymentsController, CreditRechargeController, ModuleAdminController, WebsiteContentController, WebsiteContentAdminController, SdkCatalogController, SdkCatalogAdminController, SkillCatalogController, SkillCatalogAdminController, BetaProgramController, BetaProgramAdminController, ProMembershipAdminController],
+  providers: [PrismaService, RedisService, SecretVaultService, BillingService, PromotionService, AuthService, ProviderService, RulebookService, SystemAiProviderService, AiService, PaymentProviderService, ModuleCommerceService, ModuleArtifactService, WebsiteContentService, SdkCatalogService, SkillCatalogService, CreditRechargeService, BetaProgramService, ProMembershipService, { provide: APP_GUARD, useClass: AuthGuard }, { provide: APP_FILTER, useClass: CloudExceptionFilter }]
 })
 export class AppModule {}

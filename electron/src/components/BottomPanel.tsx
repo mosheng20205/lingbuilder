@@ -52,6 +52,7 @@ interface BottomPanelProps {
   moduleHint: ModuleHintContent | null;
   commandHint: CommandHintContent | null;
   height: number;
+  fontSize?: number;
   onClearLogs?: (tab: string) => void;
   commandService?: CommandService;
   findResults?: FindResultsData | null;
@@ -74,6 +75,7 @@ export default function BottomPanel({
   moduleHint,
   commandHint,
   height,
+  fontSize = 12,
   onClearLogs,
   commandService,
   findResults,
@@ -233,7 +235,7 @@ export default function BottomPanel({
           ? 'bg-[#1E1E1E] border-[#181818]' 
           : 'bg-white border-slate-300'
       }`}
-      style={{ height }}
+      style={{ height, '--lb-panel-font-size': `${fontSize}px` } as React.CSSProperties}
     >
       {copyNotice && (
         <div
@@ -822,7 +824,7 @@ export default function BottomPanel({
           <div 
             onContextMenu={(e) => handleContextMenu(e, 'output')}
             title="右键打开日志菜单"
-            className={`p-4 font-mono text-xs space-y-1.5 select-text cursor-context-menu ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+            className={`p-4 font-mono text-[length:var(--lb-panel-font-size,12px)] space-y-1.5 select-text cursor-context-menu ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
             {buildLogs.length === 0 ? (
               <div className="text-slate-400 py-10 text-center font-sans">
                 💡 暂无编译与生成输出记录。请点击右上角 【调试 (F5)】 或 【重新生成】 按钮进行编译。
@@ -861,7 +863,7 @@ export default function BottomPanel({
           </div>
         )}
 
-        {activeTab === 'terminal' && <TerminalPanel isDarkMode={isDarkMode} commandService={commandService} />}
+        {activeTab === 'terminal' && <TerminalPanel isDarkMode={isDarkMode} commandService={commandService} fontSize={fontSize} />}
         {activeTab === 'tests' && <TestExplorer isDarkMode={isDarkMode} />}
 
         {activeTab === 'find_results' && findResults && onFindResultJump && (
@@ -880,7 +882,7 @@ export default function BottomPanel({
           <div 
             onContextMenu={(e) => handleContextMenu(e, 'debug_logs')}
             title="右键打开日志菜单"
-            className="p-4 font-mono text-xs space-y-1.5 select-text cursor-context-menu"
+            className="p-4 font-mono text-[length:var(--lb-panel-font-size,12px)] space-y-1.5 select-text cursor-context-menu"
           >
             {debugLogs.length === 0 ? (
               <div className="text-slate-400 py-10 text-center font-sans">

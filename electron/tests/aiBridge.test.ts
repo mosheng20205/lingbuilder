@@ -141,6 +141,8 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.match(String(client.getInstructions() || ''), /键名错＝没设/u, 'instructions 必须警示 UI 形状键被静默跳过、应用成功不等于生效');
     assert.match(String(client.getInstructions() || ''), /隐藏自动化要传 false/u, 'instructions 必须写明 webdriver 虚拟值语义（传 true 反而暴露）');
     assert.match(String(client.getInstructions() || ''), /clearAllData:true 清空该档案全部数据/u, 'instructions 必须写明 clearAllData 只用于槽位重置、多开保登录态不要发');
+    assert.match(String(client.getInstructions() || ''), /语言一致性红线/u, 'instructions 必须写明 mainAcceptLanguage/languages/acceptLanguages 三键同源裸逗号列表红线');
+    assert.match(String(client.getInstructions() || ''), /裸单标签 Accept-Language/u, 'instructions 必须警示只发首标签会出站裸单标签头、被检测站判语言不匹配');
     assert.match(String(client.getInstructions() || ''), /二维码模块（lingbuilder\.qrcode）写作口径/u, 'instructions 必须给出二维码模块写作口径条目');
     assert.match(String(client.getInstructions() || ''), /二维码_生成\(内容, 纠错级别, 边长像素, 空白边模块数\)/u, 'instructions 必须给出二维码生成标准调用形态');
     assert.match(String(client.getInstructions() || ''), /不要自己估容量/u, 'instructions 必须写明版本自动选择、禁止外部估算容量');
@@ -171,6 +173,9 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.match(String(client.getInstructions() || ''), /NE表格_设置悬停列/u, 'instructions 必须告知可点单元格列的悬停变色+手型命令');
     assert.match(String(client.getInstructions() || ''), /NE按钮_设置悬停三态色/u, 'instructions 必须告知按钮悬停/按下交互态配色命令与换肤重下红线');
     assert.match(String(client.getInstructions() || ''), /outputType="dll"/u, 'instructions 必须给出 DLL 输出的 project.create outputType 路径');
+    assert.match(String(client.getInstructions() || ''), /extern "C" \+ __stdcall/u, 'instructions 必须钉住 DLL 导出的 stdcall 约定');
+    assert.match(String(client.getInstructions() || ''), /exports\.def 以无装饰名进导出表/u, 'instructions 必须说明 ASCII 导出名单经 exports.def 无装饰导出（易语言可直接按名声明）');
+    assert.match(String(client.getInstructions() || ''), /英文\/拼音名且项目按 32 位/u, 'instructions 必须钉住易语言调用的英文导出名与 32 位构建红线');
     assert.match(String(client.getInstructions() || ''), /windows-dll.*获取接口版本|获取接口版本.*windows-dll/u, 'instructions 必须说明 windows-dll 模板的能力边界（仅获取接口版本映射）');
     assert.match(String(client.getInstructions() || ''), /禁止再调 run\.wait/u, 'instructions 必须钉住 DLL 项目没有运行入口的红线');
     assert.match(String(client.getInstructions() || ''), /LINGBUILDER_MSBUILD_PATH/u, 'instructions 必须告知 MSBuild 缺失时的环境变量修法');
@@ -1138,6 +1143,19 @@ test('renderer server enforces auth and exposes safe modules, files, process, an
     assert.equal(rejectedProjectExtensionResponse.status, 400);
     assert.match((await rejectedProjectExtensionResponse.json()).error, /不支持保存该项目文件类型/u);
 
+    // 作用域门禁：不属于任何项目源码/配置目录的工作区文件（真机 0.8.9：独立工作区根的
+    // .lingbuilder/project-modules.json 混进保存载荷）必须整单拒绝，不得静默落盘。
+    const rejectedProjectScopeResponse = await fetch(`${ready.origin}/api/window-designer/files`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        projectId: 'lingbuilder-ui-project',
+        files: { '.lingbuilder/project-modules.json': '{"schemaVersion":1}' }
+      })
+    });
+    assert.equal(rejectedProjectScopeResponse.status, 400);
+    assert.match((await rejectedProjectScopeResponse.json()).error, /项目文件不在当前项目源码或配置目录内/u);
+
     const linkedProjectDirectory = path.join(workspaceRoot, 'src', 'linked-outside');
     const outsideLinkedFile = path.join(outsideRoot, 'escape.lcpp');
     await fs.writeFile(outsideLinkedFile, '外部原内容', 'utf8');
@@ -1859,7 +1877,7 @@ test('AI Bridge builds dll-output window projects with a zero-window designer mo
     assert.ok(mainCpp, '预览必须生成 main.cpp');
     assert.match(
       String(mainCpp.content),
-      /extern "C" __declspec\(dllexport\) int 加法计算\(int 被加数, int 加数\)/u,
+      /extern "C" __declspec\(dllexport\) int __stdcall 加法计算\(int 被加数, int 加数\)/u,
       '零窗口 DLL 项目必须从公开子程序生成导出包装'
     );
     assert.match(String(mainCpp.content), /LINGBUILDER_PURE_LOGIC_DLL/u, '无窗口命令的 DLL 项目应走纯逻辑精简形态');
@@ -1910,7 +1928,7 @@ test('AI Bridge builds windows-dll template projects without a designer model on
     assert.ok(mainCpp, '预览必须生成 main.cpp');
     assert.match(
       String(mainCpp.content),
-      /extern "C" __declspec\(dllexport\) int add\(\)/u,
+      /extern "C" int __stdcall add\(\)/u,
       '零窗口 DLL 项目必须仍从公开子程序生成导出包装'
     );
     assert.match(String(mainCpp.content), /BOOL WINAPI DllMain/u, '动态库输出必须生成 DllMain');
@@ -2255,10 +2273,11 @@ test('lingbuilder.module.info exposes designer control palette, demo invocations
     assert.equal(tableEntry.createCommand, '控件_创建NE表格');
     assert.equal(tableEntry.lingCppType, 'NE表格');
     assert.equal(tableEntry.propertyCount > 10, true);
-    // 演示语料（2026-08-07，3784 命令）早于该命令入账：不得伪造示例，只按缺失处理并由 demoProject 说明新鲜度。
+    // 演示语料（2026-10-03 NE 命令汉化批次随清单重生成，4019 命令）与当前清单一致：
+    // demoExample 是真实调用行，demoProject.stale=false。
     assert.equal(table.commands.some(command => command.name === 'NE表格_设置列'), true);
-    assert.equal('demoExample' in table.commands[0], false);
-    assert.equal(table.demoProject.stale, true);
+    assert.equal('demoExample' in table.commands[0], true);
+    assert.equal(table.demoProject.stale, false);
     assert.match(table.demoProject.generatedAt, /^\d{4}-\d{2}-\d{2}$/u);
     assert.ok(table.demoProject.commandCount > 3000);
     assert.ok(table.demoProject.sourceRoot.includes('examples/module-demos'));
@@ -3585,6 +3604,87 @@ function createOptions(
     enableMcp: false
   };
 }
+
+test('构建前保存把 designPath 同时放进 files[] 与 project 字段时设计器模型获胜且不报同目标双写', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const staticRoot = path.join(workspaceRoot, 'static');
+  const rulebookPath = path.join(workspaceRoot, 'rulebook.md');
+  const userSettingsPath = path.join(workspaceRoot, 'profile', 'settings.json');
+  await fs.mkdir(staticRoot, { recursive: true });
+  await fs.mkdir(path.dirname(userSettingsPath), { recursive: true });
+  await fs.writeFile(path.join(staticRoot, 'index.html'), '<!doctype html><title>LingBuilder Test</title>', 'utf8');
+  await fs.writeFile(rulebookPath, '# test rulebook', 'utf8');
+  // 独立解决方案形态：sourceRoot=src、configRoot=.（项目根）、设计器模型在工作区根。
+  await registerSolutionProject(workspaceRoot, {
+    id: 'standalone-demo',
+    name: '独立解决方案演示',
+    sourceRoot: 'src',
+    designerPath: '.lingbuilder/window-designer.json'
+  });
+  // registerSolutionProject 的 configRoot/designerPath 有硬编码缺省值，这里改写为
+  // 独立解决方案形态：configRoot=.（项目根）、设计器模型在工作区根（用户 0.8.10 实测形态）。
+  const solutionPath = path.join(workspaceRoot, '.lingbuilder', 'solution.json');
+  const solution = JSON.parse(await fs.readFile(solutionPath, 'utf8')) as Record<string, any>;
+  solution.projects[0].configRoot = '.';
+  solution.projects[0].designerPath = '.lingbuilder/window-designer.json';
+  await fs.writeFile(solutionPath, JSON.stringify(solution, null, 2), 'utf8');
+  await fs.mkdir(path.join(workspaceRoot, 'src'), { recursive: true });
+  await fs.writeFile(path.join(workspaceRoot, 'src', 'MainWindow.lcpp'), '类 旧内容\n结束类\n', 'utf8');
+
+  const child = spawn(process.execPath, ['--import', 'tsx', path.resolve(process.cwd(), 'server.ts')], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      NODE_ENV: 'production',
+      HOST: '127.0.0.1',
+      PORT: '0',
+      LINGBUILDER_WORKSPACE_ROOT: workspaceRoot,
+      STATIC_ROOT: staticRoot,
+      RULEBOOK_PATH: rulebookPath,
+      LINGBUILDER_USER_SETTINGS_PATH: userSettingsPath,
+      SESSION_TOKEN: 'renderer-session-test',
+      LINGBUILDER_AI_BRIDGE_ENABLED: 'false'
+    },
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  let stderr = '';
+  child.stderr?.on('data', chunk => { stderr += String(chunk); });
+  try {
+    const ready = await waitForRendererReady(child, () => stderr);
+    const headers = {
+      'content-type': 'application/json',
+      'x-lingbuilder-session': 'renderer-session-test'
+    };
+    const response = await fetch(`${ready.origin}/api/window-designer/files`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        projectId: 'standalone-demo',
+        files: {
+          'src/MainWindow.lcpp': '类 新内容\n结束类\n',
+          '.lingbuilder/window-designer.json': '{"stale":true}'
+        },
+        project: {
+          schemaVersion: 2,
+          id: 'standalone-demo',
+          name: '独立解决方案演示',
+          windows: [{
+            id: 'main', fileName: 'MainWindow.xml', className: 'MainWindow',
+            title: '权威模型', width: 640, height: 480, background: '#111827',
+            description: '', designerBackend: 'win32', controls: []
+          }]
+        }
+      })
+    });
+    assert.equal(response.status, 200, await response.clone().text());
+    const designerOnDisk = await fs.readFile(path.join(workspaceRoot, '.lingbuilder', 'window-designer.json'), 'utf8');
+    assert.match(designerOnDisk, /权威模型/u);
+    assert.doesNotMatch(designerOnDisk, /"stale"/u);
+    assert.equal(await fs.readFile(path.join(workspaceRoot, 'src', 'MainWindow.lcpp'), 'utf8'), '类 新内容\n结束类\n');
+  } finally {
+    await stopChild(child);
+  }
+});
 
 async function waitForRendererReady(
   child: ReturnType<typeof spawn>,

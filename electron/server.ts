@@ -81,6 +81,11 @@ import { PublishingService } from "./src/services/publishing/publishingService";
 import { WorkspaceIndexService } from "./src/services/ai/workspaceIndexService";
 import { SettingsSyncService } from "./src/services/configuration/settingsSyncService";
 import { WorkspaceSearchError } from "./src/services/workspace/workspaceSearchTypes";
+import {
+  PROJECT_SAVE_TEXT_EXTS,
+  isIdeManagedWorkspacePath,
+  isPathInsideProjectScope
+} from "./src/services/workspace/projectFileState";
 import { createManagedProcessService } from "./src/services/tasks/managedProcessService";
 import { TaskService } from "./src/services/tasks/taskService";
 import { BuildConfigurationService, getBuildCompilerFlags, getModuleTargetId, type BuildConfiguration } from "./src/services/tasks/buildConfigurationService";
@@ -108,6 +113,7 @@ import {
   resolveSdkCacheRoot,
   type SdkDependencyId
 } from "./src/services/sdkDependencies/sdkDependencyCatalog";
+import { legacySdkCacheRoots, migrateLegacySdkCaches, describeSdkCacheMigration } from "./src/services/sdkDependencies/sdkCacheMigration";
 import { resolveSdkCatalogEndpoint } from "./src/services/sdkDependencies/sdkCatalogRemote";
 import { SDK_CATALOG_TRUST_ANCHORS } from "./src/services/sdkDependencies/catalogTrustAnchors";
 import { mapCompilerDiagnostics, parseCompilerDiagnostics } from "./src/services/tasks/compilerDiagnosticService";
@@ -383,7 +389,7 @@ function getSolutionService() {
 
 const app = express();
 const execFileAsync = promisify(execFile);
-const ALLOWED_PROJECT_EXTS = [".lcpp", ".cpp", ".h", ".rc", ".xml", ".json", ".ini", ".e"];
+const ALLOWED_PROJECT_EXTS = PROJECT_SAVE_TEXT_EXTS;
 
 class ProjectFileSaveValidationError extends Error {
   constructor(message: string) {
@@ -3599,7 +3605,11 @@ app.post("/api/window-designer/files", async (req, res) => {
     const designerPath = isWindowDesignerProject ? path.join(repoRoot, projectRef.designerPath) : undefined;
     if (designerPath) await fs.mkdir(path.dirname(designerPath), { recursive: true });
 
-    const pendingWrites: Array<{ relativePath: string; targetPath: string; bytes: Buffer; expectedVersion?: string }> = [];
+    // 同目标去重：files[] 与 project 字段可能指向同一文件（典型是 designerPath——
+    // 打开文件夹模式下工作区文件列表含设计器模型文件）。设计器模型是权威来源，
+    // 后写入 Map 覆盖 files[] 的同名条目；旧客户端不带排除逻辑也不会再触发
+    // 持久层"同一文件不能在一次保存中写入多次"整单拒绝（真机 2026-10-03）。
+    const pendingWritesByPath = new Map<string, { relativePath: string; targetPath: string; bytes: Buffer; expectedVersion?: string }>();
     for (const [relativePath, content] of Object.entries(files)) {
       const normalizedPath = relativePath.replace(/\\/g, "/");
       if (!isAllowedProjectTextPath(normalizedPath)) {
@@ -3608,11 +3618,12 @@ app.post("/api/window-designer/files", async (req, res) => {
       if (normalizedPath.split("/").includes("..")) {
         throw new ProjectFileSaveValidationError(`项目文件路径不能越过工作区：${relativePath}`);
       }
-      if (
-        !normalizedPath.startsWith(`${projectRef.sourceRoot}/`)
-        && !normalizedPath.startsWith(`${projectRef.configRoot}/`)
-        && !(projectRef.isDefault && (normalizedPath.startsWith("src/") || normalizedPath.startsWith("config/")))
-      ) {
+      if (isIdeManagedWorkspacePath(normalizedPath)) {
+        // `.lingbuilder/**`（模块安装/升级快照/工作区配置）、`.lingbuilder-build/**`（构建产物）、
+        // `generated/**`（F5 生成 C++ 工程）由 IDE 专有通道管理，绝不走项目文件保存回写。
+        throw new ProjectFileSaveValidationError(`项目文件不能写入 IDE 管理目录：${relativePath}`);
+      }
+      if (!isPathInsideProjectScope(normalizedPath, projectRef)) {
         throw new ProjectFileSaveValidationError(`项目文件不在当前项目源码或配置目录内：${relativePath}`);
       }
       const targetPath = await workspacePathPolicy.resolveForWrite(normalizedPath);
@@ -3620,7 +3631,7 @@ app.post("/api/window-designer/files", async (req, res) => {
         || fileFormats?.[normalizedPath]
         || existingSnapshots[normalizedPath]?.format
         || { encoding: "utf8", eol: "lf" };
-      pendingWrites.push({
+      pendingWritesByPath.set(normalizedPath, {
         relativePath: normalizedPath,
         targetPath,
         bytes: encodeTextFile(content, format),
@@ -3631,13 +3642,13 @@ app.post("/api/window-designer/files", async (req, res) => {
     const designerRelativePath = isWindowDesignerProject
       ? projectRef.designerPath.replace(/\\/g, "/")
       : undefined;
-    if (project && designerPath && designerRelativePath) pendingWrites.push({
+    if (project && designerPath && designerRelativePath) pendingWritesByPath.set(designerRelativePath, {
       relativePath: designerRelativePath,
       targetPath: designerPath,
       bytes: Buffer.from(JSON.stringify(project, null, 2), "utf8"),
       expectedVersion: baseVersions?.[designerRelativePath]
     });
-    await projectFilePersistenceService.writeAll(pendingWrites);
+    await projectFilePersistenceService.writeAll([...pendingWritesByPath.values()]);
 
     const savedSnapshots = await solutionService.readProjectFileSnapshots(projectRef);
     const savedFileFormats = Object.fromEntries(
@@ -3732,11 +3743,10 @@ app.post("/api/window-designer/files/convert-encoding", async (req, res) => {
     if (normalizedPath.split("/").includes("..")) {
       throw new ProjectFileSaveValidationError(`项目文件路径不能越过工作区：${filePath}`);
     }
-    if (
-      !normalizedPath.startsWith(`${projectRef.sourceRoot}/`)
-      && !normalizedPath.startsWith(`${projectRef.configRoot}/`)
-      && !(projectRef.isDefault && (normalizedPath.startsWith("src/") || normalizedPath.startsWith("config/")))
-    ) {
+    if (isIdeManagedWorkspacePath(normalizedPath)) {
+      throw new ProjectFileSaveValidationError(`项目文件不能位于 IDE 管理目录：${filePath}`);
+    }
+    if (!isPathInsideProjectScope(normalizedPath, projectRef)) {
       throw new ProjectFileSaveValidationError(`项目文件不在当前项目源码或配置目录内：${filePath}`);
     }
     const targetPath = await workspacePathPolicy.resolveForWrite(normalizedPath);
@@ -4609,6 +4619,10 @@ function formatOrigin(host: ServerRuntimeConfig["host"], port: number): string {
 
 export async function startServer(): Promise<ServerReadyInfo> {
   await workspacePathPolicy.getRealWorkspaceRoot();
+  // 旧 userData 隔离缓存里已装的 SDK 迁入机器级目录（rename-if-absent，幂等），
+  // 必须在第一次 SDK 检查前完成；失败只记诊断，不阻断服务启动。
+  const sdkCacheMigration = await migrateLegacySdkCaches(resolveSdkCacheRoot(process.env), legacySdkCacheRoots(process.env));
+  for (const line of describeSdkCacheMigration(sdkCacheMigration)) console.error(line);
   if (!(await getLingBuilderAiRulebook()).trim()) {
     throw new Error("LingBuilder AI 规则手册为空，服务拒绝启动。");
   }

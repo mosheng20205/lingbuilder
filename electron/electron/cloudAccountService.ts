@@ -2,7 +2,10 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-export interface CloudSessionSnapshot { authenticated: boolean; email?: string; balance?: { available: string; reserved: string }; error?: string }
+/** 生效中的 Pro 会员状态（/v1/me 的 pro 字段；无会员时为 null，设置页与标题栏徽标消费）。 */
+export interface CloudProStatus { tier: 'perpetual' | 'yearly'; source: string; startsAt?: string; endsAt?: string | null }
+
+export interface CloudSessionSnapshot { authenticated: boolean; email?: string; balance?: { available: string; reserved: string }; pro?: CloudProStatus | null; error?: string }
 type StreamListener = (requestKey: string, event: unknown) => void;
 
 export class CloudAccountService {
@@ -24,7 +27,7 @@ export class CloudAccountService {
       const me = await this.request('/v1/me');
       this.email = me.user.email;
       const balance = await this.request('/v1/usage/balance');
-      return { authenticated: true, email: this.email, balance: balance.balance };
+      return { authenticated: true, email: this.email, balance: balance.balance, pro: me.pro || null };
     } catch (error) {
       // access token 过期时只有流式请求会自动刷新，其余调用会在这里误报“未登录”；
       // 因此这里用 refresh token 刷新一次后重试，刷新失败也不再清空令牌（网络抖动不应清除登录态）。
@@ -35,7 +38,7 @@ export class CloudAccountService {
         const me = await this.request('/v1/me');
         this.email = me.user.email;
         const balance = await this.request('/v1/usage/balance');
-        return { authenticated: true, email: this.email, balance: balance.balance };
+        return { authenticated: true, email: this.email, balance: balance.balance, pro: me.pro || null };
       } catch (retryError) {
         return { authenticated: false, error: retryError instanceof Error ? retryError.message : String(retryError) };
       }

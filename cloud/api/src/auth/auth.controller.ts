@@ -2,6 +2,7 @@ import { Body, Controller, Get, Headers, Inject, Ip, Post, Query, Req, Res } fro
 import type { Request, Response } from 'express';
 import { AuthService } from './auth.service.js';
 import { CurrentUser, Public, type AuthenticatedUser } from '../common/current-user.js';
+import { PrismaService } from '../prisma.service.js';
 
 function verificationPage(title: string, message: string): string {
   return `<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${title} - LingBuilder</title><style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#0b1020;color:#e6e9f2}.card{max-width:26rem;padding:2.5rem;border-radius:12px;background:#131a2e;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.35)}h1{font-size:1.3rem;margin:0 0 .8rem}p{margin:0;line-height:1.7;color:#aab3cc}</style></head><body><div class="card"><h1>${title}</h1><p>${message}</p></div></body></html>`;
@@ -33,4 +34,15 @@ export class AuthController {
 }
 
 @Controller('v1')
-export class MeController { @Get('me') me(@CurrentUser() user: AuthenticatedUser) { return { ok: true, user }; } }
+export class MeController {
+  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+
+  /** 账号信息 + 生效中的 Pro 会员状态（IDE 设置页与标题栏徽标消费；无会员时 pro 为 null）。 */
+  @Get('me')
+  async me(@CurrentUser() user: AuthenticatedUser) {
+    const now = new Date();
+    const membership = await this.prisma.proMembership.findFirst({ where: { userId: user.id, revokedAt: null, startsAt: { lte: now }, OR: [{ endsAt: null }, { endsAt: { gt: now } }] } });
+    const pro = membership ? { tier: String(membership.tier).toLowerCase(), source: String(membership.source).toLowerCase(), startsAt: membership.startsAt, endsAt: membership.endsAt || null, active: true } : null;
+    return { ok: true, user, pro };
+  }
+}

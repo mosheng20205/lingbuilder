@@ -399,6 +399,10 @@ function SponsorsPage({ content, error }: PageProps) {
         </div>
         <img src={sponsorQr} alt="支付宝与微信赞助收款码"/>
       </div>
+      <div className="sponsor-pro-banner" role="note">
+        <strong>赞助转 Pro 活动 · 截止 2026 年 11 月 11 日</strong>
+        <p>活动截止前，累计赞助满 ¥99 的 QQ 号可免费转入 Pro 永久授权（价值 ¥299）；累计不足 ¥99 的赠送一年 Pro。领取方式：在官方交流群联系管理员，提供你的注册邮箱与赞助 QQ 即可开通。Pro 会员权益：全部收费模块、抢先体验通道、正式商业使用授权、优先支持；持有一年 Pro 的用户后续可补差 ¥200 升级为永久。</p>
+      </div>
       {error && <LoadNotice text={error}/>}
       {!content && !error && <LoadNotice text="正在加载赞助列表…"/>}
       {content && <p className="sponsor-count">{sponsors.length ? `共 ${sponsors.length} 笔赞助 · 合计 ${formatSponsorYuan(totalCents)}` : ''}</p>}

@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Code2,
   Copy,
+  Crown,
   Download,
   FileCode,
   FileText,
@@ -244,13 +245,21 @@ export default function ModuleDetailPage({
               {module.isBuiltin && <span className={`shrink-0 whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded ${isDarkMode ? 'bg-emerald-500/15 text-emerald-300' : 'bg-emerald-500/10 text-emerald-700'}`}>内置</span>}
               {module.isDevLink && <span className={`shrink-0 whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded ${isDarkMode ? 'bg-amber-500/15 text-amber-300' : 'bg-amber-500/10 text-amber-700'}`}>开发源</span>}
               {isFamilyView && <span className={`shrink-0 whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded ${isDarkMode ? 'bg-violet-500/15 text-violet-300' : 'bg-violet-500/10 text-violet-700'}`}>{familyFeatures?.length || 0} 个功能域</span>}
-              {commerceProduct && <span className={`shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] ${isDarkMode ? 'bg-rose-500/15 text-rose-300' : 'bg-rose-500/10 text-rose-700'}`}><LockKeyhole size={10} className="mr-1 inline" aria-hidden="true" />{commerceProduct.access?.allowed ? '已授权' : commerceProduct.freeWindow ? '限时免费' : `¥${((Number(commerceProduct.offers?.[0]?.priceMinor) || 0) / 100).toFixed(2)}`}</span>}
+              {commerceProduct && (commerceProduct.access?.allowed && commerceProduct.access?.source === 'pro'
+                ? <span title={`Pro 会员权益生效中${formatProAccessExpiry(commerceProduct.access?.expiresAt) ? `，${formatProAccessExpiry(commerceProduct.access?.expiresAt)}到期` : '（永久）'}；生效期内可使用全部收费模块`} className={`shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-semibold ${isDarkMode ? 'bg-amber-400/15 text-amber-300 ring-1 ring-amber-400/40' : 'bg-amber-500/15 text-amber-700 ring-1 ring-amber-500/40'}`}><Crown size={10} className="mr-1 inline" aria-hidden="true" />Pro 权益</span>
+                : <span className={`shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] ${isDarkMode ? 'bg-rose-500/15 text-rose-300' : 'bg-rose-500/10 text-rose-700'}`}><LockKeyhole size={10} className="mr-1 inline" aria-hidden="true" />{commerceProduct.access?.allowed ? '已授权' : commerceProduct.freeWindow ? '限时免费' : `¥${((Number(commerceProduct.offers?.[0]?.priceMinor) || 0) / 100).toFixed(2)}`}</span>)}
             </div>
             <div className={`mt-0.5 truncate text-xs ${subtleClass}`}>
               {manifest.id} · v{manifest.version}{manifest.author ? ` · ${manifest.author}` : ''} · {commandCount} 条命令
             </div>
             {manifest.description && (
               <p className={`mt-1 line-clamp-2 break-words text-xs leading-5 ${subtleClass}`} title={manifest.description}>{manifest.description}</p>
+            )}
+            {commerceProduct?.access?.allowed && commerceProduct.access?.source === 'pro' && (
+              <p className={`mt-1 flex items-center gap-1 text-xs leading-5 ${isDarkMode ? 'text-amber-300' : 'text-amber-700'}`}>
+                <Crown size={12} className="shrink-0" aria-hidden="true" />
+                Pro 会员权益生效中：全部收费模块均可使用{formatProAccessExpiry(commerceProduct.access?.expiresAt) ? `，本授权 ${formatProAccessExpiry(commerceProduct.access?.expiresAt)} 到期` : ''}。
+              </p>
             )}
           </div>
           {standalone && (
@@ -1486,4 +1495,11 @@ function getGroupIcon(groupId: PublicGroupId) {
     case 'examples': return <Code2 className="h-3.5 w-3.5 shrink-0 text-lime-300" />;
     default: return <Info className="h-3.5 w-3.5 shrink-0 text-slate-400" />;
   }
+}
+
+/** Pro 授权到期日（短格式）；永久买断或无值时返回空串。 */
+function formatProAccessExpiry(value?: string): string {
+  if (!value) return '';
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toLocaleDateString('zh-CN') : '';
 }

@@ -75,6 +75,19 @@ enum ModuleEntitlementSource {
   COMPENSATION
 }
 
+// Pro 会员档位：买断（长期有效）与年度（到期需续费或补差升级）。
+enum ProMembershipTier {
+  PERPETUAL
+  YEARLY
+}
+
+// Pro 会员来源：赞助活动转入（≥99 买断 / <99 赠一年，截止 2026-11-11）、普通购买、补偿授予。
+enum ProMembershipSource {
+  SPONSOR_ACTIVITY
+  PURCHASE
+  COMPENSATION
+}
+
 model User {
   id                 String                   @id @default(uuid())
   email              String                   @unique
@@ -99,6 +112,7 @@ model User {
   rechargeOrders     CreditRechargeOrder[]
   betaProgramMember  BetaProgramMember?
   betaProgramApplication BetaProgramApplication?
+  proMembership      ProMembership?
 }
 
 model ModuleProduct {
@@ -218,6 +232,26 @@ model ModuleFreeWindow {
   product     ModuleProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@index([productId, enabled, startsAt, endsAt])
+}
+
+// Pro 会员：一个账号一条记录（userId 唯一），生效期内可使用全部收费模块；
+// Permit 签发时单模块权益优先、Pro 会员次之、限时免费兜底。
+model ProMembership {
+  id          String              @id @default(uuid())
+  userId      String              @unique
+  tier        ProMembershipTier
+  source      ProMembershipSource
+  sponsorQq   String              @default("")
+  paidMinor   Int                 @default(0)
+  startsAt    DateTime            @default(now())
+  endsAt      DateTime?
+  revokedAt   DateTime?
+  note        String              @default("")
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tier])
 }
 
 model PaymentWebhookEvent {

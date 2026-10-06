@@ -8,10 +8,19 @@
  * 但自 2026-10-01 起 IDE 界面不再展示点数，充值链路已整体退场。
  */
 
+/** 生效中的 Pro 会员状态（与主进程 CloudSessionSnapshot.pro 同形；无会员时为 null）。 */
+export interface CloudProStatus {
+  tier: 'perpetual' | 'yearly';
+  source: string;
+  startsAt?: string;
+  endsAt?: string | null;
+}
+
 export interface CloudAccountSessionState {
   authenticated: boolean;
   email?: string;
   balance?: { available: string; reserved: string };
+  pro?: CloudProStatus | null;
   loading: boolean;
   error?: string;
 }
@@ -72,6 +81,7 @@ export function refreshCloudAccountSession(): Promise<CloudAccountSessionState> 
         authenticated: true,
         email: session.email,
         balance: balanceResult?.balance || session.balance,
+        pro: session.pro || null,
         loading: false
       });
     } catch (error) {
@@ -91,9 +101,10 @@ export function refreshCloudAccountSession(): Promise<CloudAccountSessionState> 
 /** 登录成功后写入会话，避免各入口重复请求 /v1/me。 */
 export function applyCloudAccountSignedIn(
   email?: string,
-  balance?: { available: string; reserved: string }
+  balance?: { available: string; reserved: string },
+  pro?: CloudProStatus | null
 ): CloudAccountSessionState {
-  return publish({ authenticated: true, email, balance, loading: false });
+  return publish({ authenticated: true, email, balance, pro: pro || null, loading: false });
 }
 
 /** 退出登录或云端判定会话失效时清空。 */

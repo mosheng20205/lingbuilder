@@ -1361,6 +1361,10 @@ export class AiBridgeService {
         executableBaseName: previewExecutableBaseName,
         generatedFiles,
         enabledModules: preview.enabledModules,
+        // DLL 项目导出的 VS 工程必须同为 DynamicLibrary 并挂 exports.def，否则 vcxproj 按应用形态
+        // 链接（找不到 wWinMain 入口），且导出表与 IDE 直编产物不一致。
+        projectKind: await this.resolveProjectOutputKind(request.project.id || 'window-preview'),
+        definitionFile: generatedFiles.some(file => file.relativePath === 'exports.def') ? 'exports.def' : undefined,
         contentFiles: [
           ...copiedAssets.map(file => normalizeFilePath(path.relative(exportDir, file))),
           ...executableIcon.files.map(file => normalizeFilePath(path.relative(exportDir, file))),
@@ -1857,6 +1861,7 @@ export class AiBridgeService {
       requiredCppStandard: moduleNativePlan.requiredCppStandard,
       requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt,
       projectKind: outputKind,
+      definitionFile: generatedProject.files.some(file => file.relativePath === 'exports.def') ? path.join('src', 'exports.def') : undefined,
       fbroRuntimeFromBuildBin: true,
       executableBaseName: executableNameParts.baseName,
       requireAdministrator
@@ -1870,6 +1875,7 @@ export class AiBridgeService {
       requiredCppStandard: moduleNativePlan.requiredCppStandard,
       requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt,
       projectKind: outputKind,
+      definitionFile: generatedProject.files.some(file => file.relativePath === 'exports.def') ? 'exports.def' : undefined,
       executableBaseName: executableNameParts.baseName,
       requireAdministrator
     });
@@ -2973,6 +2979,8 @@ async function compileWin32Preview(
         // 与 Visual Studio 导出工程 Release 配置的 OptimizeReferences/
         // EnableCOMDATFolding 同口径）；Debug 不加，保持链接行为不变。
         ...(buildMode === 'Release' ? ['/OPT:REF', '/OPT:ICF'] : []),
+        // 动态库导出表：与 compileMsvcPreviewWithModules 同口径，/DEF 必须落在 /link 区段内。
+        ...(buildDynamicLibrary ? await resolveDllDefinitionFileArgs(sourcePath) : []),
         // requireAdministrator：项目 buildProperties 要求时请求 UAC 提权（与 VS 导出工程一致）。
         ...(requireAdministrator ? [...REQUIRE_ADMINISTRATOR_LINK_ARGS] : [])
       ]
@@ -3046,6 +3054,20 @@ async function compileWin32Preview(
         error.message ? `错误：${error.message}` : ''
       ].filter(Boolean)
     };
+  }
+}
+
+/**
+ * 解析动态库链接的 /DEF 参数：生成器把 exports.def（无装饰 stdcall 导出表）写在 main.cpp 同目录。
+ * def 缺失（无 ASCII 公开子程序或产物目录异常）时返回空数组，仅装饰名导出，不阻断构建。
+ */
+async function resolveDllDefinitionFileArgs(sourcePath: string): Promise<string[]> {
+  const definitionCandidate = path.join(path.dirname(sourcePath), 'exports.def');
+  try {
+    await fs.access(definitionCandidate);
+    return [`/DEF:${definitionCandidate}`];
+  } catch {
+    return [];
   }
 }
 
@@ -3177,6 +3199,10 @@ async function compileMsvcPreviewWithModules(
     : [];
 
   const objectsToLink = compilePlans.map(plan => plan.objectFile);
+  // 动态库导出表：生成器随源码写出 exports.def（无装饰 stdcall 导出名），链接时经 /DEF 传给链接器。
+  // /DEF 必须落在 cl 命令的 /link 区段内（区外会被 cl 以 D9002 静默忽略）；def 缺失时跳过该参数，
+  // ASCII 导出名失去无装饰别名但不阻断构建（非 ASCII 导出名仍有 dllexport 装饰名兜底）。
+  const dllDefinitionFileArgs = buildDynamicLibrary ? await resolveDllDefinitionFileArgs(sourcePath) : [];
   const linkArgs = [
     '/nologo',
     ...(buildDynamicLibrary ? ['/DLL'] : []),
@@ -3196,6 +3222,7 @@ async function compileMsvcPreviewWithModules(
       ? [...newEmojiDelayLoadLinkArgs, '/MANIFEST:EMBED']
       : ['/link', '/MANIFEST:EMBED']),
     ...releaseLinkArgs,
+    ...dllDefinitionFileArgs,
     ...(requireAdministrator ? [...REQUIRE_ADMINISTRATOR_LINK_ARGS] : [])
   ];
 

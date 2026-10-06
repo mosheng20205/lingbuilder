@@ -30,10 +30,15 @@ export class ModuleCommerceService {
     let result: ModuleAccessDecision;
     if (entitlement) result = { allowed: true, source: entitlement.source.toLowerCase(), expiresAt: entitlement.endsAt || undefined, productId: product.id, policyVersion: product.policyVersion };
     else {
-      const freeWindow = await this.prisma.moduleFreeWindow.findFirst({ where: { productId: product.id, enabled: true, startsAt: { lte: now }, endsAt: { gt: now } }, orderBy: { startsAt: 'desc' } });
-      result = freeWindow
-        ? { allowed: true, source: 'free_window', expiresAt: freeWindow.endsAt, productId: product.id, policyVersion: product.policyVersion }
-        : { allowed: false, productId: product.id, policyVersion: product.policyVersion, reason: '该模块需要购买，且当前不在限时免费时段。' };
+      // Pro 会员：生效期内放行全部收费模块（单模块权益优先，限免兜底其后）。
+      const pro = await this.prisma.proMembership.findFirst({ where: { userId, revokedAt: null, startsAt: { lte: now }, OR: [{ endsAt: null }, { endsAt: { gt: now } }] } });
+      if (pro) result = { allowed: true, source: 'pro', expiresAt: pro.endsAt || undefined, productId: product.id, policyVersion: product.policyVersion };
+      else {
+        const freeWindow = await this.prisma.moduleFreeWindow.findFirst({ where: { productId: product.id, enabled: true, startsAt: { lte: now }, endsAt: { gt: now } }, orderBy: { startsAt: 'desc' } });
+        result = freeWindow
+          ? { allowed: true, source: 'free_window', expiresAt: freeWindow.endsAt, productId: product.id, policyVersion: product.policyVersion }
+          : { allowed: false, productId: product.id, policyVersion: product.policyVersion, reason: '该模块需要购买，且当前不在限时免费时段。' };
+      }
     }
     if (writeAudit) await this.prisma.moduleAccessAudit.create({ data: { userId, productId: product.id, moduleId, action: 'access.check', allowed: result.allowed, source: result.source, reason: result.reason } });
     return result;

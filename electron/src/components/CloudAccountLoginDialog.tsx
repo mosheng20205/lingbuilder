@@ -94,7 +94,7 @@ export default function CloudAccountLoginDialog({
       const session = await window.lingBuilder.cloudAccount.login({ email: normalizedEmail, password });
       if (!session?.authenticated) throw new Error('登录失败，请确认邮箱和密码后重试。');
       setPassword('');
-      applyCloudAccountSignedIn(session.email, session.balance);
+      applyCloudAccountSignedIn(session.email, session.balance, session.pro);
       onResult({ authenticated: true, email: session.email });
     } catch (loginError) {
       setError(loginError instanceof Error ? loginError.message : String(loginError));

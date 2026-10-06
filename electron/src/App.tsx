@@ -55,6 +55,7 @@ import {
 } from './types';
 import { initialFiles } from './data/templates';
 import { computeDiff } from './utils/diff';
+import { setActiveLingCppTokenColorSettings } from './services/lingCpp/semanticTheme';
 
 // Components
 import Sidebar from './components/Sidebar';
@@ -72,6 +73,7 @@ import EnvironmentRepairCenter from './components/EnvironmentRepairCenter';
 import SdkDependencyInstallerDialog from './components/SdkDependencyInstallerDialog';
 import CliGuideDialog from './components/CliGuideDialog';
 import AiBridgeTitleBarBadge from './components/AiBridgeTitleBarBadge';
+import ProTitleBarBadge from './components/ProTitleBarBadge';
 import AboutDialog from './components/AboutDialog';
 import UpdateDialog, { formatUpdateDate, type UpdateDialogInfo } from './components/UpdateDialog';
 import HelpCenterDialog from './components/HelpCenterDialog';
@@ -187,7 +189,7 @@ import {
   type DesignerImageImportResult
 } from './services/windowDesigner/designerAssetClient';
 import { sourceControlService, type SourceControlMutation } from './services/lingCpp/sourceControlService';
-import { applyProjectFileDelete, applyProjectFileRename } from './services/workspace/projectFileState';
+import { applyProjectFileDelete, applyProjectFileRename, filterProjectSaveableFiles, isProjectSaveableFilePath } from './services/workspace/projectFileState';
 import {
   applyWorkspaceReplace,
   previewWorkspaceReplace,
@@ -393,9 +395,17 @@ const MAX_EDITOR_FONT_SIZE = 24;
 const DEFAULT_LEFT_SIDEBAR_WIDTH = 264;
 const MIN_LEFT_SIDEBAR_WIDTH = 160;
 const MAX_LEFT_SIDEBAR_WIDTH = 600;
+const DEFAULT_SIDEBAR_FONT_SIZE = 13;
+const DEFAULT_PANEL_FONT_SIZE = 12;
+const MIN_CHROME_FONT_SIZE = 10;
+const MAX_CHROME_FONT_SIZE = 20;
 
 const clampEditorFontSize = (value: number) => {
   return Math.max(MIN_EDITOR_FONT_SIZE, Math.min(MAX_EDITOR_FONT_SIZE, Math.round(value)));
+};
+
+const clampChromeFontSize = (value: number) => {
+  return Math.max(MIN_CHROME_FONT_SIZE, Math.min(MAX_CHROME_FONT_SIZE, Math.round(value)));
 };
 
 const clampLeftSidebarWidth = (value: number) => {
@@ -1262,6 +1272,8 @@ export default function App() {
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [commandQuery, setCommandQuery] = useState('');
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
+  // 标题栏 Pro 徽标等入口指定设置页打开时直达的分类；关闭后复位。
+  const [settingsFocusCategory, setSettingsFocusCategory] = useState<'账号' | null>(null);
   const [projectBuildPathsState, setProjectBuildPathsState] = useState<{ projectId: string; projectName: string; initialValue: ProjectBuildPathsDialogValue } | null>(null);
   // 「配置项目内嵌资源」对话框：在解决方案资源管理器里直接编辑清单，不切到窗口设计器。
   const [embeddedResourcesDialog, setEmbeddedResourcesDialog] = useState<{ projectId: string; projectName: string } | null>(null);
@@ -1377,6 +1389,8 @@ export default function App() {
   ) => Promise<boolean>>(async () => false);
   const [isAppClosed, setIsAppClosed] = useState(false);
   const [editorFontSize, setEditorFontSizeState] = useState(getInitialEditorFontSize);
+  const [sidebarFontSize, setSidebarFontSize] = useState(DEFAULT_SIDEBAR_FONT_SIZE);
+  const [panelFontSize, setPanelFontSize] = useState(DEFAULT_PANEL_FONT_SIZE);
   const [editorExperienceMode, setEditorExperienceModeState] = useState<EditorExperienceMode>(getInitialEditorExperienceMode);
   const [autoSaveMode, setAutoSaveMode] = useState<'off' | 'afterDelay'>('off');
   const [autoSaveDelay, setAutoSaveDelay] = useState(1200);
@@ -1762,11 +1776,19 @@ export default function App() {
     const colorTheme = readValue('workbench.colorTheme');
     const sidebarVisible = readValue('workbench.sidebar.visible');
     const sidebarWidth = readValue('workbench.sidebar.width');
+    const sidebarFontSize = readValue('workbench.sidebar.fontSize');
     const panelVisible = readValue('workbench.panel.visible');
+    const panelFontSize = readValue('workbench.panel.fontSize');
     const shortcuts = readValue('keyboard.shortcuts');
     const autoCheck = readValue('updates.autoCheck');
     const experienceChannel = readValue('updates.experienceChannel');
     const skippedVersion = readValue('updates.skippedVersion');
+    // 令牌配色服务是模块级单一出口：新手/专业编辑器与 Diff 视图都从这里取色，
+    // 保存设置后经此写入，Monaco 订阅者即时重定义主题。
+    setActiveLingCppTokenColorSettings({
+      themeId: readValue('editor.tokenTheme'),
+      overrides: readValue('editor.tokenColorOverrides')
+    });
 
     if (typeof fontSize === 'number') setEditorFontSizeState(clampEditorFontSize(fontSize));
     if (experienceMode === 'beginner' || experienceMode === 'professional' || experienceMode === 'native') {
@@ -1777,7 +1799,9 @@ export default function App() {
     if (colorTheme === 'dark' || colorTheme === 'light') setIsDarkMode(colorTheme === 'dark');
     if (typeof sidebarVisible === 'boolean') setShowLeftSidebar(sidebarVisible);
     if (typeof sidebarWidth === 'number') setLeftWidth(clampLeftSidebarWidth(sidebarWidth));
+    if (typeof sidebarFontSize === 'number') setSidebarFontSize(clampChromeFontSize(sidebarFontSize));
     if (typeof panelVisible === 'boolean') setShowBottomPanel(panelVisible);
+    if (typeof panelFontSize === 'number') setPanelFontSize(clampChromeFontSize(panelFontSize));
     setShortcutOverrides(isStringRecord(shortcuts) ? shortcuts : {});
     if (typeof autoCheck === 'boolean') setUpdatesAutoCheck(autoCheck);
     if (typeof experienceChannel === 'boolean') setUpdatesExperienceChannel(experienceChannel);
@@ -2974,7 +2998,16 @@ void DisplayStatus() {
       const customEvent = event as CustomEvent<WindowDesignerLingCppSourceRequestDetail>;
       const windowFileName = customEvent.detail?.windowFileName;
       const windowClassName = customEvent.detail?.windowClassName;
-      const currentFiles = filesRef.current;
+      // 「构建源码快照」只收当前项目作用域内的文件：filesRef 是整棵工作区树，
+      // 打开文件夹模式下模块示例（.lingbuilder/modules/**）等工作区文件会混进
+      // lingCppSources，被生成端「项目源码路径不属于当前项目源码目录」整单拒绝
+      //（真机 2026-10-03：lingbuilder.demo.mathdll/examples/最小示例.lcpp 触发）。
+      const activeProjectForSources = activeSolutionProjectRef.current;
+      const currentFiles = filesRef.current.filter(file => isProjectSaveableFilePath(file.path, {
+        sourceRoot: activeProjectForSources.sourceRoot,
+        configRoot: activeProjectForSources.configRoot,
+        isDefault: activeProjectForSources.isDefault === true
+      }));
       let lingCppFile: CppFile | undefined;
 
       if (windowFileName || windowClassName) {
@@ -3120,8 +3153,9 @@ void DisplayStatus() {
         setPendingDesignerEventEdit(null);
         const selected = await handleSelectFile(existingFile);
         if (!selected) return;
-        const switched = await setEditorExperienceMode('beginner');
-        if (!switched) return;
+        // 尽力切到新手模式但不作为硬门禁：设置写入失败时仍要定位处理器，
+        // focusLingCppHandler 的 focus-epl-handler 会再次请求切换新手模式。
+        await setEditorExperienceMode('beginner');
         // 容错命中时定位与提示都用源码里真实的处理器名（如裸「创建完毕」），不虚构请求名。
         const matchedHandlerName = ensured.matchedHandlerName?.trim() || handlerName;
         setBuildLogs(prev => [
@@ -3893,13 +3927,28 @@ void DisplayStatus() {
       }
       requireCurrentProjectMutationOwner(requestOwner);
 
+      // 「构建前保存」只发送服务端门禁一定会收下的文件：打开文件夹模式下编辑器文件
+      // 列表是整棵工作区树，模块内部文档（.lingbuilder/modules/**，含升级自愈暂存目录）、
+      // 工作区配置、README、二进制产物等都会混进来；任何一个不可保存文件都会被服务端
+      // 整单拒绝并取消 F5（真机 2026-10-03 两次实测）。过滤口径与服务端同源：
+      // projectFileState.isProjectSaveableFilePath（作用域 + 扩展名白名单 + 越界 + 模块内部）。
+      const saveFileSplit = filterProjectSaveableFiles(flushState.files, {
+        sourceRoot: activeSolutionProject.sourceRoot,
+        configRoot: activeSolutionProject.configRoot,
+        isDefault: activeSolutionProject.isDefault === true
+      }, [activeSolutionProject.designerPath]);
+      if (saveFileSplit.dropped > 0) {
+        const droppedExamples = saveFileSplit.droppedPaths.slice(0, 3).map(path => path.replace(/\\/g, '/')).join('、');
+        appendEditorTransactionLog(`【${reason}】已跳过 ${saveFileSplit.dropped} 个非项目文件（模块内部/作用域外/类型不符），例如：${droppedExamples}${saveFileSplit.dropped > 3 ? ' 等' : ''}。`);
+      }
+
       const designerProject = activeProjectHasWindowDesigner ? getCurrentWindowDesignerProject(activeProjectId) : undefined;
       const savedDesignerSnapshot = designerProject ? JSON.stringify(designerProject) : '';
       const projectId = requestOwner.projectId || designerProject?.id || 'lingbuilder-ui-project';
       const savedStateByPath = new Map<string, { content: string; format: TextFileFormat }>();
       const projectFiles: Record<string, string> = {};
       const projectFileFormats: Record<string, TextFileFormat> = {};
-      flushState.files.forEach(file => {
+      saveFileSplit.kept.forEach(file => {
         const content = getCurrentFileContent(file);
         const format = getTextFileFormat(file);
         projectFiles[file.path] = content;
@@ -7074,6 +7123,14 @@ void DisplayStatus() {
               <BuildStampLabel />
             </div>
             <AiBridgeTitleBarBadge onOpen={() => setShowCliGuide(true)} isDarkMode={isDarkMode} />
+            <ProTitleBarBadge
+              onOpen={() => {
+                setSettingsFocusCategory('账号');
+                setShowSettingsDialog(true);
+                void loadWorkbenchConfiguration();
+              }}
+              isDarkMode={isDarkMode}
+            />
             {updateBadgePayload && (
               <div
                 className="window-no-drag relative flex shrink-0 items-center"
@@ -7153,7 +7210,7 @@ void DisplayStatus() {
                   <button onClick={() => { void executeWorkbenchCommand('workbench.action.files.openLcppSourcePackage'); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     打开 LCPP 源码包…
                   </button>
-                  <button disabled={isSaving || isBuilding} onClick={() => { void executeWorkbenchCommand('workbench.action.project.exportLcppSourcePackage', activeProjectId); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left text-[11px] disabled:cursor-not-allowed disabled:opacity-50 ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                  <button disabled={isSaving || isBuilding || projectFilesLoading} onClick={() => { void executeWorkbenchCommand('workbench.action.project.exportLcppSourcePackage', activeProjectId); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left text-[11px] disabled:cursor-not-allowed disabled:opacity-50 ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     一键导出当前项目源码包…
                   </button>
                   <button onClick={() => { void handleImportExternalProject(); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
@@ -7908,6 +7965,7 @@ void DisplayStatus() {
           onExportLcppSourcePackage={projectId => { void executeWorkbenchCommand('workbench.action.project.exportLcppSourcePackage', projectId); }}
           onCopyProjectResourcePath={handleCopyProjectResourcePath}
           onDeleteProjectResource={handleDeleteProjectResource}
+          fontSize={sidebarFontSize}
           activeModuleHintId={moduleHint?.itemId}
           onShowModuleHint={handleShowModuleHint}
         />
@@ -8175,6 +8233,7 @@ void DisplayStatus() {
               moduleHint={moduleHint}
               commandHint={commandHint}
               height={bottomHeight}
+              fontSize={panelFontSize}
               commandService={commandServiceRef.current}
               findResults={findResultsData}
               onFindResultJump={handleFindResultJump}
@@ -8273,10 +8332,11 @@ void DisplayStatus() {
         isDarkMode={isDarkMode}
         loading={configurationLoading}
         error={configurationError || undefined}
+        initialCategory={settingsFocusCategory}
         onUpdate={updateWorkbenchConfiguration}
         onReset={resetWorkbenchConfiguration}
         onReload={loadWorkbenchConfiguration}
-        onClose={() => setShowSettingsDialog(false)}
+        onClose={() => { setShowSettingsDialog(false); setSettingsFocusCategory(null); }}
       />
 
       <ProjectBuildPathsDialog

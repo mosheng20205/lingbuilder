@@ -12,6 +12,8 @@ import { createModuleAccessGate, type ModuleAccessBootstrap } from './services/a
 import { createAiBridgeMcpHttpGateway, startAiBridgeMcpServer } from './services/aiBridge/mcpServer';
 import { AiBridgePermissionMode, AiBridgeServerOptions } from './services/aiBridge/types';
 import { CloudCliClient } from './services/cloud/cloudCliClient';
+import { describeSdkCacheMigration, legacySdkCacheRoots, migrateLegacySdkCaches } from './services/sdkDependencies/sdkCacheMigration';
+import { resolveSdkCacheRoot } from './services/sdkDependencies/sdkDependencyCatalog';
 import { createModuleService } from './services/modules/moduleService';
 import { ModuleAccessService } from './services/modules/moduleAccessService';
 import { LINGBUILDER_VERSION } from './services/product/productInfo';
@@ -71,6 +73,11 @@ async function main(): Promise<void> {
     allowRemote,
     enableMcp: enableMcpStdio || enableMcpHttp
   };
+
+  // 与 IDE 主服务共享同一机器级 SDK 缓存目录；旧 userData 隔离缓存里的已装 SDK 就地迁入（幂等）。
+  // 诊断一律走 stderr：stdio 宿主的 stdout 是 MCP 通道，禁止污染。
+  const sdkCacheMigration = await migrateLegacySdkCaches(resolveSdkCacheRoot(process.env), legacySdkCacheRoots(process.env));
+  for (const line of describeSdkCacheMigration(sdkCacheMigration)) console.error(line);
 
   // 外部 AI 客户端自动拉起的 stdio 宿主没有 IDE 注入的授权环境，向正在运行的 IDE 主进程换取；
   // 换不到一律保持 fail-closed（收费模块继续被权益门禁拒绝），不得静默放行。

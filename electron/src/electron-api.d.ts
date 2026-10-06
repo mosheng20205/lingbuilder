@@ -212,9 +212,9 @@ declare global {
         verifyEmail: (token: string) => Promise<{ ok: boolean }>;
         forgotPassword: (value: { email: string }) => Promise<{ ok: boolean }>;
         resetPassword: (value: { token: string; password: string }) => Promise<{ ok: boolean }>;
-        login: (value: { email: string; password: string }) => Promise<{ authenticated: boolean; email?: string; balance?: { available: string; reserved: string } }>;
+        login: (value: { email: string; password: string }) => Promise<{ authenticated: boolean; email?: string; balance?: { available: string; reserved: string }; pro?: { tier: 'perpetual' | 'yearly'; source: string; startsAt?: string; endsAt?: string | null } | null }>;
         logout: () => Promise<{ ok: boolean }>;
-        session: () => Promise<{ authenticated: boolean; email?: string; balance?: { available: string; reserved: string }; error?: string }>;
+        session: () => Promise<{ authenticated: boolean; email?: string; balance?: { available: string; reserved: string }; pro?: { tier: 'perpetual' | 'yearly'; source: string; startsAt?: string; endsAt?: string | null } | null; error?: string }>;
         models: () => Promise<{ ok: boolean; models: Array<{ alias: string; displayName: string; description: string; maxOutputTokens: number }> }>;
         balance: () => Promise<{ ok: boolean; balance: { available: string; reserved: string } }>;
         moduleCatalog: () => Promise<{ ok: boolean; products: Array<{ moduleId: string; productId: string; name: string; description: string; listed: boolean; enabled: boolean; offers: Array<{ id: string; name: string; kind: 'perpetual'|'fixed_term'; priceMinor: string; currency: 'CNY'; durationDays?: number }>; freeWindow?: { startsAt: string; endsAt: string; timezone: string }; access?: { allowed: boolean; source?: string; expiresAt?: string; reason?: string } }> }>;
