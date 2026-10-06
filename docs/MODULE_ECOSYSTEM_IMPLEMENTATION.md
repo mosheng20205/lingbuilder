@@ -455,7 +455,7 @@ lingbuilder.module.json
 - 生成命令：`cd electron && npm run module:new-emoji -- --install`。该命令会验证后原子替换 `.lingbuilder/module-build/lingbuilder.new_emoji.ui`、`.lingbuilder/modules/lingbuilder.new_emoji.ui` 和 `.lingbuilder/module-packages/new_emoji.lbmod`。只读门禁 `npm run module:new-emoji:check` 会在临时目录重建并比较 manifest、文档和全部文件哈希。
 - 当前模块版本为 `2.0.0`，最低 LingBuilder 版本为 `0.3.0`，清单固定包含 Win32/x64 的 `new_emoji.dll` 和 `new_emoji.lib` targets；构建按项目架构选择对应资产。
 - `new_emoji.lib` 是 MSVC 导入库；如果只检测到 g++/clang++，F5 会返回“new_emoji 模块需要 MSVC/Visual Studio Build Tools”的中文诊断。
-- `.lcpp` 用户优先使用 `NE_创建窗口`、`NE_创建按钮`、`NE_创建文本` 等桥接命令；自动生成的 `NE_EU_*` 命令属于底层高级入口，参数仍按 new_emoji 的 UTF-8 字节指针和长度规则处理。
+- `.lcpp` 用户优先使用 `NE_创建窗口`、`NE_创建按钮`、`NE_创建文本` 等桥接命令；底层直调命令（2026-10-03 起 1528 条全部为中文主名，旧 `NE_EU_*` 名以别名兼容）属于底层高级入口，参数仍按 new_emoji 的 UTF-8 字节指针和长度规则处理。
 - `NE_` 桥接层把 `wchar_t*` 转 UTF-8 时必须为 `WideCharToMultiByte` 的结尾 `\0` 预留空间，再传递不含结尾 `\0` 的字节长度；传给 new_emoji 控件的 UTF-8 字符串还必须存入桥接层持久池，不能把函数内临时缓冲区指针交给 DLL，否则 VS Debug CRT 可能读到 `0xDDDDDDDD` 已释放内存并触发访问冲突。
 - new_emoji 独立演示或 AI 自动生成示例必须保留事件块末尾的结构标记 `结束`，但不能额外调用显式退出命令 `结束()`；后者会销毁 LingBuilder 默认窗口，消息循环收到退出后表现为 exe 闪退。
 - 纯 new_emoji 示例应由 new_emoji 自己负责生命周期：创建窗口和控件后调用 `NE_运行消息循环` 或底层 `EU_RunMessageLoop()`。如果继续复用 LingBuilder 默认 Win32 生成窗口，必须保证默认窗口不会立即销毁，也不能让空设计器窗口关闭后触发 `PostQuitMessage(0)`。
@@ -584,7 +584,7 @@ npm run build
 - `new_emoji` 的唯一生成来源为上游 `new_emoji.def`、`exports.h`、`element_types.h` 和设计器目录。模块生成脚本强制校验 93 个组件、1618 个导出、精确参数和目录 SHA-256；提交目录仍为旧 92 控件时只允许在系统临时目录运行上游 Catalog Exporter，目录与导出定义无法收敛时直接失败。
 - 模块控件使用 `lingbuilder.new_emoji.ui/<Control>` 命名空间 ID，窗口通过 `designerBackend: win32 | new-emoji` 固定后端；非空窗口禁止切换，项目内可同时保存两类窗口。
 - 设计器重新挂载必须以磁盘加载完成的项目模型为准，不得用全局 localStorage 覆盖模块控件。自动保存缓存按 `projectId` 隔离；旧窗口只要包含 `lingbuilder.new_emoji.ui/*` 命名空间控件，规范化时就补齐并在下次保存持久化 `designerBackend: new-emoji`。
-- 属性与事件面板消费模块目录，支持搜索、分组、基础/高级切换、默认值恢复和事件处理器模板。底层 `NE_EU_*` 默认为 advanced，不进入普通补全；用户显式开启“显示底层高级 API”后才显示。
+- 属性与事件面板消费模块目录，支持搜索、分组、基础/高级切换、默认值恢复和事件处理器模板。底层直调命令默认为 advanced，不进入普通补全；用户显式开启“显示底层高级 API”后才显示。
 - `runtimeCommand` 是属性或事件可编辑的硬门槛。当前模块生成 3784 条 contribution/binding、718 个属性和 918 个事件映射；函数指针 typedef 必须生成 `handler + handlerSignature`，清单校验发现上游函数指针仍被映射为 `int` 时拒绝打包。旧 Upload/DragUpload 的历史回调继续按兼容链路工作。
 - new_emoji 设计画布必须使用上游原生主题令牌预览，不得再用 React 专属渐变或阴影伪装运行效果。深色主题的核心默认值为窗口 `#1E1E2E`、标题栏 `#181825`、按钮 `#45475A`、编辑框 `#313244`、边框 `#585B70`；浅色主题使用对应上游令牌。点阵只属于设计辅助，不进入原生运行时。
 - 93 个命名空间控件的设计时形态由独立 `NewEmojiDesignerControlPreview` 负责，并以 `designerType` 末段选择预览；不能再只按兼容 `previewType` 渲染为普通文字或空容器。弹窗、抽屉、图表、浮层等内部遮罩和阴影必须裁切在控件边界内，禁止污染相邻控件；预览组件继续消费 `NewEmojiThemePreview`，不得另建与原生主题无关的基础按钮/编辑框配色。

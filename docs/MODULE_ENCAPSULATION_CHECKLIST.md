@@ -2,7 +2,7 @@
 
 更新时间：2026-09-29
 
-本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **102 个内置模块、4068 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
+本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **102 个内置模块、4073 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
 
 - `schemaVersion: 2`。
 - `contributes.commands` 与 `bindings.commands` 一一对应。
@@ -45,7 +45,7 @@ JSON 数据模块 2.0 提供受管 `JSON值`、严格 RFC 8259 解析与创建�
 | 已完整封装（只读信息） | `lingbuilder.system.disk` | 磁盘信息模块 | 28 |
 | 已完整封装 | `lingbuilder.system.clipboard` | 剪贴板模块 | 10 |
 | 已封装 | `lingbuilder.system.shell` | 系统外壳模块 | 6 |
-| 已封装 | `lingbuilder.process` | 进程管理模块 | 9 |
+| 已封装 | `lingbuilder.process` | 进程管理模块 1.1.0（进程_枚举全部 支撑进程列表界面） | 10 |
 | 已封装 | `lingbuilder.ipc` | 进程通信模块 | 8 |
 | 已封装 | `lingbuilder.archive` | ZIP 压缩模块 | 4 |
 
@@ -174,7 +174,7 @@ OpenCV 模块保留基础 GDI+ 图像模块并作为新增高级能力。公开�
 | 已完整封装 | `lingbuilder.websocket.client` | WebSocket 客户端模块 2.0（WinHTTP 受管多连接、wss/TLS 与自动重连） | 51 |
 | 已完整封装 | `lingbuilder.http.server` | HTTP 服务端模块 2.1（受管多连接 HTTP/1.1、动态/静态路由、连接轮转与完整请求/响应） | 51 |
 | 已完整封装 | `lingbuilder.websocket.server` | WebSocket 服务端模块 2.0（RFC 6455 受管多客户端） | 50 |
-| 已完整封装 | `lingbuilder.sunnynet` | 网络中间件模块 1.0（SunnyNet 抓包改写：HTTP/HTTPS/WS/TCP/UDP、根证书解密、进程代理/SOCKS 按进程/上游代理（全局与按请求、socks5 可带账密）/系统代理；驱动常驻免重启） | 69 |
+| 已完整封装 | `lingbuilder.sunnynet` | 网络中间件模块 1.0（SunnyNet 抓包改写：HTTP/HTTPS/WS/TCP/UDP、根证书解密、全量请求/响应头枚举与请求/响应体字节集、进程代理/SOCKS 按进程/上游代理（全局与按请求、socks5 可带账密）/系统代理；驱动常驻免重启） | 73 |
 
 除 EdgeView 原本已有 x64 target 外，其余仅声明 Win32 的内置系统模块现在会从同一份内置 manifest 自动生成等价 x64 target。外部 `.lbmod` 不使用此自动补齐规则，仍必须自行提供精确架构产物。
 
