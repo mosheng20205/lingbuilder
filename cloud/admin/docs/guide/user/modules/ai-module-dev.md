@@ -6,7 +6,7 @@ title: 用 AI 生成模块
 
 > [🕒 预计 20 分钟] | 难度：入门
 
-不会写 C++ 也能给自己的 LingBuilder 加模块。现在有三种方式，按推荐顺序：**方式一（推荐）一键生成**——在 IDE 里用一句中文描述需求，内置 AI 自动完成规范注入、生成、解析、导入和校验；**方式二 手动复制粘贴**——把规范复制给 ChatGPT、Claude、Cursor 等任意 AI，把回复粘回 IDE；**方式三 AI Bridge MCP**——让 Claude Code、Codex CLI 等外部 AI 通过 MCP 工具端到端完成生成、校验、打包、安装。无论哪种方式，最后都按 **F5** 编译成真实 C++ 运行。
+不会写 C++ 也能给自己的 LingBuilder 加模块。现在有两条方式，按推荐顺序：**方式一（推荐）AI Bridge MCP**——让灵码、Claude Code、Codex CLI 等外部 AI 通过六个受控 MCP 工具端到端完成生成、校验、打包、安装；**方式二 手动复制粘贴**——把规范复制给 ChatGPT、Claude、Cursor 等任意 AI，把回复粘回 IDE。无论哪种方式，最后都按 **F5** 编译成真实 C++ 运行。（历史上的「一键生成内置 AI」通道已随 AI 助手面板整体退场而下线，IDE 不再自带 AI 引擎。）
 
 本文的界面文案与结果均来自 LingBuilder 桌面版实测。
 
@@ -26,19 +26,14 @@ title: 用 AI 生成模块
 - 已安装 Visual Studio Build Tools / MSVC 工具链，否则 **F5** 无法编译。
 - 手边有一个可粘贴文本的 AI 对话窗口。
 
-## 3. 方式一（推荐）：一键生成
+## 3. 方式一（推荐）：AI Bridge MCP 端到端
 
-1. 打开 **模块生态 → AI 生成模块**，顶部绿色区域就是 **一键生成（内置 AI 直接生成并导入）**。
-2. 选择通道：**系统 AI**（在 AI 助手面板登录后自动使用你选择的模型）或 **自定义 API**（在 AI 助手面板「自定义 API」中配置 Base URL 与 Key，DeepSeek 等供应商可用）。
-3. 在需求框用中文描述模块，例如：
+1. 前提：外部 AI 客户端已按 [AI Bridge 连接中心](/guide/ai/bridge-config) 的通用 MCP 配置接入（AI Bridge 随 IDE 自动启动）。
+2. 让 AI 按六步受控链工作：`lingbuilder.workspace.list` 自省工作区 → `lingbuilder.module.scaffold` 在 `.lingbuilder/module-build/<模块 ID>/` 建骨架 → `lingbuilder.module.writeFiles` 写入完整清单与源码 → `lingbuilder.module.validate` 修到零诊断 → `lingbuilder.module.pack` 导出 `.lbmod` → `lingbuilder.module.installPreview` 拿预览凭证后 `lingbuilder.module.install` 安装并启用（`preview` 权限模式必须显式 `approved=true`）。
+3. 安装并启用后，直接跳到本文 **第六步：在中文代码里调用并 F5**。让 AI 自己验收时，也可以让它创建一个启用该模块的测试项目，用 `lingbuilder.build.run` 构建验证——模块 C++ 源码会随工程一起编译，编不过会直接暴露在构建日志里。
 
-   > 做一个字符串工具模块：提供 取文本长度 和 文本替换 两个中文命令，参数与返回值用文本型和整数型，带中文使用文档和示例。
-
-4. 点击 **生成并导入到 module-build**。IDE 会自动完成：把《AI 模块开发规范》连同需求发给 AI → 按「清单 → 其余文件 → 缺失补全」多阶段生成 → 解析 → 导入到 `.lingbuilder/module-build/<模块 ID>` → 严格校验。生成期间按钮显示「正在生成模块……」，全程约 1~3 分钟，**中途不要取消**。
-5. 成功后状态行提示「已导入 …，“模块包制作”和“校验模块”路径已自动填好」，直接跳到本文 **第三步：校验模块** 继续。校验出问题时会出现「把校验问题发回 AI 修正并重试」按钮；解析失败时 AI 原始回复会自动填入下方手动模式文本框，可检查后手动导入。
-
-> [!NOTE]
-> 系统 AI 通道按模型计费点数扣费；生成请求会自动关闭上游思考过程并使用更大的输出预算（16384 tokens），保证完整模块不被截断。
+> [!TIP]
+> 想做的是界面库（运行期创建控件、句柄管理）？把 [做自己的界面库](/guide/user/modules/ui-library) 一并交给 AI，里面有命令面设计、事件边界和可直接复制的提示词模板。
 
 ## 4. 方式二（手动）：把开发规范复制给 AI
 
@@ -179,6 +174,7 @@ AI 会按契约逐个文件输出（见下一步的识别规则）。
 
 ## 下一步
 
+- [做自己的界面库](/guide/user/modules/ui-library)：命令型界面库的命令面设计、事件边界与 MCP 全流程。
 - [安装与管理模块](/guide/user/modules/install-module)：模块的启用、禁用、更新与卸载。
 - [模块市场](/guide/user/modules/marketplace)：从官方与市场源浏览安装模块。
 - [依赖冲突检测](/guide/user/modules/module-conflicts)：多模块版本与接口冲突排查。

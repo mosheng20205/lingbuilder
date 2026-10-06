@@ -18,3 +18,20 @@
     display: flex !important;
   }
 }
+
+/* 图片点击放大的光标提示（medium-zoom，见 theme/index.ts） */
+.vp-doc img:not(a img) {
+  cursor: zoom-in;
+}
+.medium-zoom-image--opened {
+  cursor: zoom-out;
+}
+
+/* medium-zoom 注入样式不带 z-index，fixed 克隆层会被侧边栏（--vp-z-index-sidebar: 25/60）、
+   导航（30）、遮罩（50）盖住；显式抬到所有 VitePress UI 之上 */
+.medium-zoom-overlay {
+  z-index: 90;
+}
+.medium-zoom-image--opened {
+  z-index: 91;
+}

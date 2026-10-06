@@ -37,6 +37,10 @@ features:
     title: 视频教程
     details: 从入门到进阶的官方视频课程索引
     link: /guide/videos/
+  - icon: 📖
+    title: 图文教程
+    details: 八篇跟做式教程，每步配真机截图、点击放大
+    link: /guide/tutorials/
   - icon: 🏆
     title: 优秀案例
     details: 基于 LingBuilder 构建的真实应用案例

@@ -12,7 +12,7 @@ LingBuilder 的 AI 不只能读代码、改代码，还能**把中文项目真�
 
 | 能力 | 工具 | 说明 |
 |---|---|---|
-| 编译项目 | `lingbuilder.build.run` | 把设计器模型与 `.lcpp` 源码确定性翻译为真实 C++/Win32 工程，调用本机编译器生成 exe |
+| 编译项目 | `lingbuilder.build.run` | 把设计器模型与 `.lcpp` 源码确定性翻译为真实 C++/Win32 工程，调用本机编译器生成 exe（DLL 项目生成 `.dll` 与导入库 `.lib`） |
 | 运行程序 | `lingbuilder.build.run`（`run: true`） | 编译成功后启动生成的 exe；进程由 LingBuilder 受管，同一项目重跑会先回收旧进程，Bridge 退出时一并停止 |
 | 预览生成代码 | `lingbuilder.native.preview` | 只生成 C++ 与工程文件到受控临时目录，不编译、不写导出目录 |
 | 导出 VS 工程 | `lingbuilder.native.export` | 生成可在 Visual Studio 中打开、编译的 `.sln` / `.vcxproj` 工程 |
@@ -39,24 +39,23 @@ LingBuilder 的 AI 不只能读代码、改代码，还能**把中文项目真�
 project.templates → project.create（approved=true）→ edit.propose/apply → lingcpp.diagnostics → build.run（run=true）
 ```
 
-1. **创建项目**：`lingbuilder.project.create` 选择模板（`blank-window` / `hello-window` / `new-emoji-fbro-browser-shell` / `windows-dll`）并传 `approved=true`。返回的 `result.designerProject` 是后续构建的必要入参。
-2. **编写/修改代码**：用 `lingbuilder.edit.propose` + `lingbuilder.edit.apply` 提交**完整文件草稿**修改 `.lcpp` 源码与设计器模型；也可以在构建时直接携带 `lingCppSources`。
+1. **创建项目**：`lingbuilder.project.create` 选择模板（`blank-window` / `hello-window` / `new-emoji-fbro-browser-shell` / `windows-dll`）并传 `approved=true`；窗口模板也可传 `outputType: "dll"` 转为 DLL 导出项目。记下返回的项目 ID，后续构建直接传 `projectId` 即可。
+2. **编写/修改代码**：用 `lingbuilder.edit.propose` + `lingbuilder.edit.apply` 提交文件草稿（整文件 / 按行数组 / 行级增量三种形态）修改 `.lcpp` 源码与设计器模型；也可以在构建时直接携带 `lingCppSources`。
 3. **编译前自检**：`lingbuilder.lingcpp.diagnostics` 返回中文诊断（语法、控件引用、事件绑定等），把错误拦在编译之前。
-4. **编译**：`lingbuilder.build.run` 传入完整设计器模型。Bridge 依次完成：生成 C++ 源码 → 探测本机编译器（PATH 中的 `cl` 无法区分位数时自动经 vcvars 重新进入对应架构环境）→ 真实编译。失败时返回 `stage: "compile"` 与编译器原样日志。
+4. **编译**：`lingbuilder.build.run` 推荐只传 `projectId`（服务端直接读取磁盘上已注册的项目模型），也可传完整设计器模型。Bridge 依次完成：生成 C++ 源码 → 探测本机编译器（PATH 中的 `cl` 无法区分位数时自动经 vcvars 重新进入对应架构环境）→ 真实编译。失败时返回 `stage: "compile"` 与编译器原样日志。
 5. **运行**：同一次调用传 `run: true`，编译成功后立即启动 exe 并返回运行文件路径。进程完全受管：不会残留后台进程，重复构建同一项目会先回收上一次的运行。
 
 > [!NOTE]
-> `build.run` 的 `project` 参数必须是 `project.create` 返回的**完整设计器模型**，不能只传项目 ID，也不能传解决方案元数据。
+> `build.run` / `native.preview` / `native.export` 的项目入参支持 **`project`（完整设计器模型）与 `projectId` 二选一**，推荐只传 `projectId`（服务端读取磁盘上已注册的项目模型），避免在上下文里搬运完整模型。
 
 ### 运行期错误的可见边界
 
-编译错误、链接错误与启动失败都会在 `build.run` 的返回值中直接暴露（`stage: "compile"` / `"run-start"`，附编译器原样日志），AI 能读到并自动修复。但有一条边界需要知道：
+编译错误、链接错误与启动失败都会在 `build.run` 的返回值中直接暴露（`stage: "compile"` / `"run-start"`，附编译器原样日志），AI 能读到并自动修复。exe 启动成功后 `build.run` 立即返回，运行期通过两个专用工具观察：
 
-- `build.run`（`run: true`）在 **exe 启动成功后立即返回**，不会等待进程退出；
-- MCP 工具目前没有「等待退出 / 取退出码 / 读取 exe 控制台输出」的工具，因此程序**运行起来之后**才出现的崩溃或行为异常，走 MCP 的 AI 当场感知不到；
-- 下一轮 `build.run` 会附带一条上一轮运行的遗留摘要，但它不是完整运行日志。
+- `lingbuilder.run.wait`：阻塞等待进程退出并返回退出码，可带超时（默认 30 秒、上限 600 秒）；超时时返回「仍在运行」的当前状态。
+- `lingbuilder.run.log`：读取最近一次受控运行的输出（stdout/stderr），进程退出后仍可读。
 
-需要确认「程序是否在稳定运行」时，改用 CLI 通道等待进程退出：
+需要「构建、运行、等退出」在同一次调用里完成时，改用 CLI 通道：
 
 ```bash
 # 构建并运行，阻塞等待进程退出，退出结果合并进 JSON 返回；Ctrl+C 触发受控停止
@@ -70,7 +69,8 @@ lingbuilder project stop --request build-request.json
 ## 4. 构建产物与导出
 
 - exe 与中间产物位于工作区 `.lingbuilder-build/<项目>/<平台>/<配置>/`，生成的 C++ 源码位于 `generated/cpp/<项目>/`；两者都支持在项目「构建目录」设置中自定义。
-- 启用了外部 C++ 模块的项目，构建时会自动复制模块源码、头文件、`.lib` 与运行时 DLL（DLL 复制到 exe 同目录）。
+- **DLL 项目**（`windows-dll` 模板或 `outputType: "dll"`）的产物是 `.dll` 与导入库 `.lib`，位于同一构建目录。DLL 项目没有 exe：不要传 `run: true`，`run.wait` / `run.log` 不适用；验证靠构建结果与产物路径，实际调用由外部程序完成（见 [DLL 命令与模块](/guide/user/modules/dll-module)）。
+- 启用了外部 C++ 模块的项目，构建时会自动复制模块源码、头文件、`.lib` 与运行时 DLL（DLL 复制到 exe 同目录）。外部 AI 封装完模块后，就用这个机制做编译验收：创建一个启用该模块的测试项目并 `build.run`，模块源码编不过会直接暴露在构建日志里。
 - 需要脱离 AI、在 Visual Studio 中继续开发时，用 `lingbuilder.native.export` 导出完整 VS 工程；只想查看生成的 C++ 代码时，用 `lingbuilder.native.preview`，它不会写入导出目录。
 
 ## 5. 常见问题

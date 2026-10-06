@@ -45,14 +45,14 @@ AI Bridge 当前对外暴露 **23 个 MCP 工具**：
 | `lingbuilder.edit.propose` | 根据外部 AI 提供的文件草稿生成可预览修改提案；支持整文件、按行数组、行级增量三种提交形态，服务端可自动读取工作区当前内容 |
 | `lingbuilder.edit.apply` | 应用已有的修改提案，受权限模式控制 |
 | `lingbuilder.project.templates` | 列出可用于 AI 新建项目的受控中文项目模板 |
-| `lingbuilder.project.create` | 预览或创建项目；不传 `approved=true` 时只返回预览不落盘 |
+| `lingbuilder.project.create` | 预览或创建项目；不传 `approved=true` 时只返回预览不落盘。窗口模板可传 `outputType: "dll"` 把「公开」子程序导出为 DLL 接口；`windows-dll` 模板直接创建 MSVC DLL 项目 |
 | `lingbuilder.project.create.undo` | 撤销尚未被用户修改的 AI 项目创建事务 |
 | `lingbuilder.build.run` | 执行受控构建/运行请求；传 `projectId` 即可复用磁盘上已注册的项目，也可传完整设计器模型 |
 | `lingbuilder.modules.list` | 列出已安装模块的摘要（ID、版本、命令数、文档路径） |
 | `lingbuilder.module.info` | 查询单个模块的完整命令签名、参数说明、示例与设计器控件视图，是外部 AI 界面开发的事实来源 |
 | `lingbuilder.build.stop` | 停止 Bridge 自己启动的受控构建/运行进程 |
-| `lingbuilder.run.wait` | 等待受控运行结束，可带超时 |
-| `lingbuilder.run.log` | 读取最近一次受控运行的输出，进程退出后仍可读 |
+| `lingbuilder.run.wait` | 等待受控运行结束并返回退出码，可带超时（默认 30 秒，上限 600 秒）；仅适用于有 exe 的项目 |
+| `lingbuilder.run.log` | 读取最近一次受控运行的输出，进程退出后仍可读；仅适用于有 exe 的项目 |
 | `lingbuilder.native.preview` | 预览生成的 C++ 工程文件（写入受控临时目录） |
 | `lingbuilder.native.export` | 导出 C++ 工程，受权限模式控制 |
 | `lingbuilder.module.scaffold` | 在 `.lingbuilder/module-build` 下创建 `.lbmod` 模块项目骨架（manifest v2 + C++ 源码模板） |
@@ -80,6 +80,22 @@ scaffold → writeFiles → validate → pack → installPreview → install
 - `scaffold` / `writeFiles` / `validate` 作用于工作区 `.lingbuilder/module-build` 目录；`pack` 的输出与 `installPreview` / `install` 的输入位于 `.lingbuilder/module-packages` 目录，路径越界会被拒绝。
 - 写操作与编辑工具同一权限语义：readonly 模式全部拒绝，preview 模式必须显式传 `approved=true`，所有调用都会写入审计日志。
 - `module.install` 必须传入 `installPreview` 返回的 `previewId`，不能跳过预览直接安装；安装后默认启用到指定项目并同步构建配置。
+- 安装启用后的编译验证：用 `build.run` 构建一个启用了该模块的项目，模块的 C++ 源码会随工程一起编译，编不过会直接暴露在构建日志里——这是外部 AI 验证「模块真的能编译」的标准做法（MCP 没有单独编译模块的工具）。
+
+### DLL 输出项目
+
+`project.create` 支持两类 DLL 项目，`build.run` 的编译产物都是真实的 `.dll` 文件：
+
+- **`windows-dll` 模板**：直接创建 MSVC DLL 项目，自带 C ABI 导出示例与 Visual Studio 工程；源码中声明为「公开」的子程序就是导出函数。
+- **窗口模板 + `outputType: "dll"`**：窗口类项目把「公开」子程序导出为 DLL 接口（控制台与 new_emoji 模板不支持该参数）。
+
+```text
+project.create（windows-dll 或 outputType: "dll"）→ edit.propose / edit.apply（「公开」子程序 = 导出函数）
+→ build.run → 产物 .dll + 导入库 .lib
+```
+
+- DLL 项目没有可执行文件：不要传 `run: true`，`run.wait` / `run.log` 不适用；验证靠构建结果与产物路径，实际调用由外部程序完成（易语言 DLL 命令声明、C/C++ `LoadLibrary` 等，见 [DLL 命令与模块](/guide/user/modules/dll-module)）。
+- 导出名单经 `exports.def` 以 `extern "C"` + `__stdcall` 无装饰导出，**导出名必须用英文或拼音**（def 文件全文件纯 ASCII）；中文调用方可在声明 DLL 命令时用中文别名映射到真实导出名。
 
 ## 4. 权限控制
 

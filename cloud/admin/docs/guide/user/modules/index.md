@@ -15,6 +15,7 @@ LingBuilder 通过**模块系统**扩展功能。模块市场提供界面、网�
 | [模块市场](/guide/user/modules/marketplace) | 浏览、搜索与安装模块 |
 | [安装与管理模块](/guide/user/modules/install-module) | 手动导入、启用禁用、更新卸载 |
 | [用 AI 生成模块](/guide/user/modules/ai-module-dev) | 复制规范给任意 AI，导入后即可编译出自定义模块 |
+| [做自己的界面库](/guide/user/modules/ui-library) | 命令型界面库：中文命令族在用户窗口上创建控件，外部 AI 经 MCP 端到端做成 .lbmod |
 | [依赖冲突检测](/guide/user/modules/module-conflicts) | 处理版本冲突与接口冲突 |
 | [模块公开常量](/guide/user/modules/module-constants) | 模块封装命名常量，源码用 `#常量名` 引用，项目常量遮蔽与冲突诊断 |
 | [EdgeView 浏览器模块](/guide/user/modules/edgeview) | 把 Edge (WebView2) 浏览器嵌入窗口：导航、执行 JS、71 项事件、多实例与代理 |

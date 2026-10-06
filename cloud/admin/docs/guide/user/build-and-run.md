@@ -26,7 +26,7 @@ title: 构建与运行
 
 ## 3. 输出类型与平台
 
-- **输出类型**：窗口项目生成 EXE 可执行程序；选择 **Windows 动态链接库** 模板创建的项目会生成 DLL 并以 `DllApi.lcpp` 作为接口入口。
+- **输出类型**：窗口项目生成 EXE 可执行程序；选择 **Windows 动态链接库** 模板创建的项目会生成 DLL 并以 `DllApi.lcpp` 作为接口入口。普通项目也可以在「构建属性」里把输出类型改为 DLL（`outputType: "dll"`）——「公开」子程序会确定性导出为 DLL 接口，供易语言等外部程序或模块封装调用，详见「[调用 C++ DLL](/guide/user/modules/dll-module)」。
 - **平台**：当前构建闭环基于 Windows，支持 Win32 / x64 目标。
 - 需要交付 Visual Studio 工程时，使用 **原生导出** 生成可直接用 VS 打开编译的工程目录。
 
