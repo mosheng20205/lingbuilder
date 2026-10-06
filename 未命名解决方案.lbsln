@@ -4,9 +4,9 @@
   "id": "lingbuilder-solution",
   "name": "未命名解决方案",
   "solutionFile": ".lingbuilder/solution.json",
-  "startupProjectId": "dll-consumer-demo",
+  "startupProjectId": "dll-module-demo",
   "startupProjectIds": [
-    "dll-consumer-demo"
+    "dll-module-demo"
   ],
   "folders": [
     {
@@ -983,10 +983,31 @@
       "references": []
     },
     {
-      "id": "mmkv-workbench",
-      "name": "MMKV键值工作台",
+      "id": "fbro-lang-probe",
+      "name": "FBro语言导航探针",
+      "type": "windows-console",
+      "sourceRoot": "src/fbro-lang-probe",
+      "references": []
+    },
+    {
+      "id": "process-proxy-workbench",
+      "name": "进程代理工作台",
       "type": "visual-cpp",
-      "sourceRoot": "AI 视频自主生产/进阶方案/MMKV键值工作台/src",
+      "sourceRoot": "AI 视频自主生产/进阶方案/进程代理工作台/src",
+      "references": []
+    },
+    {
+      "id": "process-speed-workbench",
+      "name": "进程变速工作台",
+      "type": "visual-cpp",
+      "sourceRoot": "AI 视频自主生产/进阶方案/进程变速工作台/src",
+      "references": []
+    },
+    {
+      "id": "capture-workbench",
+      "name": "抓包工作台",
+      "type": "visual-cpp",
+      "sourceRoot": "AI 视频自主生产/进阶方案/抓包工作台/src",
       "references": []
     }
   ]

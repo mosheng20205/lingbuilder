@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "kind": "lingbuilder-solution",
   "id": "lingbuilder-solution",
-  "name": "UI_CppLocProj",
+  "name": "LingBuilder项目2",
   "solutionFile": ".lingbuilder/solution.json",
-  "startupProjectId": "emoji",
+  "startupProjectId": "lingbuilder-2",
   "startupProjectIds": [
-    "emoji"
+    "lingbuilder-2"
   ],
   "folders": [],
   "projects": [
@@ -29,6 +29,13 @@
       "name": "emoji富文本框",
       "type": "visual-cpp",
       "sourceRoot": "src/emoji-2",
+      "references": []
+    },
+    {
+      "id": "lingbuilder-2",
+      "name": "LingBuilder项目2",
+      "type": "visual-cpp",
+      "sourceRoot": "src/lingbuilder-2",
       "references": []
     }
   ]
