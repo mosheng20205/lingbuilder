@@ -110,9 +110,14 @@ export function resolveSdkCacheRoot(environment: NodeJS.ProcessEnv = process.env
     if (!path.isAbsolute(explicit)) throw new Error('LINGBUILDER_SDK_CACHE_ROOT 必须是绝对路径。');
     return path.resolve(explicit);
   }
-  const profileRoot = process.platform === 'win32'
-    ? String(environment.APPDATA || '').trim() || os.homedir()
-    : String(environment.XDG_CACHE_HOME || '').trim() || path.join(os.homedir(), '.cache');
+  // 机器级缓存目录：主窗口、开发态、「在新窗口打开工作区」/例程实例（独立 userData）与
+  // AI Bridge ai-server 全部同源共享，SDK 只下载一次全机生效。
+  // 2026-10-05 前默认在 %APPDATA% 下且随 userData 隔离，是「别的项目装过 SDK 这个项目还要装」的根因。
+  if (process.platform === 'win32') {
+    const localAppData = String(environment.LOCALAPPDATA || '').trim() || path.join(os.homedir(), 'AppData', 'Local');
+    return path.join(localAppData, 'LingBuilder', 'sdk-cache');
+  }
+  const profileRoot = String(environment.XDG_CACHE_HOME || '').trim() || path.join(os.homedir(), '.cache');
   return path.join(profileRoot, 'LingBuilder', 'sdk-cache');
 }
 

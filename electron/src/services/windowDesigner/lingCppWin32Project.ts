@@ -656,6 +656,7 @@ export function generateLingCppNativeWin32Project(
         relativePath: LINGBUILDER_RUNTIME_HEADER_FILE_NAME,
         content: runtimeHeaderContent
       }] : []),
+      ...(dynamicLibraryEntry?.definitionFile ? [dynamicLibraryEntry.definitionFile] : []),
       {
         relativePath: 'layout.json',
         content: JSON.stringify(project, null, 2)
@@ -2683,6 +2684,9 @@ function generateNewEmojiMainCpp(
     uploadCallbacks.set(control.id, callbacks);
   });
   const deferredTabPageSetupLines: string[] = [];
+  // 背板自适应收集：Tabs 控件与其页签子页面板按「贴近参考容器右/下缘」判定锚点，
+  // 生成静态拉伸表供窗口 resize 回调统一 SetBounds（内容控件由 SizeChanged 事件处理器细化）。
+  const neStretchItems: Array<{ idVar: string; x: number; y: number; w: number; h: number; refW: number; refH: number }> = [];
   const createLines = controls.flatMap(control => {
     if (isDeferredNewEmojiShowControl(control)) return [];
     const variable = variables.get(control.id)!;
@@ -2695,6 +2699,27 @@ function generateNewEmojiMainCpp(
     const coordinateParent = parent && parentTabContent
       ? { ...parent, x: parent.x + parentTabContent.x, y: parent.y + parentTabContent.y }
       : parent;
+    if (isNewEmojiTabsControl(control)) {
+      // stretchExclude：页签位置由项目「大小被改变」处理器全权管理（如 50/50 分栏），
+      // 只跳过引擎静态拉伸表条目（dx/dy 全量会与处理器半量双写打架）；控件仍正常创建。
+      if (control.properties?.stretchExclude !== true) {
+        const refW = parentTabContent ? parentTabContent.width : (coordinateParent ? coordinateParent.width : window.width);
+        const refH = parentTabContent ? parentTabContent.height : (coordinateParent ? coordinateParent.height : window.height);
+        neStretchItems.push({ idVar: variable, x: control.x - (coordinateParent ? coordinateParent.x : 0), y: control.y - (coordinateParent ? coordinateParent.y : 0), w: control.width, h: control.height, refW, refH });
+        const ownContentBox = getNewEmojiTabsContentBox(control);
+        for (const page of tabPagesByControl.get(control.id) || []) {
+          neStretchItems.push({
+            idVar: page.variable,
+            x: control.x - (coordinateParent ? coordinateParent.x : 0) + ownContentBox.x,
+            y: control.y - (coordinateParent ? coordinateParent.y : 0) + ownContentBox.y,
+            w: ownContentBox.width,
+            h: ownContentBox.height,
+            refW,
+            refH
+          });
+        }
+      }
+    }
     const x = coordinateParent ? control.x - coordinateParent.x : control.x;
     const y = coordinateParent ? control.y - coordinateParent.y : control.y;
     const text = `L"${escapeWideString(control.content)}"`;
@@ -2796,7 +2821,11 @@ function generateNewEmojiMainCpp(
     const pageLines: string[] = [];
     if (isNewEmojiTabsControl(control)) {
       const contentBox = getNewEmojiTabsContentBox(control);
-      const pages = tabPagesByControl.get(control.id) || [];
+      // stretchExclude：页签当纯切换器用（内容直挂上层、由项目 SizeChanged 处理器摆位），
+      // 页面板若按创建基线滞留原位，其面板背景会随窗口拉大盖住页签头——跳过创建。
+      const pages = control.properties?.stretchExclude === true
+        ? []
+        : (tabPagesByControl.get(control.id) || []);
       for (const page of pages) {
         pageLines.push(`    int ${page.variable} = EU_CreatePanel(g_newEmojiWindow, ${parentVariable}, ${int(x + contentBox.x)}, ${int(y + contentBox.y)}, ${int(contentBox.width)}, ${int(contentBox.height)});`);
         pageLines.push(`    LB_NE_RegisterElement(${page.variable}, L"TabsPage", L"TabsPage", ${parentVariable}, nullptr, L"", std::nullopt, true);`);
@@ -2829,6 +2858,16 @@ function generateNewEmojiMainCpp(
       ...pageLines
     ];
   });
+  // anchors 位含义：1=右锚（宽随窗口宽差量拉伸），2=底锚（高随窗口高差量拉伸）；0=不贴边不参与。
+  const neStretchEntries = neStretchItems
+    .map(item => ({
+      ...item,
+      anchors: (item.x + item.w >= item.refW - 24 ? 1 : 0) | (item.y + item.h >= item.refH - 24 ? 2 : 0)
+    }))
+    .filter(item => item.anchors !== 0);
+  const neStretchInitLines = neStretchEntries.map((item, index) =>
+    `    g_lbNeStretchTable[${index}] = { ${item.idVar}, ${int(item.x)}, ${int(item.y)}, ${int(item.w)}, ${int(item.h)}, ${item.anchors} };`
+  );
   const deferredRelationshipSetupLines = controls.flatMap(control => {
     const variable = variables.get(control.id);
     return variable
@@ -2857,10 +2896,15 @@ function generateNewEmojiMainCpp(
   const createWindowCall = windowFrame.preset === 'system'
     ? `${darkWindow ? 'NE_创建深色窗口' : 'NE_创建窗口'}(L"${escapeWideString(window.title)}", ${window.openPlacement === 'custom' ? int(window.openX ?? 120) : 120}, ${window.openPlacement === 'custom' ? int(window.openY ?? 80) : 80}, ${Math.max(360, int(window.width))}, ${Math.max(220, int(window.height))})`
     : `NE_创建自定义框架窗口(L"${escapeWideString(window.title)}", ${window.openPlacement === 'custom' ? int(window.openX ?? 120) : 120}, ${window.openPlacement === 'custom' ? int(window.openY ?? 80) : 80}, ${Math.max(360, int(window.width))}, ${Math.max(220, int(window.height))}, ${windowFrame.flags})`;
-  const windowFrameSetup = windowFrame.preset === 'system' ? '' : [
-    `    NE_设置窗口缩放边框(g_newEmojiWindow, ${windowFrame.resizeBorder.left}, ${windowFrame.resizeBorder.top}, ${windowFrame.resizeBorder.right}, ${windowFrame.resizeBorder.bottom});`,
-    `    NE_设置窗口圆角(g_newEmojiWindow, ${windowFrame.cornerRadius > 0 ? 1 : 0}, ${windowFrame.cornerRadius});`
-  ].join('\n');
+  // 圆角对全部窗口预设生效（NE 窗口均为 WS_POPUP 纯自绘，"系统窗口"预设同样走引擎圆角路径）；
+  // 缩放边框仅自定义框架需要（系统预设由引擎自绘标题栏与缩放边）。
+  const roundedCornerLine = `    NE_设置窗口圆角(g_newEmojiWindow, ${windowFrame.cornerRadius > 0 ? 1 : 0}, ${windowFrame.cornerRadius});`;
+  const windowFrameSetup = windowFrame.preset === 'system'
+    ? (windowFrame.cornerRadius > 0 ? roundedCornerLine : '')
+    : [
+        `    NE_设置窗口缩放边框(g_newEmojiWindow, ${windowFrame.resizeBorder.left}, ${windowFrame.resizeBorder.top}, ${windowFrame.resizeBorder.right}, ${windowFrame.resizeBorder.bottom});`,
+        roundedCornerLine
+      ].join('\n');
   const browserShellHitRegionSetup = windowFrame.preset === 'browserShell'
     ? '    LB_NE_UpdateBrowserShellHitRegions();'
     : '';
@@ -2957,6 +3001,9 @@ function generateNewEmojiMainCpp(
     `    if (callback == L"${escapeWideString(method.name)}") { ${toCppIdentifier(method.name)}(); return; }`
   )).join('\n');
   const httpClientIntegration = httpClientRuntime ? `
+// HTTP 客户端运行时走 WinHTTP（WinHttpCrackUrl 等）：new_emoji 模板没有 Win32 模板的
+// 系统库 pragma 段，这里必须自带链接指令，否则 LNK2019 __imp_WinHttpCrackUrl。
+#pragma comment(lib, "winhttp.lib")
 static constexpr UINT WM_LINGBUILDER_NE_HTTP_CLIENT_EVENT = WM_APP + 0x55;
 static HWND g_httpClientEventWindow = nullptr;
 static std::wstring g_httpClientReturnText;
@@ -3009,8 +3056,10 @@ ${uiaCleanupLine}
     .map(member => `static ${formatCppVariableDeclaration(member, enabledModules, '', program.dataTypes)}`)
     .join('\n');
   const newEmojiMenuResourceRuntime = generateNewEmojiMenuResourceRuntime(project, window, program, enabledModules);
-  const newEmojiWindowEventRuntime = generateNewEmojiWindowEventRuntime(window, program, enabledModules);
+  const newEmojiWindowEventRuntime = generateNewEmojiWindowEventRuntime(window, program, enabledModules, Math.max(1, neStretchEntries.length));
   const webSocketClientIntegration = webSocketClientRuntime ? `
+// WebSocket 客户端运行时同样依赖 WinHTTP（WinHttpOpen/WebSocket 系列），自带链接指令。
+#pragma comment(lib, "winhttp.lib")
 static constexpr UINT WM_LINGBUILDER_NE_WS_CLIENT_EVENT = WM_APP + 0x54;
 static HWND g_wsClientEventWindow = nullptr;
 static std::wstring g_wsClientReturnText;
@@ -4175,6 +4224,8 @@ ${windowThemeSetup}
 ${browserShellThemeSetup}
 ${newEmojiWindowEventRuntime.setup}
 ${createLines.join('\n')}
+${neStretchInitLines.length > 0 ? `    // 背板自适应表：Tabs 与页签子页面板按设计锚点随窗口尺寸拉伸（详见 LB_NE_ApplyNeStretch）。
+${neStretchInitLines.join('\n')}` : ''}
 ${fbroCreateLines.join('\n')}
 ${browserShellHitRegionSetup}
 ${windowCommandSetupLines.join('\n')}
@@ -4328,7 +4379,8 @@ function generateNewEmojiMethodBody(method: LingCppMethod, enabledModules: Insta
 function generateNewEmojiWindowEventRuntime(
   window: LingWindowModel,
   program: LingCppProgram,
-  enabledModules: InstalledModule[]
+  enabledModules: InstalledModule[],
+  neStretchTableSize = 1
 ): { definitions: string; setup: string } {
   const argumentExpressions: Record<string, string[]> = {
     KeyDown: ['g_neWindowEventKeyCode', 'g_neWindowEventCtrl', 'g_neWindowEventShift', 'g_neWindowEventAlt'],
@@ -4466,13 +4518,35 @@ static std::wstring g_neWindowEventCharacter;
 static std::vector<std::wstring> g_neWindowDroppedFiles;
 ${browserShellHitRegionDefinitions}
 
+struct LB_NE_StretchEntry { int id; int x; int y; int w; int h; int anchors; };
+static LB_NE_StretchEntry g_lbNeStretchTable[${Math.max(1, neStretchTableSize)}] = {};
+// 背板自适应：Tabs 控件与其页签子页面板按设计锚点随窗口尺寸拉伸（右锚=宽随宽差量、底锚=高随高差量，
+// 坐标原点不动）；页签内的内容控件不在此列，由窗口「大小被改变」(SizeChanged) 事件处理器
+// 用 控件_设置位置大小 按新尺寸细化。表项在控件创建完成后一次性写入（设计值），每次 resize 从设计值重算，幂等。
+static void LB_NE_ApplyNeStretch(HWND hwnd, int width, int height) {
+    if (!g_newEmojiWindow || hwnd != g_newEmojiWindow || width <= 0 || height <= 0) return;
+    const UINT dpi = GetDpiForWindow(hwnd);
+    const double scale = dpi ? static_cast<double>(dpi) / 96.0 : 1.0;
+    const int logicalWidth = static_cast<int>(width / scale + 0.5);
+    const int logicalHeight = static_cast<int>(height / scale + 0.5);
+    const int dx = logicalWidth - ${int(window.width)};
+    const int dy = logicalHeight - ${int(window.height)};
+    if (dx == 0 && dy == 0) return;
+    for (const LB_NE_StretchEntry& entry : g_lbNeStretchTable) {
+        if (entry.id <= 0) continue;
+        const int w = (std::max)(1, entry.w + ((entry.anchors & 1) != 0 ? dx : 0));
+        const int h = (std::max)(1, entry.h + ((entry.anchors & 2) != 0 ? dy : 0));
+        EU_SetElementBounds(hwnd, entry.id, entry.x, entry.y, w, h);
+    }
+}
+
 static bool 窗口_取消关闭() {
     if (!g_neWindowClosingActive) return false;
     g_neWindowCloseCancelled = true;
     return true;
 }
-static int 窗口_取事件宽度() { return g_neWindowEventWidth; }
-static int 窗口_取事件高度() { return g_neWindowEventHeight; }
+static int 窗口_取事件宽度() { return g_newEmojiWindow ? MulDiv(g_neWindowEventWidth, 96, static_cast<int>(GetDpiForWindow(g_newEmojiWindow) ? GetDpiForWindow(g_newEmojiWindow) : 96)) : g_neWindowEventWidth; }
+static int 窗口_取事件高度() { return g_newEmojiWindow ? MulDiv(g_neWindowEventHeight, 96, static_cast<int>(GetDpiForWindow(g_newEmojiWindow) ? GetDpiForWindow(g_newEmojiWindow) : 96)) : g_neWindowEventHeight; }
 static int 窗口_取事件横坐标() { return g_neWindowEventX; }
 static int 窗口_取事件纵坐标() { return g_neWindowEventY; }
 static bool 窗口_取是否激活() { return g_neWindowActive; }
@@ -4512,9 +4586,10 @@ static void LB_NE_DispatchWindowEvent(const wchar_t* eventName) {
 ${dispatchCases.join('\n')}
 }
 
-static void __stdcall LB_NE_WindowResizeCallback(HWND, int width, int height) {
+static void __stdcall LB_NE_WindowResizeCallback(HWND hwnd, int width, int height) {
     g_neWindowEventWidth = width;
     g_neWindowEventHeight = height;
+    LB_NE_ApplyNeStretch(hwnd, width, height);
     LB_NE_DispatchWindowEvent(L"SizeChanged");
     LB_NE_UpdateBrowserShellBounds();
 ${browserShellHitRegionUpdate}
@@ -9035,6 +9110,14 @@ function getNewEmojiTabsContentBox(control: LingControl): { x: number; y: number
   if (control.properties?.headerVisible === false) return { x: 0, y: 0, width, height };
   const position = Number(control.properties?.position ?? 0);
   const vertical = position === 1 || position === 3;
+  // chrome 模式：引擎 Tabs::header_extent 就是 chrome_height（EU_SetTabsChromeMetrics 的 tabHeight），
+  // 页签页面板与拉伸表必须与引擎头区对齐，否则 tab 条下方会露出一段元素背景（视觉「多余黑区」）。
+  if (control.properties?.chromeMode === true && !vertical) {
+    const chromeHeader = Math.max(24, Math.trunc(Number(control.properties?.chromeTabHeight ?? 32)));
+    return position === 2
+      ? { x: 0, y: 0, width, height: Math.max(1, height - chromeHeader) }
+      : { x: 0, y: chromeHeader, width, height: Math.max(1, height - chromeHeader) };
+  }
   if (vertical) {
     const headerWidth = Math.max(120, Math.min(190, control.width * 0.32));
     return position === 1
@@ -9957,12 +10040,16 @@ interface DynamicLibraryEntrySection {
   section: string;
   blockingDiagnostics: string[];
   diagnostics: string[];
+  definitionFile?: { relativePath: string; content: string };
 }
 
 /**
  * 生成动态库模式的入口段：DllMain + 惰性运行时初始化 + 各窗口类的“公开”子程序导出包装。
  * 导出函数经窗口类单例转发（生成的子程序是类成员，不能直接 dllexport）；
  * 跨 DLL 边界只允许 POD/文本签名，其余签名给出阻断诊断，不静默降级。
+ * 调用约定统一 __stdcall（易语言等通用宿主的默认声明口径；x64 下被 MSVC 忽略）：
+ * ASCII 导出名经 exports.def 以无装饰名进导出表（易语言可直接声明），非 ASCII 导出名
+ * 由 __declspec(dllexport) 自动导出为 x86 装饰名（_名@参数字节数）兜底，不静默消失。
  */
 // 生成「内嵌站点」运行时成员：页面静态文件已按 RCDATA 编入 EXE（资源 ID 2101 起），
 // 生成的运行时经 WebView2 WebResourceRequested 在内存中直接服务 https://<host>/*，
@@ -10405,6 +10492,9 @@ function generateDynamicLibraryEntrySection(
         continue;
       }
       exported.push({ classNameCpp: toCppIdentifier(window.className), windowClassName: window.className, windowIndex, method });
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(exportName)) {
+        diagnostics.push(`公开子程序“${method.name}”的导出名不是 ASCII 标识符，只能以 x86 装饰名（_导出名@参数字节数）导出；易语言等 stdcall 宿主无法按名声明，建议改用英文或拼音子程序名。`);
+      }
     }
   });
   if (exported.length === 0) {
@@ -10423,6 +10513,7 @@ function generateDynamicLibraryEntrySection(
   // 绝不能让 std::wstring 以按值或引用跨 DLL——调用方 /MDd(Debug 迭代器布局) 与 DLL /MD 布局不同，
   // 引用/按值都会被 DLL 按错误布局读取（实测 返回 2）甚至跨 CRT 堆释放（0xC0000374 堆损坏）。
   const dllBoundaryParameterType = (cppType: string) => (cppType === 'std::wstring' ? 'const wchar_t*' : cppType);
+  const isAsciiExportName = (name: string) => /^[A-Za-z_][A-Za-z0-9_]*$/u.test(name);
   const exportWrappers = exported.map(item => {
     const cppReturnType = toCppType(item.method.returnType, 'return', enabledModules, program.dataTypes);
     const returnsWideText = cppReturnType === 'std::wstring';
@@ -10439,10 +10530,27 @@ function generateDynamicLibraryEntrySection(
     return LingBuilder_Dll文本返回缓冲.c_str();`
       : `    LingBuilder_EnsureRuntimeInitialized();
     ${cppReturnType === 'void' ? `${call};` : `return ${call};`}`;
-    return `extern "C" __declspec(dllexport) ${wrapperReturnType} ${toCppIdentifier(item.method.name)}(${cppParameters}) {
+    // ASCII 导出名走 exports.def 无装饰导出（易语言等 stdcall 宿主按干净名声明）；
+    // 非 ASCII 导出名保留 dllexport 自动导出兜底（x86 装饰名 _名@N），避免导出静默消失。
+    const exportAttribute = isAsciiExportName(toCppIdentifier(item.method.name)) ? '' : '__declspec(dllexport) ';
+    return `extern "C" ${exportAttribute}${wrapperReturnType} __stdcall ${toCppIdentifier(item.method.name)}(${cppParameters}) {
 ${body}
 }`;
   }).join('\n\n');
+  const asciiExportNames = exported
+    .map(item => toCppIdentifier(item.method.name))
+    .filter(isAsciiExportName);
+  const definitionFile = asciiExportNames.length > 0 ? {
+    relativePath: 'exports.def',
+    // def 全文件必须纯 ASCII：链接器按 ANSI（GBK）逐字节读 def，注释里的中文 UTF-8 字节会把
+    // 行边界吃进双字节“字符”，EXPORTS 条目随之被按 LNK4017 逐条作废（真机实测）；条目本就只收 ASCII。
+    content: [
+      '; LingBuilder dynamic-library export table (generated; passed to the linker via /DEF; do not edit).',
+      '; Undecorated stdcall exports: on x86 the linker resolves bare names to _name@parambytes symbols.',
+      'EXPORTS',
+      ...asciiExportNames.map(name => `    ${name}`)
+    ].join('\n') + '\n'
+  } : undefined;
   const section = `
 // ===== LingBuilder 动态库模式：入口、运行时初始化与“公开”子程序导出 =====
 ${pureLogicDll ? `// 纯逻辑动态库（LINGBUILDER_PURE_LOGIC_DLL）：项目未使用任何窗口运行时能力，不生成
@@ -10495,7 +10603,7 @@ ${pureLogicDll ? '        (void)instance;' : '        g_LingBuilderDllInstance =
 ${singletonAccessors}
 
 ${exportWrappers}`;
-  return { section, blockingDiagnostics, diagnostics };
+  return { section, blockingDiagnostics, diagnostics, definitionFile };
 }
 
 interface ConsoleStartupEntry {

@@ -506,12 +506,19 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       // 异或 2 参数/按表映射 2 参数/逐字循环左移32 3 参数，共 19 参数）；对称加密模块新增
       // 对称_RC4加密裸/解密裸（各 2 参数）；网页访问模块 1.2.0 新增 网页_异步取返回协议头（1 参数）。
       // 合计 +10 命令 +24 参数，无 controlRef（实算摘要 d855ea48/dc36b972）。
+      // 基线 2026-10-02 三写回（进程枚举批次）：lingbuilder.process 1.0.0→1.1.0 新增
+      // 进程_枚举全部（名称数组/PID数组 2 参数，Toolhelp 快照按 PID 升序，无 controlRef）。
+      // 合计 +1 命令 +2 参数（实算摘要 df85465c/e63f8fef）。
+      // 基线 2026-10-04 写回（抓包工作台两能力补齐）：lingbuilder.sunnynet 新增
+      // 枚举请求头/枚举响应头/取响应体字节集/取请求体字节集（全部无参，封装官方
+      // GetRequestAllHeader/GetResponseAllHeader/GetResponseBody+Len/GetRequestBody+Len，
+      // 无 controlRef）。合计 +4 命令 +0 参数（实算摘要 d68f7cc8/e63f8fef）。
       modules: 102,
-      commands: 4068,
-      parameters: 7137,
+      commands: 4073,
+      parameters: 7139,
       controlReferences: 1345,
-      commandDigest: 'd855ea48',
-      parameterDigest: 'dc36b972'
+      commandDigest: 'd68f7cc8',
+      parameterDigest: 'e63f8fef'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -982,12 +989,22 @@ test('工作区已安装模块全部通过 controlRef 清单和示例门禁', as
       // 基线 2026-10-02 再写回（字级原语与裸 RC4 批次）：内置 +10 命令 +24 参数
       //（std.bytes 字级原语 7 条 + 对称_RC4加密裸/解密裸 + 网页_异步取返回协议头，见上一用例）；
       // 本机磁盘仍为 9 份清单，磁盘侧 0 漂移（实算摘要 72067609/1e0acdbf）。
-      modules: 111,
-      commands: 8113,
-      parameters: 19337,
-      controlReferences: 5111,
-      commandDigest: '72067609',
-      parameterDigest: '1e0acdbf'
+      // 基线 2026-10-02 三写回（进程枚举批次）：内置 +1 命令 +2 参数
+      //（lingbuilder.process 1.1.0 进程_枚举全部，见上一用例）；本机磁盘新装 1 份第三方清单
+      //（并行在途漂移，9→10 份），本行按当前工作区实算。
+      // 基线 2026-10-03 写回（NE 命令汉化批次）：磁盘清单 lingbuilder.new_emoji.ui 1528 条
+      // NE_EU_* 兜底命令改中文主名（旧名进 contributes.commands[].aliases，参数计数不变），
+      // 命令/参数/控件参数计数不变，仅名字与描述摘要漂移（实算摘要 0646be8e/4c02ec49）。
+      // 基线 2026-10-04 写回（抓包工作台两能力补齐）：内置 lingbuilder.sunnynet +4 命令
+      //（枚举请求头/枚举响应头/取响应体字节集/取请求体字节集，全无参，见上一用例）；
+      // 磁盘清单另有并行会话在途漂移（112→113 份、命令 +24 参数 +31 controlRef +10），
+      // 本行按当前工作区实算（实算摘要 35faa18b/cfbefc1c）。
+      modules: 113,
+      commands: 8153,
+      parameters: 19383,
+      controlReferences: 5121,
+      commandDigest: '35faa18b',
+      parameterDigest: 'cfbefc1c'
   }, '内置、官方和当前工作区第三方模块的每个方法与参数都必须进入全量审计');
   // OpenCV 以内置清单为准：本机未装 SDK 时磁盘上的同名清单是只有骨架的占位包（0 命令、无 targets）。
   const manifest = BUILTIN_MODULES.find(module => module.id === OPENCV_MODULE_ID) || auditedManifests.get('lingbuilder.opencv.sdk');
@@ -7029,7 +7046,7 @@ test('generated new_emoji bridge completions match binding parameter counts', as
   const handlerBindings = manifest.bindings.commands.filter((binding: any) => binding.parameters?.some((parameter: any) => parameter.type === 'handler'));
   assert.equal(handlerBindings.filter((binding: any) => /_绑定/u.test(binding.command)).length, 923);
   assert.equal(handlerBindings.filter((binding: any) => !/_绑定/u.test(binding.command)).length, 92);
-  const buttonCommand = manifest.bindings.commands.find((binding: any) => binding.command === 'NE_EU_SetButtonStateColors');
+  const buttonCommand = manifest.bindings.commands.find((binding: any) => binding.command === 'NE按钮_设置状态配色');
   assert.deepEqual(buttonCommand.parameters[1], {
     name: 'element_id',
     type: 'controlRef',
@@ -7038,16 +7055,16 @@ test('generated new_emoji bridge completions match binding parameter counts', as
     scope: 'currentWindow',
     runtimeRepresentation: 'stableId'
   });
-  const tourTargetCommand = manifest.bindings.commands.find((binding: any) => binding.command === 'NE_EU_SetTourTargetElement');
+  const tourTargetCommand = manifest.bindings.commands.find((binding: any) => binding.command === 'NE漫游引导_设置目标元素');
   assert.equal(tourTargetCommand.parameters[1].type, 'controlRef');
   assert.deepEqual(tourTargetCommand.parameters[1].controlTypes, ['lingbuilder.new_emoji.ui/Tour']);
   assert.equal(tourTargetCommand.parameters[2].type, 'controlRef');
-  const dialogGetter = manifest.bindings.commands.find((binding: any) => binding.command === 'NE_EU_GetDialogAdvancedOptions');
+  const dialogGetter = manifest.bindings.commands.find((binding: any) => binding.command === 'NE弹窗_取高级选项');
   assert.equal(dialogGetter.parameters.find((parameter: any) => parameter.name === 'content_parent_id').type, 'int');
   assert.equal(dialogGetter.parameters.find((parameter: any) => parameter.name === 'footer_parent_id').type, 'int');
-  const autocompleteGetter = manifest.bindings.commands.find((binding: any) => binding.command === 'NE_EU_GetAutocompleteOptions');
+  const autocompleteGetter = manifest.bindings.commands.find((binding: any) => binding.command === 'NE自动完成_取选项');
   assert.equal(autocompleteGetter.parameters.find((parameter: any) => parameter.name === 'request_id').type, 'int');
-  const previewSelection = manifest.bindings.commands.find((binding: any) => binding.command === 'NE_EU_PreviewSetSelection');
+  const previewSelection = manifest.bindings.commands.find((binding: any) => binding.command === 'NE预览_设置选中');
   assert.equal(previewSelection.parameters.find((parameter: any) => parameter.name === 'ids').type, 'int');
   assert.equal(previewSelection.parameters.find((parameter: any) => parameter.name === 'primary_id').type, 'controlRef');
   for (const control of runtimeControls) {
@@ -7080,7 +7097,7 @@ test('generated new_emoji bridge completions match binding parameter counts', as
     '类 MainWindow',
     '    事件 创建完毕()',
     '        局部 NE编辑框 输入框 = 通过标记文本获取NE编辑框("输入")',
-    '        NE_EU_SetButtonStateColors(0, 输入框, 0, 0, 0, 0, 0, 0)',
+    '        NE按钮_设置状态配色(0, 输入框, 0, 0, 0, 0, 0, 0)',
     '    结束',
     '结束类'
   ].join('\n');
@@ -8331,6 +8348,28 @@ test('清单损坏模块给出 bundledRepairable 标记，修复重装用随包�
   const history = JSON.parse(await fs.readFile(path.join(root, '.lingbuilder', 'module-history.json'), 'utf8'));
   assert.ok(Array.isArray(history), '模块历史是数组');
   assert.ok(history.some((entry: any) => entry.action === 'repair' && entry.moduleId === 'com.example.broken'), '修复重装必须写历史');
+});
+
+test('模块扫描按清单 ID 去重：升级/安装暂存残留目录不再产出重复条目', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-module-staging-dedupe-'));
+  await writeSolutionFixture(root, ['project-a']);
+  const modulesRoot = path.join(root, '.lingbuilder', 'modules');
+  const manifest = (id: string, name: string) => JSON.stringify({ schemaVersion: 2, id, name, version: '2.0.0', category: '其他', description: '扫描去重回归。' }, null, 2);
+  // 正式目录 + 两类暂存残留（升级 `.名称.next-<pid>` 点前缀形态、安装 `名称.staging-<pid>` 形态），
+  // 暂存目录的清单 ID 与正式目录相同：真实案例为解决方案树出现两个「new_emoji 原生界面库」。
+  await writeFixture(path.join(modulesRoot, 'com.example.alpha', 'lingbuilder.module.json'), manifest('com.example.alpha', '正式模块甲'));
+  await writeFixture(path.join(modulesRoot, '.com.example.alpha.next-24200', 'lingbuilder.module.json'), manifest('com.example.alpha', '升级暂存'));
+  await writeFixture(path.join(modulesRoot, 'com.example.beta', 'lingbuilder.module.json'), manifest('com.example.beta', '正式模块乙'));
+  await writeFixture(path.join(modulesRoot, 'com.example.beta.staging-24148', 'lingbuilder.module.json'), manifest('com.example.beta', '安装暂存'));
+
+  const service = createModuleService(root);
+  const installed = (await service.scanInstalledModules('project-a'))
+    .filter(module => module.manifest.id.startsWith('com.example.'));
+  assert.deepEqual(installed.map(module => module.manifest.id).sort(), ['com.example.alpha', 'com.example.beta'],
+    '同 ID 暂存残留目录不得产生重复条目');
+  // 目录名与清单 ID 一致的正式目录优先保留。
+  const alpha = installed.find(module => module.manifest.id === 'com.example.alpha');
+  assert.equal(alpha?.installPath.replace(/\\/g, '/').endsWith('/com.example.alpha'), true);
 });
 
 test('修复重装拒绝：无随包副本、随包清单损坏、路径穿越、开发源链接与内置模块', async () => {

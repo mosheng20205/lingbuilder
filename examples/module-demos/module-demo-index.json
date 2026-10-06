@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-25T22:07:34.201Z",
+  "generatedAt": "2026-10-03T09:44:27.577Z",
   "modules": [
     {
       "moduleId": "lingbuilder.advanced.assembly",
@@ -703,12 +703,13 @@
       "moduleId": "lingbuilder.new_emoji.ui",
       "moduleName": "new_emoji 原生界面库",
       "projectId": "module-demo-lingbuilder.new_emoji.ui",
-      "commandCount": 3784,
+      "commandCount": 4019,
       "controlCount": 93,
       "groupCount": 12,
       "builtin": false,
       "sourceRoot": "examples/module-demos/lingbuilder.new_emoji.ui/src",
-      "packageName": "新表情原生界面库完整演示.lcpppkg"
+      "packageName": "新表情原生界面库完整演示.lcpppkg",
+      "packageBytes": 3806397
     },
     {
       "moduleId": "lingbuilder.opencv",

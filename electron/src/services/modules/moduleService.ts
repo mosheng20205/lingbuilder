@@ -88,6 +88,12 @@ export class ModuleService {
 
     const installRoot = this.installedModulesDir();
     const entries = await safeReadDir(installRoot);
+    // 升级/安装流程的暂存目录（如 `.lingbuilder.xxx.next-<pid>`、`xxx.staging-<pid>`）可能在
+    // 中断后残留，其清单 ID 与正式目录相同：不按目录名过滤（命名不统一），改为按清单 ID
+    // 去重——目录名与 ID 一致的正式目录优先保留，否则同一模块会在解决方案树/模块列表
+    // 出现两份完全相同的条目（残留目录被删即自愈，无需迁移）。
+    const seenDirModuleIds = new Set<string>(BUILTIN_MODULES.map(module => module.id));
+    const dirLoaded: Array<{ name: string; loaded: Awaited<ReturnType<ModuleService['loadInstalledModuleFromDir']>> }> = [];
     for (const entry of entries) {
       // Windows 目录联接（mklink /J）的 readdir dirent 报 isSymbolicLink 而非 isDirectory；
       // 「把模块目录联接进 .lingbuilder/modules 省磁盘」是自然用法，必须与真实目录同语义，
@@ -110,8 +116,20 @@ export class ModuleService {
       const loaded = await this.loadInstalledModuleFromDir(installPath, entry.name, projectRefs.enabledModuleIds);
       // 链接优先：目录名与清单 ID 不一致时（如手工改名的目录），清单 ID 命中链接表也要跳过。
       if (loaded.manifest && linkedModuleIds.has(loaded.manifest.id)) continue;
-      modules.push(loaded);
+      dirLoaded.push({ name: entry.name, loaded });
     }
+    const canonicalRank = (item: { name: string; loaded: { manifest?: { id?: string } | null } }) =>
+      item.loaded.manifest?.id && item.name === item.loaded.manifest.id ? 0 : 1;
+    dirLoaded
+      .sort((left, right) => canonicalRank(left) - canonicalRank(right) || left.name.localeCompare(right.name, 'zh-CN'))
+      .forEach(item => {
+        const moduleId = item.loaded.manifest?.id;
+        if (moduleId) {
+          if (seenDirModuleIds.has(moduleId)) return;
+          seenDirModuleIds.add(moduleId);
+        }
+        modules.push(item.loaded);
+      });
 
     // 开发源链接模块：installPath 直接指向工作区内源目录，改动即时生效，不落真实符号链接。
     for (const link of Object.values(links)) {

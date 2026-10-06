@@ -43,10 +43,10 @@ const rebootWarning = '⚠️ 驱动卸载必须重启计算机才能完成：�
 const specs: SunnyNetCommandSpec[] = [
   // ===== 生命周期 =====
   { name: '网络中间件_创建', signature: '网络中间件_创建()', description: '创建网络中间件实例并返回句柄；基于 SunnyNet 中间件，可抓取、查看和修改本机 HTTP/HTTPS/WebSocket/TCP/UDP 收发数据。', parameters: [], returnType: '网络中间件', returnLabel: '网络中间件', category: '生命周期' },
-  { name: '网络中间件_销毁', signature: '网络中间件_销毁(中间件)', description: '停止并释放中间件句柄；重复销毁返回假。', parameters: [parameter('中间件', '网络中间件', middlewareHandle)], returnType: 'bool', returnLabel: '逻辑型', category: '生命周期' },
+  { name: '网络中间件_销毁', signature: '网络中间件_销毁(中间件)', description: '停止并释放中间件句柄；重复销毁返回假。⚠️ 加载过进程代理驱动的实例：销毁只还原系统代理并清理驱动文件（捕获立即失效），底层缺陷下不再释放 Go 上下文（否则宿主进程延迟崩溃），上下文保留到进程退出由系统回收；需要彻底干净的停止请在进程退出前自然结束。', parameters: [parameter('中间件', '网络中间件', middlewareHandle)], returnType: 'bool', returnLabel: '逻辑型', category: '生命周期' },
   { name: '网络中间件_设置端口', signature: '网络中间件_设置端口(中间件, 端口)', description: '设置本地代理监听端口；须在 启动 之前设置。', parameters: [parameter('中间件', '网络中间件', middlewareHandle), parameter('端口', 'int', '本地代理监听端口，1 到 65535；须避开系统占用端口。')], returnType: 'bool', returnLabel: '逻辑型', category: '生命周期' },
   { name: '网络中间件_启动', signature: '网络中间件_启动(中间件)', description: '启动本地代理监听；启动后配合 网络中间件_设置系统代理 或进程代理驱动捕获流量。', parameters: [parameter('中间件', '网络中间件', middlewareHandle)], returnType: 'bool', returnLabel: '逻辑型', category: '生命周期' },
-  { name: '网络中间件_停止', signature: '网络中间件_停止(中间件)', description: '停止本地代理监听并自动还原系统代理设置（与底层官方语义一致）；已建立的连接会被断开。', parameters: [parameter('中间件', '网络中间件', middlewareHandle)], returnType: 'bool', returnLabel: '逻辑型', category: '生命周期' },
+  { name: '网络中间件_停止', signature: '网络中间件_停止(中间件)', description: '停止本地代理监听并自动还原系统代理设置（与底层官方语义一致）；已建立的连接会被断开。⚠️ 已加载进程代理驱动时本命令拒绝执行（底层 Close 存在双重关闭崩溃缺陷）：请先调 网络中间件_卸载进程代理文件 再停止，或销毁实例。', parameters: [parameter('中间件', '网络中间件', middlewareHandle)], returnType: 'bool', returnLabel: '逻辑型', category: '生命周期' },
   { name: '网络中间件_取错误', signature: '网络中间件_取错误(中间件)', description: '返回中间件最近一次操作的中文或原文错误信息；无错误返回空文本。', parameters: [parameter('中间件', '网络中间件', middlewareHandle)], returnType: 'wideString', returnLabel: '文本型', category: '生命周期' },
   { name: '网络中间件_取版本', signature: '网络中间件_取版本()', description: '返回底层 SunnyNet 版本串，如 "2026-09-16"；DLL 加载失败返回空文本。', parameters: [], returnType: 'wideString', returnLabel: '文本型', category: '生命周期' },
 
@@ -55,7 +55,7 @@ const specs: SunnyNetCommandSpec[] = [
   { name: '网络中间件_销毁证书管理器', signature: '网络中间件_销毁证书管理器(证书管理器)', description: '释放证书管理器句柄；不影响已安装到系统的根证书。', parameters: [parameter('证书管理器', '网络证书管理器', certManagerHandle)], returnType: 'void', returnLabel: '无返回值', category: '证书' },
   { name: '网络中间件_绑定证书', signature: '网络中间件_绑定证书(中间件, 证书管理器)', description: '把证书管理器绑定到中间件；绑定后启动即可解密 HTTPS 流量。', parameters: [parameter('中间件', '网络中间件', middlewareHandle), parameter('证书管理器', '网络证书管理器', certManagerHandle)], returnType: 'bool', returnLabel: '逻辑型', category: '证书' },
   { name: '网络中间件_是否已安装根证书', signature: '网络中间件_是否已安装根证书()', description: '检查系统证书库（当前用户与本地计算机的受信任根）中是否存在 LingBuilder 网络中间件根证书。', parameters: [], returnType: 'bool', returnLabel: '逻辑型', category: '证书' },
-  { name: '网络中间件_安装根证书', signature: '网络中间件_安装根证书(中间件)', description: '⚠️ 系统级操作：向系统受信任根证书库安装 LingBuilder 网络中间件根证书（本地计算机库需管理员权限）。已安装时直接返回真；首次安装时程序会弹出中文确认对话框，用户点击“是”才执行安装。', parameters: [parameter('中间件', '网络中间件', middlewareHandle)], returnType: 'bool', returnLabel: '逻辑型', category: '证书' },
+  { name: '网络中间件_安装根证书', signature: '网络中间件_安装根证书(中间件)', description: '⚠️ 系统级操作：向系统受信任根证书库安装当前中间件正在使用的根证书（本地计算机库需管理员权限）。按当前根证书指纹判定：库里已是当前根时直接返回真；否则弹出中文确认对话框，用户点击“是”才执行安装（证书管理器每次创建都会生成新根，程序重启后需重新点一次安装，历史旧根保留不影响验证）。', parameters: [parameter('中间件', '网络中间件', middlewareHandle)], returnType: 'bool', returnLabel: '逻辑型', category: '证书' },
   { name: '网络中间件_卸载根证书', signature: '网络中间件_卸载根证书()', description: '⚠️ 系统级操作：从系统受信任根证书库移除 LingBuilder 网络中间件根证书（当前用户与本地计算机两处；本地计算机库需管理员权限）。', parameters: [], returnType: 'bool', returnLabel: '逻辑型', category: '证书' },
   { name: '网络中间件_导出根证书', signature: '网络中间件_导出根证书(中间件, 文件路径)', description: '把中间件当前使用的根证书导出为 PEM 文本文件，供 curl、Python 等工具信任使用。', parameters: [parameter('中间件', '网络中间件', middlewareHandle), parameter('文件路径', 'wideString', '要写出的 PEM 文件完整路径（文本型）。')], returnType: 'bool', returnLabel: '逻辑型', category: '证书' },
 
@@ -100,6 +100,10 @@ const specs: SunnyNetCommandSpec[] = [
   { name: '网络中间件_取响应体长度', signature: '网络中间件_取响应体长度()', description: '在 HTTP 事件处理器内返回响应正文长度（字节数）。', parameters: [], returnType: 'longLong', returnLabel: '长整数型', category: 'HTTP事件' },
   { name: '网络中间件_设响应体', signature: '网络中间件_设响应体(内容)', description: '在 HTTP 响应事件处理器内用文本（按 UTF-8 编码）替换响应正文；须在响应事件中使用才会生效。', parameters: [parameter('内容', 'wideString', '新的响应正文文本。')], returnType: 'bool', returnLabel: '逻辑型', category: 'HTTP事件' },
   { name: '网络中间件_设响应体字节集', signature: '网络中间件_设响应体字节集(字节集)', description: '在 HTTP 响应事件处理器内用字节集替换响应正文（适合图片等二进制内容）。', parameters: [parameter('字节集', 'bytes', '新的响应正文字节集。')], returnType: 'bool', returnLabel: '逻辑型', category: 'HTTP事件' },
+  { name: '网络中间件_枚举请求头', signature: '网络中间件_枚举请求头()', description: '在 HTTP 事件处理器内返回本次请求的全部请求头文本（官方 GetRequestAllHeader，逐行「名: 值」）；审计与重发重建请用它，不要按固定头名清单逐个 取请求头。', parameters: [], returnType: 'wideString', returnLabel: '文本型', category: 'HTTP事件' },
+  { name: '网络中间件_枚举响应头', signature: '网络中间件_枚举响应头()', description: '在 HTTP 事件处理器内返回本次响应的全部响应头文本（官方 GetResponseAllHeader，逐行「名: 值」）。', parameters: [], returnType: 'wideString', returnLabel: '文本型', category: 'HTTP事件' },
+  { name: '网络中间件_取响应体字节集', signature: '网络中间件_取响应体字节集()', description: '在 HTTP 响应事件处理器内返回响应正文的原始字节集（二进制安全：图片/压缩包/protobuf 可直接落盘）；文本预览场景仍可用 取响应体。', parameters: [], returnType: 'bytes', returnLabel: '字节集', category: 'HTTP事件' },
+  { name: '网络中间件_取请求体字节集', signature: '网络中间件_取请求体字节集()', description: '在 HTTP 请求事件处理器内返回请求正文的原始字节集（二进制安全）；文本预览场景仍可用 取请求体。', parameters: [], returnType: 'bytes', returnLabel: '字节集', category: 'HTTP事件' },
 
   // ===== 连接收发 =====
   { name: '网络中间件_TCP发送数据', signature: '网络中间件_TCP发送数据(连接ID, 字节集)', description: '向指定 TCP 连接主动发送数据；连接 ID 来自 网络中间件_取当前连接ID。', parameters: [parameter('连接ID', 'longLong', 'TCP 连接唯一 ID。'), parameter('字节集', 'bytes', '要发送的数据。')], returnType: 'bool', returnLabel: '逻辑型', category: '连接' },

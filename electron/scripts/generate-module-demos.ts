@@ -317,10 +317,19 @@ function createSource(manifest: LingBuilderModuleManifest, groups: DemoGroup[]):
       }
     }
     for (const [name, parameter] of handlers) {
-      const parameters = (parameter.handlerSignature?.parameterTypes || [])
+      const signature = parameter.handlerSignature;
+      const parameters = (signature?.parameterTypes || [])
         .map((type, index) => `${type} 参数${index + 1}`)
         .join(', ');
-      lines.push(`    事件 ${name}(${parameters})`, '        调试输出("模块演示回调已触发。")', '    结束', '');
+      const returnType = signature?.returnType || '空';
+      if (returnType === '空' || returnType === 'void') {
+        lines.push(`    事件 ${name}(${parameters})`, '        调试输出("模块演示回调已触发。")', '    结束', '');
+      } else {
+        // 带返回值的回调（如 new_emoji 允许拦截的关闭前回调）必须声明为带类型功能：
+        // 事件形式返回恒为空，会被语言服务的处理器签名诊断判为不匹配。
+        const returnValue = returnType === '文本型' ? '""' : returnType === '逻辑型' ? '假' : returnType === '小数型' ? '0.0' : '0';
+        lines.push(`    ${returnType} ${name}(${parameters})`, '        调试输出("模块演示回调已触发。")', `        返回(${returnValue})`, '    结束', '');
+      }
     }
   }
   lines.push('结束类', '');

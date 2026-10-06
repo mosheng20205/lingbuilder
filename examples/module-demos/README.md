@@ -69,7 +69,7 @@
 | `lingbuilder.net.udp` UDP通信模块 | `module-demo-lingbuilder.net.udp` | 9 | 0 | 1 | `UDP通信模块完整演示.lcpppkg` |
 | `lingbuilder.net.url` URL解析模块 | `module-demo-lingbuilder.net.url` | 6 | 0 | 1 | `URL解析模块完整演示.lcpppkg` |
 | `lingbuilder.new_emoji.fbro-shell` new_emoji FBro 浏览器外壳 | `module-demo-lingbuilder.new_emoji.fbro-shell` | 38 | 0 | 2 | `new_emojiFBro浏览器外壳完整演示.lcpppkg` |
-| `lingbuilder.new_emoji.ui` new_emoji 原生界面库 | `module-demo-lingbuilder.new_emoji.ui` | 3784 | 93 | 12 | `新表情原生界面库完整演示.lcpppkg` |
+| `lingbuilder.new_emoji.ui` new_emoji 原生界面库 | `module-demo-lingbuilder.new_emoji.ui` | 4019 | 93 | 12 | `新表情原生界面库完整演示.lcpppkg` |
 | `lingbuilder.opencv` OpenCV 图像处理模块 | `module-demo-lingbuilder.opencv` | 33 | 0 | 2 | `OpenCV图像处理模块完整演示.lcpppkg` |
 | `lingbuilder.process` 进程管理模块 | `module-demo-lingbuilder.process` | 5 | 0 | 1 | `进程管理模块完整演示.lcpppkg` |
 | `lingbuilder.std.bytes` 字节与十六进制模块 | `module-demo-lingbuilder.std.bytes` | 13 | 0 | 1 | `字节与十六进制模块完整演示.lcpppkg` |

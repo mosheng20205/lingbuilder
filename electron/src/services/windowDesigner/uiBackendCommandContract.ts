@@ -18,6 +18,8 @@ const NEW_EMOJI_FBRO_SHELL_MODULE_ID = 'lingbuilder.new_emoji.fbro-shell';
 const HTTP_SERVER_MODULE_ID = 'lingbuilder.http.server';
 const WEBSOCKET_CLIENT_MODULE_ID = 'lingbuilder.websocket.client';
 const WEBSOCKET_SERVER_MODULE_ID = 'lingbuilder.websocket.server';
+const SUNNYNET_MODULE_ID = 'lingbuilder.sunnynet';
+const WEB_HTTP_MODULE_ID = 'lingbuilder.web.http';
 
 const BACKEND_NEUTRAL_BUILTIN_MODULE_IDS = new Set([
   ...STANDARD_LIBRARY_MODULES,
@@ -134,14 +136,23 @@ export const NEW_EMOJI_UI_BACKEND_COMMAND_CONTRACT: NativeUiBackendCommandContra
     if (module.manifest.id === WEBSOCKET_SERVER_MODULE_ID) return true;
     // WebSocket 客户端复用同一 WinHTTP 运行时，并通过 new_emoji UI 线程的消息窗口派发处理器。
     if (module.manifest.id === WEBSOCKET_CLIENT_MODULE_ID) return true;
+    // SunnyNet 网络中间件在 new_emoji 后端经独立消息窗口派发事件（WM_APP+0x5A，见
+    // lingCppWin32Project.ts 的 sunnyNetIntegration），命令族全量可用。
+    if (module.manifest.id === SUNNYNET_MODULE_ID) return true;
+    // 网页访问（WinHTTP）族的运行时内置于普通 Win32 窗口类模板，new_emoji 后端尚未携带；
+    // 必须生成前阻断，否则会漏到 MSVC 报 C3861。异步取数改用能力等价的 HTTP 客户端模块
+    // （lingbuilder.net.http-client 的 HTTP客户端_GET异步，NE 已接入消息窗口派发）。
+    if (module.manifest.id === WEB_HTTP_MODULE_ID) return false;
     if (module.isBuiltin) return BACKEND_NEUTRAL_BUILTIN_MODULE_IDS.has(module.manifest.id);
     // 第三方 v2 模块由 targets.headers/sources/libs 提供独立运行时；模块清单校验负责约束 binding。
     return true;
   },
   supportsControlReferenceRepresentation: representation => representation !== 'nativeHandle',
   formatUnsupportedDiagnostic: (call, { module, commandName }) => (
-    `new_emoji 后端不支持命令“${commandName}”（${module.manifest.name}，源码第 ${call.line} 行）；`
-    + '该命令依赖普通 Win32 窗口运行时，已在生成 C++ 前阻止构建。请改用 new_emoji 模块对应命令，或把当前窗口切换为 Win32 后端。'
+    module.manifest.id === WEB_HTTP_MODULE_ID
+      ? `new_emoji 后端暂未接入“${commandName}”（网页访问模块的运行时在普通 Win32 窗口类模板内）。异步取数请改用 HTTP 客户端模块的 HTTP客户端_GET异步 / HTTP客户端_POSTJSON异步（new_emoji 已接入），或把当前窗口切换为 Win32 后端。`
+      : `new_emoji 后端不支持命令“${commandName}”（${module.manifest.name}，源码第 ${call.line} 行）；`
+        + '该命令依赖普通 Win32 窗口运行时，已在生成 C++ 前阻止构建。请改用 new_emoji 模块对应命令，或把当前窗口切换为 Win32 后端。'
   )
 };
 

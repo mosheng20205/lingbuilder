@@ -1095,6 +1095,27 @@ const wchar_t* 进程_按名称取ID列表JSON(const wchar_t* processName) {
     json += L"]";
     return LB_ReturnText(std::move(json));
 }
+int 进程_枚举全部(std::vector<std::wstring>& outNames, std::vector<std::wstring>& outPids) {
+    outNames.clear();
+    outPids.clear();
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snapshot == INVALID_HANDLE_VALUE) return 0;
+    PROCESSENTRY32W entry = {};
+    entry.dwSize = sizeof(entry);
+    std::vector<std::pair<unsigned long long, std::wstring>> rows;
+    if (Process32FirstW(snapshot, &entry)) {
+        do {
+            rows.emplace_back(static_cast<unsigned long long>(entry.th32ProcessID), std::wstring(entry.szExeFile));
+        } while (Process32NextW(snapshot, &entry));
+    }
+    CloseHandle(snapshot);
+    std::sort(rows.begin(), rows.end(), [](const auto& left, const auto& right) { return left.first < right.first; });
+    for (const auto& row : rows) {
+        outPids.push_back(std::to_wstring(row.first));
+        outNames.push_back(row.second);
+    }
+    return static_cast<int>(rows.size());
+}
 `;
 
 const KEYBOARD_RUNTIME = String.raw`

@@ -16,6 +16,8 @@ export interface OpenControlEventCodeDetail {
   controlType?: string;
   eventName?: string;
   handlerName?: string;
+  /** 事件中文标签（如 FBro 的「加载完成」）；模块事件 ID 不是可读文本，调试输出桩优先用它。 */
+  eventLabel?: string;
   eventParameters?: ModuleDesignerEventParameter[];
   eventStarterStatements?: string[];
   windowFileName?: string;
@@ -55,7 +57,7 @@ export function createLingCppControlEventBlock(
 ): string {
   const controlName = sanitizeLingCppText(detail.controlName, '控件');
   const controlContent = sanitizeLingCppText(detail.controlContent, controlName);
-  const eventSuffix = getEplEventSuffix(detail.eventName);
+  const eventSuffix = sanitizeLingCppText(detail.eventLabel, '') || getEplEventSuffix(detail.eventName);
   const parameterText = formatControlEventParameters(detail);
   const lines = [`    事件 ${detail.handlerName}(${parameterText})`];
 
@@ -92,6 +94,29 @@ function findExistingEventHandlerName(content: string, handlerName: string): str
   return handlerName;
 }
 
+/**
+ * 事件桩必须落在类内：插入点取最后一个「结束类」行之前，而不是文件末尾。
+ * 源码在 结束类 之后常带注释（如示例工程的「// 本集口播命令」），旧的「剥掉文件末尾的
+ * 结束类再追加」会把新桩放到类外并多出一个 结束类——Monaco 报「类外语句/多余的类结束
+ * 语句」波浪线，新手画布按类结构渲染则完全不显示新桩，表现为「生成并打开没反应」。
+ */
+function appendEventHandlerBlockInsideClass(content: string, nextBlock: string): string {
+  const lines = content.split('\n');
+  let classEndIndex = -1;
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    if (lines[index].trim() === '结束类') {
+      classEndIndex = index;
+      break;
+    }
+  }
+  if (classEndIndex < 0) {
+    return `${content.trimEnd()}\n\n${nextBlock}\n结束类`;
+  }
+  const head = lines.slice(0, classEndIndex).join('\n').trimEnd();
+  const tail = lines.slice(classEndIndex).join('\n');
+  return `${head}\n\n${nextBlock}\n${tail}`;
+}
+
 export function ensureLingCppControlEventHandler(
   content: string,
   detail: OpenControlEventCodeDetail
@@ -115,7 +140,7 @@ export function ensureLingCppControlEventHandler(
 
   const nextBlock = createLingCppControlEventBlock({ ...detail, controlName, eventName, handlerName });
   return {
-    content: `${content.replace(/\s*结束类\s*$/g, '').trimEnd()}\n\n${nextBlock}\n结束类`,
+    content: appendEventHandlerBlockInsideClass(content, nextBlock),
     signatureUpgraded: false,
     matchedHandlerName: handlerName
   };

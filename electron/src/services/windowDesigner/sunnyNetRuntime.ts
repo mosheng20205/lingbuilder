@@ -75,6 +75,8 @@ public:
         LB_SUNNY_BIND(fnSetReqData_, "SetRequestData")
         LB_SUNNY_BIND(fnSetReqUrl_, "SetRequestUrl")
         LB_SUNNY_BIND(fnGetReqHeader_, "GetRequestHeader")
+        LB_SUNNY_BIND(fnGetReqAllHeaders_, "GetRequestAllHeader")
+        LB_SUNNY_BIND(fnGetRespAllHeaders_, "GetResponseAllHeader")
         LB_SUNNY_BIND(fnSetReqHeader_, "SetRequestHeader")
         LB_SUNNY_BIND(fnDelReqHeader_, "DelRequestHeader")
         LB_SUNNY_BIND(fnGetReqCookie_, "GetRequestCookie")
@@ -138,10 +140,12 @@ public:
         if (!item) { lastError_ = L"网络中间件句柄无效。"; return false; }
         if (fnCancelIeProxy_) fnCancelIeProxy_(static_cast<LB_SunnyIntPtr>(item->sunny));
         if (item->driverLoaded) {
-            // 底层缺陷：驱动加载后调用 Close 会与内部协程双重关闭而崩溃（close of closed channel），
-            // 因此跳过 Close，仅做文件清理与释放，语义见模块文档“销毁”。
+            // 底层缺陷（v1.5.1 实测两处）：驱动加载后 ① Close 会与内部协程双重关闭而崩溃
+            //（close of closed channel）；② 即便跳过 Close，对仍在运行的实例 Release 也会
+            // 在数秒~数十秒后被内部协程踩空，宿主进程无 WER 记录直接消失。
+            // 因此驱动路径只做系统代理还原与驱动文件清理（停服务+移文件，捕获立即失效），
+            // Go 上下文保留到进程退出由操作系统回收，语义见模块文档“销毁”。
             CleanupDriverFiles();
-            if (fnRelease_) fnRelease_(static_cast<LB_SunnyIntPtr>(item->sunny));
         } else {
             if (fnClose_) fnClose_(static_cast<LB_SunnyIntPtr>(item->sunny));
             if (fnRelease_) fnRelease_(static_cast<LB_SunnyIntPtr>(item->sunny));
@@ -235,17 +239,71 @@ public:
         return found;
     }
 
+    // 取当前中间件根证书的 SHA-1 指纹；失败返回 false（调用方回退到存在性语义）。
+    bool GetCurrentRootSha1(long long id, unsigned char (&hash)[20]) {
+        auto item = Find(id);
+        if (!item) return false;
+        LB_SunnyIntPtr pem = fnExportCert_(static_cast<LB_SunnyIntPtr>(item->sunny));
+        if (!pem) return false;
+        const char* text = reinterpret_cast<const char*>(static_cast<size_t>(pem));
+        bool ok = false;
+        unsigned char der[4096];
+        DWORD derLen = sizeof(der);
+        if (CryptStringToBinaryA(text, 0, CRYPT_STRING_BASE64HEADER, der, &derLen, nullptr, nullptr) && derLen > 0) {
+            const CERT_CONTEXT* ctx = CertCreateCertificateContext(X509_ASN_ENCODING, der, derLen);
+            if (ctx) {
+                DWORD hashLen = 20;
+                if (CertGetCertificateContextProperty(ctx, CERT_SHA1_HASH_PROP_ID, hash, &hashLen) && hashLen == 20) ok = true;
+                CertFreeCertificateContext(ctx);
+            }
+        }
+        if (fnFree_) fnFree_(pem);
+        return ok;
+    }
+
+    // 按 SHA-1 指纹在当前用户/本地计算机受信任根库中查找（CERT_FIND_HASH）。
+    bool IsCurrentRootInStore(const unsigned char (&hash)[20]) {
+        CRYPT_HASH_BLOB blob;
+        blob.cbData = 20;
+        blob.pbData = const_cast<unsigned char*>(hash);
+        HCERTSTORE stores[2] = {nullptr, nullptr};
+        stores[0] = CertOpenSystemStoreW(0, L"ROOT");
+        stores[1] = CertOpenStore(CERT_STORE_PROV_SYSTEM, 0, 0, CERT_SYSTEM_STORE_LOCAL_MACHINE, L"ROOT");
+        bool found = false;
+        for (HCERTSTORE store : stores) {
+            if (!store) continue;
+            const CERT_CONTEXT* match = CertFindCertificateInStore(store, X509_ASN_ENCODING, 0, CERT_FIND_HASH, &blob, nullptr);
+            if (match) found = true;
+            if (match) CertFreeCertificateContext(match);
+            CertCloseStore(store, 0);
+            if (found) break;
+        }
+        return found;
+    }
+
     bool InstallRootCert(long long id) {
         auto item = Find(id);
         if (!item) { lastError_ = L"网络中间件句柄无效。"; return false; }
         if (!EnsureLoaded()) return false;
-        if (IsRootCertInstalled()) return true;
+        // 根证书随证书管理器重新创建而重新生成：库里存在同名旧根不能证明当前根已受信任，
+        // 必须按指纹精确判定，否则程序重启后浏览器拿旧根公钥验新根私钥签的证书必然报警告。
+        unsigned char currentHash[20];
+        const bool haveHash = GetCurrentRootSha1(id, currentHash);
+        if (haveHash) {
+            if (IsCurrentRootInStore(currentHash)) return true;
+        } else if (IsRootCertInstalled()) {
+            return true;
+        }
         int choice = MessageBoxW(nullptr, L"网络中间件即将向系统受信任的根证书库安装根证书（LingBuilder.Sunny.Root），用于 HTTPS 抓包解密。\n\n这是系统级操作，是否继续？", L"LingBuilder 网络中间件", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2 | MB_SETFOREGROUND);
         if (choice != IDYES) { lastError_ = L"用户取消了根证书安装。"; return false; }
         LB_SunnyIntPtr message = fnInstallCert_(static_cast<LB_SunnyIntPtr>(item->sunny));
         std::wstring raw = message ? LB_GbkToWide(reinterpret_cast<const char*>(static_cast<size_t>(message))) : L"";
         if (message && fnFree_) fnFree_(message);
-        if (IsRootCertInstalled()) return true;
+        if (haveHash) {
+            if (IsCurrentRootInStore(currentHash)) return true;
+        } else if (IsRootCertInstalled()) {
+            return true;
+        }
         lastError_ = L"根证书安装失败" + (raw.empty() ? L"。" : (L"：" + raw));
         return false;
     }
@@ -399,6 +457,45 @@ public:
         LB_SunnyIntPtr text = fnGetRespHeader_(static_cast<LB_SunnyIntPtr>(currentMessageId_), reinterpret_cast<LB_SunnyIntPtr>(const_cast<char*>(utf8.c_str())));
         std::wstring output = LB_Utf8ToWide(text ? reinterpret_cast<const char*>(static_cast<size_t>(text)) : "");
         if (text && fnFree_) fnFree_(text);
+        return output;
+    }
+    // 官方 GetRequestAllHeader / GetResponseAllHeader：一次拿全部头（UTF-8 文本，逐行「名: 值」）。
+    std::wstring GetRequestAllHeaders() {
+        if (!fnGetReqAllHeaders_ || !currentMessageId_) return L"";
+        LB_SunnyIntPtr text = fnGetReqAllHeaders_(static_cast<LB_SunnyIntPtr>(currentMessageId_));
+        std::wstring output = LB_Utf8ToWide(text ? reinterpret_cast<const char*>(static_cast<size_t>(text)) : "");
+        if (text && fnFree_) fnFree_(text);
+        return output;
+    }
+    std::wstring GetResponseAllHeaders() {
+        if (!fnGetRespAllHeaders_ || !currentMessageId_) return L"";
+        LB_SunnyIntPtr text = fnGetRespAllHeaders_(static_cast<LB_SunnyIntPtr>(currentMessageId_));
+        std::wstring output = LB_Utf8ToWide(text ? reinterpret_cast<const char*>(static_cast<size_t>(text)) : "");
+        if (text && fnFree_) fnFree_(text);
+        return output;
+    }
+    // 响应体原始字节集：按 GetResponseBodyLen 长度拷贝（二进制安全，不经 strlen/UTF-8 解码）。
+    std::vector<unsigned char> GetResponseBodyBytes() {
+        std::vector<unsigned char> output;
+        if (!fnGetRespBody_ || !fnGetRespBodyLen_ || !currentMessageId_) return output;
+        LB_SunnyIntPtr body = fnGetRespBody_(static_cast<LB_SunnyIntPtr>(currentMessageId_));
+        if (!body) return output;
+        LB_SunnyIntPtr length = fnGetRespBodyLen_(static_cast<LB_SunnyIntPtr>(currentMessageId_));
+        const unsigned char* data = reinterpret_cast<const unsigned char*>(static_cast<size_t>(body));
+        if (length > 0 && data) output.assign(data, data + static_cast<size_t>(length));
+        if (fnFree_) fnFree_(body);
+        return output;
+    }
+    // 请求体原始字节集：同上，按 GetRequestBodyLen 长度拷贝。
+    std::vector<unsigned char> GetRequestBodyBytes() {
+        std::vector<unsigned char> output;
+        if (!fnGetReqBody_ || !fnGetReqBodyLen_ || !currentMessageId_) return output;
+        LB_SunnyIntPtr body = fnGetReqBody_(static_cast<LB_SunnyIntPtr>(currentMessageId_));
+        if (!body) return output;
+        LB_SunnyIntPtr length = fnGetReqBodyLen_(static_cast<LB_SunnyIntPtr>(currentMessageId_));
+        const unsigned char* data = reinterpret_cast<const unsigned char*>(static_cast<size_t>(body));
+        if (length > 0 && data) output.assign(data, data + static_cast<size_t>(length));
+        if (fnFree_) fnFree_(body);
         return output;
     }
     bool SetResponseHeader(const wchar_t* name, const wchar_t* value) {
@@ -901,6 +998,8 @@ private:
     LB_SunnyIntPtr(__cdecl *fnGetRespStatusCode_)(LB_SunnyIntPtr) = nullptr;
     void (__cdecl *fnSetRespStatus_)(LB_SunnyIntPtr, LB_SunnyIntPtr) = nullptr;
     LB_SunnyIntPtr(__cdecl *fnGetRespHeader_)(LB_SunnyIntPtr, LB_SunnyIntPtr) = nullptr;
+    LB_SunnyIntPtr(__cdecl *fnGetReqAllHeaders_)(LB_SunnyIntPtr) = nullptr;
+    LB_SunnyIntPtr(__cdecl *fnGetRespAllHeaders_)(LB_SunnyIntPtr) = nullptr;
     void (__cdecl *fnSetRespHeader_)(LB_SunnyIntPtr, LB_SunnyIntPtr, LB_SunnyIntPtr) = nullptr;
     void (__cdecl *fnDelRespHeader_)(LB_SunnyIntPtr, LB_SunnyIntPtr) = nullptr;
     LB_SunnyIntPtr(__cdecl *fnGetClientIp_)(LB_SunnyIntPtr) = nullptr;
@@ -971,6 +1070,10 @@ const SUNNYNET_WINDOW_METHODS = String.raw`
     int 网络中间件_取响应状态码() { return sunnyNetRuntime_.GetResponseStatusCode(); }
     bool 网络中间件_设响应状态码(int code) { return sunnyNetRuntime_.SetResponseStatusCode(code); }
     std::wstring 网络中间件_取响应头(const wchar_t* name) { return sunnyNetRuntime_.GetResponseHeader(name); }
+    std::wstring 网络中间件_枚举请求头() { return sunnyNetRuntime_.GetRequestAllHeaders(); }
+    std::wstring 网络中间件_枚举响应头() { return sunnyNetRuntime_.GetResponseAllHeaders(); }
+    std::vector<unsigned char> 网络中间件_取响应体字节集() { return sunnyNetRuntime_.GetResponseBodyBytes(); }
+    std::vector<unsigned char> 网络中间件_取请求体字节集() { return sunnyNetRuntime_.GetRequestBodyBytes(); }
     bool 网络中间件_设响应头(const wchar_t* name, const wchar_t* value) { return sunnyNetRuntime_.SetResponseHeader(name, value); }
     bool 网络中间件_删响应头(const wchar_t* name) { return sunnyNetRuntime_.DeleteResponseHeader(name); }
     std::wstring 网络中间件_取响应体() { return sunnyNetRuntime_.GetResponseBody(); }
