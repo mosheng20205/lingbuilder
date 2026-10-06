@@ -196,3 +196,6 @@ COMPONENT_CARDS_PLAN.md
 /electron/dev/
 /electron/scripts/tmp-print-generated.ts
 /electron/scripts/verify-agent-exit-live.mjs
+
+# CLI 受控构建/请求诊断临时文件（不入库）
+/electron/tm-*.json
