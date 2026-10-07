@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
 import { BetaProgramService } from '../src/beta-program/beta-program.service.js';
-import { WebsiteContentService } from '../src/website/website-content.service.js';
 
 const ADMIN = { id: 'admin-1', email: 'admin@example.com', role: 'operator', mfa: true };
 
@@ -20,46 +19,7 @@ function betaPrisma(overrides: Record<string, any> = {}) {
   return { prisma, audits };
 }
 
-function jwtMock(payload: any = { sub: 'user-1' }) {
-  return { verifyAsync: async (token: string) => token === 'bad' ? Promise.reject(new Error('expired')) : payload } as any;
-}
-
-test('latest version degrades preview queries to stable without entitlement', async () => {
-  const { prisma, audits } = betaPrisma();
-  let captured: any;
-  prisma.websiteDownloadRelease = { findMany: async (args: any) => { captured = args; return []; } };
-  const website = new WebsiteContentService(prisma, new BetaProgramService(prisma, jwtMock()));
-  const result: any = await website.latestVersion({ platform: 'Windows', architecture: 'x64', channel: 'preview', authorization: 'Bearer bad' });
-  assert.equal(captured.where.channel, 'stable');
-  assert.deepEqual(result, { ok: true, available: false });
-  assert.equal(audits.length, 0);
-});
-
-test('latest version serves the preview channel for active members', async () => {
-  const { prisma } = betaPrisma({
-    user: { id: 'user-1', email: 'user@example.com', status: 'ACTIVE' },
-    betaProgramMember: { findUnique: async () => null }
-  });
-  let captured: any;
-  prisma.websiteDownloadRelease = { findMany: async (args: any) => { captured = args; return []; } };
-  // resolvePreviewAccess 走 user.findFirst 的成员条件查询，这里直接换成命中结果。
-  prisma.user.findFirst = async () => ({ id: 'user-1' });
-  prisma.systemFlag = { findUnique: async () => ({ value: 'false' }) };
-  const website = new WebsiteContentService(prisma, new BetaProgramService(prisma, jwtMock()));
-  await website.latestVersion({ platform: 'Windows', architecture: 'x64', channel: 'preview', authorization: 'Bearer good' });
-  assert.equal(captured.where.channel, 'preview');
-});
-
-test('latest version keeps the legacy cross-channel behaviour and stable channel untouched', async () => {
-  const { prisma } = betaPrisma();
-  let captured: any;
-  prisma.websiteDownloadRelease = { findMany: async (args: any) => { captured = args; return []; } };
-  const website = new WebsiteContentService(prisma);
-  await website.latestVersion({ platform: 'Windows', architecture: 'x64', channel: '' });
-  assert.equal(captured.where.channel, undefined);
-  await website.latestVersion({ platform: 'Windows', architecture: 'x64', channel: 'stable' });
-  assert.equal(captured.where.channel, 'stable');
-});
+// latest-version 预览渠道门禁测试已随门禁迁移（2026-10-07）移往 website-content.test.ts 与 pro-membership.test.ts：预览版受众收紧为 Pro 会员。
 
 test('entitlement reports enrollment, expiry and channel suspension', async () => {
   const future = new Date(Date.now() + 86_400_000);
@@ -83,19 +43,6 @@ test('entitlement reports enrollment, expiry and channel suspension', async () =
   const pausedResult = await new BetaProgramService(paused.prisma).entitlement('user-1');
   assert.equal(pausedResult.enrolled, true);
   assert.equal(pausedResult.previewSuspended, true);
-});
-
-test('resolvePreviewAccess rejects missing, invalid and membership-less tokens', async () => {
-  const noToken = new BetaProgramService(betaPrisma().prisma, jwtMock());
-  assert.equal(await noToken.resolvePreviewAccess(''), false);
-  assert.equal(await noToken.resolvePreviewAccess('Bearer'), false);
-
-  const badToken = new BetaProgramService(betaPrisma().prisma, jwtMock());
-  assert.equal(await badToken.resolvePreviewAccess('Bearer bad'), false);
-
-  const noMembership = betaPrisma({});
-  noMembership.prisma.user.findFirst = async () => null;
-  assert.equal(await new BetaProgramService(noMembership.prisma, jwtMock()).resolvePreviewAccess('Bearer good'), false);
 });
 
 test('apply rejects enrolled users and resets rejected applications to pending', async () => {

@@ -143,3 +143,66 @@ test('安装包必须明确选择公网 HTTPS 或离线云端模式', () => {
   assert.match(main, /cloud-offline\.invalid/u);
   assert.match(main, /cloud-config-missing\.invalid/u);
 });
+
+test('刷新令牌清除语义收口：调用点禁止无条件 clear，清除仅限云端 401 判定且刷新在途去重', () => {
+  const cloud = fs.readFileSync(new URL('../electron/cloudAccountService.ts', import.meta.url), 'utf8');
+  // 2026-10-07：initialize/moduleCatalog/betaProgram 曾在刷新失败时无条件清空令牌文件，
+  // 网络抖动或云端 5xx 就会永久丢登录（用户「装新包后登录状态丢失」的根因之一）。
+  assert.doesNotMatch(cloud, /catch\(\(\) => this\.clear\(\)\)/u, '刷新失败禁止无条件清除登录凭据');
+  assert.match(cloud, /refreshInFlight/u, '刷新必须有在途去重：同一令牌并发双发会触发云端重复使用检测并撤销全会话族');
+  assert.match(cloud, /isCloudAuthInvalidError/u);
+  assert.match(cloud, /已清除本地登录凭据/u);
+  assert.match(cloud, /本地登录凭据已保留/u);
+});
+
+test('刷新令牌行为回归：401 才清凭据、网络失败保留并可再生、并发刷新合并为一次请求', async (t) => {
+  const { CloudAccountService } = await import('../electron/cloudAccountService.ts');
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const jsonResponse = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+
+  // 场景一：启动恢复时云端明确 401（令牌失效/被撤销）→ 清除本地凭据并保留报错原因。
+  let storedToken = 'stale-refresh-token';
+  const service401 = new CloudAccountService('https://cloud.test', async () => storedToken, async (value) => { storedToken = value; });
+  globalThis.fetch = (async () => jsonResponse({ message: '刷新令牌无效或已过期。' }, 401)) as never;
+  await assert.rejects(service401.initialize(), /刷新令牌无效或已过期/u);
+  assert.equal(storedToken, '', '云端 401 后必须清除本地刷新令牌');
+
+  // 场景二：网络失败 → 令牌保留；云端恢复后同一令牌直接恢复登录，轮换令牌立即落盘。
+  storedToken = 'kept-refresh-token';
+  const serviceNet = new CloudAccountService('https://cloud.test', async () => storedToken, async (value) => { storedToken = value; });
+  globalThis.fetch = (async () => { throw new TypeError('fetch failed'); }) as never;
+  await assert.rejects(serviceNet.initialize(), /无法连接 LingBuilder 云端服务/u);
+  assert.equal(storedToken, 'kept-refresh-token', '网络失败后本地刷新令牌必须保留');
+  assert.equal((await serviceNet.snapshot()).authenticated, false);
+  globalThis.fetch = (async (input: any) => {
+    const url = String(input);
+    if (url.endsWith('/v1/auth/refresh')) return jsonResponse({ accessToken: 'at-1', refreshToken: 'rt-2', expiresIn: 900 });
+    if (url.endsWith('/v1/me')) return jsonResponse({ user: { email: 'user@lingbuilder.test' } });
+    if (url.endsWith('/v1/usage/balance')) return jsonResponse({ balance: { available: '0', reserved: '0' } });
+    throw new Error(`unexpected url: ${url}`);
+  }) as never;
+  const session = await serviceNet.snapshot();
+  assert.equal(session.authenticated, true, '网络恢复后同一令牌应能恢复登录');
+  assert.equal(storedToken, 'rt-2', '轮换后的刷新令牌必须立即落盘');
+
+  // 场景三：并发刷新共享同一在途请求，绝不把同一刷新令牌并发双发。
+  let refreshCalls = 0;
+  const serviceRace = new CloudAccountService('https://cloud.test', async () => 'rt-race', async () => undefined);
+  globalThis.fetch = (async (input: any) => {
+    if (String(input).endsWith('/v1/auth/refresh')) {
+      refreshCalls += 1;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      return jsonResponse({ accessToken: 'at-2', refreshToken: 'rt-3', expiresIn: 900 });
+    }
+    if (String(input).endsWith('/v1/me')) return jsonResponse({ user: { email: 'user@lingbuilder.test' } });
+    if (String(input).endsWith('/v1/usage/balance')) return jsonResponse({ balance: { available: '0', reserved: '0' } });
+    if (String(input).endsWith('/v1/modules/catalog')) return jsonResponse({ ok: true, products: [] });
+    throw new Error(`unexpected url: ${String(input)}`);
+  }) as never;
+  const initializeDone = serviceRace.initialize();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await Promise.all([serviceRace.moduleCatalog(), serviceRace.snapshot(), serviceRace.currentAccessToken()]);
+  await initializeDone;
+  assert.equal(refreshCalls, 1, '并发刷新必须合并为一次请求');
+});

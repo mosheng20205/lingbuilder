@@ -240,3 +240,46 @@ test('/v1/me 携带生效中的 Pro 会员状态，无会员时为 null', async 
   const empty = await controller.me({ id: USER.id, email: USER.email } as any);
   assert.equal(empty.pro, null);
 });
+
+// 2026-10-07 起 latest-version 预览渠道门禁迁入 ProMembershipService：预览版受众 = Pro 会员生效中（体验计划名单不再参与）。
+function previewGateJwtMock(payload: any = { sub: 'user-1' }) {
+  return { verifyAsync: async (token: string) => token === 'bad' ? Promise.reject(new Error('expired')) : payload } as any;
+}
+
+test('预览渠道门禁：缺令牌/坏令牌/无生效 Pro 一律拒绝，Pro 生效且渠道未暂停才放行', async () => {
+  const base = { websiteDownloadRelease: { findMany: async () => [] }, adminAuditLog: { create: async () => ({}) } } as any;
+
+  const noToken = new ProMembershipService(base);
+  assert.equal(await noToken.resolvePreviewAccess(''), false);
+  assert.equal(await noToken.resolvePreviewAccess('Bearer'), false);
+
+  const badToken = new ProMembershipService(base, previewGateJwtMock());
+  assert.equal(await badToken.resolvePreviewAccess('Bearer bad'), false);
+
+  const noPro = { ...base, user: { findFirst: async () => null }, systemFlag: { findUnique: async () => ({ value: 'false' }) } };
+  assert.equal(await new ProMembershipService(noPro, previewGateJwtMock()).resolvePreviewAccess('Bearer good'), false);
+
+  const proUser = { ...base, user: { findFirst: async () => ({ id: 'user-1' }) }, systemFlag: { findUnique: async () => ({ value: 'false' }) } };
+  assert.equal(await new ProMembershipService(proUser, previewGateJwtMock()).resolvePreviewAccess('Bearer good'), true);
+
+  const suspended = { ...base, user: { findFirst: async () => ({ id: 'user-1' }) }, systemFlag: { findUnique: async () => ({ value: 'true' }) } };
+  assert.equal(await new ProMembershipService(suspended, previewGateJwtMock()).resolvePreviewAccess('Bearer good'), false);
+});
+
+test('预览渠道门禁的 Pro 活跃条件与会员判定同口径：撤销/过期/未开始都不放行', async () => {
+  // user.findFirst 的 proMembership 关系过滤交给真实 Prisma；这里钉住查询形状，防止将来把活跃条件改松。
+  let captured: any;
+  const prisma: any = {
+    user: { findFirst: async (args: any) => { captured = args; return { id: 'user-1' }; } },
+    systemFlag: { findUnique: async () => ({ value: 'false' }) },
+    adminAuditLog: { create: async () => ({}) }
+  };
+  const result = await new ProMembershipService(prisma, previewGateJwtMock()).resolvePreviewAccess('Bearer good');
+  assert.equal(result, true);
+  const where = captured.where;
+  assert.equal(where.id, 'user-1');
+  assert.equal(where.status, 'ACTIVE');
+  assert.equal(where.proMembership.revokedAt, null);
+  assert.ok(where.proMembership.startsAt.lte instanceof Date);
+  assert.deepEqual(where.proMembership.OR.map((branch: any) => Object.keys(branch)[0]), ['endsAt', 'endsAt']);
+});

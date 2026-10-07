@@ -33,7 +33,7 @@ export function ProMembershipAdmin({ data, request, reload, role }: { data: any;
   const [email, setEmail] = useState('');
   const [source, setSource] = useState('sponsor_activity');
   const [sponsorQq, setSponsorQq] = useState('');
-  const [tier, setTier] = useState('auto');
+  const [tier, setTier] = useState('perpetual');
   const [priceYuan, setPriceYuan] = useState('');
   const [note, setNote] = useState('');
   const [revoking, setRevoking] = useState<any | null>(null);
@@ -72,7 +72,7 @@ export function ProMembershipAdmin({ data, request, reload, role }: { data: any;
   });
 
   const prefillSponsor = (sponsor: any) => {
-    setSource('sponsor_activity'); setSponsorQq(sponsor.qqNumber); setTier('auto');
+    setSource('sponsor_activity'); setSponsorQq(sponsor.qqNumber); setTier('perpetual');
     setMessage({ text: `已按 QQ ${sponsor.qqNumber} 预填转入表单：再填写该用户的注册邮箱后提交。` });
   };
 
@@ -113,7 +113,7 @@ export function ProMembershipAdmin({ data, request, reload, role }: { data: any;
         {source === 'sponsor_activity'
           ? <label>赞助 QQ 号<input value={sponsorQq} onChange={event => setSponsorQq(event.target.value)} placeholder="按累计赞助自动定档"/></label>
           : <>
-            <label>档位<select value={tier === 'auto' ? 'perpetual' : tier} onChange={event => setTier(event.target.value)}>
+            <label>档位<select value={tier} onChange={event => setTier(event.target.value)}>
               <option value="perpetual">永久买断（299）</option>
               <option value="yearly">一年（99）</option>
             </select></label>

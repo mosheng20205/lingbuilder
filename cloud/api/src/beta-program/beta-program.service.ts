@@ -1,5 +1,4 @@
-import { Inject, Injectable, Optional } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
+import { Inject, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { AuthenticatedUser } from '../common/current-user.js';
 import { PrismaService } from '../prisma.service.js';
@@ -11,7 +10,7 @@ export const PREVIEW_CHANNEL_SUSPENDED_FLAG = 'beta_program.preview_channel_susp
 
 @Injectable()
 export class BetaProgramService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService, @Optional() @Inject(JwtService) private readonly jwt?: JwtService) {}
+  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   /** 客户端资格查询：设置页展示与报名入口共用。 */
   async entitlement(userId: string) {
@@ -31,29 +30,9 @@ export class BetaProgramService {
   }
 
   /**
-   * latest-version 预览渠道门禁：解析可选 Bearer token，只有「账号激活 + 名单生效 + 未过期 + 渠道未暂停」才允许读 preview。
-   * 任何一步不满足都返回 false，由调用方静默降级为 stable，绝不能把更新检查变成报错。
+   * latest-version 预览渠道门禁自 2026-10-07 起迁往 ProMembershipService.resolvePreviewAccess（预览版受众收紧为 Pro 会员）；
+   * 本服务保留报名/名单/暂停开关管理，不再承担更新资格判定。
    */
-  async resolvePreviewAccess(authorizationHeader: unknown) {
-    const token = /^Bearer\s+(.+)$/iu.exec(String(authorizationHeader || ''))?.[1];
-    if (!token || !this.jwt) return false;
-    try {
-      const payload = await this.jwt.verifyAsync(token);
-      const user = await this.prisma.user.findFirst({
-        where: {
-          id: String(payload.sub || ''),
-          status: 'ACTIVE',
-          betaProgramMember: { status: 'ACTIVE', OR: [{ validUntil: null }, { validUntil: { gt: new Date() } }] }
-        },
-        select: { id: true }
-      });
-      if (!user) return false;
-      return !(await this.isPreviewSuspended());
-    } catch {
-      return false;
-    }
-  }
-
   async isPreviewSuspended() {
     const flag = await this.prisma.systemFlag.findUnique({ where: { key: PREVIEW_CHANNEL_SUSPENDED_FLAG } });
     return flag?.value === 'true';

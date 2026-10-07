@@ -1,6 +1,8 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import crypto from 'node:crypto';
 import type { AuthenticatedUser } from '../common/current-user.js';
+import { PREVIEW_CHANNEL_SUSPENDED_FLAG } from '../beta-program/beta-program.service.js';
 import { PrismaService } from '../prisma.service.js';
 
 type JsonRecord = Record<string, unknown>;
@@ -25,7 +27,33 @@ export interface SponsorSummaryRow {
 
 @Injectable()
 export class ProMembershipService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(@Inject(PrismaService) private readonly prisma: PrismaService, @Optional() @Inject(JwtService) private readonly jwt?: JwtService) {}
+
+  /**
+   * latest-version 预览渠道门禁（2026-10-07 起）：解析可选 Bearer token，只有「账号激活 + Pro 会员生效中 + 渠道未暂停」才允许读 preview。
+   * 体验计划名单不再参与该判定（名单/报名保留为独立功能）；任何一步不满足都返回 false，由调用方静默降级为 stable，绝不能把更新检查变成报错。
+   */
+  async resolvePreviewAccess(authorizationHeader: unknown) {
+    const token = /^Bearer\s+(.+)$/iu.exec(String(authorizationHeader || ''))?.[1];
+    if (!token || !this.jwt) return false;
+    try {
+      const payload = await this.jwt.verifyAsync(token);
+      const now = new Date();
+      const user = await this.prisma.user.findFirst({
+        where: {
+          id: String(payload.sub || ''),
+          status: 'ACTIVE',
+          proMembership: { revokedAt: null, startsAt: { lte: now }, OR: [{ endsAt: null }, { endsAt: { gt: now } }] }
+        },
+        select: { id: true }
+      });
+      if (!user) return false;
+      const flag = await this.prisma.systemFlag.findUnique({ where: { key: PREVIEW_CHANNEL_SUSPENDED_FLAG } });
+      return flag?.value !== 'true';
+    } catch {
+      return false;
+    }
+  }
 
   async adminSnapshot() {
     const [memberships, sponsors] = await Promise.all([

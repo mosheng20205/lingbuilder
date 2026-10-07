@@ -3,22 +3,22 @@ import { Prisma, type WebsiteCommandReference } from '@prisma/client';
 import type { AuthenticatedUser } from '../common/current-user.js';
 import { readR2UploadConfig } from '../config.js';
 import { PrismaService } from '../prisma.service.js';
-import { BetaProgramService } from '../beta-program/beta-program.service.js';
+import { ProMembershipService } from '../pro/pro-membership.service.js';
 
 type JsonRecord = Record<string, unknown>;
 
 @Injectable()
 export class WebsiteContentService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService, @Optional() @Inject(BetaProgramService) private readonly beta?: BetaProgramService) {}
+  constructor(@Inject(PrismaService) private readonly prisma: PrismaService, @Optional() @Inject(ProMembershipService) private readonly pro?: ProMembershipService) {}
 
   /** 供客户端检查更新的公开接口：返回最新发布版本与安装包直链/校验信息；缺数据的字段显式置 null，便于客户端统一判空。 */
   async latestVersion(input: { platform: string; architecture: string; channel: string; authorization?: unknown }) {
     // channel 为空表示客户端未指定渠道（现有 IDE 客户端不带该参数）：跨 stable/preview 渠道取最高版本，
     // 避免发布记录登记到非默认渠道后全部存量客户端收不到更新通知。
     let channel = String(input.channel || '').trim().toLowerCase();
-    // preview 渠道走体验计划门禁：无有效资格或渠道被暂停时静默降级为 stable，更新检查永不因此报错。
+    // preview 渠道走 Pro 会员门禁（2026-10-07 起，体验计划名单不再参与）：非 Pro、未登录或渠道被暂停时静默降级为 stable，更新检查永不因此报错。
     if (channel === 'preview') {
-      const allowed = this.beta ? await this.beta.resolvePreviewAccess(input.authorization) : false;
+      const allowed = this.pro ? await this.pro.resolvePreviewAccess(input.authorization) : false;
       if (!allowed) channel = 'stable';
     }
     const releases = await this.prisma.websiteDownloadRelease.findMany({

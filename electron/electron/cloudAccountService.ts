@@ -10,8 +10,11 @@ type StreamListener = (requestKey: string, event: unknown) => void;
 
 export class CloudAccountService {
   private accessToken = ''; private refreshToken = ''; private email = ''; private readonly requests = new Map<string, AbortController>();
+  private refreshInFlight: Promise<void> | null = null;
   constructor(private readonly origin: string, private readonly readRefresh: () => Promise<string>, private readonly writeRefresh: (value: string) => Promise<void>) {}
-  async initialize() { this.refreshToken = await this.readRefresh(); if (this.refreshToken) await this.refresh().catch(() => this.clear()); }
+  // 刷新失败绝不在 initialize 里清除凭据：网络抖动/云端 5xx 只保留令牌下次重试，
+  // 只有 refresh 内部判定云端明确 401 才 clear。错误向 main.ts 传播并写「系统 AI 账号恢复失败：<原因>」。
+  async initialize() { this.refreshToken = await this.readRefresh(); if (this.refreshToken) await this.refresh(); }
   async register(email: string, password: string) { return await this.publicRequest('/v1/auth/register', { email, password }); }
   async verifyEmail(token: string) { return await this.publicRequest('/v1/auth/verify-email', { token }); }
   /** 找回密码第 1 步：云端按邮箱发送重置令牌（30 分钟有效）；无论邮箱是否存在都返回 ok。 */
@@ -66,11 +69,11 @@ export class CloudAccountService {
     return await this.request('/v1/beta-program/applications/active', { method: 'DELETE' });
   }
   private async requireAccessTokenForBetaProgram() {
-    if (!this.accessToken && this.refreshToken) await this.refresh().catch(() => this.clear());
+    if (!this.accessToken && this.refreshToken) await this.refresh().catch(() => undefined);
     if (!this.accessToken) throw new Error('请先登录 LingBuilder 账号，再使用体验计划。');
   }
   async moduleCatalog() {
-    if (!this.accessToken && this.refreshToken) await this.refresh().catch(() => this.clear());
+    if (!this.accessToken && this.refreshToken) await this.refresh().catch(() => undefined);
     if (!this.accessToken) return { ok: true, products: [], requiresLogin: true };
     return await this.request('/v1/modules/catalog');
   }
@@ -158,11 +161,34 @@ export class CloudAccountService {
       if (!terminalEventSeen) listener(requestKey, { type: 'error', requestId: requestKey, code: 'PROVIDER_FAILED', message: '系统 AI 连接已中断，请重试。', retryable: true });
     }
   }
-  private async refresh() { if (!this.refreshToken) throw new Error('尚未登录系统 AI。'); const value = await this.publicRequest('/v1/auth/refresh', { refreshToken: this.refreshToken }); await this.acceptTokens(value, this.email); }
+  // 并发调用共享同一在途刷新：同一刷新令牌绝不能并发双发——云端轮换令牌后，旧令牌再次使用
+  // 会被判定「重复使用」并撤销整个会话族（auth.service refresh 的 reused 检测），登录态直接丢失。
+  private async refresh() {
+    if (!this.refreshToken) throw new Error('尚未登录系统 AI。');
+    if (this.refreshInFlight) return this.refreshInFlight;
+    this.refreshInFlight = this.doRefresh().finally(() => { this.refreshInFlight = null; });
+    return this.refreshInFlight;
+  }
+  private async doRefresh() {
+    try {
+      const value = await this.publicRequest('/v1/auth/refresh', { refreshToken: this.refreshToken });
+      // 刷新在途期间用户已退出登录（clear 清空了令牌）：丢弃结果，避免把已注销的会话写回凭据文件。
+      if (!this.refreshToken) return;
+      await this.acceptTokens(value, this.email);
+    } catch (error) {
+      if (isCloudAuthInvalidError(error)) {
+        console.warn('[cloud-account] 云端判定刷新令牌已失效（401），已清除本地登录凭据，需要重新登录。');
+        await this.clear();
+      } else {
+        console.warn(`[cloud-account] 刷新登录会话失败（网络或云端暂不可用），本地登录凭据已保留，下次启动自动重试：${error instanceof Error ? error.message : String(error)}`);
+      }
+      throw error;
+    }
+  }
   private async acceptTokens(value: any, email: string) { if (!value?.accessToken || !value?.refreshToken) throw new Error('云端未返回有效登录令牌。'); this.accessToken = value.accessToken; this.refreshToken = value.refreshToken; this.email = email; await this.writeRefresh(this.refreshToken); }
   private async clear() { this.accessToken = ''; this.refreshToken = ''; this.email = ''; await this.writeRefresh(''); }
-  private async request(path: string, init: RequestInit = {}): Promise<any> { const response = await this.fetchCloud(path, { ...init, headers: { authorization: `Bearer ${this.accessToken}`, 'content-type': 'application/json', ...init.headers } }); const value: any = await response.json().catch(() => ({})); if (!response.ok) throw new Error(value.message || cloudStatusMessage(response.status)); return value; }
-  private async publicRequest(path: string, body: unknown): Promise<any> { const response = await this.fetchCloud(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }); const value: any = await response.json().catch(() => ({})); if (!response.ok) throw new Error(value.message || cloudStatusMessage(response.status)); return value; }
+  private async request(path: string, init: RequestInit = {}): Promise<any> { const response = await this.fetchCloud(path, { ...init, headers: { authorization: `Bearer ${this.accessToken}`, 'content-type': 'application/json', ...init.headers } }); const value: any = await response.json().catch(() => ({})); if (!response.ok) throw cloudHttpError(response.status, value.message || cloudStatusMessage(response.status)); return value; }
+  private async publicRequest(path: string, body: unknown): Promise<any> { const response = await this.fetchCloud(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }); const value: any = await response.json().catch(() => ({})); if (!response.ok) throw cloudHttpError(response.status, value.message || cloudStatusMessage(response.status)); return value; }
   private async fetchCloud(path: string, init: RequestInit = {}): Promise<Response> {
     try {
       return await fetch(`${this.origin}${path}`, init);
@@ -178,6 +204,18 @@ function cloudStatusMessage(status: number): string {
   if (status === 402) return '当前账号尚未取得该收费模块的有效权益。';
   if (status >= 500) return 'LingBuilder 云端服务暂时不可用，请稍后重试。';
   return `LingBuilder 云端请求失败（状态码 ${status}）。`;
+}
+
+/** 携带 HTTP 状态码的云端错误；刷新链路据此区分「令牌真失效（401）」与「网络/服务暂不可用」。 */
+function cloudHttpError(status: number, message: string): Error & { status: number } {
+  const error = new Error(message) as Error & { status: number };
+  error.status = status;
+  return error;
+}
+
+/** 云端对 /v1/auth/refresh 只在令牌失效、过期或被撤销（含重复使用检测撤销全会话族）时返回 401。 */
+function isCloudAuthInvalidError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as { status?: unknown }).status === 401;
 }
 
 async function* parseSse(stream: ReadableStream<Uint8Array>): AsyncGenerator<any> { const reader = stream.getReader(); const decoder = new TextDecoder(); let buffer = ''; try { while (true) { const { value, done } = await reader.read(); if (done) break; buffer += decoder.decode(value, { stream: true }); const events = buffer.split(/\r?\n\r?\n/u); buffer = events.pop() || ''; for (const raw of events) { const data = raw.split(/\r?\n/u).filter(line => line.startsWith('data:')).map(line => line.slice(5).trim()).join('\n'); if (data) yield JSON.parse(data); } } } finally { reader.releaseLock(); } }

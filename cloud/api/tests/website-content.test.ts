@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
+import { ProMembershipService } from '../src/pro/pro-membership.service.js';
 import { WebsiteContentService } from '../src/website/website-content.service.js';
+
+function previewGateJwtMock(payload: any = { sub: 'user-1' }) {
+  return { verifyAsync: async (token: string) => token === 'bad' ? Promise.reject(new Error('expired')) : payload } as any;
+}
 
 test('module manifest sync uses stable module command keys and preserves handler parameters', async () => {
   const upserts: any[] = [];
@@ -268,6 +273,32 @@ test('latest version without an explicit channel crosses stable/preview so legac
   assert.equal(result.available, true);
   assert.equal(result.version, '0.6.5');
   assert.equal(result.channel, 'preview');
+});
+
+// 2026-10-07 起 preview 渠道门禁 = Pro 会员生效中（体验计划名单不再参与）。
+test('latest version degrades preview queries to stable without an active Pro membership', async () => {
+  let captured: any;
+  const prisma: any = {
+    websiteDownloadRelease: { findMany: async (args: any) => { captured = args; return []; } },
+    user: { findFirst: async () => null },
+    systemFlag: { findUnique: async () => ({ value: 'false' }) }
+  };
+  const website = new WebsiteContentService(prisma, new ProMembershipService(prisma, previewGateJwtMock()));
+  const result: any = await website.latestVersion({ platform: 'Windows', architecture: 'x64', channel: 'preview', authorization: 'Bearer good' });
+  assert.equal(captured.where.channel, 'stable');
+  assert.deepEqual(result, { ok: true, available: false });
+});
+
+test('latest version serves the preview channel for active Pro members', async () => {
+  let captured: any;
+  const prisma: any = {
+    websiteDownloadRelease: { findMany: async (args: any) => { captured = args; return []; } },
+    user: { findFirst: async () => ({ id: 'user-1' }) },
+    systemFlag: { findUnique: async () => ({ value: 'false' }) }
+  };
+  const website = new WebsiteContentService(prisma, new ProMembershipService(prisma, previewGateJwtMock()));
+  await website.latestVersion({ platform: 'Windows', architecture: 'x64', channel: 'preview', authorization: 'Bearer good' });
+  assert.equal(captured.where.channel, 'preview');
 });
 
 test('latest version picks the highest version number even when an older release has a larger sortOrder', async () => {
