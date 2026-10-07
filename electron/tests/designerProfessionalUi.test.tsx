@@ -211,11 +211,15 @@ test('bottom panel keeps tabs horizontally reachable on narrow workbench widths'
 test('RC editor exposes load, editable entries, save and conflict errors',async()=>{ const source=await fs.readFile(path.resolve(import.meta.dirname,'../src/components/RcResourcePanel.tsx'),'utf8'); assert.match(source,/C\+\+ RC 资源编辑器/u); assert.match(source,/\/api\/resources\/rc/u); assert.match(source,/打开其他 \.rc/u); assert.match(source,/保存/u); assert.match(source,/role="alert"/u); });
 
 test('designer exposes an ImageList resource editor and resource-backed control selector', async () => {
-  const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
-  assert.match(source, /项目 \/ 图像列表资源/u);
-  assert.match(source, /每行一个工作区内图片路径/u);
-  assert.match(source, /definition\.key === 'imageListId'/u);
-  assert.match(source, /不使用图像列表/u);
+  const designerSource = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
+  const editorSource = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/ImageListResourceEditor.tsx'), 'utf8');
+  assert.match(designerSource, /import ImageListResourceEditor from '\.\/ImageListResourceEditor'/u);
+  assert.match(editorSource, /项目 \/ 图像列表资源/u);
+  assert.match(editorSource, /每行一个工作区内图片路径/u);
+  assert.match(editorSource, /从项目图库添加/u);
+  assert.match(editorSource, /导入本机图片…/u);
+  assert.match(designerSource, /definition\.key === 'imageListId'/u);
+  assert.match(designerSource, /不使用图像列表/u);
 });
 
 test('image source property exposes a desktop picker and project-relative preview', async () => {

@@ -1,5 +1,6 @@
 import * as fs0 from 'node:fs';
 import { LingCefHeadlessResource, LingClockResource, LingControl, LingDesignerResource, LingEdgeViewHeadlessResource, LingFileDialogResource, LingFbroHeadlessResource, LingMenuResource, LingPropertySheetResource, LingToolTipResource, LingWindowModel, LingWindowProject } from './types';
+import { normalizeImageListResourcePath, normalizeImageListResourcePaths } from './imageListResourceModel';
 import {
   getLingWindowSourceFileName,
   normalizeLingWindowFrame,
@@ -7271,6 +7272,27 @@ static bool LB_NE_ShouldShowBrowserShellHost(const LB_NE_FbroBrowserInstance& br
         && !LB_NE_HasOpenBrowserShellOverlay();
 }
 
+// 仅当宿主上方确有可见的非 TOPMOST 窗口与之相交时才提升（宿主确实被遮挡）。
+// 历史上每次鼠标移动都无条件 SetWindowPos(HWND_TOP)，既空耗，也会把宿主反复
+// 提到其他窗口之上；顶层悬停提示窗（TOPMOST 带）本就压不过，直接跳过。
+static bool LB_NE_BrowserShellHostNeedsRaise(HWND host) {
+    if (!IsWindow(host) || !IsWindowVisible(host)) return false;
+    RECT host_rect{};
+    if (!GetWindowRect(host, &host_rect)) return false;
+    for (HWND above = GetWindow(host, GW_HWNDPREV); above; above = GetWindow(above, GW_HWNDPREV)) {
+        const LONG_PTR ex_style = GetWindowLongPtrW(above, GWL_EXSTYLE);
+        if (ex_style & WS_EX_TOPMOST) break; // TOPMOST 带：宿主提升到不了那个层级，不与之竞争
+        if (!(GetWindowLongPtrW(above, GWL_STYLE) & WS_VISIBLE)) continue;
+        if (IsIconic(above)) continue;
+        RECT above_rect{};
+        if (!GetWindowRect(above, &above_rect)) continue;
+        RECT overlap{};
+        if (!IntersectRect(&overlap, &host_rect, &above_rect)) continue;
+        return true;
+    }
+    return false;
+}
+
 static void LB_NE_UpdateBrowserShellBounds() {
     LB_NE_UpdateBrowserShellRegionBounds();
     if (!g_newEmojiWindow || g_newEmojiFbroShell.viewportElementId <= 0) return;
@@ -7311,8 +7333,9 @@ static void LB_NE_UpdateBrowserShellVisibility() {
     for (auto& browser : g_newEmojiFbroBrowsers) {
         if (!browser.shellManaged || !browser.host || browser.regionEmbedded) continue;
         const bool visible = LB_NE_ShouldShowBrowserShellHost(browser);
-        ShowWindow(browser.host, visible ? SW_SHOW : SW_HIDE);
-        if (visible) {
+        const bool shown = IsWindowVisible(browser.host) != FALSE;
+        if (visible != shown) ShowWindow(browser.host, visible ? SW_SHOW : SW_HIDE);
+        if (visible && LB_NE_BrowserShellHostNeedsRaise(browser.host)) {
             SetWindowPos(browser.host, HWND_TOP, 0, 0, 0, 0,
                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
 #if LINGBUILDER_NE_FBRO_AVAILABLE
@@ -9865,9 +9888,13 @@ function validateDesignerResources(project: LingWindowProject): string[] {
     if (resource.type === 'ImageList') {
       imageListIds.add(resource.id);
       if (resource.imageWidth < 1 || resource.imageHeight < 1) diagnostics.push(`图像列表“${resource.name}”的图片尺寸必须大于 0。`);
-      for (const image of resource.images) {
-        const normalized = image.replace(/\\/g, '/');
-        if (/^(?:[a-zA-Z]:\/|\/|\\\\)/.test(image) || normalized.split('/').includes('..')) diagnostics.push(`图像列表“${resource.name}”包含不安全资源路径“${image}”，仅允许工作区内相对路径。`);
+      for (const rawImage of resource.images) {
+        // 盘符（含 C:\ 反斜杠形与 C: 盘相对形）与 UNC 路径先于归一化拒绝，避免 UNC 前缀被剥掉后伪装成相对路径；
+        // 根相对路径（\ 或 / 开头）与运行期 ResolveRuntimeAssetPath 同口径归一化为工作区内相对路径。
+        const relative = normalizeImageListResourcePath(rawImage).replace(/\\/g, '/');
+        if (/^(?:[a-zA-Z]:[\\/]?|\\\\)/.test(rawImage) || relative.split('/').includes('..')) {
+          diagnostics.push(`图像列表“${resource.name}”包含不安全资源路径“${rawImage}”，仅允许工作区内相对路径。`);
+        }
       }
     } else if (resource.type === 'ToolTip' && resource.targetControlId && !controlIds.has(resource.targetControlId)) {
       diagnostics.push(`工具提示“${resource.name}”引用了不存在的目标控件“${resource.targetControlId}”。`);
@@ -12540,7 +12567,15 @@ static bool TextEquals(const wchar_t* value, const wchar_t* expected);
 
 static std::wstring ResolveRuntimeAssetPath(const wchar_t* path) {
     std::wstring value = path ? path : L"";
-    if (value.empty() || value[0] == L'\\\\' || value[0] == L'/' || (value.size() > 1 && value[1] == L':')) return value;
+    if (value.empty() || (value.size() > 1 && value[1] == L':')) return value;
+    if (value.size() > 1 && value[0] == L'\\\\' && value[1] == L'\\\\') return value;
+    // 根相对路径（反斜杠或正斜杠开头但无盘符）历史上被原样返回当成绝对路径，图像列表/图片静默加载失败；
+    // 现与设计器校验、图像列表归一化同口径：剥掉前导分隔符后按 exe 目录相对路径解析。
+    size_t start = 0;
+    while (start < value.size() && (value[start] == L'\\\\' || value[start] == L'/')) ++start;
+    if (start == value.size()) return L"";
+    if (start == 0) return value;
+    value.erase(0, start);
     wchar_t executablePath[32768] = {};
     DWORD length = GetModuleFileNameW(nullptr, executablePath, static_cast<DWORD>(_countof(executablePath)));
     if (!length || length >= _countof(executablePath)) return value;
@@ -27102,6 +27137,7 @@ private:
             for (const auto& image : images) {
                 HBITMAP bitmap = LoadWicBitmap(image[0].c_str(), ScaleForDpi(spec.width, dpi_), ScaleForDpi(spec.height, dpi_), L"fill");
                 if (bitmap) { ImageList_Add(list, bitmap, nullptr); DeleteObject(bitmap); }
+                else 调试输出(L"图像列表“", spec.id, L"”的图片“", image[0], L"”加载失败：请在设计器里改用工作区内相对路径（如 assets/icon.png，不要以斜杠开头），并重新构建让图片复制到 exe 同目录。");
             }
             imageLists_[spec.id] = list;
         }
@@ -32732,7 +32768,7 @@ ${controls}
 
 function generateImageListSpecs(project: LingWindowProject): string {
   const resources = (project.resources || []).filter(resource => resource.type === 'ImageList');
-  const rows = resources.map(resource => `    { L"${escapeWideString(resource.id)}", ${int(resource.imageWidth)}, ${int(resource.imageHeight)}, L"${escapeWideString(encodeControlRecords(resource.images.map(image => [image])))}" }`);
+  const rows = resources.map(resource => `    { L"${escapeWideString(resource.id)}", ${int(resource.imageWidth)}, ${int(resource.imageHeight)}, L"${escapeWideString(encodeControlRecords(normalizeImageListResourcePaths(resource.images).map(image => [image])))}" }`);
   return rows.length > 0
     ? `static ImageListSpec g_imageLists[] = {\n${rows.join(',\n')}\n};\nstatic const int g_imageListCount = ${rows.length};`
     : 'static ImageListSpec g_imageLists[] = { { L"", 16, 16, L"" } };\nstatic const int g_imageListCount = 0;';

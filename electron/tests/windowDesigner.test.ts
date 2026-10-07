@@ -19,6 +19,7 @@ import ListViewCollectionDialog from '../src/components/ListViewCollectionDialog
 import ToolbarButtonsDialog from '../src/components/ToolbarButtonsDialog';
 import StatusBarPartsDialog from '../src/components/StatusBarPartsDialog';
 import TabControlPagesDialog from '../src/components/TabControlPagesDialog';
+import ImageListResourceEditor from '../src/components/ImageListResourceEditor';
 import MenuBarItemsDialog from '../src/components/MenuBarItemsDialog';
 import TreeViewCollectionDialog from '../src/components/TreeViewCollectionDialog';
 import NewEmojiDesignerControlPreview, { toNewEmojiCssColor } from '../src/components/NewEmojiDesignerControlPreview';
@@ -58,6 +59,7 @@ import {
   saveWindowDesignerState
 } from '../src/services/windowDesigner/windowDesignerService';
 import { generateLingCppNativeWin32Project } from '../src/services/windowDesigner/lingCppWin32Project';
+import { normalizeImageListResourcePath, normalizeImageListResourcePaths } from '../src/services/windowDesigner/imageListResourceModel';
 import { generateNativeWin32Project } from '../src/services/windowDesigner/nativeWin32Project';
 import { writeGeneratedProjectFiles } from '../src/services/windowDesigner/generatedProjectFileService';
 import { LingControl, LingWindowModel, LingWindowProject } from '../src/services/windowDesigner/types';
@@ -3242,6 +3244,67 @@ test('选项卡设计器预览使用控件文字颜色和背景颜色', () => {
   assert.doesNotMatch(hiddenMarkup, />常规</u);
 });
 
+test('Win32 选项卡画布预览按图像列表绘制页签图标，与运行结果一致', () => {
+  const tabControl = {
+    ...createControl('tabs', undefined, 'TabControl'),
+    width: 360,
+    height: 240,
+    properties: {
+      imageListId: 'images-1',
+      tabs: [
+        { id: 'page1', title: '控制台', image: 0 },
+        { id: 'page2', title: '设置', image: -1 }
+      ]
+    }
+  } satisfies LingControl;
+  const imageList = { id: 'images-1', images: ['assets/icons/a.png', 'assets/icons/b.png'], imageWidth: 16, imageHeight: 16 };
+
+  const markup = renderToStaticMarkup(React.createElement(TabControlDesignerPreview, { control: tabControl, projectId: 'demo', imageList }));
+  assert.match(markup, /<img src="[^"]*\/api\/window-designer\/assets\/content\?[^"]*path=assets%2Ficons%2Fa\.png/u);
+  assert.match(markup, /width="16"/u);
+  assert.match(markup, /height="16"/u);
+  assert.equal((markup.match(/<img /gu) || []).length, 1);
+
+  const oversizedMarkup = renderToStaticMarkup(React.createElement(TabControlDesignerPreview, {
+    control: tabControl,
+    projectId: 'demo',
+    imageList: { ...imageList, imageWidth: 24, imageHeight: 20 }
+  }));
+  assert.match(oversizedMarkup, /width="24"/u);
+  assert.match(oversizedMarkup, /height="20"/u);
+
+  const bareMarkup = renderToStaticMarkup(React.createElement(TabControlDesignerPreview, { control: tabControl }));
+  assert.doesNotMatch(bareMarkup, /assets\/content/u);
+});
+
+test('图像列表资源编辑器提供图库选择、本机导入与手动路径三种入口', async () => {
+  const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/ImageListResourceEditor.tsx'), 'utf8');
+  assert.match(source, /从项目图库添加/u);
+  assert.match(source, /导入本机图片…/u);
+  assert.match(source, /手动输入路径/u);
+  assert.match(source, /listDesignerImageResources/u);
+  assert.match(source, /selectAndImportDesignerImage/u);
+  assert.match(source, /normalizeImageListResourcePaths/u);
+  // 手动模式必须 blur 才提交：受控即时过滤会吃掉行尾空行，导致回车无法换行（2026-10-07 根治）。
+  assert.match(source, /onBlur=\{event => commitManualImages/u);
+  assert.doesNotMatch(source, /value=\{resource\.images\.join/u);
+
+  const markup = renderToStaticMarkup(React.createElement(ImageListResourceEditor, {
+    projectId: 'demo',
+    resources: [{ id: 'images-1', type: 'ImageList', name: '图像列表 1', imageWidth: 16, imageHeight: 16, images: ['assets/a.png'] }],
+    isDarkMode: true,
+    onChange: () => undefined,
+    revealResourceId: null,
+    registerNavigationTarget: () => () => undefined,
+    initiallyOpen: true
+  }));
+  assert.match(markup, /从项目图库添加/u);
+  assert.match(markup, /导入本机图片…/u);
+  assert.match(markup, /手动输入路径/u);
+  assert.match(markup, /title="图片编号 0"/u);
+  assert.match(markup, /\/api\/window-designer\/assets\/content\?/u);
+});
+
 test('new_emoji Tabs 兼容旧 Grid 预览并提供稳定的独立页面槽位', () => {
   const validationPageTitles = ['01–08', '09–16', '17–24', '25–32', '33–40', '41–48', '49–56', '57–64', '65–72', '73–80', '81–88', '89–92'];
   const tabs = {
@@ -4676,6 +4739,29 @@ test('图像列表资源拒绝重复 ID、不安全路径和失效控件引用',
   assert.match(diagnostics, /不安全资源路径/u);
   assert.match(diagnostics, /图片尺寸必须大于 0/u);
   assert.match(diagnostics, /不存在的图像列表“missing”/u);
+});
+
+test('图像列表根相对路径归一化为工作区相对路径，盘符与 UNC 仍拒绝', () => {
+  assert.equal(normalizeImageListResourcePath('  \\assets\\icons\\a.png '), 'assets\\icons\\a.png');
+  assert.equal(normalizeImageListResourcePath('/assets/b.png'), 'assets/b.png');
+  assert.equal(normalizeImageListResourcePath('C:/outside.png'), 'C:/outside.png');
+  assert.deepEqual(normalizeImageListResourcePaths(['', '   ', '\\a.png', '/b.png', 'c.png']), ['a.png', 'b.png', 'c.png']);
+  const project: LingWindowProject = {
+    schemaVersion: 2, id: 'image-list-paths', name: '图像列表路径', resources: [
+      { id: 'images-1', type: 'ImageList', name: '图标一', imageWidth: 16, imageHeight: 16, images: ['\\assets\\icons\\a.png', '/assets/b.png', '\\..\\secret.png', 'C:\\outside.png', '\\\\server\\share\\c.png'] }
+    ], windows: [{ id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 640, height: 480, background: '#202028', description: '', controls: [] }]
+  };
+  const result = generateLingCppNativeWin32Project(project, { lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类' });
+  const diagnostics = result.diagnostics.join('\n');
+  assert.doesNotMatch(diagnostics, /不安全资源路径“\\assets|不安全资源路径“\/assets/u);
+  assert.match(diagnostics, /不安全资源路径“\\\.\.\\secret\.png”/u);
+  assert.match(diagnostics, /不安全资源路径“C:\\outside\.png”/u);
+  assert.match(diagnostics, /不安全资源路径“\\\\server\\share\\c\.png”/u);
+  const cpp = result.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
+  assert.match(cpp, /assets\\\\icons\\\\a\.png/u);
+  assert.match(cpp, /assets\/b\.png/u);
+  assert.match(cpp, /根相对路径/u);
+  assert.match(cpp, /加载失败：请在设计器里改用工作区内相对路径/u);
 });
 
 test('系统对话框、查找替换、工具栏命令和真实文本打印保留可读取结果', () => {

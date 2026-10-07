@@ -62,6 +62,8 @@ import { getNewEmojiDialogSpec, getNewEmojiLinesSpec, getRichListEditorSummary, 
 import ToolbarButtonsDialog from './ToolbarButtonsDialog';
 import StatusBarPartsDialog from './StatusBarPartsDialog';
 import TabControlPagesDialog from './TabControlPagesDialog';
+import ImageListResourceEditor from './ImageListResourceEditor';
+import { PropertyGroup } from './PropertyGroup';
 import MenuBarItemsDialog from './MenuBarItemsDialog';
 import TreeViewCollectionDialog from './TreeViewCollectionDialog';
 import {
@@ -259,6 +261,8 @@ interface DesignerControlRenderProps {
   onSelectTabPage?: (pageId: string) => void;
   onReorderRebarBand?: (fromIndex: number, toIndex: number) => void;
   navigationRef?: (element: HTMLElement | null) => void;
+  /** 图像列表资源清单：Win32 TabControl 页签图标画布预览消费，与 F5 运行结果保持一致。 */
+  imageLists?: LingImageListResource[];
 }
 const WINDOW_ROOT_DROP_TARGET = '__layout_window_root__';
 const LINGBUILDER_WINDOW_ICON_PREVIEW = new URL('../../../image/lingbuilder-ide-icon-v2.png', import.meta.url).href;
@@ -750,6 +754,10 @@ const WpfDesigner = React.forwardRef<WpfDesignerHandle, WpfDesignerProps>(functi
       resource.type === 'FileDialog' && resource.ownerWindowId === activeWindow.id
     )),
     [activeWindow.id, project.resources]
+  );
+  const imageListResources = useMemo(
+    () => (project.resources || []).filter((resource): resource is LingImageListResource => resource.type === 'ImageList'),
+    [project.resources]
   );
   const selectedFileDialog = useMemo(
     () => activeFileDialogs.find(resource => resource.id === selectedResourceId) || null,
@@ -3771,6 +3779,7 @@ const WpfDesigner = React.forwardRef<WpfDesignerHandle, WpfDesignerProps>(functi
                   onSelectTabPage={isTabContainerControl(control) ? pageId => stableHandleSelectTabPage(control.id, pageId) : undefined}
                   onReorderRebarBand={control.type === 'ReBar' ? (fromIndex, toIndex) => stableHandleReorderRebarBand(control.id, fromIndex, toIndex) : undefined}
                   navigationRef={registerDesignerNavigationTarget('control', control.id)}
+                  imageLists={imageListResources}
                 />
               );
             })}
@@ -4230,7 +4239,8 @@ const WpfDesigner = React.forwardRef<WpfDesignerHandle, WpfDesignerProps>(functi
                 />
               ) : <>
                 <ImageListResourceEditor
-                  resources={(project.resources || []).filter((resource): resource is LingImageListResource => resource.type === 'ImageList')}
+                  projectId={projectId}
+                  resources={imageListResources}
                   isDarkMode={isDarkMode}
                   onChange={resources => setProject(previous => ({ ...previous, resources: [...(previous.resources || []).filter(resource => resource.type !== 'ImageList'), ...resources] }))}
                   revealResourceId={selectedResourceId}
@@ -4964,7 +4974,8 @@ function renderControl(
   ancestorsVisible: boolean,
   onSelectTabPage?: (pageId: string) => void,
   onReorderRebarBand?: (fromIndex: number, toIndex: number) => void,
-  navigationRef?: (element: HTMLElement | null) => void
+  navigationRef?: (element: HTMLElement | null) => void,
+  imageLists?: LingImageListResource[]
 ) {
   const isCollapsed = !isEffectivelyVisible && ancestorsVisible;
   const isHiddenByAncestor = !ancestorsVisible;
@@ -5532,7 +5543,13 @@ function renderControl(
           <RebarDesignerPreview control={control} onReorder={onReorderRebarBand} interactive={isSelected} />
         )}
 
-        {isTabContainerControl(control) && <TabControlDesignerPreview control={control} onSelectPage={onSelectTabPage} />}
+        {isTabContainerControl(control) && (
+          <TabControlDesignerPreview control={control} onSelectPage={onSelectTabPage} projectId={projectId}
+            imageList={imageLists
+              ? imageLists.find(resource => resource.id === String(control.properties?.imageListId || '')) ?? null
+              : null}
+          />
+        )}
 
         {control.type === 'TreeView' && <TreeViewDesignerPreview control={control} isEnabled={isEffectivelyEnabled} />}
 
@@ -5626,7 +5643,8 @@ const MemoizedDesignerControl = React.memo(
       props.ancestorsVisible,
       props.onSelectTabPage,
       props.onReorderRebarBand,
-      props.navigationRef
+      props.navigationRef,
+      props.imageLists
     );
   },
   (previous, next) => (
@@ -5639,6 +5657,7 @@ const MemoizedDesignerControl = React.memo(
     && previous.isEffectivelyVisible === next.isEffectivelyVisible
     && previous.isEffectivelyEnabled === next.isEffectivelyEnabled
     && previous.ancestorsVisible === next.ancestorsVisible
+    && previous.imageLists === next.imageLists
   )
 );
 
@@ -5849,36 +5868,6 @@ function TreeViewDesignerPreview({ control, isEnabled }: { control: LingControl;
     >
       {renderNodes(nodes)}
     </div>
-  );
-}
-
-function PropertyGroup({
-  title,
-  isDarkMode,
-  defaultOpen = true,
-  children
-}: {
-  title: string;
-  isDarkMode: boolean;
-  defaultOpen?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <details
-      open={defaultOpen}
-      className={`overflow-hidden rounded border ${
-        isDarkMode ? 'border-[#30303a] bg-[#18181e]' : 'border-slate-200 bg-white'
-      }`}
-    >
-      <summary className={`flex h-7 cursor-pointer select-none items-center px-2 text-[10px] font-bold uppercase tracking-wide ${
-        isDarkMode ? 'bg-[#22222a] text-slate-300 hover:bg-[#292934]' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-      }`}>
-        {title}
-      </summary>
-      <div className={`divide-y ${isDarkMode ? 'divide-[#2b2b34]' : 'divide-slate-200'}`}>
-        {children}
-      </div>
-    </details>
   );
 }
 
@@ -6919,55 +6908,6 @@ function BehaviorResourceEditor({ resources, windows, activeWindow, isDarkMode, 
       </div>
     </div>
   </PropertyGroup>;
-}
-
-function ImageListResourceEditor({
-  resources,
-  isDarkMode,
-  onChange,
-  revealResourceId,
-  registerNavigationTarget
-}: {
-  resources: LingImageListResource[];
-  isDarkMode: boolean;
-  onChange: (resources: LingImageListResource[]) => void;
-  revealResourceId: string | null;
-  registerNavigationTarget: (kind: 'control' | 'resource', id: string) => (element: HTMLElement | null) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    if (revealResourceId && resources.some(resource => resource.id === revealResourceId)) setOpen(true);
-  }, [resources, revealResourceId]);
-  const update = (id: string, fields: Partial<LingImageListResource>) => onChange(resources.map(resource => resource.id === id ? { ...resource, ...fields } : resource));
-  const add = () => {
-    let suffix = resources.length + 1;
-    while (resources.some(resource => resource.id === `images-${suffix}`)) suffix += 1;
-    onChange([...resources, { id: `images-${suffix}`, type: 'ImageList', name: `图像列表 ${suffix}`, imageWidth: 16, imageHeight: 16, images: [] }]);
-    setOpen(true);
-  };
-  return (
-    <PropertyGroup title={`项目 / 图像列表资源（${resources.length}）`} isDarkMode={isDarkMode} defaultOpen={false}>
-      <div className="space-y-2 p-2">
-        <button type="button" onClick={() => setOpen(value => !value)} className="w-full rounded border border-cyan-500/30 px-2 py-1 text-[10px] text-cyan-500">{open ? '收起资源编辑器' : '管理 ImageList'}</button>
-        {open && resources.map(resource => (
-          <div key={resource.id} ref={registerNavigationTarget('resource', resource.id)} tabIndex={-1} data-designer-resource-id={resource.id} className={`space-y-1 rounded border p-2 ${isDarkMode ? 'border-[#34343d] bg-black/10' : 'border-slate-200 bg-white'}`}>
-            <div className="flex gap-1">
-              <input aria-label="图像列表名称" value={resource.name} onChange={event => update(resource.id, { name: event.target.value })} className={`min-w-0 flex-1 rounded border px-1 py-0.5 text-[10px] ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44]' : 'bg-white border-slate-300'}`} />
-              <button type="button" aria-label={`删除图像列表 ${resource.name}`} onClick={() => onChange(resources.filter(item => item.id !== resource.id))} className="rounded px-1 text-red-400"><Trash2 className="h-3 w-3" /></button>
-            </div>
-            <div className="text-[9px] text-slate-500">资源 ID：{resource.id}</div>
-            <div className="flex gap-1">
-              <input aria-label="图像宽度" type="number" min={1} value={resource.imageWidth} onChange={event => update(resource.id, { imageWidth: Math.max(1, Number(event.target.value) || 1) })} className={`w-1/2 rounded border px-1 py-0.5 text-[10px] ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44]' : 'bg-white border-slate-300'}`} />
-              <input aria-label="图像高度" type="number" min={1} value={resource.imageHeight} onChange={event => update(resource.id, { imageHeight: Math.max(1, Number(event.target.value) || 1) })} className={`w-1/2 rounded border px-1 py-0.5 text-[10px] ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44]' : 'bg-white border-slate-300'}`} />
-            </div>
-            <textarea aria-label="图像文件列表" value={resource.images.join('\n')} onChange={event => update(resource.id, { images: event.target.value.split(/\r?\n/).map(item => item.trim()).filter(Boolean) })} rows={3} placeholder="每行一个工作区内图片路径" className={`w-full resize-y rounded border px-1 py-0.5 text-[10px] ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44]' : 'bg-white border-slate-300'}`} />
-          </div>
-        ))}
-        {open && resources.length === 0 && <div className="text-[10px] text-slate-500">尚未创建图像列表资源。</div>}
-        <button type="button" onClick={add} className="flex w-full items-center justify-center gap-1 rounded border border-emerald-500/30 px-2 py-1 text-[10px] text-emerald-500"><Plus className="h-3 w-3" />新建图像列表</button>
-      </div>
-    </PropertyGroup>
-  );
 }
 
 function ControlProperties({

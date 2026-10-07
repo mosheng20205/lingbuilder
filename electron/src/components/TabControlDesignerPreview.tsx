@@ -7,10 +7,18 @@ import {
   isTabControlHeaderHidden
 } from '../services/windowDesigner/tabControlModel';
 import { getControlFontCssStyle } from '../services/windowDesigner/controlFont';
+import { getDesignerImagePreviewSource } from '../services/windowDesigner/designerAssetClient';
 
 export interface TabControlDesignerPreviewProps {
   control: LingControl;
   onSelectPage?: (pageId: string) => void;
+  /** 桌面版 projectId：提供后 Win32 页签图标经项目图库接口读取。 */
+  projectId?: string;
+  /**
+   * 控件绑定的图像列表资源（Win32 TabControl 专用；new_emoji Tabs 走 tab.icon 文本图标，不用它）。
+   * 缺省或未绑定时不渲染图标——历史上画布只画标题不画图标，与 F5 运行结果不一致（2026-10-07 修复）。
+   */
+  imageList?: { id: string; images: readonly string[]; imageWidth: number; imageHeight: number } | null;
 }
 
 function mixHexColor(source: string, target: string, targetPercent: number): string {
@@ -36,7 +44,7 @@ const CHROME_INACTIVE_TEXT = '#9AA0A6';
  * 表头对齐、逐项禁用/固定/加载中/静音/提醒徽标、关闭 ×、新增 + 与浏览器（Chrome）模式；
  * 这些样式不渲染会让设计器画布与 F5 运行结果明显不一致。
  */
-export default function TabControlDesignerPreview({ control, onSelectPage }: TabControlDesignerPreviewProps) {
+export default function TabControlDesignerPreview({ control, onSelectPage, projectId, imageList }: TabControlDesignerPreviewProps) {
   const tabs = getTabControlPages(control);
   const selectedPage = getSelectedTabPage(control) || tabs[0];
   const newEmojiTabs = isNewEmojiTabsControl(control);
@@ -131,6 +139,10 @@ export default function TabControlDesignerPreview({ control, onSelectPage }: Tab
     const extent = newEmojiTabs && tabs.length > 0
       ? Math.max(72, Math.min(152, control.width / tabs.length))
       : undefined;
+    // Win32 页签图标：与运行期 TabCtrl_InsertItem 的 TCIF_IMAGE 同源（tab.image 指向图像列表下标，-1 不显示）。
+    const win32ImagePath = !newEmojiTabs && imageList && projectId && Math.trunc(Number(tab.image)) >= 0
+      ? String(imageList.images[Math.trunc(Number(tab.image))] || '')
+      : '';
     const cardStyle = newEmojiTabs && tabType === 1
       ? {
           border: `1px solid ${borderColor}`,
@@ -185,6 +197,17 @@ export default function TabControlDesignerPreview({ control, onSelectPage }: Tab
           if (!disabled) onSelectPage?.(tab.id);
         }}
       >
+        {win32ImagePath ? (
+          <img
+            src={getDesignerImagePreviewSource(projectId ?? '', win32ImagePath)}
+            width={Math.max(8, imageList?.imageWidth ?? 16)}
+            height={Math.max(8, imageList?.imageHeight ?? 16)}
+            alt=""
+            draggable={false}
+            className="mr-1.5 shrink-0 self-center object-contain"
+            onError={event => { event.currentTarget.style.visibility = 'hidden'; }}
+          />
+        ) : null}
         {newEmojiTabs && tab.icon ? <span className="mr-1 shrink-0">{tab.icon}</span> : null}
         {newEmojiTabs && states.map(mark => <span key={mark} className="mr-1 shrink-0 text-[9px]">{mark}</span>)}
         <span className="truncate">{tab.title}</span>
