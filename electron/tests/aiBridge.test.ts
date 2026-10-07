@@ -153,6 +153,12 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.match(String(client.getInstructions() || ''), /无需重新打包安装/u, 'instructions 必须说明开发源模块改动即时生效、不要建议重复安装');
     assert.match(String(client.getInstructions() || ''), /EdgeView_创建无头实例/u, 'instructions 必须告知 EdgeView 隐窗伪无头形态与截图边界');
     assert.match(String(client.getInstructions() || ''), /CDP_启动浏览器/u, 'instructions 必须告知 CDP 真无头形态与回收/错误读取口径');
+    assert.match(String(client.getInstructions() || ''), /CDP_开始串流/u, 'instructions 必须告知 CDP 画面串流命令与帧落盘口径');
+    assert.match(String(client.getInstructions() || ''), /CDP_开始堆快照/u, 'instructions 必须告知 CDP 性能长任务命令族');
+    assert.match(String(client.getInstructions() || ''), /CDP_停止任务/u, 'instructions 必须给出 CPU/覆盖率/追踪任务的停止落盘口径');
+    assert.match(String(client.getInstructions() || ''), /CDP_执行回放\(回放,页面,&完成\)/u, 'instructions 必须给出 CDP 录制回放执行器签名与失败即中止口径');
+    assert.match(String(client.getInstructions() || ''), /自动采集为结构化步骤/u, 'instructions 必须写明 CDP 录制期间模块命令自动采集步骤');
+    assert.match(String(client.getInstructions() || ''), /Tracing 是浏览器级单例/u, 'instructions 必须钉住 Tracing 浏览器级单例红线');
     assert.match(String(client.getInstructions() || ''), /CEF3_创建无头浏览器/u, 'instructions 必须给出 CEF3 官方 OSR 第四形态的创建签名');
     assert.match(String(client.getInstructions() || ''), /CEF3无头_取主框架/u, 'instructions 必须给出无头取内容的框架句柄链路');
     assert.match(String(client.getInstructions() || ''), /不创建任何窗口/u, 'instructions 必须声明 CEF3 无头不创建任何窗口（官方 OSR）');

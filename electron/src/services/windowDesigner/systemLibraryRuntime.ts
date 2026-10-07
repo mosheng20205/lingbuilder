@@ -1566,6 +1566,7 @@ int 显示器_系统DPI() { using GetDpiForSystemFn = UINT(WINAPI*)(); HMODULE u
 // 文件流族：CreateFileW 句柄注册表（同缓冲区模块的互斥保护模式），
 // 打开方式/共享方式/起始位置编号与易语言一致，文本一律 UTF-8，插入与删除按“尾部整体搬移”实现。
 const FILE_STREAM_RUNTIME = String.raw`
+#pragma comment(lib, "shlwapi.lib")
 struct LingFileStream {
     std::mutex mutex;
     HANDLE handle = INVALID_HANDLE_VALUE;

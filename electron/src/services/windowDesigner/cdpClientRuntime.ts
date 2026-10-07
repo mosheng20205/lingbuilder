@@ -715,16 +715,21 @@ public:
     }
 
     // ===== 导航 =====
-    bool Navigate(long long pageId, const wchar_t* url, const wchar_t* handler) {
+    bool NavigateInternal(long long pageId, const std::wstring& address, const std::wstring& handler, long long replayId) {
         const std::shared_ptr<PageSession> page = FindPage(pageId);
         if (!page) return Fail(L"CDP 页面 ID 无效。");
         const std::shared_ptr<Connection> connection = FindConnection(page->connectionId);
         if (!connection || !connection->connected.load()) return Fail(L"CDP 连接尚未就绪。");
-        const std::wstring address = url ? url : L"";
         if (address.empty()) return Fail(L"CDP 打开网址不能为空。");
         { std::lock_guard<std::mutex> lock(page->mutex); page->url = address; }
         const std::wstring params = L"{\"url\":" + LingCdpJson::Escape(address) + L"}";
-        return SendCommand(connection, L"Page.navigate", params, PendingKind::NavigateWait, handler ? handler : L"", std::to_wstring(page->id), page->sessionId);
+        return SendCommand(connection, L"Page.navigate", params, PendingKind::NavigateWait, handler, std::to_wstring(page->id), page->sessionId, 0, replayId);
+    }
+    bool Navigate(long long pageId, const wchar_t* url, const wchar_t* handler) {
+        const std::wstring address = url ? url : L"";
+        const bool ok = NavigateInternal(pageId, address, handler ? handler : L"", 0);
+        if (ok) AutoRecordStep(pageId, L"导航", L"{\"网址\":" + LingCdpJson::Escape(address) + L"}");
+        return ok;
     }
 
     bool Reload(long long pageId, const wchar_t* handler) {
@@ -741,15 +746,20 @@ public:
     }
 
     // ===== 脚本执行 =====
-    bool Evaluate(long long pageId, const wchar_t* expression, const wchar_t* handler) {
+    bool EvaluateInternal(long long pageId, const std::wstring& code, const std::wstring& handler, long long replayId) {
         const std::shared_ptr<PageSession> page = FindPage(pageId);
         if (!page) return Fail(L"CDP 页面 ID 无效。");
         const std::shared_ptr<Connection> connection = FindConnection(page->connectionId);
         if (!connection || !connection->connected.load()) return Fail(L"CDP 连接尚未就绪。");
-        const std::wstring code = expression ? expression : L"";
         if (code.empty()) return Fail(L"CDP 脚本代码不能为空。");
         const std::wstring params = L"{\"expression\":" + LingCdpJson::Escape(code) + L",\"awaitPromise\":true,\"returnByValue\":true}";
-        return SendCommand(connection, L"Runtime.evaluate", params, PendingKind::TextResult, handler ? handler : L"", std::to_wstring(page->id), page->sessionId);
+        return SendCommand(connection, L"Runtime.evaluate", params, PendingKind::TextResult, handler, std::to_wstring(page->id), page->sessionId, 0, replayId);
+    }
+    bool Evaluate(long long pageId, const wchar_t* expression, const wchar_t* handler) {
+        const std::wstring code = expression ? expression : L"";
+        const bool ok = EvaluateInternal(pageId, code, handler ? handler : L"", 0);
+        if (ok) AutoRecordStep(pageId, L"脚本", L"{\"脚本\":" + LingCdpJson::Escape(code) + L"}");
+        return ok;
     }
 
     bool GetTitle(long long pageId, const wchar_t* handler) {
@@ -771,7 +781,7 @@ public:
         return elementId;
     }
 
-    bool ClickElement(long long elementId, const wchar_t* handler) {
+    bool ClickElementInternal(long long elementId, const std::wstring& handler, long long replayId) {
         std::pair<long long, std::wstring> element;
         if (!FindElement(elementId, element)) return Fail(L"CDP 元素 ID 无效。");
         const std::shared_ptr<PageSession> page = FindPage(element.first);
@@ -781,11 +791,18 @@ public:
         const std::wstring script = L"(function(){var e=document.querySelector(" + LingCdpJson::Escape(element.second) +
             L");if(!e)return null;e.scrollIntoView({block:'center'});var r=e.getBoundingClientRect();return JSON.stringify([r.left+r.width/2,r.top+r.height/2]);})()";
         const std::wstring params = L"{\"expression\":" + LingCdpJson::Escape(script) + L",\"returnByValue\":true}";
-        return SendCommand(connection, L"Runtime.evaluate", params, PendingKind::ElementClick, handler ? handler : L"",
-                           std::to_wstring(page->id), page->sessionId);
+        return SendCommand(connection, L"Runtime.evaluate", params, PendingKind::ElementClick, handler,
+                           std::to_wstring(page->id), page->sessionId, 0, replayId);
+    }
+    bool ClickElement(long long elementId, const wchar_t* handler) {
+        std::pair<long long, std::wstring> element;
+        if (!FindElement(elementId, element)) return Fail(L"CDP 元素 ID 无效。");
+        const bool ok = ClickElementInternal(elementId, handler ? handler : L"", 0);
+        if (ok) AutoRecordStep(element.first, L"点击", L"{\"选择器\":" + LingCdpJson::Escape(element.second) + L"}");
+        return ok;
     }
 
-    bool InputTextElement(long long elementId, const wchar_t* text, const wchar_t* handler) {
+    bool InputTextElementInternal(long long elementId, const std::wstring& text, const std::wstring& handler, long long replayId) {
         std::pair<long long, std::wstring> element;
         if (!FindElement(elementId, element)) return Fail(L"CDP 元素 ID 无效。");
         const std::wstring script = L"(function(){var e=document.querySelector(" + LingCdpJson::Escape(element.second) + L");if(!e)return null;e.focus();return 'ok';})()";
@@ -794,8 +811,17 @@ public:
         const std::shared_ptr<Connection> connection = FindConnection(page->connectionId);
         if (!connection || !connection->connected.load()) return Fail(L"CDP 连接尚未就绪。");
         const std::wstring params = L"{\"expression\":" + LingCdpJson::Escape(script) + L",\"returnByValue\":true}";
-        return SendCommand(connection, L"Runtime.evaluate", params, PendingKind::FocusThenType, handler ? handler : L"",
-                           std::to_wstring(page->id) + L"\t" + (text ? text : L""), page->sessionId);
+        return SendCommand(connection, L"Runtime.evaluate", params, PendingKind::FocusThenType, handler,
+                           std::to_wstring(page->id) + L"\t" + text, page->sessionId, 0, replayId);
+    }
+    bool InputTextElement(long long elementId, const wchar_t* text, const wchar_t* handler) {
+        std::pair<long long, std::wstring> element;
+        if (!FindElement(elementId, element)) return Fail(L"CDP 元素 ID 无效。");
+        const std::wstring value = text ? text : L"";
+        const bool ok = InputTextElementInternal(elementId, value, handler ? handler : L"", 0);
+        if (ok) AutoRecordStep(element.first, L"输入",
+            L"{\"选择器\":" + LingCdpJson::Escape(element.second) + L",\"文本\":" + LingCdpJson::Escape(value) + L"}");
+        return ok;
     }
 
     bool GetElementText(long long elementId, const wchar_t* handler) {
@@ -825,8 +851,12 @@ public:
     bool MouseClick(long long pageId, int x, int y, int button, int count) {
         if (button < 0 || button > 2) return Fail(L"CDP 鼠标按钮必须为 0（左键）、1（中键）或 2（右键）。");
         if (count < 1 || count > 3) return Fail(L"CDP 鼠标点击次数必须在 1 到 3 之间。");
-        return SendMouseEvent(pageId, L"mousePressed", x, y, ButtonName(button), count) &&
+        const bool ok = SendMouseEvent(pageId, L"mousePressed", x, y, ButtonName(button), count) &&
                SendMouseEvent(pageId, L"mouseReleased", x, y, ButtonName(button), count);
+        if (ok) AutoRecordStep(pageId, L"鼠标点击",
+            L"{\"横坐标\":" + std::to_wstring(x) + L",\"纵坐标\":" + std::to_wstring(y)
+            + L",\"按钮\":" + std::to_wstring(button) + L",\"次数\":" + std::to_wstring(count) + L"}");
+        return ok;
     }
     bool MouseDown(long long pageId, int x, int y, int button) {
         if (button < 0 || button > 2) return Fail(L"CDP 鼠标按钮必须为 0（左键）、1（中键）或 2（右键）。");
@@ -843,7 +873,11 @@ public:
         if (!connection || !connection->connected.load()) return Fail(L"CDP 连接尚未就绪。");
         const std::wstring params = L"{\"type\":\"mouseWheel\",\"x\":" + std::to_wstring(x) + L",\"y\":" + std::to_wstring(y) +
             L",\"deltaX\":" + std::to_wstring(deltaX) + L",\"deltaY\":" + std::to_wstring(deltaY) + L"}";
-        return SendCommand(connection, L"Input.dispatchMouseEvent", params, PendingKind::Internal, L"", L"", page->sessionId);
+        const bool ok = SendCommand(connection, L"Input.dispatchMouseEvent", params, PendingKind::Internal, L"", L"", page->sessionId);
+        if (ok) AutoRecordStep(pageId, L"滚轮",
+            L"{\"横坐标\":" + std::to_wstring(x) + L",\"纵坐标\":" + std::to_wstring(y)
+            + L",\"横向增量\":" + std::to_wstring(deltaX) + L",\"纵向增量\":" + std::to_wstring(deltaY) + L"}");
+        return ok;
     }
 
     bool PressKey(long long pageId, const wchar_t* key) {
@@ -856,6 +890,7 @@ public:
         bool ok = SendKeyEvent(connection, page->sessionId, L"keyDown", name, 0);
         if (ok && name.size() == 1) ok = SendKeyEvent(connection, page->sessionId, L"char", name, 0);
         if (ok) ok = SendKeyEvent(connection, page->sessionId, L"keyUp", name, 0);
+        if (ok) AutoRecordStep(pageId, L"按键", L"{\"键\":" + LingCdpJson::Escape(name) + L"}");
         return ok;
     }
 
@@ -878,6 +913,8 @@ public:
         ok = ok && SendKeyEvent(connection, page->sessionId, L"keyUp", mainKey, mask);
         for (size_t index = modifierList.size(); index > 0; --index)
             ok = ok && SendKeyEvent(connection, page->sessionId, L"keyUp", modifierList[index - 1], 0);
+        if (ok) AutoRecordStep(pageId, L"组合键",
+            L"{\"修饰键\":" + LingCdpJson::Escape(modifiers ? modifiers : L"") + L",\"键\":" + LingCdpJson::Escape(mainKey) + L"}");
         return ok;
     }
 
@@ -886,8 +923,10 @@ public:
         if (!page) return Fail(L"CDP 页面 ID 无效。");
         const std::shared_ptr<Connection> connection = FindConnection(page->connectionId);
         if (!connection || !connection->connected.load()) return Fail(L"CDP 连接尚未就绪。");
-        return SendCommand(connection, L"Input.insertText", L"{\"text\":" + LingCdpJson::Escape(text ? text : L"") + L"}",
+        const bool ok = SendCommand(connection, L"Input.insertText", L"{\"text\":" + LingCdpJson::Escape(text ? text : L"") + L"}",
                            PendingKind::Internal, L"", L"", page->sessionId);
+        if (ok) AutoRecordStep(pageId, L"插入文本", L"{\"文本\":" + LingCdpJson::Escape(text ? text : L"") + L"}");
+        return ok;
     }
 
     // 逐字符发送 char 键事件；比 insertTextInput 更接近真实键盘，且在 headless 环境可靠更新输入框的值。
@@ -1130,9 +1169,22 @@ public:
     bool InterceptGetPostData(long long interceptId, const wchar_t* handler) {
         std::shared_ptr<InterceptRef> reference = FindIntercept(interceptId);
         if (!reference) return Fail(L"CDP 拦截 ID 无效。");
+        // Fetch.requestPaused 事件自带 request.postData（Chromium 152 已不支持对拦截请求调
+        // Network.getRequestPostData），事件未携带时再回退 Network.getRequestPostData。
+        if (!reference->postData.empty()) {
+            auto event = std::make_shared<Event>();
+            event->id = nextEventId_.fetch_add(1);
+            event->connectionId = reference->connectionId;
+            event->pageId = reference->pageId;
+            event->handler = handler ? handler : L"";
+            event->type = L"命令完成";
+            event->text = reference->postData;
+            PublishEvent(event);
+            return true;
+        }
         const std::shared_ptr<Connection> connection = FindConnection(reference->connectionId);
         if (!connection || !connection->connected.load()) return Fail(L"CDP 连接尚未就绪。");
-        return SendCommand(connection, L"Fetch.getRequestPostData", L"{\"requestId\":" + LingCdpJson::Escape(reference->requestId) + L"}",
+        return SendCommand(connection, L"Network.getRequestPostData", L"{\"requestId\":" + LingCdpJson::Escape(reference->requestId) + L"}",
                            PendingKind::TextResult, handler ? handler : L"", L"", L"");
     }
 
@@ -1188,22 +1240,30 @@ public:
     }
 
     // ===== 阶段 2：文件上传 =====
-    bool SetElementFiles(long long elementId, const wchar_t* filePath, const wchar_t* handler) {
+    bool SetElementFilesInternal(long long elementId, const std::wstring& path, const std::wstring& handler, long long replayId) {
         std::pair<long long, std::wstring> element;
         if (!FindElement(elementId, element)) return Fail(L"CDP 元素 ID 无效。");
         const std::shared_ptr<PageSession> page = FindPage(element.first);
         if (!page) return Fail(L"CDP 页面 ID 无效。");
         const std::shared_ptr<Connection> connection = FindConnection(page->connectionId);
         if (!connection || !connection->connected.load()) return Fail(L"CDP 连接尚未就绪。");
-        const std::wstring path = filePath ? filePath : L"";
         if (path.empty()) return Fail(L"CDP 上传文件路径不能为空。");
         const DWORD attributes = GetFileAttributesW(path.c_str());
         if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_DIRECTORY))
             return Fail(L"CDP 上传文件不存在：" + path);
         const std::wstring script = L"(function(){return document.querySelector(" + LingCdpJson::Escape(element.second) + L");})()";
         const std::wstring params = L"{\"expression\":" + LingCdpJson::Escape(script) + L",\"returnByValue\":false}";
-        return SendCommand(connection, L"Runtime.evaluate", params, PendingKind::SetFiles, handler ? handler : L"",
-                           std::to_wstring(page->id) + L"\t" + path, page->sessionId);
+        return SendCommand(connection, L"Runtime.evaluate", params, PendingKind::SetFiles, handler,
+                           std::to_wstring(page->id) + L"\t" + path, page->sessionId, 0, replayId);
+    }
+    bool SetElementFiles(long long elementId, const wchar_t* filePath, const wchar_t* handler) {
+        std::pair<long long, std::wstring> element;
+        if (!FindElement(elementId, element)) return Fail(L"CDP 元素 ID 无效。");
+        const std::wstring path = filePath ? filePath : L"";
+        const bool ok = SetElementFilesInternal(elementId, path, handler ? handler : L"", 0);
+        if (ok) AutoRecordStep(element.first, L"上传文件",
+            L"{\"选择器\":" + LingCdpJson::Escape(element.second) + L",\"文件\":" + LingCdpJson::Escape(path) + L"}");
+        return ok;
     }
 
     // ===== 阶段 2：导航生命周期等待 =====
@@ -1349,7 +1409,12 @@ public:
             const int y = fromY + (toY - fromY) * index / steps;
             if (!SendMouseEvent(pageId, L"mouseMoved", x, y, L"left", 0)) return false;
         }
-        return SendMouseEvent(pageId, L"mouseReleased", toX, toY, L"left", 1);
+        if (!SendMouseEvent(pageId, L"mouseReleased", toX, toY, L"left", 1)) return false;
+        AutoRecordStep(pageId, L"拖拽",
+            L"{\"起点横坐标\":" + std::to_wstring(fromX) + L",\"起点纵坐标\":" + std::to_wstring(fromY)
+            + L",\"终点横坐标\":" + std::to_wstring(toX) + L",\"终点纵坐标\":" + std::to_wstring(toY)
+            + L",\"步数\":" + std::to_wstring(steps) + L"}");
+        return true;
     }
 
     bool CallFunction(long long elementId, const wchar_t* functionCode, const wchar_t* handler) {
@@ -1554,7 +1619,7 @@ public:
             connection->certificateOverrideDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(lifetimeSeconds);
         }
         return SendCommand(connection, L"Security.setOverrideCertificateErrors", L"{\"override\":true}",
-                           PendingKind::SuccessOnly, L"", L"", L"");
+                           PendingKind::SuccessOnly, callback, L"", L"");
     }
 
     bool DecideCertificateError(long long certificateErrorId, bool allow) {
@@ -1599,11 +1664,297 @@ public:
 
     // ===== 阶段 3：录制/回放最小确定性模型 =====
     long long StartRecording(long long pageId,const wchar_t* path,const wchar_t* handler){auto page=FindPage(pageId);if(!page)return 0;auto rec=std::make_shared<RecordingState>();rec->id=nextRecordingId_.fetch_add(1);rec->connectionId=page->connectionId;rec->pageId=pageId;rec->path=path?path:L"";rec->handler=handler?handler:L"";rec->state=L"录制中";rec->active=true;{std::lock_guard<std::mutex> lock(recordingsMutex_);recordings_[rec->id]=rec;}return rec->id;}
-    bool RecordStep(long long recordingId,const wchar_t* type,const wchar_t* json){auto rec=FindRecording(recordingId);if(!rec||!rec->active)return false;std::wstring step=RedactRecordingStep(type?type:L"",json?json:L"{}");rec->stepsJson.push_back(step);return true;}
-    bool StopRecording(long long recordingId){auto rec=FindRecording(recordingId);if(!rec)return false;rec->active=false;rec->state=L"已完成";return WriteRecording(rec);}
-    long long LoadReplay(long long connectionId,const wchar_t* path){auto connection=FindConnection(connectionId);if(!connection)return 0;auto replay=std::make_shared<ReplayState>();replay->id=nextReplayId_.fetch_add(1);replay->connectionId=connectionId;replay->path=path?path:L"";replay->state=L"已加载";{std::lock_guard<std::mutex> lock(recordingsMutex_);replays_[replay->id]=replay;}return replay->id;}
+    bool RecordStep(long long recordingId,const wchar_t* type,const wchar_t* json){std::shared_ptr<RecordingState> rec;{std::lock_guard<std::mutex> lock(recordingsMutex_);auto found=recordings_.find(recordingId);if(found==recordings_.end()||!found->second->active)return false;rec=found->second;}std::wstring step=RedactRecordingStep(type?type:L"",json?json:L"{}");std::lock_guard<std::mutex> lock(recordingsMutex_);rec->stepsJson.push_back(step);return true;}
+    bool StopRecording(long long recordingId){std::shared_ptr<RecordingState> rec;{std::lock_guard<std::mutex> lock(recordingsMutex_);auto found=recordings_.find(recordingId);if(found==recordings_.end())return false;rec=found->second;rec->active=false;rec->state=L"已完成";}return WriteRecording(rec);}
+    long long LoadReplay(long long connectionId,const wchar_t* path){
+        auto connection=FindConnection(connectionId);
+        if(!connection){Fail(L"CDP 连接 ID 无效。");return 0;}
+        const std::wstring filePath=path?path:L"";
+        if(filePath.empty()){Fail(L"CDP 回放文件路径不能为空。");return 0;}
+        std::vector<unsigned char> bytes;
+        if(!ReadFileBytes(filePath,bytes)){Fail(L"CDP 无法读取回放文件："+filePath);return 0;}
+        std::wstring error;
+        auto root=LingCdpJson::Parser::Parse(reinterpret_cast<const char*>(bytes.data()),bytes.size(),error);
+        if(!root||root->kind!=LingCdpJson::Value::Kind::Object){Fail(L"CDP 回放文件不是有效 JSON："+(error.empty()?filePath:error));return 0;}
+        auto stepsField=root->Find(L"steps");
+        if(!stepsField||stepsField->kind!=LingCdpJson::Value::Kind::Array||stepsField->array.empty()){Fail(L"CDP 回放文件没有可执行的步骤。");return 0;}
+        auto replay=std::make_shared<ReplayState>();
+        replay->id=nextReplayId_.fetch_add(1);
+        replay->connectionId=connectionId;
+        replay->path=filePath;
+        for(const auto& item:stepsField->array){
+            if(replay->steps.size()>=100000){Fail(L"CDP 回放步骤超过 100000 步上限。");return 0;}
+            if(!item||item->kind!=LingCdpJson::Value::Kind::Object)continue;
+            auto type=item->Find(L"type");
+            if(!type||type->kind!=LingCdpJson::Value::Kind::String||type->text.empty())continue;
+            auto data=item->Find(L"data");
+            replay->steps.emplace_back(type->text,data?LingCdpJson::Serialize(data):L"{}");
+        }
+        if(replay->steps.empty()){Fail(L"CDP 回放文件没有可执行的步骤。");return 0;}
+        {std::lock_guard<std::mutex> lock(recordingsMutex_);replays_[replay->id]=replay;}
+        return replay->id;
+    }
     std::wstring RecordingStateText(long long id){auto rec=FindRecording(id);return rec?rec->state:L"无效录制";}
     std::wstring ReplayStateText(long long id){std::lock_guard<std::mutex> lock(recordingsMutex_);auto found=replays_.find(id);return found==replays_.end()?L"无效回放":found->second->state;}
+
+    // ===== 阶段 3.5：性能任务（Heap/Tracing/CPU/覆盖率） =====
+    long long StartHeapSnapshot(long long pageId, const wchar_t* path, const wchar_t* handler) {
+        const auto page = FindPage(pageId);
+        if (!page) { Fail(L"CDP 页面 ID 无效。"); return 0; }
+        const auto connection = FindConnection(page->connectionId);
+        if (!connection || !connection->connected.load()) { Fail(L"CDP 连接尚未就绪。"); return 0; }
+        auto task = OpenTask(page, L"heap", path ? path : L"", handler);
+        if (!task) return 0;
+        SendCommand(connection, L"HeapProfiler.enable", L"{}", PendingKind::Internal, L"", L"", page->sessionId);
+        if (!SendCommand(connection, L"HeapProfiler.takeHeapSnapshot", L"{\"reportProgress\":true}", PendingKind::TaskResponse,
+                         L"", L"", page->sessionId, task->id, 0, true)) {
+            FailTask(task, L"CDP 堆快照命令发送失败。");
+            return 0;
+        }
+        return task->id;
+    }
+
+    long long StartTrace(long long pageId, const wchar_t* categories, const wchar_t* path, const wchar_t* handler) {
+        const auto page = FindPage(pageId);
+        if (!page) { Fail(L"CDP 页面 ID 无效。"); return 0; }
+        const auto connection = FindConnection(page->connectionId);
+        if (!connection || !connection->connected.load()) { Fail(L"CDP 连接尚未就绪。"); return 0; }
+        std::wstring categoryText = categories ? categories : L"";
+        if (categoryText.empty()) categoryText = L"devtools.timeline,v8.execute,disabled-by-default-devtools.timeline";
+        std::wstring included;
+        size_t start = 0;
+        while (start <= categoryText.size()) {
+            size_t end = categoryText.find(L',', start);
+            if (end == std::wstring::npos) end = categoryText.size();
+            std::wstring item = categoryText.substr(start, end - start);
+            while (!item.empty() && (item.front() == L' ' || item.front() == L'\t')) item.erase(item.begin());
+            while (!item.empty() && (item.back() == L' ' || item.back() == L'\t')) item.pop_back();
+            if (!item.empty()) {
+                if (!included.empty()) included += L",";
+                included += LingCdpJson::Escape(item);
+            }
+            if (end == categoryText.size()) break;
+            start = end + 1;
+        }
+        auto task = OpenTask(page, L"trace", path ? path : L"", handler);
+        if (!task) return 0;
+        // Tracing 域是浏览器级单例，其 IO stream 只能在 browser-level session 上读取；
+        // page session 上发起的 trace 在 IO.read 阶段会报 Invalid stream handle。
+        task->sessionId.clear();
+        const std::wstring params = L"{\"transferMode\":\"ReturnAsStream\",\"traceConfig\":{\"includedCategories\":[" + included + L"]}}";
+        if (!SendCommand(connection, L"Tracing.start", params, PendingKind::TaskStart,
+                         L"", L"", L"", task->id, 0, true)) {
+            FailTask(task, L"CDP 追踪命令发送失败。");
+            return 0;
+        }
+        return task->id;
+    }
+
+    long long StartCpuProfile(long long pageId, const wchar_t* path, const wchar_t* handler) {
+        const auto page = FindPage(pageId);
+        if (!page) { Fail(L"CDP 页面 ID 无效。"); return 0; }
+        const auto connection = FindConnection(page->connectionId);
+        if (!connection || !connection->connected.load()) { Fail(L"CDP 连接尚未就绪。"); return 0; }
+        auto task = OpenTask(page, L"cpu", path ? path : L"", handler);
+        if (!task) return 0;
+        SendCommand(connection, L"Profiler.enable", L"{}", PendingKind::Internal, L"", L"", page->sessionId);
+        if (!SendCommand(connection, L"Profiler.start", L"{}", PendingKind::TaskStart,
+                         L"", L"", page->sessionId, task->id, 0, true)) {
+            FailTask(task, L"CDP CPU 分析命令发送失败。");
+            return 0;
+        }
+        return task->id;
+    }
+
+    long long StartPreciseCoverage(long long pageId, const wchar_t* path, const wchar_t* handler) {
+        const auto page = FindPage(pageId);
+        if (!page) { Fail(L"CDP 页面 ID 无效。"); return 0; }
+        const auto connection = FindConnection(page->connectionId);
+        if (!connection || !connection->connected.load()) { Fail(L"CDP 连接尚未就绪。"); return 0; }
+        auto task = OpenTask(page, L"coverage", path ? path : L"", handler);
+        if (!task) return 0;
+        SendCommand(connection, L"Profiler.enable", L"{}", PendingKind::Internal, L"", L"", page->sessionId);
+        if (!SendCommand(connection, L"Profiler.startPreciseCoverage", L"{\"callCount\":true,\"detailed\":true}", PendingKind::TaskStart,
+                         L"", L"", page->sessionId, task->id, 0, true)) {
+            FailTask(task, L"CDP 精确覆盖率命令发送失败。");
+            return 0;
+        }
+        return task->id;
+    }
+
+    bool StopTask(long long taskId, const wchar_t* handler) {
+        auto task = FindTask(taskId);
+        if (!task) return Fail(L"CDP 任务 ID 无效。");
+        const std::wstring stopHandler = handler ? handler : L"";
+        if (stopHandler.empty()) return Fail(L"CDP 停止任务处理器不能为空。");
+        {
+            std::lock_guard<std::mutex> lock(tasksMutex_);
+            if (task->terminal) return Fail(L"CDP 任务已结束，无法再次停止。");
+        }
+        const auto connection = FindConnection(task->connectionId);
+        if (!connection || !connection->connected.load()) return Fail(L"CDP 连接尚未就绪，任务无法停止。");
+        if (task->kind == L"trace") {
+            // trace 在 browser-level session 上运行，停止命令不带 sessionId。
+            task->handler = stopHandler;
+            const bool ok = SendCommand(connection, L"Tracing.end", L"{}", PendingKind::Internal, L"", L"", L"");
+            if (!ok) FailTask(task, L"CDP 停止追踪命令发送失败。");
+            return ok;
+        }
+        const auto page = FindPageBySession(task->connectionId, task->sessionId);
+        if (!page) return Fail(L"CDP 页面已释放，任务无法停止。");
+        if (task->kind == L"cpu") {
+            return SendCommand(connection, L"Profiler.stop", L"{}", PendingKind::TaskStopProfile,
+                               stopHandler, L"", page->sessionId, task->id, 0, true);
+        }
+        if (task->kind == L"coverage") {
+            return SendCommand(connection, L"Profiler.takePreciseCoverage", L"{}", PendingKind::TaskStopCoverage,
+                               stopHandler, L"", page->sessionId, task->id, 0, true);
+        }
+        return Fail(L"CDP 该任务类型不支持停止，请等待其自然完成（堆快照）。");
+    }
+
+    std::wstring TaskStateText(long long taskId) {
+        auto task = FindTask(taskId);
+        return task ? task->state : L"无效任务";
+    }
+    int TaskProgress(long long taskId) {
+        auto task = FindTask(taskId);
+        return task ? task->progress : 0;
+    }
+    std::wstring TaskResultPath(long long taskId) {
+        auto task = FindTask(taskId);
+        return task ? task->finalPath : L"";
+    }
+
+    // ===== 阶段 3.5：画面串流 =====
+    bool StartScreencast(long long pageId, const wchar_t* directory, const wchar_t* optionsJson, const wchar_t* handler) {
+        const auto page = FindPage(pageId);
+        if (!page) return Fail(L"CDP 页面 ID 无效。");
+        const auto connection = FindConnection(page->connectionId);
+        if (!connection || !connection->connected.load()) return Fail(L"CDP 连接尚未就绪。");
+        const std::wstring dir = directory ? directory : L"";
+        if (dir.empty()) return Fail(L"CDP 串流输出目录不能为空。");
+        if (!EnsureDirectory(dir)) return Fail(L"CDP 串流输出目录无法创建：" + dir);
+        const std::wstring frameHandler = handler ? handler : L"";
+        if (frameHandler.empty()) return Fail(L"CDP 串流帧处理器不能为空。");
+        std::wstring format = L"jpeg";
+        int quality = 60;
+        int maxWidth = 0;
+        int maxHeight = 0;
+        int everyNth = 1;
+        if (optionsJson && *optionsJson) {
+            std::string utf8;
+            std::wstring parseError;
+            if (!LingCdpJson::WideToUtf8(optionsJson, utf8)) return Fail(L"CDP 串流参数 JSON 含无效字符。");
+            const auto root = LingCdpJson::Parser::Parse(utf8.data(), utf8.size(), parseError);
+            if (!root || root->kind != LingCdpJson::Value::Kind::Object) return Fail(L"CDP 串流参数必须是 JSON 对象。");
+            const auto formatField = root->Find(L"格式");
+            if (formatField && formatField->kind == LingCdpJson::Value::Kind::String) {
+                if (formatField->text != L"jpeg" && formatField->text != L"png") return Fail(L"CDP 串流格式只支持 jpeg 或 png。");
+                format = formatField->text;
+            }
+            const auto qualityField = root->Find(L"质量");
+            if (qualityField && qualityField->kind == LingCdpJson::Value::Kind::Number) {
+                quality = static_cast<int>(qualityField->number);
+                if (quality < 0 || quality > 100) return Fail(L"CDP 串流质量必须在 0 到 100 之间。");
+            }
+            const auto widthField = root->Find(L"最大宽度");
+            if (widthField && widthField->kind == LingCdpJson::Value::Kind::Number) {
+                maxWidth = static_cast<int>(widthField->number);
+                if (maxWidth < 0) return Fail(L"CDP 串流最大宽度不能为负。");
+            }
+            const auto heightField = root->Find(L"最大高度");
+            if (heightField && heightField->kind == LingCdpJson::Value::Kind::Number) {
+                maxHeight = static_cast<int>(heightField->number);
+                if (maxHeight < 0) return Fail(L"CDP 串流最大高度不能为负。");
+            }
+            const auto nthField = root->Find(L"每N帧");
+            if (nthField && nthField->kind == LingCdpJson::Value::Kind::Number) {
+                everyNth = static_cast<int>(nthField->number);
+                if (everyNth < 1 || everyNth > 60) return Fail(L"CDP 串流每N帧取帧必须在 1 到 60 之间。");
+            }
+        }
+        {
+            std::lock_guard<std::mutex> lock(screencastsMutex_);
+            screencasts_.erase(pageId);
+            auto state = std::make_shared<ScreencastState>();
+            state->pageId = pageId;
+            state->connectionId = page->connectionId;
+            state->sessionId = page->sessionId;
+            state->directory = dir;
+            state->handler = frameHandler;
+            state->format = format;
+            state->quality = quality;
+            screencasts_[pageId] = state;
+        }
+        std::wstring params = L"{\"format\":" + LingCdpJson::Escape(format);
+        if (format == L"jpeg" && quality > 0) params += L",\"quality\":" + std::to_wstring(quality);
+        if (maxWidth > 0) params += L",\"maxWidth\":" + std::to_wstring(maxWidth);
+        if (maxHeight > 0) params += L",\"maxHeight\":" + std::to_wstring(maxHeight);
+        params += L",\"everyNthFrame\":" + std::to_wstring(everyNth) + L"}";
+        return SendCommand(connection, L"Page.startScreencast", params, PendingKind::Internal, L"", L"", page->sessionId);
+    }
+
+    bool StopScreencast(long long pageId) {
+        std::shared_ptr<ScreencastState> state;
+        {
+            std::lock_guard<std::mutex> lock(screencastsMutex_);
+            const auto found = screencasts_.find(pageId);
+            if (found == screencasts_.end()) return Fail(L"CDP 该页面没有进行中的串流。");
+            state = found->second;
+            screencasts_.erase(found);
+        }
+        const auto page = FindPage(pageId);
+        if (page) {
+            const auto connection = FindConnection(page->connectionId);
+            if (connection && connection->connected.load())
+                SendCommand(connection, L"Page.stopScreencast", L"{}", PendingKind::Internal, L"", L"", page->sessionId);
+        }
+        return true;
+    }
+
+    // ===== 阶段 3.5：确定性回放执行器 =====
+    bool ExecuteReplay(long long replayId, long long pageId, const wchar_t* handler) {
+        auto replay = FindReplay(replayId);
+        if (!replay) return Fail(L"CDP 回放 ID 无效。");
+        auto page = FindPage(pageId);
+        if (!page) return Fail(L"CDP 页面 ID 无效。");
+        const std::wstring completion = handler ? handler : L"";
+        if (completion.empty()) return Fail(L"CDP 回放完成处理器不能为空。");
+        const auto connection = FindConnection(page->connectionId);
+        if (!connection || !connection->connected.load()) return Fail(L"CDP 连接尚未就绪。");
+        {
+            std::lock_guard<std::mutex> lock(recordingsMutex_);
+            if (replay->active) return Fail(L"CDP 回放正在执行中，不能重复启动。");
+        }
+        {
+            std::lock_guard<std::mutex> lock(recordingsMutex_);
+            replay->pageId = pageId;
+            replay->connectionId = page->connectionId;
+            replay->handler = completion;
+            replay->currentStep = 0;
+            replay->executed = 0;
+            replay->failedStep = -1;
+            replay->error.clear();
+            replay->stopRequested = false;
+            replay->active = true;
+            replay->state = L"执行中";
+        }
+        AdvanceReplay(replayId);
+        return true;
+    }
+
+    bool StopReplay(long long replayId) {
+        auto replay = FindReplay(replayId);
+        if (!replay) return Fail(L"CDP 回放 ID 无效。");
+        {
+            std::lock_guard<std::mutex> lock(recordingsMutex_);
+            if (!replay->active) return Fail(L"CDP 回放未在执行中。");
+            replay->stopRequested = true;
+            replay->state = L"正在停止";
+        }
+        return true;
+    }
 
 
     // ===== 事件分发与快照 =====
@@ -1649,6 +2000,7 @@ public:
     long long CurrentFrame() const { const std::shared_ptr<Event> event = CurrentEvent(); return event ? event->frameHandle : 0; }
     long long CurrentBinding() const { const std::shared_ptr<Event> event = CurrentEvent(); return event ? event->bindingHandle : 0; }
     long long CurrentTask() const { const std::shared_ptr<Event> event = CurrentEvent(); return event ? event->taskId : 0; }
+    long long CurrentReplay() const { const std::shared_ptr<Event> event = CurrentEvent(); return event ? event->replayId : 0; }
     long long CurrentBreakpoint() const { const std::shared_ptr<Event> event = CurrentEvent(); return event ? event->breakpointId : 0; }
     long long CurrentCertificateError() const { const std::shared_ptr<Event> event = CurrentEvent(); return event ? event->certificateErrorId : 0; }
 
@@ -1712,7 +2064,11 @@ private:
         CreateTaskFromResponse = 23,
         StorageUsage = 24,
         OverlayRect = 25,
-        IoRead = 26
+        IoRead = 26,
+        TaskStart = 27,          // 任务启动命令响应：标记“记录中”并通知任务已开始
+        TaskResponse = 28,       // 任务完成型命令响应（堆快照）：提交输出文件并通知任务完成
+        TaskStopProfile = 29,    // Profiler.stop 响应：写入 CPU Profile JSON 并提交任务
+        TaskStopCoverage = 30    // takePreciseCoverage 响应：写入覆盖率 JSON 并提交任务
     };
 
     struct Event {
@@ -1738,6 +2094,7 @@ private:
         long long taskId = 0;
         long long breakpointId = 0;
         long long certificateErrorId = 0;
+        long long replayId = 0;
     };
 
     struct Pending {
@@ -1748,10 +2105,12 @@ private:
         long long pageId = 0;
         long long sessionHandle = 0;
         long long taskId = 0;
+        long long replayId = 0;
         unsigned long long generation = 0;
         std::wstring outputPath;
         std::wstring expectedSessionId;
         bool notifyOnFailure = false;
+        bool noTimeout = false;
         std::chrono::steady_clock::time_point submittedAt{};
     };
 
@@ -1764,6 +2123,8 @@ private:
         std::wstring method;
         std::wstring headersJson;
         bool hasPostData = false;
+        std::wstring postData;
+
         bool needsAuth = false;
     };
 
@@ -1872,7 +2233,9 @@ private:
     struct TaskState {
         long long id = 0;
         long long connectionId = 0;
+        long long pageId = 0;
         long long sessionHandle = 0;
+        std::wstring sessionId;
         std::wstring kind;
         std::wstring state = L"已创建";
         std::wstring handler;
@@ -1911,6 +2274,7 @@ private:
         bool active = false;
     };
 
+    // 回放执行器状态：LoadReplay 解析录制文件，ExecuteReplay 在页面上逐步重放。
     struct ReplayState {
         long long id = 0;
         long long connectionId = 0;
@@ -1919,8 +2283,25 @@ private:
         std::wstring handler;
         std::wstring state = L"已创建";
         std::wstring diagnostics;
+        std::wstring error;
+        std::vector<std::pair<std::wstring, std::wstring>> steps; // (步骤类型, 数据 JSON)
+        long long executed = 0;
+        long long failedStep = -1;
         size_t currentStep = 0;
         bool active = false;
+        bool stopRequested = false;
+    };
+
+    // 画面串流状态：Page.startScreencast 帧解码落盘后经“串流帧”事件投递。
+    struct ScreencastState {
+        long long pageId = 0;
+        long long connectionId = 0;
+        std::wstring sessionId;
+        std::wstring directory;
+        std::wstring handler;
+        std::wstring format = L"jpeg";
+        int quality = 60;
+        std::atomic<long long> frameCounter{ 0 };
     };
 
     static LingCdpJson::ValuePtr JsonString(const std::wstring& value) { auto item=std::make_shared<LingCdpJson::Value>(); item->kind=LingCdpJson::Value::Kind::String; item->text=value; return item; }
@@ -1932,6 +2313,7 @@ private:
     std::shared_ptr<BreakpointState> FindBreakpoint(long long id) const { std::lock_guard<std::mutex> lock(stage3Mutex_); auto found=breakpoints_.find(id); return found==breakpoints_.end()?nullptr:found->second; }
     std::shared_ptr<CallFrameState> FindCallFrame(long long id) const { std::lock_guard<std::mutex> lock(stage3Mutex_); auto found=callFrames_.find(id); return found==callFrames_.end()?nullptr:found->second; }
     std::shared_ptr<RecordingState> FindRecording(long long id) const { std::lock_guard<std::mutex> lock(recordingsMutex_); auto found=recordings_.find(id); return found==recordings_.end()?nullptr:found->second; }
+    std::shared_ptr<ReplayState> FindReplay(long long id) const { std::lock_guard<std::mutex> lock(recordingsMutex_); auto found=replays_.find(id); return found==replays_.end()?nullptr:found->second; }
 
     std::shared_ptr<SessionState> MainSessionForPage(long long pageId) const {
         const auto page=FindPage(pageId); if(!page)return nullptr;
@@ -1989,7 +2371,7 @@ private:
     }
 
     static std::wstring RedactRecordingStep(const std::wstring& type,const std::wstring& json){std::wstring lower=json;std::transform(lower.begin(),lower.end(),lower.begin(),::towlower);const bool sensitive=lower.find(L"password")!=std::wstring::npos||lower.find(L"token")!=std::wstring::npos||lower.find(L"secret")!=std::wstring::npos||lower.find(L"authorization")!=std::wstring::npos;return L"{\"type\":"+LingCdpJson::Escape(type)+L",\"data\":"+(sensitive?L"{\"value\":\"$" L"{SECRET:REDACTED}\",\"sensitive\":true}":json)+L"}";}
-    bool WriteRecording(const std::shared_ptr<RecordingState>& rec){std::wstring body=L"{\"schema\":\"lingbuilder.cdp.recording\",\"schemaVersion\":1,\"steps\":[";for(size_t i=0;i<rec->stepsJson.size();++i){if(i)body+=L",";body+=rec->stepsJson[i];}body+=L"]}";std::string utf8;if(!LingCdpJson::WideToUtf8(body,utf8))return false;std::vector<unsigned char> bytes(utf8.begin(),utf8.end());return WriteFileBytes(rec->path,bytes);}
+    bool WriteRecording(const std::shared_ptr<RecordingState>& rec){std::wstring body=L"{\"schema\":\"lingbuilder.cdp.recording\",\"schemaVersion\":1,\"steps\":[";{std::lock_guard<std::mutex> lock(recordingsMutex_);for(size_t i=0;i<rec->stepsJson.size();++i){if(i)body+=L",";body+=rec->stepsJson[i];}}body+=L"]}";std::string utf8;if(!LingCdpJson::WideToUtf8(body,utf8))return false;std::vector<unsigned char> bytes(utf8.begin(),utf8.end());return WriteFileBytes(rec->path,bytes);}
 
     void ReplayBindingsForConnection(long long connectionId){std::vector<std::shared_ptr<BindingState>> bindings;std::vector<std::shared_ptr<SessionState>> sessions;{std::lock_guard<std::mutex> lock(stage3Mutex_);for(auto&p:bindings_)if(p.second->connectionId==connectionId&&p.second->active)bindings.push_back(p.second);for(auto&p:sessions_)if(p.second->connectionId==connectionId&&p.second->attached)sessions.push_back(p.second);}auto connection=FindConnection(connectionId);if(!connection)return;for(auto&s:sessions)for(auto&b:bindings)SendCommand(connection,L"Runtime.addBinding",L"{\"name\":"+LingCdpJson::Escape(b->name)+L"}",PendingKind::Internal,L"",L"",s->sessionId);}
 
@@ -2050,6 +2432,12 @@ private:
                 if (it->second->connectionId == connectionId) it = replays_.erase(it); else ++it;
             }
         }
+        {
+            std::lock_guard<std::mutex> lock(screencastsMutex_);
+            for (auto it = screencasts_.begin(); it != screencasts_.end();) {
+                if (it->second->connectionId == connectionId) it = screencasts_.erase(it); else ++it;
+            }
+        }
     }
 
     void ReleaseAllStage3State() {
@@ -2071,6 +2459,10 @@ private:
             recordings_.clear();
             replays_.clear();
         }
+        {
+            std::lock_guard<std::mutex> lock(screencastsMutex_);
+            screencasts_.clear();
+        }
     }
 
 
@@ -2089,6 +2481,7 @@ private:
         std::wstring interceptHandler;
         std::wstring dialogHandler;
         std::wstring pendingLoadHandler;
+        long long loadReplayId = 0;
         bool loadPending = false;
         bool readyPending = false;
         bool loadDeadlineValid = false;
@@ -2263,6 +2656,352 @@ private:
     }
 
     // ===== 看门狗：命令响应、导航/就绪等待与生命周期等待的超时 =====
+    // ===== 阶段 3.5 私有辅助：目录/文件/任务/自动采集/回放引擎/串流帧 =====
+    static bool EnsureDirectory(const std::wstring& dir) {
+        if (dir.empty()) return false;
+        DWORD attributes = GetFileAttributesW(dir.c_str());
+        if (attributes != INVALID_FILE_ATTRIBUTES) return (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+        std::wstring partial;
+        size_t start = 0;
+        if (dir.size() > 2 && dir[1] == L':') { partial = dir.substr(0, 3); start = 3; }
+        while (start <= dir.size()) {
+            size_t end = dir.find_first_of(L"\\/", start);
+            if (end == std::wstring::npos) end = dir.size();
+            if (end > start) {
+                partial = dir.substr(0, end);
+                CreateDirectoryW(partial.c_str(), nullptr);
+            }
+            if (end == dir.size()) break;
+            start = end + 1;
+        }
+        attributes = GetFileAttributesW(dir.c_str());
+        return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+    }
+
+    static bool ReadFileBytes(const std::wstring& path, std::vector<unsigned char>& data) {
+        HANDLE file = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (file == INVALID_HANDLE_VALUE) return false;
+        LARGE_INTEGER size{};
+        if (!GetFileSizeEx(file, &size) || size.QuadPart < 0 || size.QuadPart > 64 * 1024 * 1024) { CloseHandle(file); return false; }
+        data.resize(static_cast<size_t>(size.QuadPart));
+        size_t offset = 0;
+        bool ok = true;
+        while (ok && offset < data.size()) {
+            const DWORD chunk = static_cast<DWORD>(std::min<size_t>(data.size() - offset, 1u << 20));
+            DWORD read = 0;
+            ok = ReadFile(file, data.data() + offset, chunk, &read, nullptr) != FALSE && read > 0;
+            offset += read;
+        }
+        CloseHandle(file);
+        return ok && offset == data.size();
+    }
+
+    std::shared_ptr<TaskState> OpenTask(const std::shared_ptr<PageSession>& page, const std::wstring& kind,
+                                        const std::wstring& path, const wchar_t* handler) {
+        if (path.empty()) { Fail(L"CDP 任务输出文件路径不能为空。"); return nullptr; }
+        auto task = std::make_shared<TaskState>();
+        task->id = nextTaskId_.fetch_add(1);
+        task->connectionId = page->connectionId;
+        task->pageId = page->id;
+        task->sessionId = page->sessionId;
+        task->kind = kind;
+        task->finalPath = path;
+        task->temporaryPath = path + L".lingbuilder-cdp-" + std::to_wstring(GetCurrentProcessId())
+            + L"-" + std::to_wstring(GetTickCount64()) + L".tmp";
+        task->handler = handler ? handler : L"";
+        task->file = CreateFileW(task->temporaryPath.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (task->file == INVALID_HANDLE_VALUE) { Fail(L"CDP 无法创建任务输出文件：" + path); return nullptr; }
+        { std::lock_guard<std::mutex> lock(tasksMutex_); tasks_[task->id] = task; }
+        return task;
+    }
+
+    void FailTask(const std::shared_ptr<TaskState>& task, const std::wstring& error) {
+        if (!task) return;
+        {
+            std::lock_guard<std::mutex> lock(tasksMutex_);
+            if (task->terminal) return;
+            task->terminal = true;
+            task->state = L"失败";
+            task->error = error;
+        }
+        CloseTaskFile(task, false);
+        EmitTaskEvent(task, L"任务失败", L"", error);
+    }
+
+    void EmitTaskEvent(const std::shared_ptr<TaskState>& task, const std::wstring& type,
+                       const std::wstring& text, const std::wstring& error, const std::wstring& overrideHandler = L"") {
+        if (!task) return;
+        const std::wstring handler = overrideHandler.empty() ? task->handler : overrideHandler;
+        if (handler.empty()) return;
+        auto event = std::make_shared<Event>();
+        event->id = nextEventId_.fetch_add(1);
+        event->connectionId = task->connectionId;
+        event->pageId = task->pageId;
+        event->handler = handler;
+        event->type = type;
+        event->text = text;
+        event->error = error;
+        event->taskId = task->id;
+        PublishEvent(event);
+    }
+
+    // 命令层自动采集：该页面存在活跃录制时，把本命令固化为一条结构化步骤。
+    void AutoRecordStep(long long pageId, const wchar_t* type, const std::wstring& json) {
+        std::lock_guard<std::mutex> lock(recordingsMutex_);
+        for (auto& pair : replays_) if (pair.second->active && pair.second->pageId == pageId) return; // 回放执行期间不重复采集
+        for (auto& pair : recordings_) {
+            if (!pair.second->active || pair.second->pageId != pageId) continue;
+            pair.second->stepsJson.push_back(RedactRecordingStep(type ? type : L"", json.empty() ? L"{}" : json));
+        }
+    }
+
+    enum class ReplayStepOutcome { AsyncStarted, SyncOk, SyncFailed };
+
+    static LingCdpJson::ValuePtr ParseStepData(const std::wstring& json) {
+        std::string utf8;
+        std::wstring error;
+        if (!LingCdpJson::WideToUtf8(json, utf8)) return nullptr;
+        return LingCdpJson::Parser::Parse(utf8.data(), utf8.size(), error);
+    }
+    static std::wstring JsonStepText(const LingCdpJson::ValuePtr& value, const std::wstring& key) {
+        if (!value) return L"";
+        const auto field = value->Find(key);
+        return field && field->kind == LingCdpJson::Value::Kind::String ? field->text : L"";
+    }
+    static bool JsonStepNumber(const LingCdpJson::ValuePtr& value, const std::wstring& key, double& out) {
+        if (!value) return false;
+        const auto field = value->Find(key);
+        if (!field || field->kind != LingCdpJson::Value::Kind::Number) return false;
+        out = field->number;
+        return true;
+    }
+
+    void AdvanceReplay(long long replayId) {
+        std::shared_ptr<ReplayState> replay = FindReplay(replayId);
+        if (!replay || !replay->active) return;
+        while (replay->active) {
+            bool stopRequested = false;
+            size_t index = 0;
+            {
+                std::lock_guard<std::mutex> lock(recordingsMutex_);
+                if (!replay->active) return;
+                if (replay->stopRequested) stopRequested = true;
+                else index = replay->currentStep;
+            }
+            if (stopRequested || index >= replay->steps.size()) { FinishReplay(replay, true, L""); return; }
+            const auto page = FindPage(replay->pageId);
+            const auto connection = page ? FindConnection(page->connectionId) : nullptr;
+            if (!page || !connection || !connection->connected.load()) {
+                FinishReplay(replay, false, L"CDP 页面已释放或连接已断开，回放中止。");
+                return;
+            }
+            {
+                std::lock_guard<std::mutex> lock(recordingsMutex_);
+                replay->state = L"执行中 第" + std::to_wstring(index + 1) + L"/" + std::to_wstring(replay->steps.size()) + L"步";
+            }
+            const std::wstring type = replay->steps[index].first;
+            const std::wstring dataJson = replay->steps[index].second;
+            const ReplayStepOutcome outcome = ExecuteReplayStep(replay, page, connection, type, dataJson);
+            if (outcome == ReplayStepOutcome::AsyncStarted) return; // 完成后由 NotifyReplayStep 续跑
+            if (outcome == ReplayStepOutcome::SyncFailed) { FinishReplay(replay, false, LastError()); return; }
+            {
+                std::lock_guard<std::mutex> lock(recordingsMutex_);
+                if (!replay->active) return;
+                ++replay->executed;
+                ++replay->currentStep;
+            }
+        }
+    }
+
+    void NotifyReplayStep(long long replayId, bool success, const std::wstring& error) {
+        std::shared_ptr<ReplayState> replay = FindReplay(replayId);
+        if (!replay || !replay->active) return;
+        if (!success) {
+            {
+                std::lock_guard<std::mutex> lock(recordingsMutex_);
+                if (!replay->active) return;
+                replay->failedStep = static_cast<long long>(replay->currentStep);
+            }
+            FinishReplay(replay, false, error);
+            return;
+        }
+        {
+            std::lock_guard<std::mutex> lock(recordingsMutex_);
+            if (!replay->active) return;
+            ++replay->executed;
+            ++replay->currentStep;
+        }
+        AdvanceReplay(replayId);
+    }
+
+    void FinishReplay(const std::shared_ptr<ReplayState>& replay, bool completed, const std::wstring& error) {
+        std::wstring handler;
+        long long connectionId = 0;
+        long long pageId = 0;
+        std::wstring summary;
+        {
+            std::lock_guard<std::mutex> lock(recordingsMutex_);
+            if (!replay->active) return;
+            replay->active = false;
+            replay->state = replay->stopRequested ? L"已停止" : (completed ? L"已完成" : L"已失败");
+            if (!error.empty()) replay->error = error;
+            handler = replay->handler;
+            connectionId = replay->connectionId;
+            pageId = replay->pageId;
+            summary = L"{\"总步骤\":" + std::to_wstring(replay->steps.size())
+                + L",\"已执行\":" + std::to_wstring(replay->executed)
+                + L",\"失败步骤\":" + std::to_wstring(replay->failedStep)
+                + L",\"状态\":\"" + replay->state + L"\"}";
+        }
+        auto event = std::make_shared<Event>();
+        event->id = nextEventId_.fetch_add(1);
+        event->connectionId = connectionId;
+        event->pageId = pageId;
+        event->handler = handler;
+        event->type = completed ? L"回放完成" : L"回放失败";
+        event->text = summary + (error.empty() ? L"" : L"，错误：" + error);
+        event->error = completed ? L"" : (error.empty() ? L"CDP 回放步骤执行失败。" : error);
+        event->replayId = replay->id;
+        PublishEvent(event);
+    }
+
+    ReplayStepOutcome ExecuteReplayStep(const std::shared_ptr<ReplayState>& replay, const std::shared_ptr<PageSession>& page,
+                                        const std::shared_ptr<Connection>& connection, const std::wstring& type, const std::wstring& dataJson) {
+        const auto data = ParseStepData(dataJson);
+        if (type == L"导航") {
+            const std::wstring url = JsonStepText(data, L"网址");
+            if (url.empty()) { Fail(L"CDP 回放导航步骤缺少网址。"); return ReplayStepOutcome::SyncFailed; }
+            if (!NavigateInternal(page->id, url, L"", replay->id)) return ReplayStepOutcome::SyncFailed;
+            return ReplayStepOutcome::AsyncStarted;
+        }
+        if (type == L"刷新") {
+            if (!SendCommand(connection, L"Page.reload", L"{}", PendingKind::NavigateWait, L"", std::to_wstring(page->id), page->sessionId, 0, replay->id))
+                return ReplayStepOutcome::SyncFailed;
+            return ReplayStepOutcome::AsyncStarted;
+        }
+        if (type == L"点击") {
+            const std::wstring selector = JsonStepText(data, L"选择器");
+            if (selector.empty()) { Fail(L"CDP 回放点击步骤缺少选择器。"); return ReplayStepOutcome::SyncFailed; }
+            const long long elementId = QueryElement(page->id, selector.c_str());
+            if (!elementId) return ReplayStepOutcome::SyncFailed;
+            if (!ClickElementInternal(elementId, L"", replay->id)) return ReplayStepOutcome::SyncFailed;
+            return ReplayStepOutcome::AsyncStarted;
+        }
+        if (type == L"输入") {
+            const std::wstring selector = JsonStepText(data, L"选择器");
+            if (selector.empty()) { Fail(L"CDP 回放输入步骤缺少选择器。"); return ReplayStepOutcome::SyncFailed; }
+            const long long elementId = QueryElement(page->id, selector.c_str());
+            if (!elementId) return ReplayStepOutcome::SyncFailed;
+            if (!InputTextElementInternal(elementId, JsonStepText(data, L"文本"), L"", replay->id)) return ReplayStepOutcome::SyncFailed;
+            return ReplayStepOutcome::AsyncStarted;
+        }
+        if (type == L"脚本") {
+            const std::wstring code = JsonStepText(data, L"脚本");
+            if (code.empty()) { Fail(L"CDP 回放脚本步骤缺少代码。"); return ReplayStepOutcome::SyncFailed; }
+            if (!EvaluateInternal(page->id, code, L"", replay->id)) return ReplayStepOutcome::SyncFailed;
+            return ReplayStepOutcome::AsyncStarted;
+        }
+        if (type == L"上传文件") {
+            const std::wstring selector = JsonStepText(data, L"选择器");
+            const std::wstring file = JsonStepText(data, L"文件");
+            if (selector.empty() || file.empty()) { Fail(L"CDP 回放上传步骤缺少选择器或文件。"); return ReplayStepOutcome::SyncFailed; }
+            const long long elementId = QueryElement(page->id, selector.c_str());
+            if (!elementId) return ReplayStepOutcome::SyncFailed;
+            if (!SetElementFilesInternal(elementId, file, L"", replay->id)) return ReplayStepOutcome::SyncFailed;
+            return ReplayStepOutcome::AsyncStarted;
+        }
+        if (type == L"按键") {
+            if (!PressKey(page->id, JsonStepText(data, L"键").c_str())) return ReplayStepOutcome::SyncFailed;
+            return ReplayStepOutcome::SyncOk;
+        }
+        if (type == L"组合键") {
+            if (!ComboKey(page->id, JsonStepText(data, L"修饰键").c_str(), JsonStepText(data, L"键").c_str())) return ReplayStepOutcome::SyncFailed;
+            return ReplayStepOutcome::SyncOk;
+        }
+        if (type == L"鼠标点击") {
+            double x = 0, y = 0, button = 0, count = 1;
+            if (!JsonStepNumber(data, L"横坐标", x) || !JsonStepNumber(data, L"纵坐标", y)) {
+                Fail(L"CDP 回放鼠标点击步骤缺少坐标。");
+                return ReplayStepOutcome::SyncFailed;
+            }
+            JsonStepNumber(data, L"按钮", button);
+            JsonStepNumber(data, L"次数", count);
+            if (!MouseClick(page->id, static_cast<int>(x), static_cast<int>(y), static_cast<int>(button), static_cast<int>(count)))
+                return ReplayStepOutcome::SyncFailed;
+            return ReplayStepOutcome::SyncOk;
+        }
+        if (type == L"滚轮") {
+            double x = 0, y = 0, deltaX = 0, deltaY = 0;
+            if (!JsonStepNumber(data, L"横坐标", x) || !JsonStepNumber(data, L"纵坐标", y)) {
+                Fail(L"CDP 回放滚轮步骤缺少坐标。");
+                return ReplayStepOutcome::SyncFailed;
+            }
+            JsonStepNumber(data, L"横向增量", deltaX);
+            JsonStepNumber(data, L"纵向增量", deltaY);
+            if (!MouseWheel(page->id, static_cast<int>(x), static_cast<int>(y), static_cast<int>(deltaX), static_cast<int>(deltaY)))
+                return ReplayStepOutcome::SyncFailed;
+            return ReplayStepOutcome::SyncOk;
+        }
+        if (type == L"拖拽") {
+            double fromX = 0, fromY = 0, toX = 0, toY = 0, steps = 10;
+            if (!JsonStepNumber(data, L"起点横坐标", fromX) || !JsonStepNumber(data, L"起点纵坐标", fromY)
+                || !JsonStepNumber(data, L"终点横坐标", toX) || !JsonStepNumber(data, L"终点纵坐标", toY)) {
+                Fail(L"CDP 回放拖拽步骤缺少坐标。");
+                return ReplayStepOutcome::SyncFailed;
+            }
+            JsonStepNumber(data, L"步数", steps);
+            if (!MouseDrag(page->id, static_cast<int>(fromX), static_cast<int>(fromY), static_cast<int>(toX), static_cast<int>(toY), static_cast<int>(steps)))
+                return ReplayStepOutcome::SyncFailed;
+            return ReplayStepOutcome::SyncOk;
+        }
+        if (type == L"插入文本") {
+            if (!InsertText(page->id, JsonStepText(data, L"文本").c_str())) return ReplayStepOutcome::SyncFailed;
+            return ReplayStepOutcome::SyncOk;
+        }
+        Fail(L"CDP 回放包含未知步骤类型：" + type);
+        return ReplayStepOutcome::SyncFailed;
+    }
+
+    void HandleScreencastFrame(const std::shared_ptr<Connection>& connection, const LingCdpJson::ValuePtr& params, const std::wstring& sessionId) {
+        if (!params) return;
+        // 无论是否仍在采集都必须应答，否则浏览器会因等待 ack 停止推帧。
+        const auto frameSession = params->Find(L"sessionId");
+        if (frameSession && frameSession->kind == LingCdpJson::Value::Kind::String)
+            SendCommand(connection, L"Page.screencastFrameAck",
+                        L"{\"sessionId\":" + LingCdpJson::Escape(frameSession->text) + L"}", PendingKind::Internal, L"", L"", L"");
+        const auto page = FindPageBySession(connection->id, sessionId);
+        if (!page) return;
+        std::shared_ptr<ScreencastState> state;
+        {
+            std::lock_guard<std::mutex> lock(screencastsMutex_);
+            const auto found = screencasts_.find(page->id);
+            if (found != screencasts_.end()) state = found->second;
+        }
+        if (!state || state->handler.empty()) return;
+        const auto data = params->Find(L"data");
+        if (!data || data->kind != LingCdpJson::Value::Kind::String || data->text.empty()) return;
+        std::vector<unsigned char> bytes;
+        if (!Base64Decode(data->text, bytes) || bytes.empty()) return;
+        const long long frameNumber = state->frameCounter.fetch_add(1) + 1;
+        std::wstring number = std::to_wstring(frameNumber);
+        while (number.size() < 6) number.insert(number.begin(), L'0');
+        const std::wstring framePath = state->directory + L"\\串流帧_" + number + (state->format == L"png" ? L".png" : L".jpg");
+        if (!WriteFileBytes(framePath, bytes)) return; // 单帧写盘失败不中断串流
+        const auto metadata = params->Find(L"metadata");
+        auto event = std::make_shared<Event>();
+        event->id = nextEventId_.fetch_add(1);
+        event->connectionId = connection->id;
+        event->pageId = page->id;
+        event->handler = state->handler;
+        event->type = L"串流帧";
+        event->text = framePath;
+        event->detail = metadata ? LingCdpJson::Serialize(metadata) : L"";
+        event->auxValue = static_cast<int>(frameNumber);
+        PublishEvent(event);
+    }
+
+
+
     void WatchdogLoop() {
         while (!watchdogStop_.load()) {
             std::unique_lock<std::mutex> lock(watchdogMutex_);
@@ -2340,6 +3079,7 @@ private:
             std::wstring text;
             std::wstring detail;
             std::wstring url;
+            long long replayToFail = 0;
             {
                 std::lock_guard<std::mutex> lock(page->mutex);
                 url = page->url;
@@ -2359,6 +3099,11 @@ private:
                     page->pendingLoadHandler.clear();
                     type = L"命令失败";
                     detail = L"页面导航加载超时。";
+                    if (page->loadReplayId) {
+                        replayToFail = page->loadReplayId;
+                        page->loadReplayId = 0;
+                        handler.clear();
+                    }
                 } else if (page->lifecyclePending && now > page->lifecycleDeadline) {
                     page->lifecyclePending = false;
                     handler = page->pendingLifecycleHandler;
@@ -2370,6 +3115,7 @@ private:
             }
             const std::shared_ptr<Connection> connection = FindConnection(page->connectionId);
             EmitEvent(connection, page, handler, type, text.empty() ? url : text, detail);
+            if (replayToFail) NotifyReplayStep(replayToFail, false, detail);
         }
     }
 
@@ -2408,6 +3154,27 @@ private:
                     PendingKind::Internal, L"", L"", L"");
             }
         }
+        // 页面释放时停止该页面的画面串流，避免浏览器继续推帧。
+        std::shared_ptr<ScreencastState> screencast;
+        {
+            std::lock_guard<std::mutex> lock(screencastsMutex_);
+            const auto found = screencasts_.find(pageId);
+            if (found != screencasts_.end()) {
+                screencast = found->second;
+                screencasts_.erase(found);
+            }
+        }
+        if (screencast && connection && connection->connected.load())
+            SendCommand(connection, L"Page.stopScreencast", L"{}", PendingKind::Internal, L"", L"", L"");
+        // 页面释放时中止该页面的活跃回放，避免执行器挂在已释放页面上。
+        std::vector<std::shared_ptr<ReplayState>> activeReplays;
+        {
+            std::lock_guard<std::mutex> lock(recordingsMutex_);
+            for (auto& pair : replays_) {
+                if (pair.second->active && pair.second->pageId == pageId) activeReplays.push_back(pair.second);
+            }
+        }
+        for (const auto& replay : activeReplays) FinishReplay(replay, false, L"CDP 页面已释放，回放中止。");
         if (emitDestroyed) {
             std::wstring handler;
             { std::lock_guard<std::mutex> lock(page->mutex); handler = page->eventHandler; }
@@ -2784,7 +3551,8 @@ private:
                 const long long pageId = _wtoi64(pending.aux.c_str());
                 const std::shared_ptr<PageSession> page = FindPage(pageId);
                 if (!page) {
-                    EmitCommand(connection, pending, false, L"CDP 页面已释放，导航结果无法投递。", 0);
+                    if (pending.replayId) NotifyReplayStep(pending.replayId, false, L"CDP 页面已释放，导航结果无法投递。");
+                    else EmitCommand(connection, pending, false, L"CDP 页面已释放，导航结果无法投递。", 0);
                     return;
                 }
                 int timeoutMs = 30000;
@@ -2793,6 +3561,7 @@ private:
                     std::lock_guard<std::mutex> lock(page->mutex);
                     page->loadPending = true;
                     page->pendingLoadHandler = pending.handler;
+                    page->loadReplayId = pending.replayId;
                     page->loadDeadlineValid = true;
                     page->loadDeadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs * 2);
                 }
@@ -2871,7 +3640,55 @@ private:
                 std::string utf8;const std::wstring json=LingCdpJson::Serialize(result);if(!LingCdpJson::WideToUtf8(json,utf8)||!WriteFileBytes(pending.outputPath.empty()?pending.aux:pending.outputPath,std::vector<unsigned char>(utf8.begin(),utf8.end()))){EmitCommand(connection,pending,false,L"CDP 无法原子写入任务输出。",0);return;}EmitCommand(connection,pending,true,pending.outputPath.empty()?pending.aux:pending.outputPath,0);return;
             }
             case PendingKind::IoRead: {
-                auto task=FindTask(pending.taskId);if(!task)return;auto data=result->Find(L"data");auto eof=result->Find(L"eof");if(data&&data->kind==LingCdpJson::Value::Kind::String)WriteTaskChunk(task,data->text);if(eof&&eof->kind==LingCdpJson::Value::Kind::Bool&&eof->boolean){CloseTaskFile(task,true);task->terminal=true;task->state=L"已完成";SendCommand(connection,L"IO.close",L"{\"handle\":"+LingCdpJson::Escape(task->ioHandle)+L"}",PendingKind::Internal,L"",L"",L"");}else ReadIoStream(connection,task);return;
+                auto task=FindTask(pending.taskId);if(!task)return;auto data=result->Find(L"data");auto eof=result->Find(L"eof");if(data&&data->kind==LingCdpJson::Value::Kind::String)WriteTaskChunk(task,data->text);if(eof&&eof->kind==LingCdpJson::Value::Kind::Bool&&eof->boolean){CloseTaskFile(task,true);task->terminal=true;task->state=L"已完成";task->progress=100;SendCommand(connection,L"IO.close",L"{\"handle\":"+LingCdpJson::Escape(task->ioHandle)+L"}",PendingKind::Internal,L"",L"",L"");EmitTaskEvent(task,L"任务完成",task->finalPath,L"");}else ReadIoStream(connection,task);return;
+            }
+            case PendingKind::TaskStart: {
+                auto task = FindTask(pending.taskId);
+                if (!task) return;
+                task->state = L"记录中";
+                EmitTaskEvent(task, L"任务已开始", task->kind, L"", pending.handler);
+                return;
+            }
+            case PendingKind::TaskResponse: {
+                auto task = FindTask(pending.taskId);
+                if (!task) return;
+                CloseTaskFile(task, true);
+                task->terminal = true;
+                task->state = L"已完成";
+                task->progress = 100;
+                EmitTaskEvent(task, L"任务完成", task->finalPath, L"");
+                return;
+            }
+            case PendingKind::TaskStopProfile: {
+                auto task = FindTask(pending.taskId);
+                if (!task) return;
+                const std::wstring profileJson = LingCdpJson::Serialize(result);
+                std::string utf8;
+                if (LingCdpJson::WideToUtf8(profileJson, utf8) && !utf8.empty())
+                    WriteTaskChunk(task, profileJson);
+                CloseTaskFile(task, true);
+                task->terminal = true;
+                task->state = L"已完成";
+                task->progress = 100;
+                SendCommand(connection, L"Profiler.disable", L"{}", PendingKind::Internal, L"", L"", pending.expectedSessionId);
+                EmitTaskEvent(task, L"任务完成", task->finalPath, L"", pending.handler);
+                return;
+            }
+            case PendingKind::TaskStopCoverage: {
+                auto task = FindTask(pending.taskId);
+                if (!task) return;
+                const std::wstring coverageJson = LingCdpJson::Serialize(result);
+                std::string utf8;
+                if (LingCdpJson::WideToUtf8(coverageJson, utf8) && !utf8.empty())
+                    WriteTaskChunk(task, coverageJson);
+                CloseTaskFile(task, true);
+                task->terminal = true;
+                task->state = L"已完成";
+                task->progress = 100;
+                SendCommand(connection, L"Profiler.stopPreciseCoverage", L"{}", PendingKind::Internal, L"", L"", pending.expectedSessionId);
+                SendCommand(connection, L"Profiler.disable", L"{}", PendingKind::Internal, L"", L"", pending.expectedSessionId);
+                EmitTaskEvent(task, L"任务完成", task->finalPath, L"", pending.handler);
+                return;
             }
             case PendingKind::ElementShotRect: {
                 std::wstring text;
@@ -3022,12 +3839,14 @@ private:
         if (method == L"Security.certificateError") { HandleCertificateError(connection,params); return; }
         if (method == L"Security.securityStateChanged") { EmitConnection(connection,L"安全状态",params?LingCdpJson::Serialize(params):L"",L"",false); return; }
         if (method == L"HeapProfiler.addHeapSnapshotChunk" || method == L"HeapProfiler.reportHeapSnapshotProgress" || method == L"Tracing.tracingComplete") { HandleTaskEvent(connection,method,params,sessionId); return; }
+        if (method == L"Page.screencastFrame") { HandleScreencastFrame(connection, params, sessionId); return; }
         if (method == L"Page.loadEventFired") {
             const std::shared_ptr<PageSession> page = FindPageBySession(connection->id, sessionId);
             if (!page) return;
             std::wstring handler;
             std::wstring type;
             std::wstring url;
+            long long replayToNotify = 0;
             {
                 std::lock_guard<std::mutex> lock(page->mutex);
                 url = page->url;
@@ -3045,9 +3864,15 @@ private:
                     handler = page->pendingLoadHandler;
                     page->pendingLoadHandler.clear();
                     type = L"加载完成";
+                    if (page->loadReplayId) {
+                        replayToNotify = page->loadReplayId;
+                        page->loadReplayId = 0;
+                        handler.clear(); // 回放导航完成只驱动执行器，不进入用户事件队列
+                    }
                 } else return;
             }
             EmitEvent(connection, page, handler, type, url, L"");
+            if (replayToNotify) NotifyReplayStep(replayToNotify, true, L"");
             return;
         }
         if (method == L"Page.lifecycleEvent") {
@@ -3115,6 +3940,7 @@ private:
             std::wstring requestMethod;
             std::wstring headersJson = L"{}";
             bool hasPostData = false;
+            std::wstring requestPostData;
             if (request && request->kind == LingCdpJson::Value::Kind::Object) {
                 const auto urlField = request->Find(L"url");
                 const auto methodField = request->Find(L"method");
@@ -3124,6 +3950,8 @@ private:
                 if (methodField && methodField->kind == LingCdpJson::Value::Kind::String) requestMethod = methodField->text;
                 if (headersField) headersJson = LingCdpJson::Serialize(headersField);
                 if (postField && postField->kind == LingCdpJson::Value::Kind::Bool) hasPostData = postField->boolean;
+                const auto postDataField = request->Find(L"postData");
+                if (postDataField && postDataField->kind == LingCdpJson::Value::Kind::String) requestPostData = postDataField->text;
             }
             auto reference = std::make_shared<InterceptRef>();
             reference->id = nextInterceptId_.fetch_add(1);
@@ -3134,6 +3962,7 @@ private:
             reference->method = requestMethod;
             reference->headersJson = headersJson;
             reference->hasPostData = hasPostData;
+            reference->postData = requestPostData;
             reference->needsAuth = needsAuth;
             {
                 std::lock_guard<std::mutex> lock(interceptsMutex_);
@@ -3366,7 +4195,8 @@ private:
 
     // ===== 命令发送 =====
     bool SendCommand(const std::shared_ptr<Connection>& connection, const std::wstring& method, const std::wstring& paramsJson,
-                     int kind, const std::wstring& handler, const std::wstring& aux, const std::wstring& sessionId) {
+                     int kind, const std::wstring& handler, const std::wstring& aux, const std::wstring& sessionId,
+                     long long taskId = 0, long long replayId = 0, bool noTimeout = false) {
         if (!connection || !connection->connected.load()) return Fail(L"CDP 连接尚未就绪。");
         const long long messageId = connection->nextMsgId.fetch_add(1);
         {
@@ -3376,7 +4206,11 @@ private:
             pending.kind = kind;
             pending.aux = aux;
             pending.method = method;
-            pending.submittedAt = std::chrono::steady_clock::now();
+            pending.expectedSessionId = sessionId;
+            pending.submittedAt = noTimeout ? std::chrono::steady_clock::time_point{} : std::chrono::steady_clock::now();
+            pending.noTimeout = noTimeout;
+            pending.taskId = taskId;
+            pending.replayId = replayId;
             connection->pending[messageId] = std::move(pending);
         }
         std::wstring message = L"{\"id\":" + std::to_wstring(messageId) + L",\"method\":" + LingCdpJson::Escape(method);
@@ -3507,13 +4341,34 @@ private:
 
     void HandleCertificateError(const std::shared_ptr<Connection>& connection,const LingCdpJson::ValuePtr& params){if(!params)return;auto eventId=params->Find(L"eventId");auto url=params->Find(L"requestURL");auto error=params->Find(L"errorType");if(!eventId||eventId->kind!=LingCdpJson::Value::Kind::Number)return;std::wstring origin;NormalizeOrigin(url&&url->kind==LingCdpJson::Value::Kind::String?url->text:L"",origin);std::wstring handler;bool allowed=false;{std::lock_guard<std::mutex> lock(connection->mutex);handler=connection->certificateHandler;allowed=connection->certificateOverrideEnabled&&connection->certificateOrigins.count(origin)&&std::chrono::steady_clock::now()<connection->certificateOverrideDeadline;}if(!allowed||handler.empty()){SendCommand(connection,L"Security.handleCertificateError",L"{\"eventId\":"+LingCdpJson::NumberText(eventId->number)+L",\"action\":\"cancel\"}",PendingKind::Internal,L"",L"",L"");return;}auto state=std::make_shared<CertificateErrorState>();state->id=nextCertificateErrorId_.fetch_add(1);state->connectionId=connection->id;state->eventId=static_cast<int>(eventId->number);state->url=url&&url->kind==LingCdpJson::Value::Kind::String?url->text:L"";state->origin=origin;state->errorType=error&&error->kind==LingCdpJson::Value::Kind::String?error->text:L"";state->deadline=std::chrono::steady_clock::now()+std::chrono::seconds(30);{std::lock_guard<std::mutex> lock(stage3Mutex_);certificateErrors_[state->id]=state;}auto event=std::make_shared<Event>();event->id=nextEventId_.fetch_add(1);event->connectionId=connection->id;event->handler=handler;event->type=L"证书错误";event->certificateErrorId=state->id;event->text=state->url;event->detail=state->errorType;PublishEvent(event);}
 
-    void HandleTaskEvent(const std::shared_ptr<Connection>& connection,const std::wstring& method,const LingCdpJson::ValuePtr& params,const std::wstring& sid){(void)sid;std::shared_ptr<TaskState> task;{std::lock_guard<std::mutex> lock(tasksMutex_);for(auto&p:tasks_)if(p.second->connectionId==connection->id&&!p.second->terminal&&(method==L"Tracing.tracingComplete"?p.second->kind==L"trace":p.second->kind==L"heap")){task=p.second;break;}}if(!task||!params)return;if(method==L"HeapProfiler.addHeapSnapshotChunk"){auto chunk=params->Find(L"chunk");if(chunk&&chunk->kind==LingCdpJson::Value::Kind::String)WriteTaskChunk(task,chunk->text);}else if(method==L"HeapProfiler.reportHeapSnapshotProgress"){auto done=params->Find(L"done");auto total=params->Find(L"total");if(done&&total&&total->number>0)task->progress=static_cast<int>(done->number*100/total->number);}else{auto stream=params->Find(L"stream");if(stream&&stream->kind==LingCdpJson::Value::Kind::String){task->ioHandle=stream->text;ReadIoStream(connection,task);}}}
+    void HandleTaskEvent(const std::shared_ptr<Connection>& connection,const std::wstring& method,const LingCdpJson::ValuePtr& params,const std::wstring& sid){
+        if(!params)return;
+        std::shared_ptr<TaskState> task;
+        {
+            std::lock_guard<std::mutex> lock(tasksMutex_);
+            for(auto& p:tasks_){
+                if(p.second->connectionId!=connection->id||p.second->terminal)continue;
+                const bool matched=(method==L"Tracing.tracingComplete")?p.second->kind==L"trace":p.second->kind==L"heap";
+                if(!matched)continue;
+                if(!p.second->sessionId.empty()&&!sid.empty()&&p.second->sessionId!=sid)continue;
+                task=p.second;break;
+            }
+        }
+        if(!task)return;
+        if(method==L"HeapProfiler.addHeapSnapshotChunk"){auto chunk=params->Find(L"chunk");if(chunk&&chunk->kind==LingCdpJson::Value::Kind::String)WriteTaskChunk(task,chunk->text);}
+        else if(method==L"HeapProfiler.reportHeapSnapshotProgress"){auto done=params->Find(L"done");auto total=params->Find(L"total");if(done&&total&&total->number>0){task->progress=static_cast<int>(done->number*100/total->number);task->lastProgressAt=std::chrono::steady_clock::now();}}
+        else{
+            auto stream=params->Find(L"stream");
+            if(stream&&stream->kind==LingCdpJson::Value::Kind::String){task->ioHandle=stream->text;ReadIoStream(connection,task);}
+            else{CloseTaskFile(task,true);task->terminal=true;task->state=L"已完成";task->progress=100;EmitTaskEvent(task,L"任务完成",task->finalPath,L"");}
+        }
+    }
 
     std::shared_ptr<SessionState> FindSessionByProtocol(const std::wstring& sid) const { std::lock_guard<std::mutex> lock(stage3Mutex_);auto found=sessionByProtocolId_.find(sid);return found==sessionByProtocolId_.end()?nullptr:sessions_.at(found->second); }
     std::shared_ptr<TaskState> FindTask(long long id) const { std::lock_guard<std::mutex> lock(tasksMutex_);auto found=tasks_.find(id);return found==tasks_.end()?nullptr:found->second; }
     void FailPendingForSession(const std::shared_ptr<Connection>& connection,const std::wstring& sid,const std::wstring& reason){std::vector<Pending> values;{std::lock_guard<std::mutex> lock(connection->pendingMutex);for(auto it=connection->pending.begin();it!=connection->pending.end();)if(it->second.expectedSessionId==sid){values.push_back(it->second);it=connection->pending.erase(it);}else++it;}for(auto&p:values)EmitCommand(connection,p,false,reason,0);}
-    void WriteTaskChunk(const std::shared_ptr<TaskState>& task,const std::wstring& text){if(!task||task->file==INVALID_HANDLE_VALUE)return;std::string utf8;if(!LingCdpJson::WideToUtf8(text,utf8))return;if(task->maximumBytes>0&&task->writtenBytes+static_cast<long long>(utf8.size())>task->maximumBytes){task->state=L"失败";task->error=L"输出超过文件上限";CloseTaskFile(task,false);task->terminal=true;return;}DWORD written=0;if(WriteFile(task->file,utf8.data(),static_cast<DWORD>(utf8.size()),&written,nullptr)&&written==utf8.size())task->writtenBytes+=written;}
-    void ReadIoStream(const std::shared_ptr<Connection>& connection,const std::shared_ptr<TaskState>& task){if(!task||task->ioHandle.empty()||task->terminal)return;SendCommand(connection,L"IO.read",L"{\"handle\":"+LingCdpJson::Escape(task->ioHandle)+L",\"size\":262144}",PendingKind::IoRead,task->handler,std::to_wstring(task->id),L"");}
+    void WriteTaskChunk(const std::shared_ptr<TaskState>& task,const std::wstring& text){if(!task||task->file==INVALID_HANDLE_VALUE)return;std::string utf8;if(!LingCdpJson::WideToUtf8(text,utf8))return;if(task->maximumBytes>0&&task->writtenBytes+static_cast<long long>(utf8.size())>task->maximumBytes){task->state=L"失败";task->error=L"输出超过文件上限";CloseTaskFile(task,false);task->terminal=true;EmitTaskEvent(task,L"任务失败",L"",task->error);return;}DWORD written=0;if(WriteFile(task->file,utf8.data(),static_cast<DWORD>(utf8.size()),&written,nullptr)&&written==utf8.size())task->writtenBytes+=written;}
+    void ReadIoStream(const std::shared_ptr<Connection>& connection,const std::shared_ptr<TaskState>& task){if(!task||task->ioHandle.empty()||task->terminal)return;SendCommand(connection,L"IO.read",L"{\"handle\":"+LingCdpJson::Escape(task->ioHandle)+L",\"size\":262144}",PendingKind::IoRead,L"",L"",L"",task->id);}
     bool WriteTaskOutput(const std::shared_ptr<TaskState>& task){if(!task)return false;std::vector<unsigned char> bytes;return WriteFileBytes(task->finalPath,bytes);}
     void HandleTargetInfo(const std::shared_ptr<Connection>& connection,const LingCdpJson::ValuePtr& info){if(!info)return;auto id=info->Find(L"targetId");if(!id||id->kind!=LingCdpJson::Value::Kind::String)return;std::lock_guard<std::mutex> lock(stage3Mutex_);long long handle=targetByProtocolId_.count(id->text)?targetByProtocolId_[id->text]:nextTargetHandle_.fetch_add(1);auto target=targets_.count(handle)?targets_[handle]:std::make_shared<TargetState>();target->id=handle;target->connectionId=connection->id;target->targetId=id->text;auto type=info->Find(L"type");auto url=info->Find(L"url");if(type&&type->kind==LingCdpJson::Value::Kind::String)target->type=type->text;if(url&&url->kind==LingCdpJson::Value::Kind::String)target->url=url->text;targets_[handle]=target;targetByProtocolId_[id->text]=handle;}
 
@@ -3562,8 +4417,27 @@ private:
 
     void EmitCommand(const std::shared_ptr<Connection>& connection, const Pending& pending, bool success,
                      const std::wstring& text, long long code) {
+        // 回放步骤命令的完成只驱动执行器，不进入用户事件队列。
+        if (pending.replayId) {
+            NotifyReplayStep(pending.replayId, success, success ? std::wstring() : text);
+            return;
+        }
+        // 任务命令的异步失败（超时/协议错误）统一落任务状态并通知任务处理器。
+        if (pending.taskId && !success) {
+            auto task = FindTask(pending.taskId);
+            if (task) FailTask(task, text);
+            return;
+        }
         if (pending.handler.empty()) return;
-        const std::shared_ptr<PageSession> page = FindPage(_wtoi64(pending.aux.c_str()));
+        // aux 既可能是数字 pageId（导航/求值），也可能是输出路径（截图/PDF/上传）；
+        // 路径形态解析不出 pageId 时按 expectedSessionId 反查页面，保证命令完成事件仍能定位页面。
+        std::shared_ptr<PageSession> page = FindPage(_wtoi64(pending.aux.c_str()));
+        if (!page && connection && !pending.expectedSessionId.empty())
+            page = FindPageBySession(connection->id, pending.expectedSessionId);
+        if (!page && connection && !pending.aux.empty() && pending.aux.find(L'\t') != std::wstring::npos) {
+            // aux 为「页面ID\t附加信息」形态（输入文本/上传）。
+            page = FindPage(_wtoi64(pending.aux.substr(0, pending.aux.find(L'\t')).c_str()));
+        }
         auto event = std::make_shared<Event>();
         event->id = nextEventId_.fetch_add(1);
         event->connectionId = connection ? connection->id : 0;
@@ -3896,6 +4770,8 @@ private:
     std::unordered_map<long long, std::shared_ptr<TaskState>> tasks_;
     std::unordered_map<long long, std::shared_ptr<RecordingState>> recordings_;
     std::unordered_map<long long, std::shared_ptr<ReplayState>> replays_;
+    std::unordered_map<long long, std::shared_ptr<ScreencastState>> screencasts_;
+    mutable std::mutex screencastsMutex_;
     std::unordered_map<std::wstring, long long> targetByProtocolId_;
     std::unordered_map<std::wstring, long long> sessionByProtocolId_;
     std::unordered_map<std::wstring, long long> frameByProtocolId_;
@@ -4070,6 +4946,19 @@ const CDP_CLIENT_WINDOW_METHODS = String.raw`
     long long CDP_加载回放(long long connection, const wchar_t* path) { return cdpClientRuntime_.LoadReplay(connection, path); }
     const wchar_t* CDP_取录制状态(long long recording) { cdpClientReturnText_ = cdpClientRuntime_.RecordingStateText(recording); return cdpClientReturnText_.c_str(); }
     const wchar_t* CDP_取回放状态(long long replay) { cdpClientReturnText_ = cdpClientRuntime_.ReplayStateText(replay); return cdpClientReturnText_.c_str(); }
+    long long CDP_开始堆快照(long long page, const wchar_t* path, const wchar_t* handler) { return cdpClientRuntime_.StartHeapSnapshot(page, path, handler); }
+    long long CDP_开始追踪(long long page, const wchar_t* categories, const wchar_t* path, const wchar_t* handler) { return cdpClientRuntime_.StartTrace(page, categories, path, handler); }
+    long long CDP_开始CPU分析(long long page, const wchar_t* path, const wchar_t* handler) { return cdpClientRuntime_.StartCpuProfile(page, path, handler); }
+    long long CDP_开始覆盖率(long long page, const wchar_t* path, const wchar_t* handler) { return cdpClientRuntime_.StartPreciseCoverage(page, path, handler); }
+    bool CDP_停止任务(long long task, const wchar_t* handler) { return cdpClientRuntime_.StopTask(task, handler); }
+    const wchar_t* CDP_取任务状态(long long task) { cdpClientReturnText_ = cdpClientRuntime_.TaskStateText(task); return cdpClientReturnText_.c_str(); }
+    int CDP_取任务进度(long long task) { return cdpClientRuntime_.TaskProgress(task); }
+    const wchar_t* CDP_取任务结果路径(long long task) { cdpClientReturnText_ = cdpClientRuntime_.TaskResultPath(task); return cdpClientReturnText_.c_str(); }
+    bool CDP_开始串流(long long page, const wchar_t* directory, const wchar_t* optionsJson, const wchar_t* handler) { return cdpClientRuntime_.StartScreencast(page, directory, optionsJson, handler); }
+    bool CDP_停止串流(long long page) { return cdpClientRuntime_.StopScreencast(page); }
+    bool CDP_执行回放(long long replay, long long page, const wchar_t* handler) { return cdpClientRuntime_.ExecuteReplay(replay, page, handler); }
+    bool CDP_停止回放(long long replay) { return cdpClientRuntime_.StopReplay(replay); }
+    long long CDP_取当前回放() { return cdpClientRuntime_.CurrentReplay(); }
     long long CDP_取当前目标() { return cdpClientRuntime_.CurrentTarget(); }
     long long CDP_取当前会话() { return cdpClientRuntime_.CurrentSession(); }
     long long CDP_取当前帧() { return cdpClientRuntime_.CurrentFrame(); }

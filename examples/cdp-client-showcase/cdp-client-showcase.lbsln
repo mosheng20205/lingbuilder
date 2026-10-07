@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "kind": "lingbuilder-solution",
+  "id": "cdp-client-showcase",
+  "name": "CDP 浏览器自动化工具",
+  "solutionFile": ".lingbuilder/solution.json",
+  "startupProjectId": "cdp-client-showcase",
+  "startupProjectIds": [
+    "cdp-client-showcase"
+  ],
+  "folders": [],
+  "projects": [
+    {
+      "id": "cdp-client-showcase",
+      "name": "CDP 浏览器自动化工具",
+      "type": "visual-cpp",
+      "sourceRoot": "src",
+      "references": []
+    }
+  ]
+}

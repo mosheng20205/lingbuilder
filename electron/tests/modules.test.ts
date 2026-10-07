@@ -513,12 +513,19 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       // 枚举请求头/枚举响应头/取响应体字节集/取请求体字节集（全部无参，封装官方
       // GetRequestAllHeader/GetResponseAllHeader/GetResponseBody+Len/GetRequestBody+Len，
       // 无 controlRef）。合计 +4 命令 +0 参数（实算摘要 d68f7cc8/e63f8fef）。
+      // 基线 2026-10-06 写回（CDP 客户端 3.1 阶段 3.5）：lingbuilder.cdp.client 3.0.0→3.1.0
+      // 新增性能长任务 8 命令（开始堆快照 3 参数/开始追踪 4 参数/开始CPU分析 3 参数/
+      // 开始覆盖率 3 参数/停止任务 2 参数/取任务状态 1 参数/取任务进度 1 参数/
+      // 取任务结果路径 1 参数，+18 参数）、画面串流 2 命令（开始串流 4 参数/停止串流 1 参数，
+      // +5 参数）、回放执行器 2 命令与 CDP_取当前回放 快照（执行回放 3 参数/停止回放 1 参数/
+      // 取当前回放 0 参数，+4 参数）。合计 +13 命令 +27 参数，无 controlRef
+      // （实算摘要 6259b54a/8da8cb1d）。
       modules: 102,
-      commands: 4073,
-      parameters: 7139,
+      commands: 4086,
+      parameters: 7166,
       controlReferences: 1345,
-      commandDigest: 'd68f7cc8',
-      parameterDigest: 'e63f8fef'
+      commandDigest: '6259b54a',
+      parameterDigest: '8da8cb1d'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -999,12 +1006,15 @@ test('工作区已安装模块全部通过 controlRef 清单和示例门禁', as
       //（枚举请求头/枚举响应头/取响应体字节集/取请求体字节集，全无参，见上一用例）；
       // 磁盘清单另有并行会话在途漂移（112→113 份、命令 +24 参数 +31 controlRef +10），
       // 本行按当前工作区实算（实算摘要 35faa18b/cfbefc1c）。
+      // 基线 2026-10-06 写回（CDP 客户端 3.1 阶段 3.5）：内置 +13 命令 +27 参数
+      //（性能长任务 8 条 +18 参数、画面串流 2 条 +5 参数、回放执行器 2 条 +CDP_取当前回放 +4 参数，
+      // 见上一用例）；本机磁盘仍为 11 份清单，磁盘侧 0 漂移（实算摘要 4fd80d45/b0d5063a）。
       modules: 113,
-      commands: 8153,
-      parameters: 19383,
+      commands: 8166,
+      parameters: 19410,
       controlReferences: 5121,
-      commandDigest: '35faa18b',
-      parameterDigest: 'cfbefc1c'
+      commandDigest: '4fd80d45',
+      parameterDigest: 'b0d5063a'
   }, '内置、官方和当前工作区第三方模块的每个方法与参数都必须进入全量审计');
   // OpenCV 以内置清单为准：本机未装 SDK 时磁盘上的同名清单是只有骨架的占位包（0 命令、无 targets）。
   const manifest = BUILTIN_MODULES.find(module => module.id === OPENCV_MODULE_ID) || auditedManifests.get('lingbuilder.opencv.sdk');

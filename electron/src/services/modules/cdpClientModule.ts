@@ -10,7 +10,7 @@ import {
 export const CDP_CLIENT_MODULE_ID = 'lingbuilder.cdp.client';
 
 type CdpClientCategory = '连接' | '页面' | '导航' | '脚本' | '元素' | '输入' | '网络' | '事件' | '截图' | '快照'
-  | '目标' | '会话' | '绑定' | '调试' | '性能' | '存储' | '录制';
+  | '目标' | '会话' | '绑定' | '调试' | '性能' | '存储' | '录制' | '任务' | '串流';
 
 interface CdpClientCommandSpec {
   name: string;
@@ -39,6 +39,7 @@ const CDP_PARAM_DOCS: Record<string, string> = {
   调用帧: '调试暂停时调用帧的标识（callFrameId）。',
   录制: 'CDP_开始录制 返回的录制会话 ID。',
   回放: 'CDP_加载回放 返回的回放会话 ID。',
+  任务: 'CDP_开始堆快照/开始追踪/开始CPU分析/开始覆盖率 返回的受管任务句柄。',
   绑定: '已安装的页面绑定名称。',
   网址: '完整 URL（含协议）。',
   'CDP_设置断点::网址': '断点所在脚本的 URL 匹配文本。',
@@ -70,6 +71,12 @@ const CDP_PARAM_DOCS: Record<string, string> = {
   证书错误: '“证书错误”事件携带的错误标识。',
   文件路径: '录制数据文件路径。',
   'CDP_设置元素文件::文件路径': '要上传的文件路径；文件必须真实存在。',
+  'CDP_开始堆快照::文件路径': '堆快照.heapsnapshot 输出文件路径。',
+  'CDP_开始追踪::文件路径': '追踪数据 JSON 输出文件路径。',
+  'CDP_开始CPU分析::文件路径': 'CPU Profile JSON 输出文件路径。',
+  'CDP_开始覆盖率::文件路径': '精确覆盖率 JSON 输出文件路径。',
+  'CDP_加载回放::文件路径': '要加载的录制文件路径。',
+  'CDP_开始追踪::类别': '逗号分隔的追踪类别，例如 "devtools.timeline,v8.execute"；空使用默认类别。',
   数据JSON: '录制步骤数据 JSON 文本。',
   触点JSON: '触点描述 JSON 数组文本。',
   填充颜色: '高亮填充颜色；当前版本保留该参数，暂不生效。',
@@ -703,19 +710,78 @@ const specs: CdpClientCommandSpec[] = [
     name: 'CDP_开始录制', signature: 'CDP_开始录制(页面, 文件路径, 处理器)', description: '开始 schemaVersion 1 自动化录制并返回受管句柄。', parameters: [parameter('页面', 'CDP页面'), parameter('文件路径', 'wideString'), handlerParameter('处理器', '必须使用 &处理器名。')], returnType: 'CDP录制', returnLabel: 'CDP录制', category: '录制'
   },
   {
-    name: 'CDP_记录步骤', signature: 'CDP_记录步骤(录制, 类型, 数据JSON)', description: '向录制追加结构化步骤；敏感字段会替换为 SECRET 占位符。', parameters: [parameter('录制', 'CDP录制'), parameter('类型', 'wideString'), parameter('数据JSON', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '录制'
+    name: 'CDP_记录步骤', signature: 'CDP_记录步骤(录制, 类型, 数据JSON)', description: '向录制追加结构化步骤；敏感字段会替换为 SECRET 占位符。录制期间模块命令（点击/输入/导航等）会自动采集步骤，本命令用于补充自定义步骤。',
+    parameters: [parameter('录制', 'CDP录制'), parameter('类型', 'wideString'), parameter('数据JSON', 'wideString')], returnType: 'bool', returnLabel: '逻辑型', category: '录制'
   },
   {
     name: 'CDP_停止录制', signature: 'CDP_停止录制(录制)', description: '停止录制并原子写入版本化 JSON 文件。', parameters: [parameter('录制', 'CDP录制')], returnType: 'bool', returnLabel: '逻辑型', category: '录制'
   },
   {
-    name: 'CDP_加载回放', signature: 'CDP_加载回放(连接, 文件路径)', description: '加载录制文件并返回回放句柄；执行器将在后续阶段 3 增量中启用。', parameters: [parameter('连接', 'CDP连接'), parameter('文件路径', 'wideString')], returnType: 'CDP回放', returnLabel: 'CDP回放', category: '录制'
+    name: 'CDP_加载回放', signature: 'CDP_加载回放(连接, 文件路径)', description: '加载录制文件并解析全部步骤，返回回放句柄；用 CDP_执行回放 在指定页面上逐步重放，用 CDP_取回放状态 查询进度。',
+    parameters: [parameter('连接', 'CDP连接'), parameter('文件路径', 'wideString')], returnType: 'CDP回放', returnLabel: 'CDP回放', category: '录制'
+  },
+  {
+    name: 'CDP_执行回放', signature: 'CDP_执行回放(回放, 页面, 完成处理器)', description: '在指定页面上按录制顺序逐步重放：导航步骤等待页面加载完成，点击/输入步骤按选择器重新定位元素，任一步骤失败立即中止并触发“回放失败”事件。完成或失败时触发完成处理器，用 CDP_取当前事件文本 读取摘要 JSON（总步骤/已执行/失败步骤/状态），用 CDP_取当前回放 取回放句柄。',
+    parameters: [parameter('回放', 'CDP回放'), parameter('页面', 'CDP页面'), handlerParameter('完成处理器', '必须使用 &处理器名；回放完成或失败时在 UI 线程执行。')], returnType: 'bool', returnLabel: '逻辑型', category: '录制',
+    insertText: 'CDP_执行回放($1, $2, &${3:回放完成})'
+  },
+  {
+    name: 'CDP_停止回放', signature: 'CDP_停止回放(回放)', description: '请求停止正在执行的回放；当前步骤完成后不再继续，状态变为“已停止”并触发完成事件。',
+    parameters: [parameter('回放', 'CDP回放')], returnType: 'bool', returnLabel: '逻辑型', category: '录制'
+  },
+  {
+    name: 'CDP_取回放状态', signature: 'CDP_取回放状态(回放)', description: '返回回放状态：已加载、执行中 第N/M步、已完成、已停止、已失败或无效回放。', parameters: [parameter('回放', 'CDP回放')], returnType: 'wideString', returnLabel: '文本型', category: '录制'
+  },
+  // ===== 阶段 3.5：性能长任务 =====
+  {
+    name: 'CDP_开始堆快照', signature: 'CDP_开始堆快照(页面, 文件路径, 完成处理器)', description: '对页面拍摄 V8 堆快照并流式写入 .heapsnapshot 文件（可用 Chrome DevTools 或内存分析工具打开）；进度用 CDP_取任务进度 查询，完成后触发“任务完成”事件，事件文本为输出文件路径。',
+    parameters: [parameter('页面', 'CDP页面'), parameter('文件路径', 'wideString'), handlerParameter('完成处理器', '必须使用 &处理器名；快照写入完成或失败时在 UI 线程执行，用 CDP_取当前任务 取任务句柄。')], returnType: 'CDP任务', returnLabel: 'CDP任务', category: '任务',
+    insertText: 'CDP_开始堆快照($1, "${2:heap.heapsnapshot}", &${3:任务完成})'
+  },
+  {
+    name: 'CDP_开始追踪', signature: 'CDP_开始追踪(页面, 类别, 文件路径, 完成处理器)', description: '开始性能追踪（Tracing，流式传输），停止时把追踪数据 JSON 写入文件；类别为逗号分隔的追踪类别（空使用默认 devtools.timeline,v8.execute,disabled-by-default-devtools.timeline）。用 CDP_停止任务 结束并落盘，完成后触发“任务完成”事件。',
+    parameters: [parameter('页面', 'CDP页面'), parameter('类别', 'wideString'), parameter('文件路径', 'wideString'), handlerParameter('完成处理器', '必须使用 &处理器名；追踪开始或失败时在 UI 线程执行。')], returnType: 'CDP任务', returnLabel: 'CDP任务', category: '任务',
+    insertText: 'CDP_开始追踪($1, "", "${2:trace.json}", &${3:追踪已开始})'
+  },
+  {
+    name: 'CDP_开始CPU分析', signature: 'CDP_开始CPU分析(页面, 文件路径, 完成处理器)', description: '开始 CPU 采样分析（Profiler）；开始成功触发“任务已开始”，用 CDP_停止任务 结束并把 CPU Profile JSON 写入文件后触发完成处理器的“任务完成”事件。',
+    parameters: [parameter('页面', 'CDP页面'), parameter('文件路径', 'wideString'), handlerParameter('完成处理器', '必须使用 &处理器名；分析开始或失败时在 UI 线程执行。')], returnType: 'CDP任务', returnLabel: 'CDP任务', category: '任务',
+    insertText: 'CDP_开始CPU分析($1, "${2:cpu-profile.json}", &${3:分析已开始})'
+  },
+  {
+    name: 'CDP_开始覆盖率', signature: 'CDP_开始覆盖率(页面, 文件路径, 完成处理器)', description: '开始 JS 精确覆盖率统计（Profiler.startPreciseCoverage，含调用计数与块级明细）；开始成功触发“任务已开始”，用 CDP_停止任务 结束并把覆盖率 JSON 写入文件后触发“任务完成”事件。',
+    parameters: [parameter('页面', 'CDP页面'), parameter('文件路径', 'wideString'), handlerParameter('完成处理器', '必须使用 &处理器名；覆盖率开始或失败时在 UI 线程执行。')], returnType: 'CDP任务', returnLabel: 'CDP任务', category: '任务',
+    insertText: 'CDP_开始覆盖率($1, "${2:coverage.json}", &${3:覆盖率已开始})'
+  },
+  {
+    name: 'CDP_停止任务', signature: 'CDP_停止任务(任务, 完成处理器)', description: '停止进行中的长任务：CPU 分析/覆盖率会取回结果写入任务输出文件，追踪会结束采集并等待流式数据落盘；堆快照不支持停止，请等待其自然完成。输出就绪后触发“任务完成”事件，事件文本为输出文件路径。',
+    parameters: [parameter('任务', 'CDP任务'), handlerParameter('完成处理器', '必须使用 &处理器名；输出写入完成或失败时在 UI 线程执行。')], returnType: 'bool', returnLabel: '逻辑型', category: '任务',
+    insertText: 'CDP_停止任务($1, &${2:任务完成})'
+  },
+  {
+    name: 'CDP_取任务状态', signature: 'CDP_取任务状态(任务)', description: '返回任务状态：已创建、记录中、已完成、失败或无效任务。',
+    parameters: [parameter('任务', 'CDP任务')], returnType: 'wideString', returnLabel: '文本型', category: '任务'
+  },
+  {
+    name: 'CDP_取任务进度', signature: 'CDP_取任务进度(任务)', description: '返回任务进度百分比（0-100）；目前堆快照会报告进度，其余任务在完成时直接到 100。',
+    parameters: [parameter('任务', 'CDP任务')], returnType: 'int', returnLabel: '整数型', category: '任务'
+  },
+  {
+    name: 'CDP_取任务结果路径', signature: 'CDP_取任务结果路径(任务)', description: '返回任务的输出文件路径；文件在任务完成后可用。',
+    parameters: [parameter('任务', 'CDP任务')], returnType: 'wideString', returnLabel: '文本型', category: '任务'
+  },
+  // ===== 阶段 3.5：画面串流 =====
+  {
+    name: 'CDP_开始串流', signature: 'CDP_开始串流(页面, 输出目录, 参数JSON, 帧处理器)', description: '开始页面画面串流（Page.startScreencast）：每帧解码后写入输出目录（文件名 串流帧_000001.jpg/png）并触发“串流帧”事件，事件文本为帧文件路径、详情为帧元数据 JSON、辅助数值为帧序号。参数 JSON 可含「格式（jpeg/png，默认 jpeg）、质量（0-100，默认 60）、最大宽度、最大高度、每N帧（1-60，默认 1）」，传空用全默认。停止用 CDP_停止串流；页面释放自动停止。高频页面建议用 每N帧 降低帧率。',
+    parameters: [parameter('页面', 'CDP页面'), parameter('输出目录', 'wideString', '帧图片输出目录；不存在时自动创建。'), parameter('参数JSON', 'wideString', 'JSON 对象文本，字段均可缺省：格式、质量、最大宽度、最大高度、每N帧。'), handlerParameter('帧处理器', '必须使用 &处理器名；每帧在 UI 线程执行。')], returnType: 'bool', returnLabel: '逻辑型', category: '串流',
+    insertText: 'CDP_开始串流($1, "${2:C:\\frames}", "", &${3:串流帧})'
+  },
+  {
+    name: 'CDP_停止串流', signature: 'CDP_停止串流(页面)', description: '停止该页面的画面串流并停止落盘。',
+    parameters: [parameter('页面', 'CDP页面')], returnType: 'bool', returnLabel: '逻辑型', category: '串流'
   },
   {
     name: 'CDP_取录制状态', signature: 'CDP_取录制状态(录制)', description: '返回录制状态。', parameters: [parameter('录制', 'CDP录制')], returnType: 'wideString', returnLabel: '文本型', category: '录制'
-  },
-  {
-    name: 'CDP_取回放状态', signature: 'CDP_取回放状态(回放)', description: '返回回放状态。', parameters: [parameter('回放', 'CDP回放')], returnType: 'wideString', returnLabel: '文本型', category: '录制'
   },
   ...([
     ['CDP_取当前目标', 'CDP目标', 'CDP目标', '返回当前 Target 事件对应的受管目标句柄。'],
@@ -723,13 +789,14 @@ const specs: CdpClientCommandSpec[] = [
     ['CDP_取当前帧', 'CDP帧', 'CDP帧', '返回当前 Frame 事件对应的帧句柄。'],
     ['CDP_取当前绑定', 'CDP绑定', 'CDP绑定', '返回当前 Runtime binding 事件对应的绑定句柄。'],
     ['CDP_取当前任务', 'CDP任务', 'CDP任务', '返回当前长任务事件对应的任务句柄。'],
+    ['CDP_取当前回放', 'CDP回放', 'CDP回放', '返回当前回放完成/失败事件对应的回放句柄。'],
     ['CDP_取当前断点', 'CDP断点', 'CDP断点', '返回当前断点事件对应的断点句柄。'],
     ['CDP_取当前证书错误', 'CDP证书错误', 'CDP证书错误', '返回当前证书错误事件的一次性裁决句柄。']
   ] as const).map(([name, returnType, returnLabel, description]) => ({
     name, signature: `${name}()`, description, parameters: [], returnType, returnLabel, category: '快照' as const
   })),
   ...([
-    ['CDP_取当前事件类型', 'wideString', '文本型', '返回当前回调事件类型：已就绪、连接失败、已断开、页面就绪、页面失败、加载完成、页面销毁、命令完成、命令失败、网络请求、网络响应、网络完成、网络失败、请求被拦截、需要认证、对话框出现、下载开始、下载进度、下载完成、下载取消、新页面出现、控制台或页面异常。'],
+    ['CDP_取当前事件类型', 'wideString', '文本型', '返回当前回调事件类型：已就绪、连接失败、已断开、页面就绪、页面失败、加载完成、页面销毁、命令完成、命令失败、网络请求、网络响应、网络完成、网络失败、请求被拦截、需要认证、对话框出现、下载开始、下载进度、下载完成、下载取消、新页面出现、控制台、页面异常、任务已开始、任务完成、任务失败、串流帧、回放完成或回放失败。'],
     ['CDP_取当前事件文本', 'wideString', '文本型', '返回当前事件的结果文本、错误说明或 JSON 数据快照；拦截事件返回请求头 JSON。'],
     ['CDP_取当前事件详情', 'wideString', '文本型', '返回当前事件的补充信息，例如控制台级别、拦截阶段（请求/响应）、对话框类型或下载编号。'],
     ['CDP_取当前错误', 'wideString', '文本型', '返回当前事件的中文错误说明；无错误返回空文本。'],
@@ -807,13 +874,13 @@ export const CDP_CLIENT_MODULE: LingBuilderModuleManifest = {
   schemaVersion: 2,
   id: CDP_CLIENT_MODULE_ID,
   name: 'CDP 客户端模块',
-  version: '3.0.0',
+  version: '3.1.0',
   minLingBuilderVersion: '0.6.0',
   category: '网络',
-  description: '提供 Chrome DevTools Protocol 受管客户端：多连接多调试端口并存、页面与 Target/Session flatten 路由、OOPIF/Worker、Runtime binding、Debugger、Performance、Storage 和严格证书裁决地基；阶段 3 的 screencast、完整性能任务与确定性回放仍在实施。',
+  description: '提供 Chrome DevTools Protocol 受管客户端：多连接多调试端口并存、页面与 Target/Session flatten 路由、OOPIF/Worker、Runtime binding、Debugger、性能长任务（堆快照/追踪/CPU 分析/精确覆盖率）、画面串流、请求拦截、严格证书裁决，以及自动化录制与确定性回放执行器。',
   author: 'LingBuilder',
   license: 'LingBuilder Built-in Module License',
-  tags: ['内置', '网络', 'CDP', 'Chrome DevTools Protocol', '浏览器自动化', '多连接', '请求拦截', 'WebSocket', '截图', '仿真'],
+  tags: ['内置', '网络', 'CDP', 'Chrome DevTools Protocol', '浏览器自动化', '多连接', '请求拦截', 'WebSocket', '截图', '仿真', '性能分析', '串流', '录制回放'],
   contributes: {
     commands: specs.map(contribution),
     types: [
@@ -842,9 +909,14 @@ export const CDP_CLIENT_MODULE: LingBuilderModuleManifest = {
         label: 'CDP 页面自动化处理链',
         insertText: '空 页面就绪()\n    如果 (CDP_取当前事件类型() == "页面就绪")\n        CDP_打开网址(CDP_取当前页面(), "https://example.com", &加载完成)\n    否则\n        调试输出(CDP_取当前错误())\n    如果结束\n结束\n\n空 加载完成()\n    CDP_元素 按钮 = CDP_查询元素(CDP_取当前页面(), "#submit")\n    CDP_点击元素(按钮, &点击完成)\n结束',
         description: '新建页面后等待加载、查询元素并点击的典型异步链。'
+      },
+      {
+        label: 'CDP 录制回放与性能任务',
+        insertText: 'CDP录制 录制 = CDP_开始录制(页面, "操作录制.json", &录制事件)\nCDP_点击元素(CDP_查询元素(页面, "#submit"), &点击完成)\nCDP_停止录制(录制)\nCDP回放 回放 = CDP_加载回放(连接, "操作录制.json")\nCDP_执行回放(回放, 页面, &回放完成)\nCDP任务 任务 = CDP_开始CPU分析(页面, "cpu-profile.json", &分析已开始)\nCDP_停止任务(任务, &任务完成)',
+        description: '录制页面操作为版本化 JSON，加载后在页面上确定性重放；长任务输出 JSON 文件。'
       }
     ],
-    docs: [{ title: 'CDP 客户端模块 3.0 使用说明', path: 'docs/modules/cdp-client/README.md' }]
+    docs: [{ title: 'CDP 客户端模块 3.1 使用说明', path: 'docs/modules/cdp-client/README.md' }]
   },
   targets: [
     {

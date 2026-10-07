@@ -101,7 +101,7 @@ async function main(): Promise<void> {
       ok: true,
       browser: path.basename(browserPath),
       ...result,
-      checks: ['多连接注册表', '/json/version 发现', 'WebSocket 升级', 'Target.createTarget + flatten attach', '导航等待 loadEventFired', 'Runtime.evaluate', '元素 focus + 逐字符键输入', '截图写盘', '断开清理', 'Fetch 拦截 mock 响应', '对话框应答', '下载事件', '文件上传', '暗色模式', '生命周期等待']
+      checks: ['多连接注册表', '/json/version 发现', 'WebSocket 升级', 'Target.createTarget + flatten attach', '导航等待 loadEventFired', 'Runtime.evaluate', '元素 focus + 逐字符键输入', '截图写盘', '断开清理', 'Fetch 拦截 mock 响应', '对话框应答', '下载事件', '文件上传', '暗色模式', '生命周期等待', '画面串流帧落盘+ack', '堆快照流式输出', 'CPU Profile 落盘', '精确覆盖率落盘', 'Tracing 流式落盘', '录制自动采集步骤', '确定性回放执行+状态']
     }, null, 2));
   } finally {
     browser.kill();
@@ -117,10 +117,11 @@ async function buildAndRun(options: {
   platforms: Array<'Win32' | 'x64'>;
   port: number;
   msbuild: string;
-}): Promise<{ projectDir: string; executable: string; compiledPlatforms: string[] }> {
+}): Promise<{ projectDir: string; executable: string; compiledPlatforms: string[]; frames: number; recordedSteps: number }> {
   await fs.rm(options.projectDir, { recursive: true, force: true });
   await fs.mkdir(options.projectDir, { recursive: true });
   await fs.mkdir(path.join(options.projectDir, 'cdp-downloads'), { recursive: true });
+  await fs.mkdir(path.join(options.projectDir, 'cdp-frames'), { recursive: true });
   await fs.writeFile(path.join(options.projectDir, 'cdp-upload.txt'), 'LingBuilder CDP upload smoke', 'utf8');
   const project: LingWindowProject = {
     id: options.projectId,
@@ -150,7 +151,10 @@ async function buildAndRun(options: {
     enabledModules: options.enabledModules
   });
   if (generated.blockingDiagnostics.length) throw new Error(generated.blockingDiagnostics.join('\n'));
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files
+    .filter(file => file.relativePath === 'main.cpp' || file.relativePath === 'lingbuilder_runtime.h')
+    .map(file => file.content)
+    .join('\n');
   for (const required of ['class LingCdpRuntime', 'WinHttpWebSocketCompleteUpgrade', 'Target.attachToTarget', 'case WM_LINGBUILDER_CDP_CLIENT_EVENT:']) {
     if (!mainCpp.includes(required)) throw new Error(`生成的 CDP 客户端 C++ 缺少：${required}`);
   }
@@ -174,7 +178,7 @@ async function buildAndRun(options: {
   const executable = path.join(options.projectDir, 'x64', 'Release', 'bin', `${exported.projectName}.exe`);
   const child = spawn(executable, [], { cwd: path.dirname(executable), windowsHide: true, stdio: 'ignore' });
   const exitCode = await new Promise<number>((resolve, reject) => {
-    const timeout = setTimeout(() => { child.kill(); reject(new Error('CDP 客户端原生 smoke 超时。')); }, 60000);
+    const timeout = setTimeout(() => { child.kill(); reject(new Error('CDP 客户端原生 smoke 超时。')); }, 120000);
     child.once('error', error => { clearTimeout(timeout); reject(error); });
     child.once('exit', code => { clearTimeout(timeout); resolve(code ?? -1); });
   });
@@ -183,13 +187,35 @@ async function buildAndRun(options: {
   if (screenshot.length < 1024) throw new Error('CDP 截图文件异常：体积过小。');
   const pngHeader = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
   if (!screenshot.subarray(0, 4).equals(pngHeader)) throw new Error('CDP 截图不是有效的 PNG。');
-  return { projectDir: options.projectDir, executable, compiledPlatforms: options.platforms };
+  const heapSnapshot = await fs.stat(path.join(options.projectDir, 'cdp-heap.heapsnapshot'));
+  if (heapSnapshot.size < 1024) throw new Error('CDP 堆快照文件异常：体积过小。');
+  const cpuProfile = JSON.parse(await fs.readFile(path.join(options.projectDir, 'cdp-cpu.json'), 'utf8'));
+  if (!cpuProfile?.profile?.nodes?.length) throw new Error('CDP CPU Profile 缺少采样节点。');
+  const coverage = JSON.parse(await fs.readFile(path.join(options.projectDir, 'cdp-coverage.json'), 'utf8'));
+  if (!Array.isArray(coverage?.result)) throw new Error('CDP 覆盖率输出缺少 result 数组。');
+  const trace = JSON.parse(await fs.readFile(path.join(options.projectDir, 'cdp-trace.json'), 'utf8'));
+  const traceEvents = Array.isArray(trace) ? trace : trace?.traceEvents;
+  if (!Array.isArray(traceEvents) || traceEvents.length === 0) throw new Error('CDP 追踪输出缺少 traceEvents。');
+  const recording = JSON.parse(await fs.readFile(path.join(options.projectDir, 'cdp-recording.json'), 'utf8'));
+  if (recording?.schema !== 'lingbuilder.cdp.recording' || !Array.isArray(recording?.steps) || recording.steps.length < 3) {
+    throw new Error(`CDP 录制自动采集步骤异常：${recording?.steps?.length}`);
+  }
+  const frames = (await fs.readdir(path.join(options.projectDir, 'cdp-frames'))).filter(name => name.startsWith('串流帧_'));
+  if (frames.length < 2) throw new Error(`CDP 串流帧数量异常：${frames.length}`);
+  return { projectDir: options.projectDir, executable, compiledPlatforms: options.platforms, frames: frames.length, recordedSteps: recording.steps.length };
 }
 
 function createSource(port: number, screenshotPath: string, debugPath: string, projectDir: string): string {
   const pageUrl = "data:text/html,<html><head><title>CDP-SMOKE</title></head><body><input id=q><input id=file type=file><a id=dl href=data:application/octet-stream,smoke-download-content download=smoke.bin>dl</a><script>fetch('https://mock.example.test/api');setTimeout(function(){alert('smoke-dialog')},800)</script></body></html>";
+  const pageUrl2 = "data:text/html,<html><head><title>CDP-SMOKE-2</title></head><body><input id=q><a id=rec>rec</a><script>document.getElementById('rec').onclick=function(){document.title='CLICKED';return false;}</script></body></html>";
   const uploadPath = path.join(projectDir, 'cdp-upload.txt').replace(/\\/gu, '/');
   const downloadsDir = path.join(projectDir, 'cdp-downloads').replace(/\\/gu, '/');
+  const framesDir = path.join(projectDir, 'cdp-frames').replace(/\\/gu, '/');
+  const cpuPath = path.join(projectDir, 'cdp-cpu.json').replace(/\\/gu, '/');
+  const coveragePath = path.join(projectDir, 'cdp-coverage.json').replace(/\\/gu, '/');
+  const tracePath = path.join(projectDir, 'cdp-trace.json').replace(/\\/gu, '/');
+  const heapPath = path.join(projectDir, 'cdp-heap.heapsnapshot').replace(/\\/gu, '/');
+  const recordingPath = path.join(projectDir, 'cdp-recording.json').replace(/\\/gu, '/');
   return [
     '类 MainWindow',
     '    事件 _MainWindow_创建完毕()',
@@ -258,8 +284,89 @@ function createSource(port: number, screenshotPath: string, debugPath: string, p
     '        @ if (std::wstring(CDP_取当前事件类型()) != L"命令完成") ExitProcess(12);',
     '        @ CDP_拦截停止(CDP_取当前页面());',
     '        @ CDP_重置仿真(CDP_取当前页面());',
+    `        局部 逻辑型 动画脚本已提交 = CDP_执行脚本(CDP_取当前页面(), "setInterval(function(){document.body.style.backgroundColor=(document.body.style.backgroundColor===\'red\')?\'blue\':\'red\';},80)", &动画已启动)`,
+    `        @ if (!动画脚本已提交) { FILE* st = nullptr; if (_wfopen_s(&st, L"${debugPath}", L"a, ccs=UTF-8") == 0 && st) { fwprintf(st, L"stage=animation-submit-failed err=[%s]\\n", CDP_取最后错误()); fclose(st); } ExitProcess(51); }`,
+    '    结束',
+    '    事件 动画已启动()',
+    `        局部 逻辑型 串流已启动 = 假`,
+    `        串流已启动 = CDP_开始串流(CDP_取当前页面(), "${framesDir}", "", &串流帧)`,
+    `        @ if (!串流已启动) { FILE* st = nullptr; if (_wfopen_s(&st, L"${debugPath}", L"a, ccs=UTF-8") == 0 && st) { fwprintf(st, L"stage=screencast-failed err=[%s]\\n", CDP_取最后错误()); fclose(st); } ExitProcess(50); }`,
+    '    结束',
+    '    事件 串流帧()',
+    '        @ if (std::wstring(CDP_取当前事件类型()) != L"串流帧") ExitProcess(31);',
+    '        @ if (GetFileAttributesW(CDP_取当前事件文本()) == INVALID_FILE_ATTRIBUTES) ExitProcess(32);',
+    '        @ static int lbFrames = 0; ++lbFrames;',
+    '        @ if (lbFrames != 2) return;',
+    '        CDP_停止串流(CDP_取当前页面())',
+    `        CDP_开始CPU分析(CDP_取当前页面(), "${cpuPath}", &分析已开始)`,
+    `        CDP_开始覆盖率(CDP_取当前页面(), "${coveragePath}", &覆盖率已开始)`,
+    `        CDP_开始追踪(CDP_取当前页面(), "", "${tracePath}", &追踪已开始)`,
+    `        CDP_开始堆快照(CDP_取当前页面(), "${heapPath}", &任务完成)`,
+    `        @ { FILE* st = nullptr; if (_wfopen_s(&st, L"${debugPath}", L"a, ccs=UTF-8") == 0 && st) { fwprintf(st, L"stage=all-tasks-submitted\\n"); fclose(st); } }`,
+    '    结束',
+    '    事件 分析已开始()',
+    `        @ { FILE* st = nullptr; if (_wfopen_s(&st, L"${debugPath}", L"a, ccs=UTF-8") == 0 && st) { fwprintf(st, L"stage=cpu-started task=[%lld]\\n", CDP_取当前任务()); fclose(st); } }`,
+    '        @ if (std::wstring(CDP_取当前事件类型()) != L"任务已开始") ExitProcess(33);',
+    '        CDP_停止任务(CDP_取当前任务(), &任务完成)',
+    '    结束',
+    '    事件 覆盖率已开始()',
+    `        @ { FILE* st = nullptr; if (_wfopen_s(&st, L"${debugPath}", L"a, ccs=UTF-8") == 0 && st) { fwprintf(st, L"stage=coverage-started\\n"); fclose(st); } }`,
+    '        @ if (std::wstring(CDP_取当前事件类型()) != L"任务已开始") ExitProcess(34);',
+    '        CDP_停止任务(CDP_取当前任务(), &任务完成)',
+    '    结束',
+    '    事件 追踪已开始()',
+    `        @ { FILE* st = nullptr; if (_wfopen_s(&st, L"${debugPath}", L"a, ccs=UTF-8") == 0 && st) { fwprintf(st, L"stage=trace-started type=[%s] err=[%s]\\n", CDP_取当前事件类型(), CDP_取当前错误()); fclose(st); } }`,
+    '        @ if (std::wstring(CDP_取当前事件类型()) != L"任务已开始") ExitProcess(35);',
+    '        CDP_停止任务(CDP_取当前任务(), &任务完成)',
+    '    结束',
+    '    事件 任务完成()',
+    `        @ { FILE* st = nullptr; if (_wfopen_s(&st, L"${debugPath}", L"a, ccs=UTF-8") == 0 && st) { fwprintf(st, L"stage=task-event type=[%s]\\n", CDP_取当前事件类型()); fclose(st); } }`,
+    `        @ { FILE* st = nullptr; if (_wfopen_s(&st, L"${debugPath}", L"a, ccs=UTF-8") == 0 && st) { fwprintf(st, L"stage=task-event task=[%lld]\\n", CDP_取当前任务()); fclose(st); } }`,
+    `        @ { FILE* st = nullptr; if (_wfopen_s(&st, L"${debugPath}", L"a, ccs=UTF-8") == 0 && st) { fwprintf(st, L"stage=task-event path=[%s]\\n", CDP_取当前事件文本()); fclose(st); } }`,
+    `        @ { FILE* st = nullptr; if (_wfopen_s(&st, L"${debugPath}", L"a, ccs=UTF-8") == 0 && st) { fwprintf(st, L"stage=task-event err=[%s]\\n", CDP_取当前错误()); fclose(st); } }`,
+    '        @ if (std::wstring(CDP_取当前事件类型()) != L"任务完成") ExitProcess(36);',
+    '        @ if (GetFileAttributesW(CDP_取当前事件文本()) == INVALID_FILE_ATTRIBUTES) ExitProcess(37);',
+    '        @ static int lbTaskDone = 0; ++lbTaskDone;',
+    '        如果 (lbTaskDone == 4)',
+    '        CDP_执行脚本(CDP_取当前页面(), "1", &录制阶段)',
+    '        如果结束',
+    '    结束',
+    '    事件 录制阶段()',
+    `        @ { FILE* st = nullptr; if (_wfopen_s(&st, L"${debugPath}", L"a, ccs=UTF-8") == 0 && st) { fwprintf(st, L"stage=recording-phase\\n"); fclose(st); } }`,
+    `        局部 CDP录制 录制 = CDP_开始录制(CDP_取当前页面(), "${recordingPath}", &录制事件)`,
+    `        @ if (录制 == 0) { FILE* st = nullptr; if (_wfopen_s(&st, L"${debugPath}", L"a, ccs=UTF-8") == 0 && st) { fwprintf(st, L"stage=recording-start-failed err=[%s]\\n", CDP_取最后错误()); fclose(st); } ExitProcess(70); }`,
+    `        CDP_打开网址(CDP_取当前页面(), "${pageUrl2}", &自动步骤1)`,
+    '        CDP_输入文本(CDP_查询元素(CDP_取当前页面(), "#q"), "ReplayMe", &自动步骤2)',
+    '        CDP_点击元素(CDP_查询元素(CDP_取当前页面(), "#rec"), &自动步骤3)',
+    '        CDP_停止录制(录制)',
+    `        @ { FILE* st = nullptr; if (_wfopen_s(&st, L"${debugPath}", L"a, ccs=UTF-8") == 0 && st) { fwprintf(st, L"stage=recording-stopped file=%d\\n", GetFileAttributesW(L"${recordingPath.replace(/\\/gu, '\\\\')}") != INVALID_FILE_ATTRIBUTES); fclose(st); } }`,
+    '        CDP_执行脚本(CDP_取当前页面(), "document.getElementById(\'q\').value=\'\'", &清空完成)',
+    '    结束',
+    '    事件 清空完成()',
+    `        局部 CDP回放 回放 = CDP_加载回放(CDP_取当前连接(), "${recordingPath}")`,
+    `        @ if (回放 == 0) { FILE* st = nullptr; if (_wfopen_s(&st, L"${debugPath}", L"a, ccs=UTF-8") == 0 && st) { fwprintf(st, L"stage=replay-load-failed err=[%s]\\n", CDP_取最后错误()); fclose(st); } ExitProcess(71); }`,
+    '        CDP_执行回放(回放, CDP_取当前页面(), &回放完成)',
+    `        @ { FILE* st = nullptr; if (_wfopen_s(&st, L"${debugPath}", L"a, ccs=UTF-8") == 0 && st) { fwprintf(st, L"stage=replay-submitted\\n"); fclose(st); } }`,
+    '    结束',
+    '    事件 回放完成()',
+    `        @ if (std::wstring(CDP_取当前事件类型()) == L"回放完成") { FILE* st = nullptr; if (_wfopen_s(&st, L"${debugPath}", L"a, ccs=UTF-8") == 0 && st) { fwprintf(st, L"stage=replay-done\\n"); fclose(st); } }`,
+    `        @ if (std::wstring(CDP_取当前事件类型()) != L"回放完成") { FILE* dbg = nullptr; if (_wfopen_s(&dbg, L"${debugPath}", L"a, ccs=UTF-8") == 0 && dbg) { fwprintf(dbg, L"replay type=[%s]\\nerr=[%s]\\ntext=[%s]\\n", CDP_取当前事件类型(), CDP_取当前错误(), CDP_取当前事件文本()); fclose(dbg); } ExitProcess(42); }`,
+    '        @ if (std::wstring(CDP_取回放状态(CDP_取当前回放())) != L"已完成") ExitProcess(43);',
+    '        CDP_执行脚本(CDP_取当前页面(), "document.getElementById(\'q\').value", &回放验证)',
+    '    结束',
+    '    事件 回放验证()',
+    '        @ if (std::wstring(CDP_取当前事件类型()) != L"命令完成") ExitProcess(44);',
+    '        @ if (std::wstring(CDP_取当前事件文本()) != L"ReplayMe") ExitProcess(45);',
     '        @ CDP_断开连接(CDP_取当前连接());',
     '        @ ExitProcess(0);',
+    '    结束',
+    '    事件 录制事件()',
+    '    结束',
+    '    事件 自动步骤1()',
+    '    结束',
+    '    事件 自动步骤2()',
+    '    结束',
+    '    事件 自动步骤3()',
     '    结束',
     '结束类'
   ].join('\n');

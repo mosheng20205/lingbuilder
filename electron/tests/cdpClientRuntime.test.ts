@@ -114,8 +114,8 @@ function generate(enabledModules: InstalledModule[], designerBackend?: 'new-emoj
 
 test('CDP 客户端模块清单、文档与命令完整性', async () => {
   assert.equal(validateModuleManifest(CDP_CLIENT_MODULE).diagnostics.length, 0);
-  assert.equal(CDP_CLIENT_COMMAND_SPECS.length, 148);
-  assert.equal(CDP_CLIENT_MODULE.version, '3.0.0');
+  assert.equal(CDP_CLIENT_COMMAND_SPECS.length, 161);
+  assert.equal(CDP_CLIENT_MODULE.version, '3.1.0');
   assert.deepEqual(
     CDP_CLIENT_MODULE.bindings?.commands?.map(item => item.command),
     CDP_CLIENT_MODULE.contributes?.commands?.map(item => item.name)
@@ -133,7 +133,10 @@ test('CDP 客户端模块清单、文档与命令完整性', async () => {
     'CDP_设置自动附加', 'CDP_绑定目标事件', 'CDP_枚举目标JSON', 'CDP_附加目标', 'CDP_分离会话', 'CDP_会话执行脚本', 'CDP_取目标JSON', 'CDP_取会话JSON', 'CDP_枚举帧JSON',
     'CDP_添加页面绑定', 'CDP_移除页面绑定', 'CDP_高亮元素', 'CDP_隐藏高亮', 'CDP_派发触摸',
     'CDP_启用调试器', 'CDP_禁用调试器', 'CDP_绑定调试事件', 'CDP_设置断点', 'CDP_移除断点', 'CDP_暂停调试', 'CDP_恢复调试', 'CDP_调试单步', 'CDP_取当前调用帧数量', 'CDP_取当前调用帧', 'CDP_取调用帧JSON', 'CDP_调用帧执行脚本', 'CDP_取作用域变量',
-    'CDP_取性能指标', 'CDP_取存储用量', 'CDP_清理来源数据', 'CDP_开启证书错误接管', 'CDP_裁决证书错误', 'CDP_关闭证书错误接管', 'CDP_绑定安全状态事件', 'CDP_开始录制', 'CDP_记录步骤', 'CDP_停止录制', 'CDP_加载回放', 'CDP_取录制状态', 'CDP_取回放状态']) {
+    'CDP_取性能指标', 'CDP_取存储用量', 'CDP_清理来源数据', 'CDP_开启证书错误接管', 'CDP_裁决证书错误', 'CDP_关闭证书错误接管', 'CDP_绑定安全状态事件', 'CDP_开始录制', 'CDP_记录步骤', 'CDP_停止录制', 'CDP_加载回放', 'CDP_取录制状态', 'CDP_取回放状态',
+    // 阶段 3.5：性能任务、串流与回放执行器
+    'CDP_开始堆快照', 'CDP_开始追踪', 'CDP_开始CPU分析', 'CDP_开始覆盖率', 'CDP_停止任务', 'CDP_取任务状态', 'CDP_取任务进度', 'CDP_取任务结果路径',
+    'CDP_开始串流', 'CDP_停止串流', 'CDP_执行回放', 'CDP_停止回放', 'CDP_取当前回放']) {
     assert.ok(CDP_CLIENT_COMMAND_SPECS.some(item => item.name === name), `缺少命令 ${name}`);
   }
   const documentationPath = path.resolve(process.cwd(), 'docs/modules/cdp-client/README.md');
@@ -143,6 +146,9 @@ test('CDP 客户端模块清单、文档与命令完整性', async () => {
   assert.ok(documentation.includes('--remote-debugging-port'));
   assert.ok(documentation.includes('CDP_拦截开始'), '模块文档缺少阶段 2 拦截说明');
   assert.ok(documentation.includes('CDP_应答对话框'), '模块文档缺少阶段 2 对话框说明');
+  assert.ok(documentation.includes('CDP_开始串流'), '模块文档缺少串流说明');
+  assert.ok(documentation.includes('CDP_执行回放'), '模块文档缺少回放执行器说明');
+  assert.ok(documentation.includes('CDP_开始堆快照'), '模块文档缺少性能任务说明');
   // 全部异步命令必须使用 &处理器名 引用语法。
   for (const spec of CDP_CLIENT_COMMAND_SPECS) {
     for (const parameter of spec.parameters) {
@@ -232,6 +238,21 @@ test('Win32 CDP 客户端生成多连接 runtime、会话路由与处理器引�
   assert.ok(mainCpp.includes('long long CDP_附加目标(long long target, const wchar_t* handler)'));
   assert.ok(mainCpp.includes('long long CDP_设置断点(long long page'));
   assert.ok(mainCpp.includes('bool CDP_清理来源数据(long long connection'));
+  // 阶段 3.5：性能长任务、画面串流与回放执行器。
+  assert.ok(mainCpp.includes('HeapProfiler.takeHeapSnapshot'));
+  assert.ok(mainCpp.includes('HeapProfiler.addHeapSnapshotChunk'));
+  assert.ok(mainCpp.includes('Tracing.start'));
+  assert.ok(mainCpp.includes('Tracing.tracingComplete'));
+  assert.ok(mainCpp.includes('Profiler.startPreciseCoverage'));
+  assert.ok(mainCpp.includes('Profiler.takePreciseCoverage'));
+  assert.ok(mainCpp.includes('Page.startScreencast'));
+  assert.ok(mainCpp.includes('Page.screencastFrameAck'));
+  assert.ok(mainCpp.includes('IO.read'));
+  assert.ok(mainCpp.includes('NotifyReplayStep'));
+  assert.ok(mainCpp.includes('AutoRecordStep'));
+  assert.ok(mainCpp.includes('bool CDP_执行回放(long long replay, long long page, const wchar_t* handler)'));
+  assert.ok(mainCpp.includes('long long CDP_开始堆快照(long long page, const wchar_t* path, const wchar_t* handler)'));
+  assert.ok(mainCpp.includes('bool CDP_开始串流(long long page, const wchar_t* directory, const wchar_t* optionsJson, const wchar_t* handler)'));
   // 阶段 2 命令调用生成。
   assert.ok(mainCpp.includes('CDP_拦截继续(CDP_取当前拦截())'));
   assert.ok(mainCpp.includes('CDP_应答对话框(CDP_取当前页面(), true, L"")'));
@@ -258,4 +279,58 @@ test('未启用 CDP 模块时不注入 runtime 与消息号', () => {
   assert.equal(mainCpp.includes('LingCdpJson'), false);
   assert.equal(mainCpp.includes('#define LINGBUILDER_CDP_CLIENT_MODULE'), false);
   assert.equal(mainCpp.includes('long long CDP_连接(const wchar_t* address'), false);
+});
+
+test('阶段 3.5 命令可从 .lcpp 调用并生成任务/串流/回放调用链', () => {
+  const stage35Source = [
+    '类 MainWindow',
+    '    事件 _MainWindow_创建完毕()',
+    '        局部 CDP连接 浏览器 = CDP_连接("http://127.0.0.1:9222", &连接就绪)',
+    '    结束',
+    '    事件 连接就绪()',
+    '        局部 CDP连接 浏览器 = CDP_取当前连接()',
+    '        局部 CDP页面 页面 = CDP_新建页面(浏览器, "https://example.com", &页面就绪)',
+    '    结束',
+    '    事件 页面就绪()',
+    '        CDP_开始串流(CDP_取当前页面(), "C:/frames", "", &串流帧)',
+    '        局部 CDP任务 分析任务 = CDP_开始CPU分析(CDP_取当前页面(), "cpu.json", &分析已开始)',
+    '        局部 CDP任务 快照任务 = CDP_开始堆快照(CDP_取当前页面(), "heap.heapsnapshot", &任务完成)',
+    '        局部 CDP任务 覆盖率任务 = CDP_开始覆盖率(CDP_取当前页面(), "coverage.json", &覆盖率已开始)',
+    '        局部 CDP任务 追踪任务 = CDP_开始追踪(CDP_取当前页面(), "", "trace.json", &追踪已开始)',
+    '        CDP_停止任务(分析任务, &任务完成)',
+    '        局部 CDP回放 回放 = CDP_加载回放(CDP_取当前连接(), "操作录制.json")',
+    '        CDP_执行回放(回放, CDP_取当前页面(), &回放完成)',
+    '    结束',
+    '    事件 串流帧()',
+    '        调试输出(CDP_取当前事件文本())',
+    '    结束',
+    '    事件 分析已开始()',
+    '    结束',
+    '    事件 覆盖率已开始()',
+    '    结束',
+    '    事件 追踪已开始()',
+    '    结束',
+    '    事件 任务完成()',
+    '        调试输出(CDP_取任务结果路径(CDP_取当前任务()))',
+    '    结束',
+    '    事件 回放完成()',
+    '        调试输出(CDP_取当前事件文本())',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const generated = generateLingCppNativeWin32Project(
+    { ...project, id: 'cdp-client-stage35', windows: project.windows.map(window => ({ ...window })) },
+    { activeWindowId: 'main-window', lingCppSourceCode: stage35Source, enabledModules: [cdpModule] }
+  );
+  assert.deepEqual(generated.blockingDiagnostics, []);
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
+  assert.ok(mainCpp.includes('CDP_开始串流(CDP_取当前页面(), L"C:/frames", L"", L"串流帧")'));
+  assert.ok(mainCpp.includes('CDP_开始CPU分析(CDP_取当前页面(), L"cpu.json", L"分析已开始")'));
+  assert.ok(mainCpp.includes('CDP_开始堆快照(CDP_取当前页面(), L"heap.heapsnapshot", L"任务完成")'));
+  assert.ok(mainCpp.includes('CDP_开始覆盖率(CDP_取当前页面(), L"coverage.json", L"覆盖率已开始")'));
+  assert.ok(mainCpp.includes('CDP_开始追踪(CDP_取当前页面(), L"", L"trace.json", L"追踪已开始")'));
+  assert.ok(mainCpp.includes('CDP_执行回放(回放, CDP_取当前页面(), L"回放完成")'));
+  assert.ok(mainCpp.includes('if (callback == L"串流帧")'));
+  assert.ok(mainCpp.includes('if (callback == L"回放完成")'));
+  assert.ok(mainCpp.includes('if (callback == L"任务完成")'));
 });
