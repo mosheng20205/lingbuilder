@@ -2850,9 +2850,12 @@ void DisplayStatus() {
     setActiveFile(updatedFile);
   }, []);
 
-  const appendEditorTransactionLog = (message: string) => {
-    setShowBottomPanel(true);
-    setActiveTabInBottom('output');
+  const appendEditorTransactionLog = (message: string, options?: { keepBottomPanelClosed?: boolean }) => {
+    // 例行保存成功日志不得抢占底部面板：弹出会压缩设计器画布，自动保存每轮都会触发。
+    if (!options?.keepBottomPanelClosed) {
+      setShowBottomPanel(true);
+      setActiveTabInBottom('output');
+    }
     setBuildLogs(previous => [
       ...previous,
       `> [${new Date().toLocaleTimeString()}] ${message}`
@@ -4084,7 +4087,7 @@ void DisplayStatus() {
       }
 
       void refreshSourceControlStatus();
-      appendEditorTransactionLog(`【${reason}】当前中文代码及 UI 界面结构已写入项目磁盘。`);
+      appendEditorTransactionLog(`【${reason}】当前中文代码及 UI 界面结构已写入项目磁盘。`, { keepBottomPanelClosed: true });
       return true;
     } catch (error) {
       const message = isAbortLikeTimeoutError(error)
