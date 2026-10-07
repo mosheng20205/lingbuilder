@@ -165,4 +165,4 @@ LingBuilder 本身能正常启动，但点击 **运行** 时提示「未检测�
 
 - 了解主窗口布局：[界面导航](/guide/user/interface)
 - 创建第一个项目：[新建窗口项目](/guide/user/quickstart-project)
-- 配置 AI 编程助手：[AI 智能助手](/guide/ai/chat)
+- 连接外部 AI 编程助手：[AI 智能助手](/guide/ai/)

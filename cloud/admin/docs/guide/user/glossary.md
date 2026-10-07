@@ -16,7 +16,7 @@ LingBuilder 内置的模型服务连接中心，用于管理多个 AI 模型供�
 
 ### BYOK（Bring Your Own Key）
 
-用户使用自有模型服务商 API Key 的模式，替代内置云端配额。在 AI 助手面板的「自定义 API」中配置。
+用户使用自有模型服务商 API Key 的模式。IDE 不再内置 AI 对话助手：请在外部 AI 客户端（Claude Code、Codex CLI 等）中配置自己的模型服务，经 [AI Bridge](/guide/ai/bridge-config) 连接 LingBuilder 使用。
 
 ## C
 

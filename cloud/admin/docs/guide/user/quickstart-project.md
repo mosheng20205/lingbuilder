@@ -110,4 +110,4 @@ void 按钮1_被单击() {
 
 - 设计更复杂的界面：[窗口设计器](/guide/user/window-designer)
 - 学习 LingCpp 语法：[LingCpp 快速上手](/guide/user/lingcpp-quickstart)
-- 使用 AI 生成代码：[AI 聊天助手](/guide/ai/chat)
+- 连接外部 AI 生成代码：[AI 智能助手](/guide/ai/)

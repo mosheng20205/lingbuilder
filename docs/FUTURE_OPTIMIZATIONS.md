@@ -2161,3 +2161,14 @@ C++ 解析时前两个合成一个字面反斜杠，第三个与后面的字母 
 2. 控件属性目标：`连续赋值("x", 标签1.内容)` 一期不支持（生成端中文注释降级、诊断层交控件命令通道）；若高频再评估专开通道。
 3. 程序集变量表初始值（新手紧凑表列/回车追加/类型适配）主体已在工作区实现，待真机 CDP 冒烟后随包；`examples/` 不随安装包分发导致 ui-recipes 语料缺位的既有边界仍适用。
 4. 「新手程序集变量表」死草稿行已删；`startAddStructuredItem('add-member')` 目前零调用点，属结构视图遗留入口，后续要么接线要么随结构视图重构一并清理。
+
+## 图像列表根相对路径静默加载失败（2026-10-06 定位并四路根治 + 既有旧账）
+
+外部用户实锤：图像列表里填 `\assets\xxx.ico`（根相对路径）→ 运行期 `ResolveRuntimeAssetPath` 把 `\`/`/` 开头原样当绝对路径返回 → 按当前盘符根解析必然找不到 → `LoadWicBitmap` 失败被静默吞掉 → 图像列表为空，选项卡/列表视图/树形/工具栏图标全部不显示且无任何诊断；而构建期校验只拦盘符/`/` 开头/UNC，单个 `\` 开头误放行。当日四路根治：① 新建 `windowDesigner/imageListResourceModel.ts` 唯一归一化出口（剥前导分隔符与空白），设计器 images 输入框 onChange 即时归一化并更新占位提示；② `validateDesignerResources` 改为先拒盘符（含 `C:\` 反斜杠形与 `C:` 盘相对形）/UNC，再对归一化后的路径判 `..`，`\`、`/` 开头不再误报；③ `generateImageListSpecs` 生成期归一化（旧项目数据免迁移）；④ 运行期 `ResolveRuntimeAssetPath` 对无盘符的根相对路径剥前导分隔符后按 exe 目录相对解析（UNC 与盘符仍按绝对），`CreateImageLists` 单图加载失败输出中文 `调试输出`（带图像列表名与路径），列表视图/树形/工具栏/表头/增强组合框同享。回归：`tests/windowDesigner.test.ts` 新增根相对路径归一化用例（校验+生成产物断言）；生成产物经真机 `cl /Zs`（MSVC 14.51, C++20）语法检查通过。
+
+既有旧账（后续候选）：
+
+1. 窗口自定义图标与 `Label` 图标模式走裸 `LoadImageW(..., LR_LOADFROMFILE)`，按进程 CWD 解析而不是 exe 目录（`lingCppWin32Project.ts` CreateWindowIcons/Label icon 分支）——F5 时 CWD=bin 恰好正确，用户双击 exe 于其它目录则相对路径图标失焦；窗口图标另有 `getSafeCustomWindowIconPath` 设计期校验兜底，Label 图标无校验。
+2. ~~图像列表图片路径仍为手输 textarea~~ 已完成（2026-10-07）：图像列表编辑器抽成独立组件 `ImageListResourceEditor.tsx`，图片以「序号（图片编号）+缩略图+路径」条目列表维护，支持「从项目图库添加」（`listDesignerImageResources` 点选追加、已添加置灰）、「导入本机图片…」（`selectAndImportDesignerImage`）与上下移排序；「手动输入路径」为折叠兜底且 blur 才整体归一化提交（受控即时过滤曾吃掉行尾空行导致回车无法换行，同日修复）。配套修复：设计器画布 Win32 TabControl 页签此前只画标题不画图标、与 F5 运行结果不一致——`TabControlDesignerPreview` 新增 `projectId`+`imageList` props，按 `tab.image` 从图像列表取图经 `/api/window-designer/assets/content` 渲染（`-1` 不画），`renderControl`/`DesignerControlRenderProps`/memo 比较同步传递 `imageLists`；`PropertyGroup` 抽成独立组件 `PropertyGroup.tsx` 供属性面板与资源编辑器共用。
+3. 图库缩略图经 `resolveProjectImage` 校验「路径必须属于当前项目 assets 根」，跨项目引用的图片在画布预览不显示（运行 exe 正常）；与 Image 控件预览同口径，属既有边界。
+

@@ -4,7 +4,7 @@ title: AI Bridge 连接配置
 
 # AI Bridge 连接配置
 
-> [🕒 预计 20 分钟] | 难度：入门 | 关联功能：AI 对话式改代码、MCP 工具协议、灵码 Skill
+> [🕒 预计 20 分钟] | 难度：入门 | 关联功能：MCP 工具协议、灵码 Skill
 
 ![AI Bridge 连接中心：Bridge 状态与启动设置](./assets/bridge-center-connect.png)
 
@@ -17,7 +17,7 @@ title: AI Bridge 连接配置
 - Token 只保存在本机（运行时在内存、自定义 Token 经系统加密存储），绝不写入云端，也绝不写入外部客户端的全局配置文件。
 
 > [!NOTE]
-> 给 AI 助手配置模型供应商（DeepSeek、OpenAI、Anthropic 等 API Key）不在连接中心：请使用 AI 面板中的 **系统 AI**（登录 LingBuilder 账号，按点数计费）或 **自定义 API**（BYOK，自带 Key）入口。
+> IDE 不再内置 AI 对话助手，AI 能力统一通过 AI Bridge 由外部 AI 客户端提供。想使用自己的 DeepSeek、OpenAI、Anthropic 等 API Key（BYOK），请直接在外部 AI 客户端中配置模型服务，连接方式见下文。
 
 ## 2. 打开连接中心
 
@@ -148,4 +148,3 @@ Bridge 绑定打开它时的工作区，切换工作区后受管 Bridge 会停�
 - 了解 AI 能调用哪些工具：[MCP 工具协议](/guide/ai/mcp)
 - 让 AI 编译并运行项目：[AI 构建与运行](/guide/ai/build-run)
 - 给外部 AI 客户端安装灵码 Skill：[灵码 Skill 使用](/guide/ai/skill)
-- 用 AI 对话式修改代码：[AI 对话式改代码](/guide/ai/chat)

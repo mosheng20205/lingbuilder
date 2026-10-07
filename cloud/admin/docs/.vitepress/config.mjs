@@ -105,7 +105,6 @@ export default defineConfig({
           collapsed: false,
           items: [
             { text: 'MCP 能做什么', link: '/guide/ai/mcp-capabilities' },
-            { text: 'AI 对话式改代码', link: '/guide/ai/chat' },
             { text: 'AI Bridge 连接配置', link: '/guide/ai/bridge-config' },
             { text: 'MCP 工具协议', link: '/guide/ai/mcp' },
             { text: '灵码 Skill 使用', link: '/guide/ai/skill' },

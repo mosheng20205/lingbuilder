@@ -95,4 +95,3 @@ readonly 模式禁止一切写入、构建与运行；preview 模式忘记传 `a
 
 - 全部工具清单与连接方式：[MCP 工具协议](/guide/ai/mcp)
 - 权限模式与模型服务配置：[AI Bridge 连接配置](/guide/ai/bridge-config)
-- 让外部 AI 直接改代码：[AI 对话式改代码](/guide/ai/chat)

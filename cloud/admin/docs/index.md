@@ -26,9 +26,9 @@ features:
     details: 拖放控件、配置属性、绑定事件的可视化开发
     link: /guide/user/window-designer
   - icon: 🤖
-    title: AI 对话式编程
-    details: 用中文描述需求，AI 生成代码并一键插入编辑器
-    link: /guide/ai/chat
+    title: AI 智能编程
+    details: 连接外部 AI 客户端，用中文描述需求生成代码、构建运行
+    link: /guide/ai/
   - icon: 🔌
     title: AI Bridge 配置
     details: 连接 DeepSeek 等模型服务，支持 MCP 工具协议

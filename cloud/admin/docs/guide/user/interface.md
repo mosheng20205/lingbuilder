@@ -90,4 +90,4 @@ LingBuilder 工作台采用 **左侧导航 + 中央编辑区 + 右侧面板** �
 
 - 创建第一个项目：[新建窗口项目](/guide/user/quickstart-project)
 - 使用窗口设计器设计界面：[窗口设计器](/guide/user/window-designer)
-- 配置 AI 辅助编程：[AI 智能助手](/guide/ai/chat)
+- 连接外部 AI 辅助编程：[AI 智能助手](/guide/ai/)

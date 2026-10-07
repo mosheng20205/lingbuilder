@@ -153,4 +153,4 @@ title: 窗口设计器
 
 - 学习 LingCpp 语法：[LingCpp 快速上手](/guide/user/lingcpp-quickstart)
 - 使用模块扩展功能：[模块市场](/guide/user/modules/marketplace)
-- 用 AI 生成界面代码：[AI 聊天助手](/guide/ai/chat)
+- 连接外部 AI 生成界面代码：[AI 智能助手](/guide/ai/)

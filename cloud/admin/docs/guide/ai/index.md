@@ -13,7 +13,6 @@ LingBuilder 通过 **AI Bridge** 把工作区能力以 MCP 标准开放给外部
 | 章节 | 说明 |
 |---|---|
 | [MCP 能做什么](/guide/ai/mcp-capabilities) | 面向新用户的能力总览：外部 AI 能帮你干哪八件事 |
-| [AI 对话式改代码](/guide/ai/chat) | 用中文描述需求，AI 生成或修改代码 |
 | [AI Bridge 连接配置](/guide/ai/bridge-config) | 启动本地 Bridge、权限模式、连接外部 AI 客户端 |
 | [MCP 工具协议](/guide/ai/mcp) | 外部 AI 客户端可调用的 23 个受控工具 |
 | [灵码 Skill 使用](/guide/ai/skill) | 给外部 AI 客户端自动安装的 LingBuilder 接入指引 |

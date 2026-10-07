@@ -155,4 +155,3 @@ Claude Code、Codex CLI 与 Gemini CLI 的免手写配置，可直接在 AI Brid
 
 - 编译并运行项目详解：[AI 构建与运行](/guide/ai/build-run)
 - 配置连接与权限：[AI Bridge 连接配置](/guide/ai/bridge-config)
-- 让外部 AI 直接改代码：[AI 对话式改代码](/guide/ai/chat)
