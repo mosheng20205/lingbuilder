@@ -207,3 +207,4 @@ COMPONENT_CARDS_PLAN.md
 
 # CLI 受控构建/请求诊断临时文件（不入库）
 /electron/tm-*.json
+/electron/cm-*.json
