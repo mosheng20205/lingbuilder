@@ -13,6 +13,7 @@ import {
   LingCppWorkspaceFile
  } from "./src/services/lingCpp/types";
 import { generateLingCppNativeWin32Project } from "./src/services/windowDesigner/lingCppWin32Project";
+import { readProAccessStateFile } from "./src/services/modules/proAccessStateFile";
 import { writeGeneratedProjectFiles } from "./src/services/windowDesigner/generatedProjectFileService";
 import { exportVisualStudioProject } from "./src/services/windowDesigner/visualStudioProjectExporter";
 import { createWindowsMsvcLinkLibraries, REQUIRE_ADMINISTRATOR_LINK_ARGS } from "./src/services/windowDesigner/windowsSystemLibraries";
@@ -1937,7 +1938,8 @@ app.post("/api/window-designer/native-preview", async (req, res) => {
       lingCppSourceCode: typeof lingCppSourceCode === "string" ? lingCppSourceCode : "",
       lingCppSourceFilePath,
       lingCppSources: await resolveLingCppProjectSources(project.id || "lingbuilder-ui-project", lingCppSources),
-      enabledModules
+      enabledModules,
+      proCommandAuthorization: readProAccessStateFile()
     });
     const previewConfiguration = await buildConfigurationService.read();
     const previewRoot = path.join(getRepoWorkspaceRoot(), '.lingbuilder-build', 'native-preview', sanitizeFilename(project.id || 'window-preview'));
@@ -2014,7 +2016,8 @@ app.post("/api/window-designer/native-export", async (req, res) => {
       lingCppSourceCode: typeof lingCppSourceCode === "string" ? lingCppSourceCode : "",
       lingCppSourceFilePath,
       lingCppSources: await resolveLingCppProjectSources(project.id || "lingbuilder-ui-project", lingCppSources),
-      enabledModules
+      enabledModules,
+      proCommandAuthorization: readProAccessStateFile()
     });
     assertNoBlockingLingCppDiagnostics(generatedProject.blockingDiagnostics);
     const exportConfiguration = await buildConfigurationService.read();
@@ -2398,7 +2401,8 @@ app.post("/api/window-designer/build-run", async (req, res) => {
       lingCppSources: await resolveLingCppProjectSources(projectId, lingCppSources),
       enabledModules,
       outputKind: routeOutputKind,
-      requireAdministrator: routeRequireAdministrator
+      requireAdministrator: routeRequireAdministrator,
+      proCommandAuthorization: readProAccessStateFile()
     });
     assertNoBlockingLingCppDiagnostics(generatedProject.blockingDiagnostics);
     const repoRoot = getRepoWorkspaceRoot();
@@ -3035,7 +3039,9 @@ async function runControlledWindowDesignerBuild(options: {
     lingCppSources: lingCppSources?.length ? lingCppSources : await resolveLingCppProjectSources(projectId),
     enabledModules,
     outputKind: consoleMode ? "console-application" : outputType === "dll" ? "dynamic-library" : "application",
-    requireAdministrator
+    requireAdministrator,
+    // Pro 专享命令门禁：主进程落盘的会员状态在构建时读取（登录/退出/巡检会刷新）。
+    proCommandAuthorization: readProAccessStateFile()
   });
   assertNoBlockingLingCppDiagnostics(generatedProject.blockingDiagnostics);
   const repoRoot = getRepoWorkspaceRoot();
@@ -3805,16 +3811,35 @@ app.post("/api/window-designer/files/delete", async (req, res) => {
   }
 });
 
+const FUNCTION_LIBRARY_DIRECTORY_NAME = "功能";
+
+function resolveFunctionLibraryDirectoryRoot(project: { sourceRoot: string }): string {
+  return `${project.sourceRoot.replace(/\\/g, "/").replace(/\/+$/u, "")}/${FUNCTION_LIBRARY_DIRECTORY_NAME}`;
+}
+
+/** “分类/名称”形态拆段校验：每段都必须是合法标识符；返回 null 表示输入非法。 */
+function parseFunctionLibraryNameSegments(name: unknown): string[] | null {
+  const segments = isNonEmptyString(name)
+    ? name.trim().split(/[\\/]+/u).map(segment => segment.trim()).filter(Boolean)
+    : [];
+  if (segments.length === 0 || !segments.every(segment => isValidLingCppIdentifier(segment))) return null;
+  return segments;
+}
+
 app.post("/api/window-designer/function-libraries/create", async (req, res) => {
   const { projectId, name } = req.body as { projectId?: string; name?: string };
-  if (!isNonEmptyString(projectId) || !isValidLingCppIdentifier(name)) {
-    return res.status(400).json({ ok: false, error: "缺少有效的 projectId 或功能库名称。" });
+  // 名称支持“分类/名称”带子目录形态：每一段都必须是合法标识符，最后一段才是功能库名。
+  const nameSegments = parseFunctionLibraryNameSegments(name);
+  if (!isNonEmptyString(projectId) || !nameSegments) {
+    return res.status(400).json({ ok: false, error: "缺少有效的 projectId 或功能库名称（可含子目录，如 网络/请求工具；每段只能是中文、字母、数字和下划线，且不能以数字开头）。" });
   }
   try {
     const solutionService = getSolutionService();
     const solution = await solutionService.getSolution();
     const project = solutionService.getProject(solution, projectId.trim());
-    const targetPath = `${project.sourceRoot.replace(/\\/g, "/").replace(/\/+$/u, "")}/功能/${name!.trim()}.lcpp`;
+    const libraryName = nameSegments[nameSegments.length - 1]!;
+    const libraryDirectory = nameSegments.slice(0, -1).join("/");
+    const targetPath = `${resolveFunctionLibraryDirectoryRoot(project)}/${libraryDirectory ? `${libraryDirectory}/` : ""}${libraryName}.lcpp`;
     const absolutePath = await workspacePathPolicy.resolveForWrite(targetPath);
     try {
       await fs.lstat(absolutePath);
@@ -3822,10 +3847,94 @@ app.post("/api/window-designer/function-libraries/create", async (req, res) => {
     } catch (error: any) {
       if (error?.code !== "ENOENT") throw error;
     }
-    await projectFilePersistenceService.writeAll([{ targetPath: absolutePath, bytes: Buffer.from(createFunctionLibraryTemplate(name!.trim()), "utf8") }]);
-    res.json({ ok: true, filePath: targetPath, sourceCode: createFunctionLibraryTemplate(name!.trim()) });
+    await projectFilePersistenceService.writeAll([{ targetPath: absolutePath, bytes: Buffer.from(createFunctionLibraryTemplate(libraryName), "utf8") }]);
+    res.json({ ok: true, filePath: targetPath, sourceCode: createFunctionLibraryTemplate(libraryName) });
   } catch (error: any) {
     res.status(400).json({ ok: false, error: error?.message || "新建功能库失败。" });
+  }
+});
+
+app.post("/api/window-designer/function-libraries/create-folder", async (req, res) => {
+  const { projectId, name } = req.body as { projectId?: string; name?: string };
+  const nameSegments = parseFunctionLibraryNameSegments(name);
+  if (!isNonEmptyString(projectId) || !nameSegments) {
+    return res.status(400).json({ ok: false, error: "缺少有效的 projectId 或文件夹名称（可含子级，如 网络/工具；每段只能是中文、字母、数字和下划线，且不能以数字开头）。" });
+  }
+  try {
+    const solutionService = getSolutionService();
+    const solution = await solutionService.getSolution();
+    const project = solutionService.getProject(solution, projectId.trim());
+    const targetPath = `${resolveFunctionLibraryDirectoryRoot(project)}/${nameSegments.join("/")}`;
+    const absolutePath = await workspacePathPolicy.resolveDirectoryForWrite(targetPath);
+    let existingStat: Awaited<ReturnType<typeof fs.lstat>> | null = null;
+    try {
+      existingStat = await fs.lstat(absolutePath);
+    } catch (error: any) {
+      if (error?.code !== "ENOENT") throw error;
+    }
+    if (existingStat?.isDirectory()) return res.status(409).json({ ok: false, code: "TARGET_EXISTS", error: `文件夹已存在：${targetPath}` });
+    if (existingStat) return res.status(409).json({ ok: false, code: "TARGET_EXISTS", error: `同名文件已存在，无法创建文件夹：${targetPath}` });
+    await fs.mkdir(absolutePath, { recursive: true });
+    res.json({ ok: true, path: targetPath });
+  } catch (error: any) {
+    res.status(400).json({ ok: false, error: error?.message || "新建功能库文件夹失败。" });
+  }
+});
+
+app.post("/api/window-designer/function-libraries/delete-folder", async (req, res) => {
+  const { projectId, name } = req.body as { projectId?: string; name?: string };
+  const nameSegments = parseFunctionLibraryNameSegments(name);
+  if (!isNonEmptyString(projectId) || !nameSegments) {
+    return res.status(400).json({ ok: false, error: "缺少有效的 projectId 或文件夹名称。" });
+  }
+  try {
+    const solutionService = getSolutionService();
+    const solution = await solutionService.getSolution();
+    const project = solutionService.getProject(solution, projectId.trim());
+    const targetPath = `${resolveFunctionLibraryDirectoryRoot(project)}/${nameSegments.join("/")}`;
+    const absolutePath = await workspacePathPolicy.resolveExisting(targetPath);
+    const stat = await fs.lstat(absolutePath);
+    if (!stat.isDirectory()) return res.status(400).json({ ok: false, error: `目标不是文件夹：${targetPath}` });
+    const entries = await fs.readdir(absolutePath);
+    if (entries.length > 0) {
+      return res.status(400).json({ ok: false, error: `文件夹非空，只能删除空文件夹：${targetPath}。请先删除或移走其中的功能代码。` });
+    }
+    await fs.rmdir(absolutePath);
+    res.json({ ok: true });
+  } catch (error: any) {
+    if (error?.code === "ENOENT") return res.status(404).json({ ok: false, error: `文件夹不存在。` });
+    res.status(400).json({ ok: false, error: error?.message || "删除功能库文件夹失败。" });
+  }
+});
+
+app.get("/api/window-designer/function-libraries/directories", async (req, res) => {
+  const projectId = typeof req.query.projectId === "string" ? req.query.projectId.trim() : "";
+  if (!projectId) return res.status(400).json({ ok: false, error: "缺少有效的 projectId。" });
+  try {
+    const solutionService = getSolutionService();
+    const solution = await solutionService.getSolution();
+    const project = solutionService.getProject(solution, projectId);
+    const rootRelative = resolveFunctionLibraryDirectoryRoot(project);
+    const rootAbsolute = await workspacePathPolicy.resolveForWrite(rootRelative);
+    const directories: string[] = [];
+    const walk = async (absoluteDir: string, relativeDir: string): Promise<void> => {
+      const entries = await fs.readdir(absoluteDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
+        const childRelative = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
+        directories.push(childRelative);
+        await walk(path.join(absoluteDir, entry.name), childRelative);
+      }
+    };
+    try {
+      await walk(rootAbsolute, "");
+    } catch (error: any) {
+      if (error?.code !== "ENOENT") throw error;
+    }
+    directories.sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
+    res.json({ ok: true, directories });
+  } catch (error: any) {
+    res.status(400).json({ ok: false, error: error?.message || "读取功能库目录失败。" });
   }
 });
 

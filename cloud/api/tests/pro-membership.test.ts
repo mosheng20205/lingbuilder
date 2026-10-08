@@ -11,8 +11,9 @@ const ACTOR = { id: 'admin-1', email: 'admin@lingbuilder.test', role: 'operator'
 interface SponsorSeed { qqNumber: string; amountCents: number; sponsoredAt: Date; enabled?: boolean }
 
 /** 手写 Prisma mock：只实现 Pro 会员与模块商业链路实际用到的方法。 */
-function createPrisma(options: { users?: any[]; sponsors?: SponsorSeed[]; memberships?: any[]; products?: any[]; entitlements?: any[]; freeWindows?: any[] } = {}) {
+function createPrisma(options: { users?: any[]; sponsors?: SponsorSeed[]; memberships?: any[]; products?: any[]; entitlements?: any[]; freeWindows?: any[]; commandRules?: any[] } = {}) {
   const state = {
+    commandRules: options.commandRules || [],
     users: options.users || [],
     sponsors: (options.sponsors || []).map((row, index) => ({ id: `sp-${index + 1}`, enabled: true, ...row })),
     memberships: (options.memberships || []).map((row, index) => ({ id: `pro-${index + 1}`, paidMinor: 0, sponsorQq: '', note: '', ...row })),
@@ -43,6 +44,13 @@ function createPrisma(options: { users?: any[]; sponsors?: SponsorSeed[]; member
     moduleProduct: { findUnique: async ({ where }: any) => state.products.find(row => row.moduleId === where.moduleId) || null },
     moduleEntitlement: { findFirst: async ({ where }: any) => state.entitlements.find(row => row.userId === where.userId && row.productId === where.productId && withinWindow(row, where)) || null },
     moduleFreeWindow: { findFirst: async () => null },
+    proCommandRule: {
+      findMany: async ({ where }: any) => (where?.enabled === true ? state.commandRules.filter(row => row.enabled === true) : state.commandRules),
+      findUnique: async ({ where }: any) => state.commandRules.find(row => (where.id ? row.id === where.id : row.moduleId === where.moduleId_commandName.moduleId && row.commandName === where.moduleId_commandName.commandName)) || null,
+      create: async ({ data }: any) => { const row = { id: `pcr-${state.commandRules.length + 1}`, createdAt: new Date(), updatedAt: new Date(), ...data }; state.commandRules.push(row); return row; },
+      update: async ({ where, data }: any) => { const row = state.commandRules.find(item => item.id === where.id); if (!row) throw new Error('record not found'); return Object.assign(row, data); },
+      delete: async ({ where }: any) => { const index = state.commandRules.findIndex(item => item.id === where.id); if (index < 0) throw new Error('record not found'); return state.commandRules.splice(index, 1)[0]; }
+    },
     moduleAccessAudit: { create: async ({ data }: any) => { state.audits.push({ kind: 'access', ...data }); return data; } },
     adminAuditLog: { create: async ({ data }: any) => { state.audits.push({ kind: 'admin', ...data }); return data; } }
   };
@@ -282,4 +290,39 @@ test('预览渠道门禁的 Pro 活跃条件与会员判定同口径：撤销/�
   assert.equal(where.proMembership.revokedAt, null);
   assert.ok(where.proMembership.startsAt.lte instanceof Date);
   assert.deepEqual(where.proMembership.OR.map((branch: any) => Object.keys(branch)[0]), ['endsAt', 'endsAt']);
+});
+
+test('远程 Pro 命令规则：新增/去重/启停/删除全链', async () => {
+  const prisma = createPrisma({ commandRules: [{ id: 'pcr-x', moduleId: 'lingbuilder.std.text', commandName: '文本_倒序', enabled: false, note: '旧规则', createdBy: 'a@b.c', createdAt: new Date(), updatedAt: new Date() }] });
+  const service = new ProMembershipService(prisma as never);
+  await assert.rejects(service.createCommandRule({ moduleId: 'Bad Module', commandName: 'x' }, ACTOR), /模块 ID 格式无效/u);
+  await assert.rejects(service.createCommandRule({ moduleId: 'lingbuilder.std.text', commandName: '文本_倒序' }, ACTOR), /已有远程规则/u);
+  const created = await service.createCommandRule({ moduleId: 'lingbuilder.win32.basic', commandName: '窗口_置顶', enabled: true, note: '首批远程开关' }, ACTOR);
+  assert.equal(created.rule.enabled, true);
+  const updated = await service.updateCommandRule(created.rule.id, { enabled: false, note: '暂时下线' }, ACTOR);
+  assert.equal(updated.rule.enabled, false);
+  const del = await service.deleteCommandRule(created.rule.id, ACTOR);
+  assert.equal(del.ok, true);
+  await assert.rejects(service.updateCommandRule('missing', { enabled: true }, ACTOR), /不存在/u);
+  const actions = prisma.state.audits.filter(row => row.kind === 'admin').map(row => row.action);
+  assert.deepEqual(actions, ['pro.command_rule.create', 'pro.command_rule.update', 'pro.command_rule.delete']);
+});
+
+test('公开下发：只含启用规则并按模块分组', async () => {
+  const prisma = createPrisma({ commandRules: [
+    { id: '1', moduleId: 'lingbuilder.std.text', commandName: '文本_倒序', enabled: true, updatedAt: new Date('2026-10-06T01:00:00Z') },
+    { id: '2', moduleId: 'lingbuilder.std.text', commandName: '文本_重复', enabled: false, updatedAt: new Date('2026-10-06T02:00:00Z') },
+    { id: '3', moduleId: 'lingbuilder.win32.basic', commandName: '窗口_置顶', enabled: true, updatedAt: new Date('2026-10-06T03:00:00Z') }
+  ] });
+  const service = new ProMembershipService(prisma as never);
+  const payload = await service.publicProCommands();
+  assert.deepEqual(payload.rules, { 'lingbuilder.std.text': ['文本_倒序'], 'lingbuilder.win32.basic': ['窗口_置顶'] });
+  assert.equal(payload.updatedAt, '2026-10-06T03:00:00.000Z');
+});
+
+test('管理快照携带 commandRules', async () => {
+  const prisma = createPrisma({ commandRules: [{ id: '1', moduleId: 'm', commandName: 'c', enabled: true, createdBy: 'a', createdAt: new Date(), updatedAt: new Date() }] });
+  const snapshot = await new ProMembershipService(prisma as never).adminSnapshot();
+  assert.equal(snapshot.commandRules.length, 1);
+  assert.equal(snapshot.commandRules[0].enabled, true);
 });

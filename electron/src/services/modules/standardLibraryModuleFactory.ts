@@ -35,6 +35,8 @@ export interface StandardCommandSpec {
   category?: string;
   visibility?: 'default' | 'advanced' | 'internal';
   example?: string;
+  /** Pro 专享命令：仅生效中的 Pro 会员可在构建中使用（清单 contributes/bindings 同步携带）。 */
+  access?: 'pro';
 }
 
 export interface StandardModuleSpec {
@@ -91,7 +93,8 @@ export function createStandardModule(spec: StandardModuleSpec): LingBuilderModul
         returnType: command.returnLabel || RETURN_TYPE_LABELS[command.returnType as ModuleBindingValueType] || command.returnType,
         returnDescription: command.returnDescription,
         category: command.category,
-        visibility: command.visibility
+        visibility: command.visibility,
+        ...(command.access ? { access: command.access } : {})
       })),
       types: spec.types,
       snippets: spec.snippets || [{
@@ -114,7 +117,8 @@ export function createStandardModule(spec: StandardModuleSpec): LingBuilderModul
         encoding: command.parameters?.some(parameter => isWideStringAbiBindingType(parameter.type)) || command.returnType === 'wideString'
           ? 'wide'
           : undefined,
-        example: command.example
+        example: command.example,
+        ...(command.access ? { access: command.access } : {})
       }))
     }
   };

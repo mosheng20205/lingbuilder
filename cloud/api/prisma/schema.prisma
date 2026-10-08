@@ -63,6 +63,12 @@ enum ModuleOrderStatus {
   REFUNDED
 }
 
+// 商品种类：module＝收费模块（默认）；membership＝Pro 会员会籍（支付回调建/续会籍，不进模块目录）。
+enum ModuleProductKind {
+  MODULE
+  MEMBERSHIP
+}
+
 enum ModulePaymentProvider {
   WECHAT
   ALIPAY
@@ -122,6 +128,7 @@ model ModuleProduct {
   description   String              @default("")
   listed        Boolean             @default(false)
   enabled       Boolean             @default(true)
+  kind          ModuleProductKind   @default(MODULE)
   policyVersion Int                 @default(1)
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
@@ -185,6 +192,7 @@ model ModuleOrder {
   offerKind         ModuleOfferKind
   durationDays      Int?
   paymentUrl        String?
+  paymentForm       String?
   paidAt            DateTime?
   expiresAt         DateTime
   refundedAt        DateTime?
@@ -232,6 +240,22 @@ model ModuleFreeWindow {
   product     ModuleProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@index([productId, enabled, startsAt, endsAt])
+}
+
+// Pro 专享命令远程开关：免费模块的命令可由管理后台远程标记为 Pro 专享（增量，
+// 不影响清单里已标 access:'pro' 的命令）；公开端点按模块分组下发，IDE 构建链合并生效。
+model ProCommandRule {
+  id          String   @id @default(uuid())
+  moduleId    String
+  commandName String
+  enabled     Boolean  @default(true)
+  note        String   @default("")
+  createdBy   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([moduleId, commandName])
+  @@index([enabled])
 }
 
 // Pro 会员：一个账号一条记录（userId 唯一），生效期内可使用全部收费模块；

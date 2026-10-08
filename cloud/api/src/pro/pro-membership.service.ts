@@ -56,17 +56,84 @@ export class ProMembershipService {
   }
 
   async adminSnapshot() {
-    const [memberships, sponsors] = await Promise.all([
+    const [memberships, sponsors, commandRules] = await Promise.all([
       this.prisma.proMembership.findMany({ include: { user: { select: { email: true } } }, orderBy: { createdAt: 'desc' } }),
-      this.sponsorSummary()
+      this.sponsorSummary(),
+      this.listCommandRules()
     ]);
     const now = new Date();
     return {
       ok: true,
       config: { thresholdMinor: SPONSOR_PERPETUAL_THRESHOLD_MINOR, deadline: SPONSOR_ACTIVITY_DEADLINE.toISOString(), upgradePriceMinor: DEFAULT_UPGRADE_PRICE_MINOR, yearlyDurationDays: YEARLY_DURATION_DAYS },
       memberships: memberships.map(row => membershipJson(row, now)),
-      sponsors
+      sponsors,
+      commandRules
     };
+  }
+
+  /** Pro 专享命令远程开关规则列表（管理端）。 */
+  async listCommandRules() {
+    const rows = await this.prisma.proCommandRule.findMany({ orderBy: [{ moduleId: 'asc' }, { commandName: 'asc' }] });
+    return rows.map(row => ({
+      id: row.id,
+      moduleId: row.moduleId,
+      commandName: row.commandName,
+      enabled: row.enabled === true,
+      note: row.note || '',
+      createdBy: row.createdBy || '',
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt
+    }));
+  }
+
+  /** 新增远程 Pro 命令规则：同一模块+命令唯一，重复时提示已存在。 */
+  async createCommandRule(body: JsonRecord, actor: AuthenticatedUser) {
+    const moduleId = String(body.moduleId || '').trim();
+    const commandName = String(body.commandName || '').trim();
+    const note = String(body.note || '').trim();
+    if (!/^[a-z0-9][a-z0-9._-]{2,80}$/u.test(moduleId)) throw validation('模块 ID 格式无效（小写字母/数字开头，可含点、下划线、中划线）。');
+    if (!commandName || commandName.length > 128) throw validation('命令名不能为空且不超过 128 字。');
+    if (note.length > 200) throw validation('备注不能超过 200 字。');
+    const existing = await this.prisma.proCommandRule.findUnique({ where: { moduleId_commandName: { moduleId, commandName } } });
+    if (existing) throw validation(`该命令已有远程规则（${existing.enabled ? '生效中' : '已停用'}），可直接启停或删除后重建。`);
+    const rule = await this.prisma.proCommandRule.create({ data: { moduleId, commandName, enabled: body.enabled !== false, note, createdBy: actor.email || actor.id } });
+    await this.audit(actor, 'pro.command_rule.create', 'pro-command-rule', rule.id, { moduleId, commandName, enabled: rule.enabled, note });
+    return { ok: true, rule };
+  }
+
+  async updateCommandRule(id: string, body: JsonRecord, actor: AuthenticatedUser) {
+    const rule = await this.prisma.proCommandRule.findUnique({ where: { id } });
+    if (!rule) throw validation('远程 Pro 命令规则不存在。');
+    const data: { enabled?: boolean; note?: string } = {};
+    if (body.enabled !== undefined) data.enabled = body.enabled === true;
+    if (body.note !== undefined) {
+      const note = String(body.note || '').trim();
+      if (note.length > 200) throw validation('备注不能超过 200 字。');
+      data.note = note;
+    }
+    if (!Object.keys(data).length) throw validation('没有需要更新的字段。');
+    const updated = await this.prisma.proCommandRule.update({ where: { id }, data });
+    await this.audit(actor, 'pro.command_rule.update', 'pro-command-rule', id, { moduleId: rule.moduleId, commandName: rule.commandName, ...data });
+    return { ok: true, rule: updated };
+  }
+
+  async deleteCommandRule(id: string, actor: AuthenticatedUser) {
+    const rule = await this.prisma.proCommandRule.findUnique({ where: { id } });
+    if (!rule) throw validation('远程 Pro 命令规则不存在。');
+    await this.prisma.proCommandRule.delete({ where: { id } });
+    await this.audit(actor, 'pro.command_rule.delete', 'pro-command-rule', id, { moduleId: rule.moduleId, commandName: rule.commandName });
+    return { ok: true };
+  }
+
+  /** 公开下发（无需登录）：启用中的规则按模块分组；IDE 构建链合并进清单标记。 */
+  async publicProCommands() {
+    const rules = await this.prisma.proCommandRule.findMany({ where: { enabled: true }, orderBy: { updatedAt: 'asc' } });
+    const grouped: Record<string, string[]> = {};
+    for (const rule of rules) {
+      (grouped[rule.moduleId] ||= []).push(rule.commandName);
+    }
+    const updatedAt = rules.reduce<string>((latest, rule) => (new Date(rule.updatedAt).toISOString() > latest ? new Date(rule.updatedAt).toISOString() : latest), '');
+    return { ok: true, rules: grouped, updatedAt };
   }
 
   /** 按QQ聚合全部赞助记录：活动截止前的启用金额决定可转入档位；已转入的标注会员邮箱。 */

@@ -1,4 +1,5 @@
 import { isLingCppCommentLine, LING_CPP_KEYWORDS, LING_CPP_LOGICAL_OPERATOR_NAMES, LING_CPP_TYPES, normalizeIdentifier, parseLingCpp } from './parser';
+import { isProAccessActive, PRO_COMMAND_DIAGNOSTIC_ID_PREFIX, type ProCommandAuthorizationState } from './proCommandAccess';
 import { collectLingCppStringLiteralRegions } from './stringLiteralRegions';
 import { collectLingCppTextBlockOpaqueLines, scanLingCppTextBlockRanges } from './textBlock';
 import { collectInlineCppLines, collectInlineCppReplacementHints, isInlineCppLineExempt } from './inlineCppKnowledge';
@@ -284,6 +285,13 @@ export interface LingCppSemanticDiagnosticOptions {
    * 编辑器路径暂不开启——编辑器模块上下文尚未统一并入项目 DLL 虚拟模块，会误报。
    */
   enableUnknownCommandAdmission?: boolean;
+  /**
+   * Pro 命令授权状态（来自登录会话 /v1/me 的 pro 字段）。缺省按未知处理：fail-closed
+   * 视为未授权，但只报 warning（编辑器不打断输入）。构建链路必须显式传入。
+   */
+  proCommandAuthorization?: ProCommandAuthorizationState | null;
+  /** 构建链路置真：未授权 Pro 命令报 error（经生成器 blockingDiagnostics 阻断构建）。 */
+  proCommandEnforce?: boolean;
 }
 
 export function getLingCppSemanticDiagnostics(
@@ -321,6 +329,7 @@ export function getLingCppSemanticDiagnostics(
   diagnostics.push(...getCronDiagnostics(source, parsed.program, moduleContext, effectiveGlobals));
   diagnostics.push(...getArrayCommandDiagnostics(parsed.program, moduleContext, effectiveGlobals, effectiveTypes));
   diagnostics.push(...getModuleCommandArgumentTypeDiagnostics(parsed.program, moduleContext, effectiveConstants, effectiveGlobals, effectiveTypes, splitLines(source)));
+  diagnostics.push(...getModuleProCommandDiagnostics(parsed.program, moduleContext, splitLines(source), options));
   diagnostics.push(...getUnknownCommandDiagnostics(parsed.program, moduleContext, projectFunctions, splitLines(source), options));
   diagnostics.push(...getUnterminatedStringLiteralDiagnostics(parsed));
   diagnostics.push(...getVariableDiagnostics([
@@ -4070,6 +4079,72 @@ function getArgumentTypeConversionSuggestion(expected: string, actual: string, a
  * 生成器对文本型形参套 LingCppWideArg 之前依赖本诊断兜底：字节集等非文本实参
  * 必须在这里被拦下，而不是落到 MSVC 层报 C2665/C2660 错误恢复级联。
  */
+/**
+ * Pro 专享命令门禁（access: 'pro'）的唯一诊断实现：
+ * 未授权调用在编辑器链路报 warning（proCommandEnforce 缺省）、在生成/构建链路报 error
+ * （经生成器 blockingDiagnostics 阻断）。授权状态来自登录会话；未知状态按未授权处理（fail-closed）。
+ * 多行文本块不透明行与 @ 内嵌 C++ 行不是 .lcpp 调用，先豁免再扫描（与实参类型诊断同口径）。
+ */
+function getModuleProCommandDiagnostics(
+  program: LingCppProgram,
+  moduleContext: LingCppModuleContext | undefined,
+  sourceLines: string[] = [],
+  options?: LingCppSemanticDiagnosticOptions
+): LingCppDiagnostic[] {
+  if (!moduleContext) return [];
+  if (isProAccessActive(options?.proCommandAuthorization)) return [];
+  const proCommands = new Map<string, string>();
+  getEnabledLingCppModuleContributions(moduleContext).forEach(module => {
+    (module.manifest.bindings?.commands || []).forEach(binding => {
+      const contribution = (module.manifest.contributes?.commands || []).find(command => command.name === binding.command);
+      if (binding.access !== 'pro' && contribution?.access !== 'pro') return;
+      [binding.command, ...(contribution?.aliases || [])].forEach(name => {
+        proCommands.set(normalizeIdentifier(name), binding.command);
+      });
+    });
+  });
+  if (proCommands.size === 0) return [];
+
+  const owners = [
+    ...program.classes.map(cls => ({ methods: cls.methods })),
+    ...program.functionLibraries.map(library => ({ methods: library.methods }))
+  ];
+  const level = options?.proCommandEnforce ? 'error' : 'warning';
+  const hint = '开通 Pro 后即可使用：可在 设置 → 账号 查看会员状态；赞助活动（截止 2026-11-11）累计满 ¥99 可直接转 Pro。';
+  const diagnostics: LingCppDiagnostic[] = [];
+  const seen = new Set<string>();
+  owners.forEach(owner => {
+    (owner.methods || []).forEach(method => {
+      const expressions = [
+        ...method.statements.filter(statement => !isLingCppCommentLine(statement.text) && !statement.endLine && !statement.text.trim().startsWith('@')),
+        ...(method.locals || [])
+          .filter(local => local.initialValue && !local.initialValue.trim().startsWith('@'))
+          .map(local => ({ line: local.line, text: local.initialValue || '' }))
+      ];
+      expressions.forEach(expression => {
+        const scanText = sourceLines[expression.line - 1] ?? expression.text;
+        collectLineInvocations(scanText).forEach(invocation => {
+          const commandName = proCommands.get(normalizeIdentifier(invocation.name));
+          if (!commandName) return;
+          const key = `${expression.line}:${invocation.start}:${commandName}`;
+          if (seen.has(key)) return;
+          seen.add(key);
+          diagnostics.push({
+            id: `${PRO_COMMAND_DIAGNOSTIC_ID_PREFIX}unauthorized`,
+            level,
+            line: expression.line,
+            range: { startLine: expression.line, startColumn: invocation.start + 1, endLine: expression.line, endColumn: invocation.end + 1 },
+            codeSnippet: scanText,
+            message: `「${commandName}」是 Pro 专享命令：当前账号未开通 Pro 会员，${level === 'error' ? '构建已被阻止' : '构建时将被阻止'}。`,
+            suggestion: hint
+          });
+        });
+      });
+    });
+  });
+  return diagnostics;
+}
+
 function getModuleCommandArgumentTypeDiagnostics(
   program: LingCppProgram,
   moduleContext: LingCppModuleContext | undefined,
@@ -4448,7 +4523,6 @@ function selectDesignerWindows(project: LingWindowProject, source: string, fileP
   if (associatedFile) {
     const byDesignerFile = project.windows.filter(win => normalizePathName(win.fileName) === normalizePathName(associatedFile));
     if (byDesignerFile.length > 0) return byDesignerFile;
-    return [];
   }
 
   const classNames = sourceClassNames || new Set(parseLingCpp(source).program.classes.map(cls => normalizeIdentifier(cls.name)));
@@ -4458,11 +4532,15 @@ function selectDesignerWindows(project: LingWindowProject, source: string, fileP
   const normalizedPath = filePath?.replace(/\\/g, '/').toLowerCase();
   if (!normalizedPath) return project.windows;
 
-  return project.windows.filter(win => {
+  const byPath = project.windows.filter(win => {
     const classSourceName = `${win.className}.lcpp`.toLowerCase();
     const xmlSourceName = win.fileName.replace(/\.xml$/i, '.lcpp').toLowerCase();
     return normalizedPath.endsWith(classSourceName) || normalizedPath.endsWith(xmlSourceName);
   });
+  // 功能库等非窗口绑定源码（如 src/功能库/*.lcpp：无 类 声明、路径不以 <窗口类名>.lcpp 结尾）
+  // 不归属任何单一窗口，按项目全部窗口解析——与生成器运行期按名解析一致；
+  // 返回空集会把这类源码的全部控件引用误报成「不属于当前源码关联的窗口」（F5 构建 cdp-client-showcase 实锤）。
+  return byPath.length > 0 ? byPath : project.windows;
 }
 
 function isDesignerControlMethodDiagnostic(

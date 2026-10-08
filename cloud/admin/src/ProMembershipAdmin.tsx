@@ -24,6 +24,7 @@ const SOURCE_LABEL: Record<string, string> = { sponsor_activity: '赞助活动',
 export function ProMembershipAdmin({ data, request, reload, role }: { data: any; request: Request; reload: () => Promise<void>; role: string }) {
   const memberships: any[] = data?.memberships || [];
   const sponsors: any[] = data?.sponsors || [];
+  const commandRules: any[] = data?.commandRules || [];
   const config = data?.config || {};
   const canWrite = role === '' || role === 'super_admin' || role === 'operator' || role === 'support';
   const canUpgrade = role === '' || role === 'super_admin' || role === 'operator';
@@ -38,6 +39,10 @@ export function ProMembershipAdmin({ data, request, reload, role }: { data: any;
   const [note, setNote] = useState('');
   const [revoking, setRevoking] = useState<any | null>(null);
   const [revokingReason, setRevokingReason] = useState('');
+  const [ruleModuleId, setRuleModuleId] = useState('');
+  const [ruleCommandName, setRuleCommandName] = useState('');
+  const [ruleNote, setRuleNote] = useState('');
+  const [deletingRule, setDeletingRule] = useState<any | null>(null);
 
   const run = async (action: () => Promise<void>) => {
     setBusy(true); setMessage(null);
@@ -68,6 +73,26 @@ export function ProMembershipAdmin({ data, request, reload, role }: { data: any;
     await request(`/v1/admin/pro/memberships/${encodeURIComponent(revoking.id)}/revoke`, { method: 'POST', body: JSON.stringify({ reason: revokingReason }) });
     setRevoking(null); setRevokingReason('');
     setMessage({ text: 'Pro 会员已撤销，对应账号立即失去全部收费模块权益。' });
+    await reload();
+  });
+
+  const createRule = () => run(async () => {
+    const value = await request('/v1/admin/pro/command-rules', { method: 'POST', body: JSON.stringify({ moduleId: ruleModuleId.trim(), commandName: ruleCommandName.trim(), note: ruleNote.trim(), enabled: true }) });
+    setMessage({ text: `已把 ${value.rule?.moduleId} 的「${value.rule?.commandName}」标记为 Pro 专享（IDE 端最多 30 分钟内生效，重启 IDE 立即生效）。` });
+    setRuleModuleId(''); setRuleCommandName(''); setRuleNote('');
+    await reload();
+  });
+
+  const toggleRule = (rule: any) => run(async () => {
+    await request(`/v1/admin/pro/command-rules/${encodeURIComponent(rule.id)}`, { method: 'PATCH', body: JSON.stringify({ enabled: !rule.enabled }) });
+    setMessage({ text: `「${rule.commandName}」（${rule.moduleId}）已${rule.enabled ? '停用' : '启用'}。` });
+    await reload();
+  });
+
+  const removeRule = () => run(async () => {
+    await request(`/v1/admin/pro/command-rules/${encodeURIComponent(deletingRule.id)}`, { method: 'DELETE', body: '{}' });
+    setMessage({ text: `已删除「${deletingRule.commandName}」（${deletingRule.moduleId}）的远程规则。` });
+    setDeletingRule(null);
     await reload();
   });
 
@@ -125,6 +150,30 @@ export function ProMembershipAdmin({ data, request, reload, role }: { data: any;
     </section>
 
     <section className="panel">
+      <div className="panel-head"><div><span className="eyebrow">远程开关</span><h2>Pro 专享命令（{commandRules.length}）</h2><p>把免费模块里的命令远程标记为 Pro 专享（只加不减；清单里已标 access:"pro" 的命令不受这里影响）。IDE 端按 30 分钟周期拉取，重启立即生效；停用规则即恢复免费。</p></div></div>
+      {canWrite && <div className="action-form">
+        <label>模块 ID<input value={ruleModuleId} onChange={event => setRuleModuleId(event.target.value)} placeholder="lingbuilder.std.text"/></label>
+        <label>命令名<input value={ruleCommandName} onChange={event => setRuleCommandName(event.target.value)} placeholder="文本_倒序"/></label>
+        <label>备注（可选）<input value={ruleNote} onChange={event => setRuleNote(event.target.value)} placeholder="如：双11 Pro 权益首批"/></label>
+        <button className="primary" disabled={busy || !ruleModuleId.trim() || !ruleCommandName.trim()} onClick={() => void createRule()}>添加 Pro 专享标记</button>
+      </div>}
+      {commandRules.length ? <div className="table-wrap"><table>
+        <thead><tr><th>模块 ID</th><th>命令名</th><th>状态</th><th>备注</th><th>更新时间</th>{canWrite && <th>操作</th>}</tr></thead>
+        <tbody>{commandRules.map(rule => <tr key={rule.id}>
+          <td>{rule.moduleId}</td>
+          <td>{rule.commandName}</td>
+          <td>{rule.enabled ? <span className="badge ok">生效中</span> : <span className="badge off">已停用</span>}</td>
+          <td>{rule.note || '—'}</td>
+          <td>{formatTime(rule.updatedAt)}</td>
+          {canWrite && <td><span className="beta-actions">
+            <button disabled={busy} onClick={() => void toggleRule(rule)}>{rule.enabled ? '停用' : '启用'}</button>
+            <button disabled={busy} onClick={() => setDeletingRule(rule)}>删除</button>
+          </span></td>}
+        </tr>)}</tbody>
+      </table></div> : <div className="empty">还没有远程规则：免费模块的命令默认全部可用，添加后仅 Pro 会员可在构建中使用。</div>}
+    </section>
+
+    <section className="panel">
       <div className="panel-head"><div><span className="eyebrow">会员名单</span><h2>Pro 会员（{memberships.length}）</h2><p>买断长期有效；年费到期后收费模块自动回到购买/限免判定。</p></div></div>
       {memberships.length ? <div className="table-wrap"><table>
         <thead><tr><th>邮箱</th><th>档位</th><th>来源</th><th>赞助 QQ</th><th>已入账</th><th>开始</th><th>到期</th><th>状态</th><th>备注</th>{canWrite && <th>操作</th>}</tr></thead>
@@ -145,6 +194,14 @@ export function ProMembershipAdmin({ data, request, reload, role }: { data: any;
         </tr>)}</tbody>
       </table></div> : <div className="empty">还没有 Pro 会员：从上方赞助名单转入或录入购买。</div>}
     </section>
+
+    {deletingRule && <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="删除远程规则">
+      <div className="modal">
+        <div className="modal-head"><h3>删除远程规则 — {deletingRule.moduleId} / {deletingRule.commandName}</h3><button className="modal-close" aria-label="关闭" onClick={() => setDeletingRule(null)}>×</button></div>
+        <div className="modal-body"><p>删除后该命令立即恢复为免费命令（IDE 端最多 30 分钟内生效）。删除动作会写入管理员审计。</p></div>
+        <div className="modal-actions"><button onClick={() => setDeletingRule(null)}>取消</button><button className="primary" disabled={busy} onClick={removeRule}>确认删除</button></div>
+      </div>
+    </div>}
 
     {revoking && <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="撤销 Pro 会员">
       <div className="modal">

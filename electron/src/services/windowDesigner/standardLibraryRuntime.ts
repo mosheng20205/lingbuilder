@@ -266,6 +266,13 @@ const wchar_t* 文本_插入(const wchar_t* text, int position, const wchar_t* i
     return LB_ReturnText(std::move(value));
 }
 
+// Pro 专享演示命令（access: 'pro'）：使用资格由 IDE 的 Pro 命令门禁在生成前拦截，运行时本体与普通命令无异。
+const wchar_t* 文本_倒序(const wchar_t* text) {
+    std::wstring value = LB_Wide(text);
+    std::reverse(value.begin(), value.end());
+    return LB_ReturnText(std::move(value));
+}
+
 long long 文本_分割(const wchar_t* text, const wchar_t* separator, std::vector<std::wstring>& out, bool ignoreTrailingEmpty = false) {
     out.clear();
     const std::wstring value = LB_Wide(text);

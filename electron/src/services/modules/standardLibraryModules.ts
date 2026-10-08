@@ -35,7 +35,7 @@ const regexSeparatorArg = '拼接各匹配结果之间插入的文本，允许�
 const textModule = createStandardModule({
   id: 'lingbuilder.std.text',
   name: '文本处理模块',
-  version: '1.2.0',
+  version: '1.3.0',
   category: '其他',
   description: '提供 Unicode 文本查找、截取、替换、修剪、大小写转换、定宽填充（按显示列数）与数组合并能力。索引统一从 0 开始。',
   tags: ['文本', 'Unicode'],
@@ -73,7 +73,9 @@ const textModule = createStandardModule({
     { name: '文本_填充左边', signature: '文本_填充左边(文本, 目标显示宽度, 填充字符)', description: '右对齐补齐：按显示宽度在左侧补到目标宽度（数字列常用），已够宽时原样返回且不截断。', insertText: '文本_填充左边("$1", 10)', parameters: [{ name: '文本', type: 'wideString', description: srcTextRanged}, { name: '目标显示宽度', type: 'int', description: '目标显示宽度，单位是显示列数而不是字符数：中日韩全角字符占 2 列、组合符号占 0 列、其余占 1 列；文本当前显示宽度已达到或超过该值时原样返回。'}, { name: '填充字符', type: 'wideString', optional: true, defaultValue: ' ', description: '补在左侧的文本，省略时为半角空格；只取首个字符重复，剩余列数不足一个填充字符宽度时少补一次（结果不会超过目标宽度）。'}], returnType: 'wideString', example: '调试输出("[" + 文本_填充左边("999", 8) + "]")' },
     { name: '文本_居中', signature: '文本_居中(文本, 目标显示宽度, 填充字符)', description: '居中补齐：按显示宽度在两侧补到目标宽度，左侧分到多余的半列（左侧宽度取剩余列数的一半向下取整），已够宽时原样返回。', insertText: '文本_居中("$1", 10)', parameters: [{ name: '文本', type: 'wideString', description: srcTextRanged}, { name: '目标显示宽度', type: 'int', description: '目标显示宽度，单位是显示列数而不是字符数：中日韩全角字符占 2 列、组合符号占 0 列、其余占 1 列；文本当前显示宽度已达到或超过该值时原样返回。'}, { name: '填充字符', type: 'wideString', optional: true, defaultValue: ' ', description: '补在两侧的文本，省略时为半角空格；只取首个字符重复，剩余列数不足一个填充字符宽度时少补一次。'}], returnType: 'wideString', example: '调试输出("[" + 文本_居中("标题", 12) + "]")' },
     { name: '文本_取显示宽度', signature: '文本_取显示宽度(文本, 中日韩按 2 列)', description: '返回文本在等宽字体下占用的显示列数（不是字符数）；制表符和换行等控制字符按 0 列计算。', insertText: '文本_取显示宽度("$1")', parameters: [{ name: '文本', type: 'wideString', description: srcTextRanged}, { name: '中日韩按 2 列', type: 'bool', optional: true, defaultValue: true, description: '传真（省略时）按终端惯例计算：中日韩全角字符 2 列、组合符号 0 列、其余 1 列；传假时每个字符一律算 1 列（等价于 文本_取长度，用于只按字符数对齐的场合）。'}], returnType: 'int', example: '调试输出(文本_取显示宽度("莫生网店"))' },
-    { name: '文本_连接', signature: '文本_连接(文本数组, 分隔符, 起始下标, 数量)', description: '用分隔符把数组区间内的成员依次连成一段文本（文本_分割 的反向操作），拼接 JSON/CSV 记录时不必再手写「首个元素不加逗号」的累加逻辑。', insertText: '文本_连接($1, "$2")', parameters: [{ name: '文本数组', type: 'array', description: arrayArg}, { name: '分隔符', type: 'wideString', description: '连接各成员时插入的文本，允许空文本；分隔符不参与成员内容。'}, { name: '起始下标', type: 'int', optional: true, defaultValue: 0, description: '从哪个成员开始连接，索引从 0 起；省略或小于 0 时按 0 处理，不小于成员数时返回空文本。'}, { name: '数量', type: 'int', optional: true, defaultValue: -1, description: '最多连接的成员个数；省略或小于等于 0 表示从起始下标一直连到末尾，超出时只连到末尾。'}], returnType: 'wideString', example: '局部 文本型 名单[]\n数组_加入成员(名单, "a")\n调试输出(文本_连接(名单, ","))' }  ]
+    { name: '文本_连接', signature: '文本_连接(文本数组, 分隔符, 起始下标, 数量)', description: '用分隔符把数组区间内的成员依次连成一段文本（文本_分割 的反向操作），拼接 JSON/CSV 记录时不必再手写「首个元素不加逗号」的累加逻辑。', insertText: '文本_连接($1, "$2")', parameters: [{ name: '文本数组', type: 'array', description: arrayArg}, { name: '分隔符', type: 'wideString', description: '连接各成员时插入的文本，允许空文本；分隔符不参与成员内容。'}, { name: '起始下标', type: 'int', optional: true, defaultValue: 0, description: '从哪个成员开始连接，索引从 0 起；省略或小于 0 时按 0 处理，不小于成员数时返回空文本。'}, { name: '数量', type: 'int', optional: true, defaultValue: -1, description: '最多连接的成员个数；省略或小于等于 0 表示从起始下标一直连到末尾，超出时只连到末尾。'}], returnType: 'wideString', example: '局部 文本型 名单[]\n数组_加入成员(名单, "a")\n调试输出(文本_连接(名单, ","))' },
+    // Pro 专享演示命令：access: 'pro' 使命令进入 Pro 命令门禁（未授权构建阻断、编辑器 warning、补全带标记）。
+    { name: '文本_倒序', access: 'pro', signature: '文本_倒序(文本)', description: '【Pro 专享】把文本按字符逆序排列后返回；Pro 会员可用。', insertText: '文本_倒序("$1")', parameters: [{ name: '文本', type: 'wideString', description: '要逆序的源文本；按 UTF-16 码元逆序，空文本返回空文本。'}], returnType: 'wideString', example: '调试输出(文本_倒序("LingBuilder"))' }  ]
 });
 
 const bytesModule = createStandardModule({

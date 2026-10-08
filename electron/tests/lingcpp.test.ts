@@ -1825,6 +1825,53 @@ test('controlRef reports scope, kind, type, ambiguity and unsafe quoted referenc
   assert.equal(migrateQuotedControlReferences(source, project, moduleContext, 'src/MainWindow.lcpp').changeCount, 0);
 });
 
+test('controlRef 功能库等非窗口绑定源码按项目窗口解析控件（F5 构建功能库误报回归钉子）', () => {
+  const modules: InstalledModule[] = ['lingbuilder.win32.basic'].map(id => ({
+    manifest: BUILTIN_MODULES.find(item => item.id === id)!,
+    installPath: `builtin://${id}`,
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  }));
+  const project: LingWindowProject = {
+    id: 'function-library-control-ref',
+    name: '功能库控件引用',
+    windows: [{
+      id: 'main-window', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口',
+      width: 640, height: 480, background: '#111111', description: '', controls: [
+        { id: 'url-input', type: 'TextBox', name: '新页面网址', content: '', x: 10, y: 10, width: 200, height: 26, fontSize: 12, background: '#222222', foreground: '#fff', isEnabled: true, visibility: 'Visible', events: {} },
+        { id: 'log-box', type: 'TextBox', name: '运行日志', content: '', x: 10, y: 50, width: 300, height: 120, fontSize: 12, background: '#222222', foreground: '#fff', isEnabled: true, visibility: 'Visible', events: {} }
+      ]
+    }],
+    resources: []
+  };
+  const moduleContext = { enabledModules: modules, availableModules: modules };
+  // 功能库源码形态：无 类 声明（功能库 不是 类）、路径不以 <窗口类名>.lcpp 结尾——
+  // 此前 selectDesignerWindows 返回空集，全部控件引用误报「不属于当前源码关联的窗口」并级联出
+  // 「局部变量初始值无效」，F5 构建被 138 条误报阻断（cdp-client-showcase 实锤）。
+  const librarySource = [
+    '功能库 参数准备库',
+    '    逻辑型 准备新建页面()',
+    '        局部 文本型 网址文本 = 控件_取文本(新页面网址)',
+    '        如果 (网址文本 == "")',
+    '            返回(假)',
+    '        如果结束',
+    '        返回(真)',
+    '    结束',
+    '结束功能库'
+  ].join('\n');
+  const references = getLingCppControlReferences(librarySource, project, moduleContext, 'src/功能库/参数准备库.lcpp');
+  assert.deepEqual(references.map(reference => reference.status), ['resolved']);
+  assert.deepEqual(getLingCppControlReferenceDiagnostics(librarySource, project, moduleContext, 'src/功能库/参数准备库.lcpp'), []);
+  // 不存在的控件仍要报「找不到控件」，不能因项目级解析被静默放行。
+  const missingSource = librarySource.replace('控件_取文本(新页面网址)', '控件_取文本(不存在控件)');
+  assert.ok(
+    getLingCppControlReferenceDiagnostics(missingSource, project, moduleContext, 'src/功能库/不存在库.lcpp')
+      .some(item => item.id.startsWith('lingcpp-control-reference-missing-'))
+  );
+});
+
 test('controlRef recognizes third-party non-visual designer components from module contributions', () => {
   const manifest = {
     schemaVersion: 2 as const,
