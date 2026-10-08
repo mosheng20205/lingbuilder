@@ -99,7 +99,9 @@ test('工作台入口保留，被移除的 IPC/服务不再出现在 preload 与
   ]);
   assert.match(appSource, /workbench\.action\.help\.openCliGuide/u);
   assert.match(appSource, /AI Bridge 连接中心\.\.\./u);
-  assert.match(appSource, /AiBridgeTitleBarBadge/u);
+  // 标题栏 Bridge 徽标已移除（2026-10-07）：连接中心入口收敛为工具栏星形图标，标题栏原位置改常驻账号入口。
+  assert.doesNotMatch(appSource, /AiBridgeTitleBarBadge/u);
+  assert.match(appSource, /AccountTitleBarEntry/u);
   assert.doesNotMatch(appSource, /onOpenTerminal=\{message =>/u);
   assert.match(mainSource, /docs:open-cli-manual/u);
   assert.match(mainSource, /ai-bridge:start/u);

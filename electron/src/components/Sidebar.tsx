@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { requestWorkbenchConfirm, requestWorkbenchPrompt } from '../services/workbench/workbenchConfirmService';
 import {
   Folder,
+  FolderPlus,
   FileCode,
   ChevronDown,
   ChevronLeft,
@@ -217,7 +218,10 @@ interface SidebarProps {
   onOpenProjectGlobalVariables?: (projectId: string) => void | Promise<void>;
   onOpenProjectDataTypes?: (projectId: string) => void | Promise<void>;
   onOpenProjectDllCommands?: (projectId: string) => void | Promise<void>;
-  onCreateFunctionLibrary?: (projectId: string) => void | Promise<void>;
+  onCreateFunctionLibrary?: (projectId: string, prefill?: string) => void | Promise<void>;
+  onCreateFunctionLibraryFolder?: (projectId: string, prefill?: string) => void | Promise<void>;
+  onDeleteFunctionLibraryFolder?: (projectId: string, folderPath: string) => void | Promise<void>;
+  functionLibraryFolderVersion?: number;
   onPasteFunctionLibrary?: (projectId: string) => void | Promise<void>;
   onCopySolutionFullPath?: () => boolean | Promise<boolean>;
   onCopyProjectFullPath?: (projectId: string) => boolean | Promise<boolean>;
@@ -272,6 +276,9 @@ export default function Sidebar({
   onOpenProjectDataTypes,
   onOpenProjectDllCommands,
   onCreateFunctionLibrary,
+  onCreateFunctionLibraryFolder,
+  onDeleteFunctionLibraryFolder,
+  functionLibraryFolderVersion = 0,
   onPasteFunctionLibrary,
   onCopySolutionFullPath,
   onCopyProjectFullPath,
@@ -314,6 +321,7 @@ export default function Sidebar({
       setSolutionContextMenu(null);
       setResourceContextMenu(null);
       setEmbeddedResourceContextMenu(null);
+      setFunctionLibraryContextMenu(null);
     };
     window.addEventListener('click', handleCloseMenu);
     return () => window.removeEventListener('click', handleCloseMenu);
@@ -333,6 +341,25 @@ export default function Sidebar({
   }, [commandService]);
   const [isSrcOpen, setIsSrcOpen] = useState(true);
   const [isFunctionLibraryOpen, setIsFunctionLibraryOpen] = useState(true);
+  const [expandedLibraryFolders, setExpandedLibraryFolders] = useState<Record<string, boolean>>({});
+  const [functionLibraryContextMenu, setFunctionLibraryContextMenu] = useState<{ x: number; y: number; folderKey?: string } | null>(null);
+  const [diskLibraryFolders, setDiskLibraryFolders] = useState<string[]>([]);
+
+  // 右键捕获先行关闭全部菜单：任何 contextmenu 事件先清空所有树菜单，再由目标行的打开器重建，
+  // 避免「A 菜单开着时右键 B 行出现两个菜单」；window 捕获先于 React 根监听执行，顺序安全。
+  useEffect(() => {
+    const closeAllTreeMenus = () => {
+      setContextMenu(null);
+      setWindowContextMenu(null);
+      setSolutionContextMenu(null);
+      setModuleContextMenu(null);
+      setResourceContextMenu(null);
+      setEmbeddedResourceContextMenu(null);
+      setFunctionLibraryContextMenu(null);
+    };
+    window.addEventListener('contextmenu', closeAllTreeMenus, true);
+    return () => window.removeEventListener('contextmenu', closeAllTreeMenus, true);
+  }, []);
   const [isEmbeddedResourcesOpen, setIsEmbeddedResourcesOpen] = useState(true);
   const [isWindowsOpen, setIsWindowsOpen] = useState(true);
   const [isConfigOpen, setIsConfigOpen] = useState(true);
@@ -384,6 +411,60 @@ export default function Sidebar({
   );
   const srcFiles = files.filter(f => f.path.startsWith('src/') && includesSearch(f.name, f.path));
   const functionLibraryFiles = files.filter(file => file.language === 'lingcpp' && includesSearch(file.name, file.path) && isFunctionLibrarySource(file.translatedContent || file.originalContent));
+  // 功能库按目录分组：搜索时平铺展示全部命中，无搜索时子目录文件收进可收缩文件夹，项目根文件保持平铺。
+  // 分组来源=文件推导 + 磁盘实际目录（覆盖空文件夹，磁盘列表经 function-library 目录接口按项目拉取）。
+  const functionLibrarySourceRoot = (activeSolutionProject?.sourceRoot || '').replace(/\\/g, '/').replace(/\/+$/u, '');
+  const functionLibraryFolders = (() => {
+    const folders = new Map<string, { key: string; label: string; files: CppFile[] }>();
+    for (const file of functionLibraryFiles) {
+      const normalizedPath = file.path.replace(/\\/g, '/');
+      const directory = normalizedPath.slice(0, Math.max(normalizedPath.lastIndexOf('/'), 0));
+      if (!directory || directory === functionLibrarySourceRoot) continue;
+      const label = functionLibrarySourceRoot && directory.startsWith(`${functionLibrarySourceRoot}/`)
+        ? directory.slice(functionLibrarySourceRoot.length + 1)
+        : directory;
+      const folder = folders.get(directory) || { key: directory, label, files: [] };
+      folder.files.push(file);
+      folders.set(directory, folder);
+    }
+    const diskLibraryRoot = functionLibrarySourceRoot ? `${functionLibrarySourceRoot}/功能` : '';
+    if (diskLibraryRoot) {
+      for (const relative of diskLibraryFolders) {
+        const normalizedRelative = relative.replace(/\\/g, '/').replace(/\/+$/u, '');
+        if (!normalizedRelative) continue;
+        const key = `${diskLibraryRoot}/${normalizedRelative}`;
+        if (!folders.has(key)) folders.set(key, { key, label: `功能/${normalizedRelative}`, files: [] });
+      }
+    }
+    return [...folders.values()]
+      .map(folder => ({ ...folder, files: [...folder.files].sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN')) }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'zh-Hans-CN'));
+  })();
+  const activeSolutionProjectType = activeSolutionProject?.type;
+  useEffect(() => {
+    if (!activeSolutionProjectId || activeSolutionProjectType !== 'visual-cpp') {
+      setDiskLibraryFolders(current => current.length === 0 ? current : []);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/window-designer/function-libraries/directories?projectId=${encodeURIComponent(activeSolutionProjectId)}`)
+      .then(response => response.json())
+      .then((data: { directories?: unknown }) => {
+        if (cancelled) return;
+        setDiskLibraryFolders(Array.isArray(data?.directories)
+          ? data.directories.filter((item): item is string => typeof item === 'string')
+          : []);
+      })
+      .catch(() => { if (!cancelled) setDiskLibraryFolders([]); });
+    return () => { cancelled = true; };
+  }, [activeSolutionProjectId, activeSolutionProjectType, functionLibraryFolderVersion]);
+  const functionLibraryRootFiles = functionLibraryFiles
+    .filter(file => {
+      const normalizedPath = file.path.replace(/\\/g, '/');
+      const directory = normalizedPath.slice(0, Math.max(normalizedPath.lastIndexOf('/'), 0));
+      return !directory || directory === functionLibrarySourceRoot;
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
   const designerStateMatchesActiveProject = designerState.project.id === activeSolutionProjectId;
   // 项目级内嵌资源清单：与设计器「窗口属性 → 项目 / 内嵌资源」面板消费同一份模型数据。
   const activeEmbeddedResources = designerStateMatchesActiveProject ? designerState.project.embeddedResources || [] : [];
@@ -764,7 +845,10 @@ export default function Sidebar({
       .catch(() => triggerError('复制功能库到剪贴板失败。'));
   };
 
-  const renderFileRow = (file: CppFile) => {
+  const isFunctionLibraryFolderExpanded = (key: string) => expandedLibraryFolders[key] ?? true;
+  const toggleFunctionLibraryFolder = (key: string) => setExpandedLibraryFolders(prev => ({ ...prev, [key]: !(prev[key] ?? true) }));
+
+  const renderFileRow = (file: CppFile, indentClass = 'pl-8') => {
     const isActive = file.path === activeFile.path;
     const progress = getProgress(file);
 
@@ -785,7 +869,7 @@ export default function Sidebar({
           event.preventDefault();
           copyFunctionLibraryToClipboard(file);
         }}
-        className={`group flex items-center justify-between gap-2 py-1.5 px-3 pl-8 text-[length:var(--lb-sidebar-font-size,13px)] cursor-pointer border-l-2 transition-all ${
+        className={`group flex items-center justify-between gap-2 py-1.5 px-3 ${indentClass} text-[length:var(--lb-sidebar-font-size,13px)] cursor-pointer border-l-2 transition-all ${
           isActive
             ? isDarkMode 
               ? 'bg-[#37373D] border-[#007ACC] text-[#007ACC] font-medium'
@@ -1267,6 +1351,58 @@ export default function Sidebar({
     }
     setSolutionDropTarget(null);
     setDraggedSolutionProjectId(null);
+  };
+
+  const renderFunctionLibraryContextMenu = () => {
+    if (!functionLibraryContextMenu) return null;
+    const project = activeSolutionProject;
+    if (!project || project.type !== 'visual-cpp') return null;
+    const menuItemClass = `px-3 py-1.5 cursor-pointer transition-colors flex items-center gap-2 ${
+      isDarkMode ? 'hover:bg-blue-500 hover:text-white' : 'hover:bg-blue-500 hover:text-white'
+    }`;
+    const dangerItemClass = `px-3 py-1.5 cursor-pointer transition-colors flex items-center gap-2 text-rose-500 hover:bg-rose-500 hover:text-white`;
+    const folder = functionLibraryContextMenu.folderKey
+      ? functionLibraryFolders.find(item => item.key === functionLibraryContextMenu.folderKey) || null
+      : null;
+    const folderPrefill = folder && folder.label.startsWith('功能/') && folder.label.length > '功能/'.length
+      ? `${folder.label.slice('功能/'.length)}/`
+      : '';
+    return (
+      <div
+        style={{ top: `${functionLibraryContextMenu.y}px`, left: `${functionLibraryContextMenu.x}px` }}
+        className={`fixed z-[9999] min-w-[210px] py-1 rounded shadow-lg border text-xs select-none font-sans ${
+          isDarkMode
+            ? 'bg-[#252526] border-[#454545] text-slate-200'
+            : 'bg-white border-slate-250 text-slate-800'
+        }`}
+        onClick={() => setFunctionLibraryContextMenu(null)}
+      >
+        {folder && (
+          <div className="px-3 py-1 text-[10px] text-slate-500 truncate" title={folder.label}>目录：{folder.label}</div>
+        )}
+        <div className={menuItemClass} onClick={() => void onCreateFunctionLibrary?.(project.id, folderPrefill)}>
+          <FileCode className="w-3.5 h-3.5 text-cyan-400" />
+          <span>新建功能代码…</span>
+        </div>
+        <div className={menuItemClass} onClick={() => void onCreateFunctionLibraryFolder?.(project.id, folderPrefill)}>
+          <FolderPlus className="w-3.5 h-3.5 text-amber-400" />
+          <span>新建文件夹…</span>
+        </div>
+        <div className={menuItemClass} onClick={() => void onPasteFunctionLibrary?.(project.id)}>
+          <Copy className="w-3.5 h-3.5 text-cyan-400" />
+          <span>粘贴功能库…</span>
+        </div>
+        {folder && folder.files.length === 0 && (
+          <>
+            <div className="h-[1px] bg-slate-700/20 dark:bg-slate-700/50 my-1" />
+            <div className={dangerItemClass} onClick={() => void onDeleteFunctionLibraryFolder?.(project.id, folder.key)}>
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>删除文件夹…</span>
+            </div>
+          </>
+        )}
+      </div>
+    );
   };
 
   const renderSolutionContextMenu = () => {
@@ -2417,7 +2553,13 @@ export default function Sidebar({
                           className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer text-[length:var(--lb-sidebar-font-size,13px)] font-sans transition-colors ${
                             isDarkMode ? 'hover:bg-[#2A2D2E]/50 text-slate-300' : 'hover:bg-slate-100 text-slate-700'
                           }`}
-                          title="独立、无状态、可跨项目复制的 .lcpp 功能库"
+                          title="独立、无状态、可跨项目复制的 .lcpp 功能库；右键可新建功能代码或文件夹"
+                          onContextMenu={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            if (activeSolutionProjectType !== 'visual-cpp') return;
+                            setFunctionLibraryContextMenu({ x: event.clientX, y: event.clientY });
+                          }}
                         >
                           {isFunctionLibraryOpen ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
                           <Layers className="w-4 h-4 text-cyan-400" />
@@ -2426,9 +2568,44 @@ export default function Sidebar({
                         </div>
                         {isFunctionLibraryOpen && (
                           <div className="mt-0.5 border-l border-slate-750/30 dark:border-slate-800 ml-3.5 pl-0.5">
-                            {functionLibraryFiles.length === 0
-                              ? <div className="pl-8 text-slate-500 text-[10px] py-1 font-sans">右键项目可新建或粘贴功能库</div>
-                              : functionLibraryFiles.map(renderFileRow)}
+                            {functionLibraryFiles.length === 0 && functionLibraryFolders.length === 0
+                              ? <div className="pl-8 text-slate-500 text-[10px] py-1 font-sans">右键此处可新建功能代码或文件夹</div>
+                              : normalizedFileSearch
+                                ? functionLibraryFiles.map(file => renderFileRow(file))
+                                : (
+                                  <>
+                                    {functionLibraryFolders.map(folder => (
+                                      <div key={folder.key}>
+                                        <div
+                                          onClick={() => toggleFunctionLibraryFolder(folder.key)}
+                                          onContextMenu={(event) => {
+                                            event.preventDefault();
+                                            event.stopPropagation();
+                                            if (activeSolutionProjectType !== 'visual-cpp') return;
+                                            setFunctionLibraryContextMenu({ x: event.clientX, y: event.clientY, folderKey: folder.key });
+                                          }}
+                                          className={`flex items-center gap-1.5 py-1.5 px-3 pl-8 pr-3 cursor-pointer text-[length:var(--lb-sidebar-font-size,13px)] font-sans transition-colors ${
+                                            isDarkMode ? 'text-[#CCCCCC] hover:bg-[#2A2D2E] hover:text-white' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'
+                                          }`}
+                                          title={`目录：${folder.label}（${folder.files.length} 个功能库）；右键可新建功能代码或删除空文件夹`}
+                                        >
+                                          {isFunctionLibraryFolderExpanded(folder.key) ? <ChevronDown className="w-3.5 h-3.5 shrink-0 text-slate-400" /> : <ChevronRight className="w-3.5 h-3.5 shrink-0 text-slate-400" />}
+                                          <Folder className="w-4 h-4 shrink-0 text-cyan-400 fill-cyan-400/10" />
+                                          <span className="truncate">{folder.label}</span>
+                                          <span className="ml-auto text-[9px] text-slate-500">{folder.files.length}</span>
+                                        </div>
+                                        {isFunctionLibraryFolderExpanded(folder.key) && (
+                                          <div className="border-l border-slate-750/30 dark:border-slate-800 ml-5 pl-0.5">
+                                            {folder.files.length === 0
+                                              ? <div className={`pl-12 py-1 text-[10px] font-sans ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>（空文件夹）</div>
+                                              : folder.files.map(file => renderFileRow(file, 'pl-10'))}
+                                          </div>
+                                        )}
+                                      </div>
+                                    ))}
+                                    {functionLibraryRootFiles.map(file => renderFileRow(file))}
+                                  </>
+                                )}
                           </div>
                         )}
                       </div>}
@@ -2450,7 +2627,7 @@ export default function Sidebar({
                             {regularSrcFiles.length === 0 ? (
                               <div className="pl-8 text-slate-500 text-[10px] py-1 font-sans">未找到匹配文件</div>
                             ) : (
-                              regularSrcFiles.map(renderFileRow)
+                              regularSrcFiles.map(file => renderFileRow(file))
                             )}
                           </div>
                         )}
@@ -2473,7 +2650,7 @@ export default function Sidebar({
                             {configFiles.length === 0 ? (
                               <div className="pl-8 text-slate-500 text-[10px] py-1 font-sans">未找到匹配文件</div>
                             ) : (
-                              configFiles.map(renderFileRow)
+                              configFiles.map(file => renderFileRow(file))
                             )}
                           </div>
                         )}
@@ -2732,6 +2909,7 @@ export default function Sidebar({
       {renderContextMenu()}
       {renderWindowContextMenu()}
       {renderSolutionContextMenu()}
+      {renderFunctionLibraryContextMenu()}
       {renderResourceContextMenu()}
       {renderEmbeddedResourceContextMenu()}
       {renderModuleContextMenu()}

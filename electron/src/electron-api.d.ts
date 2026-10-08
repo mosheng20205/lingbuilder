@@ -88,6 +88,8 @@ declare global {
       };
       community?: {
         openQQGroup: () => Promise<string>;
+        /** 打开固定的反馈 Issue 页面；返回 '' 表示成功，否则为中文错误。 */
+        openIssue: (target: 'gitee' | 'github') => Promise<string>;
       };
       logs?: {
         /** 在系统文件管理器中打开诊断日志目录；'' 表示成功。 */
@@ -219,6 +221,7 @@ declare global {
         balance: () => Promise<{ ok: boolean; balance: { available: string; reserved: string } }>;
         moduleCatalog: () => Promise<{ ok: boolean; products: Array<{ moduleId: string; productId: string; name: string; description: string; listed: boolean; enabled: boolean; offers: Array<{ id: string; name: string; kind: 'perpetual'|'fixed_term'; priceMinor: string; currency: 'CNY'; durationDays?: number }>; freeWindow?: { startsAt: string; endsAt: string; timezone: string }; access?: { allowed: boolean; source?: string; expiresAt?: string; reason?: string } }> }>;
         moduleEntitlements: () => Promise<{ ok: boolean; entitlements: Array<{ id: string; moduleId: string; source: string; startsAt: string; endsAt?: string; revokedAt?: string }> }>;
+        moduleOrders: () => Promise<{ ok: boolean; orders: Array<{ id: string; moduleId?: string; status: string; amountMinor: string; currency: string; paymentUrl?: string; paidAt?: string; expiresAt: string; createdAt: string }> }>;
         authorizeModule: (moduleId: string) => Promise<{ ok: boolean; error?: string; code?: string; status?: { moduleId: string; paid: boolean; allowed: boolean; source?: string; expiresAt?: string; reason?: string } }>;
         createModuleOrder: (value: { offerId: string; provider: 'wechat'|'alipay'; idempotencyKey: string }) => Promise<{ ok: boolean; order: { id: string; moduleId: string; status: string; paymentUrl?: string; expiresAt: string } }>;
         downloadModule: (value: { moduleId: string; arch?: 'win32'|'x64'|'any' }) => Promise<{ ok: boolean; relativePath: string; artifact: { id: string; moduleId: string; version: string; arch: string; sha256: string } }>;

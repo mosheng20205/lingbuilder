@@ -15,7 +15,7 @@ import {
 } from 'electron';
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
-import { mkdirSync, readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { diskBuildDiffersFromRunning, readBuildMetaFile, resolveBuildMetaPath } from './buildIdentity';
@@ -314,6 +314,61 @@ function cloudRefreshPath(): string { return path.join(app.getPath('userData'), 
 async function readCloudRefresh(): Promise<string> { try { if (!safeStorage.isEncryptionAvailable()) return ''; return safeStorage.decryptString(await fs.readFile(cloudRefreshPath())); } catch { return ''; } }
 async function writeCloudRefresh(value: string): Promise<void> { if (!safeStorage.isEncryptionAvailable()) throw new Error('当前系统不支持安全账号凭据存储。'); const file = cloudRefreshPath(); await fs.mkdir(path.dirname(file), { recursive: true }); if (!value) { await fs.rm(file, { force: true }); return; } const temporary = `${file}.${crypto.randomUUID()}.tmp`; await fs.writeFile(temporary, safeStorage.encryptString(value)); await fs.rename(temporary, file); }
 function modulePermitCachePath(): string { return path.join(app.getPath('userData'), 'credentials', 'module-permits.bin'); }
+// Pro 会员授权状态落盘（镜像 src/services/modules/proAccessStateFile.ts 的文件名与格式；
+// 主进程 tsconfig rootDir 不含 src，只能镜像——与 ideVersion 同一口径）：
+// 本地服务（F5 构建）与 AI Bridge 在构建时读取它判定 Pro 专享命令权限；
+// 启动/登录/退出/Permit 30 分钟巡检时重写，72h 离线宽限随之续期。
+const PRO_ACCESS_STATE_FILE_NAME = 'pro-access-state.json';
+function writeProAccessStateMirror(pro: { active?: boolean; endsAt?: string | null } | null | undefined): void {
+  try {
+    const target = path.join(app.getPath('userData'), 'credentials', PRO_ACCESS_STATE_FILE_NAME);
+    mkdirSync(path.dirname(target), { recursive: true });
+    const active = Boolean(pro && pro.active === true);
+    const payload = {
+      active,
+      endsAt: (pro && pro.endsAt) || null,
+      offlineUntil: active ? new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString() : null,
+      writtenAt: new Date().toISOString()
+    };
+    const temporary = `${target}.${process.pid}.tmp`;
+    writeFileSync(temporary, JSON.stringify(payload, null, 2), 'utf8');
+    renameSync(temporary, target);
+  } catch (error) {
+    console.warn(`[pro-access] 会员状态文件写入失败：${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+function refreshProAccessStateMirror(): Promise<void> {
+  return cloudAccountService.snapshot()
+    .then(session => writeProAccessStateMirror(session.authenticated ? session.pro : { active: false }))
+    .catch(() => undefined);
+}
+
+// Pro 专享命令远程开关：启动 + Permit 巡检（30 分钟）从云端公开端点拉取规则并落盘，
+// 本地服务与 AI 桥构建时读取（moduleService.getEnabledProjectModules 统一合并进清单标记）。
+// 拉取失败保留上次缓存；文件格式镜像 src/services/modules/proAccessStateFile.ts。
+function writeProCommandRulesMirror(rules: Record<string, string[]>, updatedAt: string): void {
+  try {
+    const target = path.join(app.getPath('userData'), 'credentials', 'pro-command-rules.json');
+    mkdirSync(path.dirname(target), { recursive: true });
+    const payload = { rules, updatedAt, writtenAt: new Date().toISOString() };
+    const temporary = `${target}.${process.pid}.tmp`;
+    writeFileSync(temporary, JSON.stringify(payload, null, 2), 'utf8');
+    renameSync(temporary, target);
+  } catch (error) {
+    console.warn(`[pro-access] 远程命令规则文件写入失败：${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+async function refreshProCommandRulesMirror(): Promise<void> {
+  try {
+    const response = await fetch(`${cloudApiOrigin()}/v1/site/pro-commands`, { signal: AbortSignal.timeout(8000) });
+    if (!response.ok) throw new Error(`状态码 ${response.status}`);
+    const payload = await response.json() as { ok?: boolean; rules?: Record<string, string[]>; updatedAt?: string };
+    if (!payload?.rules || typeof payload.rules !== 'object') throw new Error('响应缺少 rules 字段');
+    writeProCommandRulesMirror(payload.rules, String(payload.updatedAt || ''));
+  } catch (error) {
+    console.warn(`[pro-access] 远程 Pro 命令规则拉取失败（保留上次缓存）：${error instanceof Error ? error.message : String(error)}`);
+  }
+}
 async function readModulePermitCache(): Promise<any[]> { try { if (!safeStorage.isEncryptionAvailable()) return []; const value = JSON.parse(safeStorage.decryptString(await fs.readFile(modulePermitCachePath()))); return Array.isArray(value) ? value : []; } catch { return []; } }
 async function writeModulePermitCache(values: any[]): Promise<void> { if (!safeStorage.isEncryptionAvailable()) return; const file = modulePermitCachePath(); await fs.mkdir(path.dirname(file), { recursive: true }); const temporary = `${file}.${crypto.randomUUID()}.tmp`; await fs.writeFile(temporary, safeStorage.encryptString(JSON.stringify(values.slice(-32)))); await fs.rename(temporary, file); }
 function cloudApiOrigin(): string {
@@ -941,6 +996,21 @@ function registerIpcHandlers(): void {
       return `无法打开交流QQ群链接：${error instanceof Error ? error.message : String(error)}`;
     }
   });
+  // 反馈渠道 URL 白名单固定在主进程，renderer 只允许传目标键，不接受任意 URL。
+  const COMMUNITY_ISSUE_URLS: Record<string, string> = {
+    gitee: 'https://gitee.com/MoSheng2020/lingbuilder/issues/IKJT45',
+    github: 'https://github.com/mosheng20205/lingbuilder/issues',
+  };
+  ipcMain.handle('community:open-issue', async (_event, target: string) => {
+    const url = COMMUNITY_ISSUE_URLS[String(target || '')];
+    if (!url) return '未知的反馈渠道类型。';
+    try {
+      await shell.openExternal(url);
+      return '';
+    } catch (error) {
+      return `无法打开反馈页面链接：${error instanceof Error ? error.message : String(error)}`;
+    }
+  });
   ipcMain.handle('logs:reveal', async () => shell.openPath(getDiagnosticLogDirectory()));
   ipcMain.handle('logs:export', async () => {
     const owner = getFocusedWindow();
@@ -1474,14 +1544,16 @@ function registerIpcHandlers(): void {
       modulePermitMaintenance?.start();
       void modulePermitMaintenance?.triggerSweep('登录成功');
     }
+    void refreshProAccessStateMirror();
     return result;
   });
-  ipcMain.handle('cloud-account:logout', async () => { modulePermitMaintenance?.stop(); const result = await cloudAccountService.logout(); await writeModulePermitCache([]); await requestRendererApi('/api/module-access/clear', { method: 'POST', body: '{}' }).catch(() => undefined); if (aiBridgeManager?.snapshot().state === 'running') await aiBridgeManager.stop('账号已退出，正在撤销收费模块授权'); return result; });
+  ipcMain.handle('cloud-account:logout', async () => { modulePermitMaintenance?.stop(); const result = await cloudAccountService.logout(); await writeModulePermitCache([]); await requestRendererApi('/api/module-access/clear', { method: 'POST', body: '{}' }).catch(() => undefined); if (aiBridgeManager?.snapshot().state === 'running') await aiBridgeManager.stop('账号已退出，正在撤销收费模块授权'); writeProAccessStateMirror({ active: false }); return result; });
   ipcMain.handle('cloud-account:session', () => cloudAccountService.snapshot());
   ipcMain.handle('cloud-account:models', () => cloudAccountService.models());
   ipcMain.handle('cloud-account:balance', () => cloudAccountService.balance());
   ipcMain.handle('cloud-modules:catalog', () => cloudAccountService.moduleCatalog());
   ipcMain.handle('cloud-modules:entitlements', () => cloudAccountService.moduleEntitlements());
+  ipcMain.handle('cloud-module-orders', () => cloudAccountService.moduleOrders());
   ipcMain.handle('cloud-modules:create-order', (_event, value: any) => cloudAccountService.createModuleOrder(String(value?.offerId || ''), value?.provider === 'alipay' ? 'alipay' : 'wechat', String(value?.idempotencyKey || '')));
   ipcMain.handle('cloud-modules:download', (_event, value: any) => cloudAccountService.downloadModuleArtifact(String(value?.moduleId || ''), ['win32', 'x64'].includes(value?.arch) ? value.arch : 'any', activeWorkspace));
   ipcMain.handle('cloud-modules:authorize', async (_event, moduleId: string) => {
@@ -1773,6 +1845,8 @@ app.whenReady().then(async () => {
 
   await cloudAccountService.initialize().catch(error => console.warn(`系统 AI 账号恢复失败：${error instanceof Error ? error.message : String(error)}`));
   const cloudSession = await cloudAccountService.snapshot();
+  writeProAccessStateMirror(cloudSession.authenticated ? cloudSession.pro : { active: false });
+  void refreshProCommandRulesMirror();
   const permitRestoreResult = await restoreModulePermits({
     readCache: readModulePermitCache,
     writeCache: writeModulePermitCache,
@@ -1797,6 +1871,8 @@ app.whenReady().then(async () => {
     refreshAuthorization: moduleId => cloudAccountService.modulePermit(moduleId),
     onSweep: result => {
       void handlePermitMaintenanceSweep(result);
+      void refreshProAccessStateMirror();
+      void refreshProCommandRulesMirror();
     },
     log: (level, message) => level === 'warn'
       ? console.warn(`[module-access] ${message}`)

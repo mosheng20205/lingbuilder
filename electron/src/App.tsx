@@ -72,7 +72,7 @@ import WorkspaceSearchDialog from './components/WorkspaceSearchDialog';
 import EnvironmentRepairCenter from './components/EnvironmentRepairCenter';
 import SdkDependencyInstallerDialog from './components/SdkDependencyInstallerDialog';
 import CliGuideDialog from './components/CliGuideDialog';
-import AiBridgeTitleBarBadge from './components/AiBridgeTitleBarBadge';
+import AccountTitleBarEntry from './components/AccountTitleBarEntry';
 import ProTitleBarBadge from './components/ProTitleBarBadge';
 import AboutDialog from './components/AboutDialog';
 import UpdateDialog, { formatUpdateDate, type UpdateDialogInfo } from './components/UpdateDialog';
@@ -280,6 +280,9 @@ import { LINGBUILDER_DISPLAY_VERSION, LINGBUILDER_OFFICIAL_SITE_URL } from './se
 import BuildStampLabel from './components/BuildStampLabel';
 
 const LINGBUILDER_QQ_GROUP_URL = 'https://qm.qq.com/q/q2VNHZXLXy';
+// 反馈 Issue 直达链接；Electron 下真实打开走主进程 community:open-issue 的同一份白名单。
+const LINGBUILDER_GITEE_ISSUES_URL = 'https://gitee.com/MoSheng2020/lingbuilder/issues/IKJT45';
+const LINGBUILDER_GITHUB_ISSUES_URL = 'https://github.com/mosheng20205/lingbuilder/issues';
 // Web 模式下创建独立项目工作区并整页刷新后，跳过欢迎页直接进入工作台的一次性标记。
 const AUTO_ENTER_WORKSPACE_FLAG = 'lingbuilder:auto-enter-workspace';
 
@@ -944,20 +947,23 @@ export default function App() {
     if (select) await handleSelectFile(file);
   }, [handleSelectFile]);
 
-  const handleCreateFunctionLibrary = useCallback(async (projectId: string) => {
+  const [functionLibraryFolderVersion, setFunctionLibraryFolderVersion] = useState(0);
+
+  const handleCreateFunctionLibrary = useCallback(async (projectId: string, prefill = '') => {
     const name = (await requestWorkbenchPrompt({
       title: '新建功能库',
-      description: '将创建“功能/名称.lcpp”。',
+      description: '将创建“功能/名称.lcpp”；名称可含子目录，如“网络/请求工具”。',
       inputLabel: '功能库名称',
-      inputValue: '通用工具'
+      inputValue: prefill || '通用工具'
     }))?.trim();
     if (!name) return;
-    if (!/^[\p{L}_][\p{L}\p{N}_]*$/u.test(name)) {
-      await requestWorkbenchAlert({ title: '名称不合法', description: '功能库名称只能包含中文、字母、数字和下划线，且不能以数字开头。', confirmLabel: '知道了' });
+    const nameSegments = name.split(/[\\/]+/u).map(segment => segment.trim()).filter(Boolean);
+    if (nameSegments.length === 0 || !nameSegments.every(segment => /^[\p{L}_][\p{L}\p{N}_]*$/u.test(segment))) {
+      await requestWorkbenchAlert({ title: '名称不合法', description: '功能库名称只能包含中文、字母、数字和下划线，且不能以数字开头；可带子目录（如 网络/请求工具），每一段规则相同。', confirmLabel: '知道了' });
       return;
     }
     const response = await fetch('/api/window-designer/function-libraries/create', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId, name })
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId, name: nameSegments.join('/') })
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok || result.ok === false) {
@@ -971,6 +977,59 @@ export default function App() {
     appendEditorTransactionLog(`【功能库】已新建 ${result.filePath}`);
     if (projectId === activeProjectIdRef.current) await addPersistedFunctionLibraryToEditor(result.filePath, result.sourceCode);
   }, [addPersistedFunctionLibraryToEditor]);
+
+  const handleCreateFunctionLibraryFolder = useCallback(async (projectId: string, prefill = '') => {
+    const name = (await requestWorkbenchPrompt({
+      title: '新建功能库文件夹',
+      description: '将在“功能/”下创建文件夹；可含子级，如“网络/工具”。',
+      inputLabel: '文件夹名称',
+      inputValue: prefill
+    }))?.trim();
+    if (!name) return;
+    const nameSegments = name.split(/[\\/]+/u).map(segment => segment.trim()).filter(Boolean);
+    if (nameSegments.length === 0 || !nameSegments.every(segment => /^[\p{L}_][\p{L}\p{N}_]*$/u.test(segment))) {
+      await requestWorkbenchAlert({ title: '名称不合法', description: '文件夹名称只能包含中文、字母、数字和下划线，且不能以数字开头；可含子级（如 网络/工具），每一段规则相同。', confirmLabel: '知道了' });
+      return;
+    }
+    const response = await fetch('/api/window-designer/function-libraries/create-folder', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId, name: nameSegments.join('/') })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.ok === false) {
+      await requestWorkbenchAlert({ title: '新建文件夹失败', description: result.error || '新建文件夹失败。', confirmLabel: '知道了' });
+      return;
+    }
+    setFunctionLibraryFolderVersion(version => version + 1);
+    appendEditorTransactionLog(`【功能库】已新建文件夹 ${result.path || ''}`);
+  }, []);
+
+  const handleDeleteFunctionLibraryFolder = useCallback(async (projectId: string, folderPath: string) => {
+    const normalizedFolderPath = folderPath.replace(/\\/g, '/');
+    const confirmed = await requestWorkbenchConfirm({
+      title: '删除文件夹',
+      description: `确认删除功能库文件夹 ${normalizedFolderPath} 吗？仅允许删除空文件夹。`,
+      confirmLabel: '删除',
+      cancelLabel: '取消'
+    });
+    if (!confirmed) return;
+    const sourceRoot = (activeSolutionProjectRef.current?.sourceRoot || '').replace(/\\/g, '/').replace(/\/+$/u, '');
+    const directoryPrefix = sourceRoot ? `${sourceRoot}/功能/` : '功能/';
+    const relativeName = normalizedFolderPath.startsWith(directoryPrefix) ? normalizedFolderPath.slice(directoryPrefix.length) : '';
+    if (!relativeName) {
+      await requestWorkbenchAlert({ title: '无法删除', description: `只能删除“功能/”目录下的文件夹：${normalizedFolderPath}`, confirmLabel: '知道了' });
+      return;
+    }
+    const response = await fetch('/api/window-designer/function-libraries/delete-folder', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId, name: relativeName })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.ok === false) {
+      await requestWorkbenchAlert({ title: '删除文件夹失败', description: result.error || '删除文件夹失败。', confirmLabel: '知道了' });
+      return;
+    }
+    setFunctionLibraryFolderVersion(version => version + 1);
+    appendEditorTransactionLog(`【功能库】已删除空文件夹 ${normalizedFolderPath}`);
+  }, []);
 
   const handlePasteFunctionLibrary = useCallback(async (targetProjectId: string) => {
     if (targetProjectId === activeProjectIdRef.current) {
@@ -1269,6 +1328,18 @@ export default function App() {
   }, []);
   const [showHelpCenter, setShowHelpCenter] = useState(false);
   const [showSponsorDialog, setShowSponsorDialog] = useState(false);
+  // 状态栏「反馈支持」的渠道选择弹层：Gitee（国内）/ GitHub（国外）两条反馈命令的统一入口。
+  const [showFeedbackChannelMenu, setShowFeedbackChannelMenu] = useState(false);
+  const feedbackChannelMenuRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!showFeedbackChannelMenu) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      if (feedbackChannelMenuRef.current && event.target instanceof Node && feedbackChannelMenuRef.current.contains(event.target)) return;
+      setShowFeedbackChannelMenu(false);
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, [showFeedbackChannelMenu]);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [commandQuery, setCommandQuery] = useState('');
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
@@ -1440,6 +1511,23 @@ export default function App() {
     return () => window.removeEventListener('lingbuilder-module-api-visibility-changed', updateVisibility);
   }, []);
 
+  // 设计器提交触发的模块上下文刷新按 8 秒节流：/api/modules/installed 服务端是全量扫盘
+  // （moduleService.scanInstalledModules 无缓存），设计器编辑期间逐键/逐 burst 刷新纯属浪费
+  // （2026-10-07 打字卡顿审计）；模块启停等真实变化仍走 lingbuilder-modules-changed 即时刷新。
+  const designerModuleContextRefreshRef = useRef<{ lastAt: number; timer: number | null }>({ lastAt: 0, timer: null });
+  const scheduleDesignerModuleContextRefresh = useCallback(() => {
+    const state = designerModuleContextRefreshRef.current;
+    if (state.timer !== null) return;
+    const run = () => {
+      state.timer = null;
+      state.lastAt = Date.now();
+      void refreshModuleContext();
+    };
+    const elapsed = Date.now() - state.lastAt;
+    if (elapsed >= 8000) run();
+    else state.timer = window.setTimeout(run, 8000 - elapsed);
+  }, [refreshModuleContext]);
+
   // 项目级 DLL 命令声明：声明文件在编辑器中打开期间，以当前缓冲区实时合成虚拟模块，
   // 新增命令/参数后补全、参数提示与诊断即时生效，无需重启 IDE 或触发模块刷新。
   const activeProjectSourceRoot = solution.projects.find(project => project.id === activeProjectId)?.sourceRoot
@@ -1583,11 +1671,19 @@ export default function App() {
       const customEvent = event as CustomEvent<PersistedWindowDesignerState>;
       const nextState = customEvent.detail || readWindowDesignerState(activeProjectIdRef.current);
       if (nextState.project.id !== activeProjectIdRef.current) return;
-      setWindowDesignerState(nextState);
+      // 引用稳定兜底：DiffViewer 的结构/语言上下文 useMemo 以 project 引用为依赖，
+      // 内容等价时换新引用会让全量 AST 重算卡住输入（2026-10-07 设计器打字卡顿审计）。
+      setWindowDesignerState(previous => (
+        previous.project === nextState.project
+          && previous.activeWindowId === nextState.activeWindowId
+          && previous.selectedControlId === nextState.selectedControlId
+          ? previous
+          : nextState
+      ));
       const nextDirty = JSON.stringify(nextState.project) !== designerSavedSnapshotRef.current;
       designerDirtyRef.current = nextDirty;
       setDesignerDirty(nextDirty);
-      refreshModuleContext();
+      scheduleDesignerModuleContextRefresh();
     };
 
     const handleModulesChanged = () => {
@@ -1614,8 +1710,12 @@ export default function App() {
       window.removeEventListener(WINDOW_DESIGNER_PROJECT_UPDATED, handleDesignerProjectUpdated);
       window.removeEventListener(WINDOW_DESIGNER_DIRTY_STATE_CHANGED, handleDesignerDirtyStateChanged);
       window.removeEventListener('lingbuilder-modules-changed', handleModulesChanged);
+      if (designerModuleContextRefreshRef.current.timer !== null) {
+        window.clearTimeout(designerModuleContextRefreshRef.current.timer);
+        designerModuleContextRefreshRef.current.timer = null;
+      }
     };
-  }, [activeProjectHasWindowDesigner, hasEnteredWorkbench, refreshModuleContext]);
+  }, [activeProjectHasWindowDesigner, hasEnteredWorkbench, refreshModuleContext, scheduleDesignerModuleContextRefresh]);
 
   useEffect(() => {
     if (activeFile.language !== 'lingcpp') {
@@ -5770,6 +5870,25 @@ void DisplayStatus() {
       if (error) appendEditorTransactionLog(`【交流QQ群】${error}`);
       return !error;
     },
+    openFeedbackIssue: async (target?: unknown) => {
+      const channel = target === 'github' ? 'github' : 'gitee';
+      const url = channel === 'github' ? LINGBUILDER_GITHUB_ISSUES_URL : LINGBUILDER_GITEE_ISSUES_URL;
+      const channelLabel = channel === 'github' ? 'GitHub Issues' : 'Gitee Issues';
+      const openIssue = window.lingBuilder?.community?.openIssue;
+      if (!openIssue) {
+        // 兼容旧版 preload 和 Web 原型；Electron 主进程会通过
+        // setWindowOpenHandler 把该固定链接交给系统默认浏览器。
+        const opened = window.open(url, '_blank', 'noopener,noreferrer');
+        if (!opened) {
+          appendEditorTransactionLog(`【${channelLabel}】无法打开系统默认浏览器，请检查浏览器弹窗权限。`);
+          return false;
+        }
+        return true;
+      }
+      const error = await openIssue(channel);
+      if (error) appendEditorTransactionLog(`【${channelLabel}】${error}`);
+      return !error;
+    },
     openAbout: () => { setShowAboutModal(true); return true; },
     checkForUpdates: async () => {
       setUpdateCheckState({ status: 'checking' });
@@ -6459,6 +6578,26 @@ void DisplayStatus() {
         handler: () => workbenchCommandHandlersRef.current.openQQGroup()
       },
       {
+        id: 'workbench.action.help.openFeedbackGitee',
+        title: '帮助：反馈意见与提交 Bug（Gitee，国内）',
+        aliases: ['Feedback Gitee', 'Submit Issue Gitee', 'Report Bug Gitee'],
+        category: '帮助',
+        description: '在系统默认浏览器中打开 LingBuilder 的 Gitee Issues 反馈页（国内直达），提交意见反馈与 Bug。',
+        when: '!workbench.modalOpen',
+        order: 35,
+        handler: () => workbenchCommandHandlersRef.current.openFeedbackIssue('gitee')
+      },
+      {
+        id: 'workbench.action.help.openFeedbackGitHub',
+        title: '帮助：反馈意见与提交 Bug（GitHub，国外）',
+        aliases: ['Feedback GitHub', 'Submit Issue GitHub', 'Report Bug GitHub'],
+        category: '帮助',
+        description: '在系统默认浏览器中打开 LingBuilder 的 GitHub Issues 反馈页（国外直达），提交意见反馈与 Bug。',
+        when: '!workbench.modalOpen',
+        order: 35,
+        handler: () => workbenchCommandHandlersRef.current.openFeedbackIssue('github')
+      },
+      {
         id: 'workbench.action.help.openAbout',
         title: `帮助：关于 LingBuilder IDE ${LINGBUILDER_DISPLAY_VERSION}`,
         aliases: ['About LingBuilder', 'Application Version'],
@@ -7125,7 +7264,14 @@ void DisplayStatus() {
               C++ LocMaster (LingBuilder) <span className="text-cyan-400/80">{LINGBUILDER_DISPLAY_VERSION}</span>
               <BuildStampLabel />
             </div>
-            <AiBridgeTitleBarBadge onOpen={() => setShowCliGuide(true)} isDarkMode={isDarkMode} />
+            <AccountTitleBarEntry
+              onOpenAccountSettings={() => {
+                setSettingsFocusCategory('账号');
+                setShowSettingsDialog(true);
+                void loadWorkbenchConfiguration();
+              }}
+              isDarkMode={isDarkMode}
+            />
             <ProTitleBarBadge
               onOpen={() => {
                 setSettingsFocusCategory('账号');
@@ -7442,7 +7588,7 @@ void DisplayStatus() {
                 帮助(H)
               </span>
               {activeDropdown === 'help' && (
-                <div className={`absolute left-0 top-6 w-56 shadow-2xl border rounded-md py-1 flex flex-col z-50 ${isDarkMode ? 'bg-[#252526] border-[#3c3c3c] text-slate-200' : 'bg-white border-slate-200 text-slate-800'}`}>
+                <div className={`absolute left-0 top-6 w-64 shadow-2xl border rounded-md py-1 flex flex-col z-50 ${isDarkMode ? 'bg-[#252526] border-[#3c3c3c] text-slate-200' : 'bg-white border-slate-200 text-slate-800'}`}>
                   <button onClick={() => { setActiveDropdown(null); void executeWorkbenchCommand('workbench.action.help.openHelpCenter'); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     <span>帮助中心与更新日志...</span>
                     <span className="opacity-50 text-[10px]">{LINGBUILDER_DISPLAY_VERSION}</span>
@@ -7493,26 +7639,13 @@ void DisplayStatus() {
                     <span className="opacity-50 text-[10px]">清理</span>
                   </button>
                   <div className={`h-px my-1 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
-                  <button onClick={() => { 
-                    setShowBottomPanel(true);
-                    setActiveTabInBottom('output');
-                    setBuildLogs([
-                      `=========================================`,
-                      `📖 LingBuilder C++ 原生中文汉化与代码替换机制说明：`,
-                      `1. 代码分析：IDE 后台精确检索 C++ 中的字符串常量 (String Literals)、L"" 宽字符及 rc 资源文件。`,
-                      `2. 独立沙盒：原始文本被抽离并归入 BottomPanel 列表，不损害原有 C++ 代码。`,
-                      `3. 零损汉化：当点击 编译 F5 时，IDE 通过动态宏、字符串常量替换、中文化映射，编译出原生中文化的二进制，不破坏原始工程。`,
-                      `4. AI 智能推荐：接入 Gemini API，在完美贴合 C++ 上下文语境下进行优雅汉化，保证完美的编译通过率与零语法侵入。`,
-                      `=========================================`
-                    ]);
-                    setActiveDropdown(null); 
-                  }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
-                    <span>查看汉化核心文档说明</span>
-                    <span className="opacity-50 text-[10px]">文档</span>
+                  <button onClick={() => { setActiveDropdown(null); void executeWorkbenchCommand('workbench.action.help.openFeedbackGitee'); }} className={`px-3 py-1.5 text-left flex items-center justify-between gap-2 text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                    <span className="truncate">反馈意见与提交 Bug（Gitee）</span>
+                    <span className="shrink-0 opacity-50 text-[10px]">国内</span>
                   </button>
-                  <button onClick={() => { alert("感谢支持！您的反馈意见已安全同步。我们将持续致力于保障 C++ 零损中文映射方案的高效与稳定。"); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
-                    <span>反馈意见与提交 Bug</span>
-                    <span className="opacity-50 text-[10px]">反馈</span>
+                  <button onClick={() => { setActiveDropdown(null); void executeWorkbenchCommand('workbench.action.help.openFeedbackGitHub'); }} className={`px-3 py-1.5 text-left flex items-center justify-between gap-2 text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                    <span className="truncate">反馈意见与提交 Bug（GitHub）</span>
+                    <span className="shrink-0 opacity-50 text-[10px]">国外</span>
                   </button>
                   <div className={`h-px my-1 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
                   <button onClick={() => { setActiveDropdown(null); void executeWorkbenchCommand('workbench.action.help.openAbout'); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
@@ -7961,6 +8094,9 @@ void DisplayStatus() {
           onOpenProjectDataTypes={projectId => { void executeWorkbenchCommand('workbench.action.project.openDataTypes', projectId); }}
           onOpenProjectDllCommands={projectId => { void executeWorkbenchCommand('workbench.action.project.openDllCommands', projectId); }}
           onCreateFunctionLibrary={handleCreateFunctionLibrary}
+          onCreateFunctionLibraryFolder={handleCreateFunctionLibraryFolder}
+          onDeleteFunctionLibraryFolder={handleDeleteFunctionLibraryFolder}
+          functionLibraryFolderVersion={functionLibraryFolderVersion}
           onPasteFunctionLibrary={handlePasteFunctionLibrary}
           onCopySolutionFullPath={() => executeWorkbenchCommand('workbench.action.solution.copyFullPath')}
           onCopyProjectFullPath={projectId => executeWorkbenchCommand('workbench.action.project.copyFullPath', projectId)}
@@ -8708,7 +8844,27 @@ void DisplayStatus() {
                 : '原生 C++ 预览'}
           </div>
           <div className="shrink-0">空格: 4</div>
-          <div className="shrink-0 hover:bg-[#1f8ad2] px-2 py-0.5 rounded cursor-pointer transition-colors">反馈支持</div>
+          <div className="shrink-0" ref={feedbackChannelMenuRef}>
+            <button
+              type="button"
+              title="反馈意见与提交 Bug"
+              onClick={() => setShowFeedbackChannelMenu(value => !value)}
+              className={`px-2 py-0.5 rounded cursor-pointer transition-colors ${showFeedbackChannelMenu ? 'bg-[#1f8ad2]' : 'hover:bg-[#1f8ad2]'}`}
+            >反馈支持</button>
+            {showFeedbackChannelMenu && (
+              <div className={`fixed bottom-9 right-2 w-64 shadow-2xl border rounded-md py-1 flex flex-col z-[120] ${isDarkMode ? 'bg-[#252526] border-[#3c3c3c] text-slate-200' : 'bg-white border-slate-200 text-slate-800'}`}>
+                <div className="px-3 py-1 text-[10px] opacity-50">选择反馈渠道</div>
+                <button onClick={() => { setShowFeedbackChannelMenu(false); void executeWorkbenchCommand('workbench.action.help.openFeedbackGitee'); }} className={`px-3 py-1.5 text-left flex items-center justify-between gap-2 text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                  <span>反馈意见与提交 Bug（Gitee）</span>
+                  <span className="shrink-0 opacity-50 text-[10px]">国内</span>
+                </button>
+                <button onClick={() => { setShowFeedbackChannelMenu(false); void executeWorkbenchCommand('workbench.action.help.openFeedbackGitHub'); }} className={`px-3 py-1.5 text-left flex items-center justify-between gap-2 text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                  <span>反馈意见与提交 Bug（GitHub）</span>
+                  <span className="shrink-0 opacity-50 text-[10px]">国外</span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

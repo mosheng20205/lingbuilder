@@ -1,5 +1,6 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Crown, Eye, EyeOff, KeyRound, Keyboard, Palette, RefreshCw, RotateCcw, Search, Settings, ShieldCheck, Trash2, UserRound, X } from 'lucide-react';
+import QRCode from 'qrcode';
 import { requestWorkbenchConfirm } from '../services/workbench/workbenchConfirmService';
 import { requestCloudAccountLogin } from '../services/workbench/cloudAccountLoginService';
 import {
@@ -351,6 +352,7 @@ export default function SettingsDialog({
                 mutedClass={muted}
                 onUpdate={onUpdate}
                 onReset={onReset}
+            onOpenAccount={() => setCategory('账号')}
               />
             )}
 
@@ -436,6 +438,7 @@ function UpdatesSetting({
   isDarkMode,
   fieldClass,
   mutedClass,
+  onOpenAccount,
   onUpdate,
   onReset
 }: {
@@ -443,9 +446,14 @@ function UpdatesSetting({
   isDarkMode: boolean;
   fieldClass: string;
   mutedClass: string;
+  onOpenAccount: () => void;
   onUpdate: (key: WorkbenchConfigurationKey, value: ConfigurationValue, target: ConfigurationTarget) => Promise<boolean>;
   onReset: (key: WorkbenchConfigurationKey, target: ConfigurationTarget) => Promise<boolean>;
 }) {
+  // 体验计划自 2026-10-07 起是 Pro 会员权益：按登录态与 Pro 状态切换申请入口。
+  const [sessionPro, setSessionPro] = useState(getCloudAccountSessionState());
+  useEffect(() => subscribeCloudAccountSession(() => setSessionPro(getCloudAccountSessionState())), []);
+  const sessionProActive = Boolean(sessionPro.pro);
   const readValue = (key: WorkbenchConfigurationKey): ConfigurationValue | undefined =>
     snapshot?.settings.find(item => item.metadata.key === key)?.inspection.value;
   const autoCheck = typeof readValue('updates.autoCheck') === 'boolean' ? Boolean(readValue('updates.autoCheck')) : true;
@@ -533,10 +541,19 @@ function UpdatesSetting({
             {betaMessage && <p role="status" className={`mt-2 text-[11px] leading-5 ${betaMessage.includes('失败') ? isDarkMode ? 'text-rose-300' : 'text-rose-700' : mutedClass}`}>{betaMessage}</p>}
             <div className="mt-3 flex flex-wrap gap-2">
               {entitlement?.authenticated === false && (
-                <button type="button" onClick={() => void requestCloudAccountLogin({ description: '登录后可申请加入体验计划并接收预览版更新。' })} className="rounded bg-sky-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-600">登录 LingBuilder 账号</button>
+                <button type="button" onClick={() => void requestCloudAccountLogin({ description: '体验计划（抢先体验推送）是 Pro 会员权益：登录后确认资格，未开通 Pro 时可在「账号」页升级。' })} className="rounded bg-sky-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-600">登录 LingBuilder 账号</button>
               )}
-              {entitlement && !entitlement.enrolled && entitlement.authenticated !== false && applicationStatus !== 'PENDING' && (
-                <button type="button" disabled={busy} onClick={() => void applyForBetaProgram()} className="rounded bg-sky-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-600 disabled:opacity-50">{applicationStatus === 'REJECTED' || applicationStatus === 'CANCELLED' ? '重新申请' : '申请加入体验计划'}</button>
+              {entitlement && !entitlement.enrolled && entitlement.authenticated !== false && applicationStatus !== 'PENDING' && !sessionProActive && (
+                <div className={`mt-1 w-full rounded border p-2.5 ${isDarkMode ? 'border-amber-400/20 bg-amber-400/5' : 'border-amber-300 bg-amber-50'}`}>
+                  <p className="flex items-center gap-1.5 text-xs font-semibold"><Crown className="h-3.5 w-3.5 text-amber-500" aria-hidden="true" />体验计划是 Pro 会员权益</p>
+                  <p className={`mt-1 text-[11px] leading-5 ${mutedClass}`}>抢先体验推送仅对生效中的 Pro 会员开放；未登录或未开通 Pro 的账号无法申请。</p>
+                  <button type="button" onClick={onOpenAccount} className="mt-2 inline-flex items-center gap-1 rounded bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-400">
+                    <Crown className="h-3.5 w-3.5" aria-hidden="true" />前往开通 Pro
+                  </button>
+                </div>
+              )}
+              {entitlement && !entitlement.enrolled && entitlement.authenticated !== false && applicationStatus !== 'PENDING' && sessionProActive && (
+                <button type="button" disabled={busy} onClick={() => void applyForBetaProgram()} className="rounded bg-sky-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-600 disabled:opacity-50">{applicationStatus === 'REJECTED' || applicationStatus === 'CANCELLED' ? '重新申请' : '申请加入体验计划（Pro 权益）'}</button>
               )}
               {applicationStatus === 'PENDING' && (
                 <button type="button" disabled={busy} onClick={() => void cancelBetaApplication()} className={`rounded border px-3 py-1.5 text-xs disabled:opacity-50 ${fieldClass}`}>撤回报名申请</button>
@@ -837,16 +854,72 @@ function AccountSettings({ isDarkMode, fieldClass, mutedClass }: { isDarkMode: b
   useEffect(() => subscribeCloudAccountSession(() => setSession(getCloudAccountSessionState())), []);
   useEffect(() => { void refreshCloudAccountSession(); }, []);
 
+  const authenticated = session.authenticated === true;
+  const proActive = Boolean(session.pro);
+  // 升级 Pro：拉取云端会籍商品的报价档位（299 永久 / 99 年），支付宝在线支付即时生效。
+  const [proOffers, setProOffers] = useState<Array<{ id: string; name: string; kind: 'perpetual' | 'fixed_term'; priceMinor: string; durationDays?: number }> | null>(null);
+  const [upgradeBusyOffer, setUpgradeBusyOffer] = useState<string | null>(null);
+  const [upgradeMessage, setUpgradeMessage] = useState('');
+  const [payment, setPayment] = useState<{ dataUrl: string; url: string; orderId: string; offerName: string } | null>(null);
+  const pollRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!authenticated || proActive) { setProOffers(null); return; }
+    let disposed = false;
+    window.lingBuilder.cloudAccount.moduleCatalog?.().then(value => {
+      if (disposed) return;
+      const product = (value.products || []).find(item => item.moduleId === 'lingbuilder.pro');
+      setProOffers((product?.offers || []) as Array<{ id: string; name: string; kind: 'perpetual' | 'fixed_term'; priceMinor: string; durationDays?: number }>);
+    }).catch(() => undefined);
+    return () => { disposed = true; };
+  }, [authenticated, proActive]);
+
+  const stopProPolling = () => { if (pollRef.current !== null) { window.clearInterval(pollRef.current); pollRef.current = null; } };
+  useEffect(() => () => stopProPolling(), []);
+
+  const startProPurchase = async (offer: { id: string; name: string }) => {
+    setUpgradeMessage('');
+    const api = window.lingBuilder.cloudAccount;
+    if (!api?.createModuleOrder) { setUpgradeMessage('当前环境不支持在线支付，请使用 LingBuilder 桌面版。'); return; }
+    setUpgradeBusyOffer(offer.id);
+    try {
+      const result = await api.createModuleOrder({ offerId: offer.id, provider: 'alipay', idempotencyKey: crypto.randomUUID() });
+      if (!result?.order?.paymentUrl) throw new Error('支付渠道未返回付款地址。');
+      const dataUrl = await QRCode.toDataURL(result.order.paymentUrl, { width: 320, margin: 2, errorCorrectionLevel: 'M' });
+      setPayment({ dataUrl, url: result.order.paymentUrl, orderId: result.order.id, offerName: offer.name });
+      stopProPolling();
+      pollRef.current = window.setInterval(() => {
+        void (async () => {
+          try {
+            const orders = await api.moduleOrders();
+            const order = (orders?.orders || []).find(item => item.id === result.order.id);
+            if (order && String(order.status).toLowerCase() === 'paid') {
+              stopProPolling();
+              setPayment(null);
+              await refreshCloudAccountSession();
+              setUpgradeMessage('支付成功：Pro 会员已生效，全部收费模块、抢先体验与 Pro 权益即刻可用。');
+            }
+          } catch { /* 轮询失败下个周期再试 */ }
+        })();
+      }, 3000);
+    } catch (error) {
+      setUpgradeMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setUpgradeBusyOffer(null);
+    }
+  };
+
   const actionClass = `rounded border px-3 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${fieldClass}`;
 
   return (
+    <>
     <section aria-label="LingBuilder 账号" className={`rounded border p-4 ${isDarkMode ? 'border-[#3c3c3c] bg-[#202020]' : 'border-slate-200 bg-white'}`}>
       <h3 className="text-sm font-semibold">LingBuilder 账号</h3>
       <p className={`mt-1 text-[11px] leading-5 ${mutedClass}`}>
         同一账号用于收费模块权益与体验计划；本地编辑、构建与 Visual Studio 工程导出无需登录。
       </p>
 
-      {session.authenticated ? (
+      {authenticated ? (
         <>
           <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
             <span className="flex items-center gap-1.5" title={session.email}>
@@ -869,6 +942,29 @@ function AccountSettings({ isDarkMode, fieldClass, mutedClass }: { isDarkMode: b
           <div className="mt-3 flex flex-wrap gap-2">
             <button type="button" onClick={() => void signOutCloudAccount()} className={actionClass}>退出登录</button>
           </div>
+          {upgradeMessage && <p role="status" className={`mt-2 text-[11px] leading-5 ${upgradeMessage.includes('成功') ? (isDarkMode ? 'text-emerald-300' : 'text-emerald-700') : (isDarkMode ? 'text-amber-300' : 'text-amber-700')}`}>{upgradeMessage}</p>}
+          {!proActive && (
+            <div className={`mt-3 rounded border p-3 ${isDarkMode ? 'border-amber-400/20 bg-amber-400/5' : 'border-amber-300 bg-amber-50'}`}>
+              <div className="flex items-center gap-1.5 text-xs font-semibold">
+                <Crown className="h-3.5 w-3.5 text-amber-500" aria-hidden="true" />升级 Pro 会员
+              </div>
+              <p className={`mt-1 text-[11px] leading-5 ${mutedClass}`}>全部收费模块 · 抢先体验推送（体验计划）· 商业使用授权 · 优先支持。支付宝在线支付，付款后即时生效。</p>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                {(proOffers || []).map(offer => (
+                  <div key={offer.id} className={`rounded border p-2.5 ${isDarkMode ? 'border-[#3c3c3c]' : 'border-slate-200'}`}>
+                    <div className="text-xs font-semibold">{offer.name}{offer.kind === 'fixed_term' && offer.durationDays ? ` · ${offer.durationDays} 天` : ''}</div>
+                    <div className="mt-0.5 text-lg font-bold text-amber-500">¥{(Number(offer.priceMinor) / 100).toFixed(0)}</div>
+                    <button type="button" disabled={upgradeBusyOffer !== null} onClick={() => void startProPurchase(offer)} className="mt-1.5 h-8 w-full cursor-pointer rounded bg-amber-500 px-3 text-xs font-semibold text-white hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-50">
+                      {upgradeBusyOffer === offer.id ? '正在创建订单…' : '支付宝购买'}
+                    </button>
+                    <button type="button" disabled title="微信支付渠道即将开放" className={`mt-1.5 h-8 w-full cursor-not-allowed rounded border px-3 text-xs disabled:opacity-50 ${fieldClass}`}>微信购买（即将开放）</button>
+                  </div>
+                ))}
+                {proOffers !== null && proOffers.length === 0 && <p className={`text-[11px] ${mutedClass}`}>在线购买通道暂时不可用，可联系管理员开通 Pro。</p>}
+                {proOffers === null && <p className={`text-[11px] ${mutedClass}`}>正在获取购买选项…</p>}
+              </div>
+            </div>
+          )}
         </>
       ) : (
         <>
@@ -881,6 +977,20 @@ function AccountSettings({ isDarkMode, fieldClass, mutedClass }: { isDarkMode: b
         </>
       )}
     </section>
+    {payment && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-label="支付宝付款二维码">
+        <div className={`w-full max-w-sm rounded-lg border p-4 ${isDarkMode ? 'border-[#3c3c3c] bg-[#202020]' : 'border-slate-200 bg-white'}`}>
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-semibold">支付宝扫码付款 · {payment.offerName}</div>
+            <button type="button" aria-label="关闭付款二维码" onClick={() => { stopProPolling(); setPayment(null); }} className={`rounded p-1 ${isDarkMode ? 'hover:bg-[#333]' : 'hover:bg-slate-100'}`}>×</button>
+          </div>
+          <img src={payment.dataUrl} alt="支付宝付款二维码" className="mx-auto mt-3 w-64 max-w-full rounded bg-white p-2" />
+          <p className={`mt-2 text-[11px] leading-5 ${mutedClass}`}>付款成功后本窗口会自动检测并开通 Pro（约 3 秒轮询一次）；关闭窗口后付款的，可重新打开「账号」页等待状态同步。</p>
+          <button type="button" onClick={() => window.open(payment.url, '_blank', 'noopener,noreferrer')} className={`mt-2 h-8 w-full rounded border text-xs ${isDarkMode ? 'border-sky-500/40 text-sky-300' : 'border-sky-500/50 text-sky-700'} hover:bg-sky-500/10`}>在本机支付应用中打开</button>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 

@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('lingBuilder', {
   },
   community: {
     openQQGroup: () => ipcRenderer.invoke('community:open-qq-group'),
+    openIssue: (target: 'gitee' | 'github') => ipcRenderer.invoke('community:open-issue', target),
   },
   logs: {
     reveal: () => ipcRenderer.invoke('logs:reveal'),
@@ -133,6 +134,7 @@ contextBridge.exposeInMainWorld('lingBuilder', {
     balance: () => ipcRenderer.invoke('cloud-account:balance'),
     moduleCatalog: () => ipcRenderer.invoke('cloud-modules:catalog'),
     moduleEntitlements: () => ipcRenderer.invoke('cloud-modules:entitlements'),
+    moduleOrders: () => ipcRenderer.invoke('cloud-module-orders'),
     authorizeModule: (moduleId: string) => ipcRenderer.invoke('cloud-modules:authorize', moduleId),
     createModuleOrder: (value: { offerId: string; provider: 'wechat'|'alipay'; idempotencyKey: string }) => ipcRenderer.invoke('cloud-modules:create-order', value),
     downloadModule: (value: { moduleId: string; arch?: 'win32'|'x64'|'any' }) => ipcRenderer.invoke('cloud-modules:download', value),
