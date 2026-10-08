@@ -487,3 +487,49 @@ test('designer control resize previews at animation-frame cadence and commits th
   assert.match(source, /controls: reconcileRebarBands\(updateControlWithDescendants\(window\.controls, preview\.controlId, preview\.fields\)\)/u);
   assert.match(source, /style=\{\{ contain: 'layout paint' \}\}/u);
 });
+
+test('designer property edits keep localStorage fresh while debouncing the app-wide broadcast', async () => {
+  // 2026-10-07 打字卡顿审计：属性面板每个按键都同步发布设计器状态，
+  // localStorage 落盘必须保持每键即时（F5 构建/保存/串写拦截从自动存档读取），
+  // 但 WINDOW_DESIGNER_* 事件广播按 150ms burst 防抖——逐键广播会让 App/侧栏/
+  // 语言上下文全量重算卡死输入。外部权威状态接管时必须取消挂起广播防回灌。
+  const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
+  assert.match(source, /saveWindowDesignerState\(state, \{ notify: false \}\)/u);
+  assert.match(source, /pendingDesignerBroadcastStateRef\.current = state;/u);
+  assert.match(source, /scheduleDesignerBroadcast\(\)/u);
+  assert.match(source, /designerBroadcastTimerRef\.current = window\.setTimeout/u);
+  assert.match(source, /, 150\)/u);
+  // 防抖到期回调不得先清 timerRef 再调 flush：flush 以「timer 存在」为挂起判据，
+  // 先置 null 会让广播永远静默（真机实测 App 收不到任何设计器事件，2026-10-07）。
+  assert.doesNotMatch(source, /designerBroadcastTimerRef\.current = null;\s*flushPendingDesignerBroadcast\(\)/u);
+  assert.match(source, /useEffect\(\(\) => \(\) => flushPendingDesignerBroadcast\(\), \[flushPendingDesignerBroadcast\]\)/u);
+  assert.match(source, /cancelPendingDesignerBroadcast\(\);/u);
+  assert.doesNotMatch(source, /publishingDesignerStateRef\.current = true;\s*try \{\s*saveWindowDesignerState\(\{/u);
+  // 广播必须在发布守卫内派发，避免设计器把自己的广播当外部状态回灌。
+  const flushSource = source.slice(source.indexOf('const flushPendingDesignerBroadcast'), source.indexOf('const scheduleDesignerBroadcast'));
+  assert.match(flushSource, /publishingDesignerStateRef\.current = true;/u);
+  assert.match(flushSource, /notifyWindowDesignerProjectUpdated\(state\)/u);
+  assert.match(flushSource, /notifyWindowDesignerDirtyStateChanged\(detail\)/u);
+});
+
+test('new_emoji property edits verify module access once per session instead of per keystroke', async () => {
+  // 2026-10-07 打字卡顿审计：NE 控件 onChange 每键 await ensureDesignerModuleAccess()
+  // 会把受控输入回显拖成一个 HTTP 往返；会话内验证一次后走同步快路径，
+  // 权益过期由构建期门禁兜底。
+  const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
+  assert.match(source, /const designerModuleAccessVerifiedRef = useRef\(false\);/u);
+  assert.match(source, /if \(designerModuleAccessVerifiedRef\.current\) return;/u);
+  assert.match(source, /if \(!selectedModuleControl \|\| designerModuleAccessVerifiedRef\.current\) \{ updateSelectedControl\(fields\); return; \}/u);
+  // authoritativeProject 引用快路径：App 回传的内容等价对象不再做两次全量 stringify 比对。
+  assert.match(source, /if \(currentProjectRef\.current === authoritativeProject\) return;/u);
+});
+
+test('App keeps designer project reference stable and throttles module context refresh', async () => {
+  // 2026-10-07 打字卡顿审计：DiffViewer 的结构/语言上下文 useMemo 以 project 引用为
+  // 依赖，内容等价时保持旧引用避免全量 AST 重算；模块上下文刷新按 8 秒节流，
+  // /api/modules/installed 服务端是全量扫盘，逐 burst 刷新纯属浪费。
+  const appSource = await fs.readFile(path.resolve(import.meta.dirname, '../src/App.tsx'), 'utf8');
+  assert.match(appSource, /previous\.project === nextState\.project\s*&&\s*previous\.activeWindowId === nextState\.activeWindowId/u);
+  assert.match(appSource, /const designerModuleContextRefreshRef = useRef<\{ lastAt: number; timer: number \| null \}>\(\{ lastAt: 0, timer: null \}\);/u);
+  assert.match(appSource, /scheduleDesignerModuleContextRefresh\(\);/u);
+});

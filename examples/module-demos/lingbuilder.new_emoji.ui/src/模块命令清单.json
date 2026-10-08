@@ -161891,6 +161891,238 @@
         "returnType": "bool"
       },
       "demoInvocation": "NE浏览器视口_解绑失去焦点(演示lingbuildernew_emojiuiBrowserViewport控件)"
+    },
+    {
+      "index": 4020,
+      "name": "NE标签页_取项矩形直调",
+      "aliases": [
+        "NE_EU_GetTabsItemRect"
+      ],
+      "signature": "NE标签页_取项矩形直调(hwnd, element_id, item_index, x, y, w, h)",
+      "description": "NE标签页_取项矩形 的底层直调版本：按索引读回单个标签的实测矩形（x/y/w/h 出参，逻辑像素、相对标签条元素左上角），与绘制/命中同一套宽度，成功返回 1。hwnd 传 当前窗口；一般请用高层封装 NE标签页_取项矩形。",
+      "insertText": "NE标签页_取项矩形直调($1, $2, $3, $4, $5, $6, $7)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "NE标签页_取项矩形直调",
+        "runtimeName": "EU_GetTabsItemRect",
+        "parameters": [
+          {
+            "name": "hwnd",
+            "type": "handle"
+          },
+          {
+            "name": "element_id",
+            "type": "controlRef",
+            "controlTypes": [
+              "lingbuilder.new_emoji.ui/Tabs"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "stableId"
+          },
+          {
+            "name": "item_index",
+            "type": "int"
+          },
+          {
+            "name": "x",
+            "type": "int",
+            "byRef": true
+          },
+          {
+            "name": "y",
+            "type": "int",
+            "byRef": true
+          },
+          {
+            "name": "w",
+            "type": "int",
+            "byRef": true
+          },
+          {
+            "name": "h",
+            "type": "int",
+            "byRef": true
+          }
+        ],
+        "returnType": "int",
+        "encoding": "raw",
+        "example": "NE标签页_取项矩形直调($1, $2, $3, $4, $5, $6, $7)"
+      },
+      "demoInvocation": "NE标签页_取项矩形直调(0, 演示lingbuildernew_emojiuiTabs控件, 1, 1, 1, 1, 1)"
+    },
+    {
+      "index": 4021,
+      "name": "NE标签页_取头部内容宽度直调",
+      "aliases": [
+        "NE_EU_GetTabsHeaderContentWidth"
+      ],
+      "signature": "NE标签页_取头部内容宽度直调(hwnd, element_id, out_width)",
+      "description": "NE标签页_取标签条内容宽 的底层直调版本：读回标签条内容总占用宽（out_width 出参，逻辑像素；chrome 模式新建按钮可见时计入其区域），成功返回 1。hwnd 传 当前窗口；一般请用高层封装 NE标签页_取标签条内容宽。",
+      "insertText": "NE标签页_取头部内容宽度直调($1, $2, $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "NE标签页_取头部内容宽度直调",
+        "runtimeName": "EU_GetTabsHeaderContentWidth",
+        "parameters": [
+          {
+            "name": "hwnd",
+            "type": "handle"
+          },
+          {
+            "name": "element_id",
+            "type": "controlRef",
+            "controlTypes": [
+              "lingbuilder.new_emoji.ui/Tabs"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "stableId"
+          },
+          {
+            "name": "out_width",
+            "type": "int",
+            "byRef": true
+          }
+        ],
+        "returnType": "int",
+        "encoding": "raw",
+        "example": "NE标签页_取头部内容宽度直调($1, $2, $3)"
+      },
+      "demoInvocation": "NE标签页_取头部内容宽度直调(0, 演示lingbuildernew_emojiuiTabs控件, 1)"
+    },
+    {
+      "index": 4022,
+      "name": "NE标签页_取项矩形",
+      "signature": "NE标签页_取项矩形(控件, 索引)",
+      "description": "读回单个标签的实测矩形，返回 JSON 文本 {\"x\":…,\"y\":…,\"w\":…,\"h\":…}。单位逻辑像素，坐标相对标签条元素左上角，与绘制/命中使用同一套宽度（chrome 模式按内容自适应）。索引越界或控件不存在返回空文本。用于把「新建标签」等按钮贴到末签右侧等按内容自适应布局，禁止再用 chromeMaxWidth 反推标签宽度。",
+      "insertText": "NE标签页_取项矩形($1, $2)",
+      "returnType": "文本型",
+      "visibility": "default",
+      "demoExample": "调试输出(NE标签页_取项矩形(浏览器标签页, 0))",
+      "binding": {
+        "command": "NE标签页_取项矩形",
+        "runtimeName": "NE标签页_取项矩形",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "lingbuilder.new_emoji.ui/Tabs"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "当前窗口中的 NE标签页 控件。"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "NE标签页_取项矩形(标签页1, 0)"
+      },
+      "demoInvocation": "NE标签页_取项矩形(演示lingbuildernew_emojiuiTabs控件, 1)"
+    },
+    {
+      "index": 4023,
+      "name": "NE标签页_取项矩形2",
+      "signature": "NE标签页_取项矩形2(控件, 索引, 横, 纵, 宽, 高)",
+      "description": "读回单个标签的实测矩形（多出参形态）：横/纵/宽/高 按引用写回，返回 1 成功、0 失败（索引越界或控件不存在）。单位逻辑像素，坐标相对标签条元素左上角；与 NE标签页_取项矩形 同源，需要逐项矩形运算（并排布局、滚动定位）时用它免 JSON 解析。",
+      "insertText": "NE标签页_取项矩形2($1, $2, $3, $4, $5, $6)",
+      "returnType": "整数型",
+      "visibility": "default",
+      "demoExample": "NE标签页_取项矩形2(浏览器标签页, 0, 末签横, 末签纵, 末签宽, 末签高)",
+      "binding": {
+        "command": "NE标签页_取项矩形2",
+        "runtimeName": "NE标签页_取项矩形2",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "lingbuilder.new_emoji.ui/Tabs"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "当前窗口中的 NE标签页 控件。"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          },
+          {
+            "name": "横",
+            "type": "int",
+            "byRef": true
+          },
+          {
+            "name": "纵",
+            "type": "int",
+            "byRef": true
+          },
+          {
+            "name": "宽",
+            "type": "int",
+            "byRef": true
+          },
+          {
+            "name": "高",
+            "type": "int",
+            "byRef": true
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "NE标签页_取项矩形2(标签页1, 0, 横, 纵, 宽, 高)"
+      },
+      "demoInvocation": "NE标签页_取项矩形2(演示lingbuildernew_emojiuiTabs控件, 1, 1, 1, 1, 1)"
+    },
+    {
+      "index": 4024,
+      "name": "NE标签页_取标签条内容宽",
+      "signature": "NE标签页_取标签条内容宽(控件)",
+      "description": "读回标签条内容总占用宽（逻辑像素）＝全部标签实测宽度之和（chrome 模式新建按钮可见时含其区域），标签条滚动时返回的仍是内容总宽而非控件宽。返回 -1 表示控件不存在。外层布局用它直接定位新建按钮、收紧标签条控件宽度；DPI 变化或改标题后需重新读取。",
+      "insertText": "NE标签页_取标签条内容宽($1)",
+      "returnType": "整数型",
+      "visibility": "default",
+      "demoExample": "调试输出(NE标签页_取标签条内容宽(浏览器标签页))",
+      "binding": {
+        "command": "NE标签页_取标签条内容宽",
+        "runtimeName": "NE标签页_取标签条内容宽",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "lingbuilder.new_emoji.ui/Tabs"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "当前窗口中的 NE标签页 控件。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "NE标签页_取标签条内容宽(标签页1)"
+      },
+      "demoInvocation": "NE标签页_取标签条内容宽(演示lingbuildernew_emojiuiTabs控件)"
     }
   ]
 }

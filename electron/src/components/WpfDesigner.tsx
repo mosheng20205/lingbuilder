@@ -82,6 +82,7 @@ import {
   getPrimaryEventNameForType,
   hasDesignerWindowMenu,
   notifyWindowDesignerDirtyStateChanged,
+  notifyWindowDesignerProjectUpdated,
   normalizeWindowDesignerState,
   normalizeLingWindowFrame,
   readWindowDesignerState,
@@ -149,7 +150,7 @@ import {
   orderControlsForDesignerPainting,
   reparentControls
 } from '../services/windowDesigner/controlHierarchy';
-import { applyDesignerLayout, createNextRebarBand, DesignerHistory, nudgeControls, reconcileRebarBands, reorderDesignerControls, updateControlWithDescendants, type DesignerHistoryAvailability, type DesignerLayoutOperation } from '../services/windowDesigner/designerOperations';
+import { applyDesignerLayout, buildBatchGeometryChanges, createNextRebarBand, DesignerHistory, nudgeControls, reconcileRebarBands, reorderDesignerControls, updateControlWithDescendants, updateControlsWithDescendants, type DesignerHistoryAvailability, type DesignerLayoutOperation } from '../services/windowDesigner/designerOperations';
 import { CommandService, createCommandService } from '../services/commands/commandService';
 import type { CommandContext } from '../services/commands/types';
 import { DESIGNER_CANVAS_CONTEXT_MENU, DESIGNER_CONTROL_CONTEXT_MENU, DESIGNER_RESOURCE_CONTEXT_MENU, getMenuService, type ResolvedMenuCommandItem } from '../services/menus';
@@ -455,6 +456,15 @@ const WpfDesigner = React.forwardRef<WpfDesignerHandle, WpfDesignerProps>(functi
   const suppressNextDirtySignalRef = useRef(false);
   const suppressNextProjectPublishRef = useRef(false);
   const publishingDesignerStateRef = useRef(false);
+  // 设计器状态广播防抖（2026-10-07 打字卡顿审计）：localStorage 每键同步落盘
+  // （F5 构建/保存/串写拦截都从自动存档读状态，必须即时新鲜），但触发 App/侧栏/
+  // 语言上下文全量重算的 WINDOW_DESIGNER_* 事件按 150ms burst 广播，逐键广播会把
+  // 输入拖成整条级联。外部权威状态到来时必须取消挂起广播，避免旧状态回灌 App。
+  const designerBroadcastTimerRef = useRef<number | null>(null);
+  const pendingDesignerBroadcastStateRef = useRef<PersistedWindowDesignerState | null>(null);
+  const pendingDesignerDirtyRef = useRef(false);
+  const designerBroadcastPropsRef = useRef({ onProjectChange, onDirtyChange });
+  designerBroadcastPropsRef.current = { onProjectChange, onDirtyChange };
   currentProjectRef.current = project;
   const [enabledDesignerModules, setEnabledDesignerModules] = useState<Set<string>>(() => new Set(['lingbuilder.win32.basic']));
   const [enabledDesignerModuleRecords, setEnabledDesignerModuleRecords] = useState<InstalledModule[]>([]);
@@ -566,11 +576,63 @@ const WpfDesigner = React.forwardRef<WpfDesignerHandle, WpfDesignerProps>(functi
   const historyCommitPendingRef = useRef(false);
   const historySeenProjectRef = useRef(initialDesignerState.project);
   const syncHistoryAvailability = useCallback(() => {
-    setHistoryAvailability({
+    const nextAvailability = {
       canUndo: designerHistoryRef.current.canUndo || historyCommitPendingRef.current,
       canRedo: designerHistoryRef.current.canRedo
-    });
+    };
+    // 保引用兜底：可用性没变时不换对象，避免每个按键都多一轮全组件重渲染。
+    setHistoryAvailability(previous => (
+      previous.canUndo === nextAvailability.canUndo && previous.canRedo === nextAvailability.canRedo
+        ? previous
+        : nextAvailability
+    ));
   }, []);
+  const cancelPendingDesignerBroadcast = useCallback(() => {
+    if (designerBroadcastTimerRef.current !== null) {
+      window.clearTimeout(designerBroadcastTimerRef.current);
+      designerBroadcastTimerRef.current = null;
+    }
+    pendingDesignerBroadcastStateRef.current = null;
+    pendingDesignerDirtyRef.current = false;
+  }, []);
+  const flushPendingDesignerBroadcast = useCallback(() => {
+    if (designerBroadcastTimerRef.current !== null) {
+      window.clearTimeout(designerBroadcastTimerRef.current);
+      designerBroadcastTimerRef.current = null;
+    }
+    const state = pendingDesignerBroadcastStateRef.current;
+    if (!state) return;
+    // 消费即清：防抖到期与卸载冲刷共用本出口，不清理会让同一次编辑被广播两次。
+    pendingDesignerBroadcastStateRef.current = null;
+    pendingDesignerDirtyRef.current = false;
+    const detail: WindowDesignerDirtyStateDetail = {
+      projectId: state.project.id,
+      isDirty: true,
+      state,
+      source: 'designer'
+    };
+    // 广播在发布守卫内派发：设计器自身的 PROJECT_UPDATED 监听会跳过回声，不回灌状态。
+    publishingDesignerStateRef.current = true;
+    try {
+      designerBroadcastPropsRef.current.onProjectChange?.(state);
+      designerBroadcastPropsRef.current.onDirtyChange?.(detail);
+      notifyWindowDesignerProjectUpdated(state);
+      notifyWindowDesignerDirtyStateChanged(detail);
+    } finally {
+      publishingDesignerStateRef.current = false;
+    }
+  }, []);
+  const scheduleDesignerBroadcast = useCallback(() => {
+    if (designerBroadcastTimerRef.current !== null) {
+      window.clearTimeout(designerBroadcastTimerRef.current);
+    }
+    // 到期回调不得先清 timerRef 再调 flush：flush 以「timer 存在」为挂起判据，
+    // 先置 null 会让防抖广播永远静默（真机实测 App 收不到任何设计器事件）。
+    designerBroadcastTimerRef.current = window.setTimeout(() => {
+      flushPendingDesignerBroadcast();
+    }, 150);
+  }, [flushPendingDesignerBroadcast]);
+  useEffect(() => () => flushPendingDesignerBroadcast(), [flushPendingDesignerBroadcast]);
   const [activeInspectorTab, setActiveInspectorTab] = useState<InspectorTab>('properties');
   const [isMenuDropdownOpen, setIsMenuDropdownOpen] = useState(false);
   const [controlContextMenu, setControlContextMenu] = useState<DesignerContextMenuState | null>(null);
@@ -617,6 +679,8 @@ const WpfDesigner = React.forwardRef<WpfDesignerHandle, WpfDesignerProps>(functi
       if (nextState.project.id !== projectId) return;
 
       if (currentProjectRef.current !== nextState.project) {
+        // 外部状态（侧栏/AI/保存链）接管：丢弃本地挂起广播，防止旧状态 150ms 后回灌 App。
+        cancelPendingDesignerBroadcast();
         suppressNextDirtySignalRef.current = true;
         suppressNextProjectPublishRef.current = true;
         setProject(nextState.project);
@@ -638,6 +702,7 @@ const WpfDesigner = React.forwardRef<WpfDesignerHandle, WpfDesignerProps>(functi
 
   useEffect(() => {
     if (!authoritativeProject || authoritativeProject.id !== projectId) return;
+    if (currentProjectRef.current === authoritativeProject) return;
     if (JSON.stringify(currentProjectRef.current) === JSON.stringify(authoritativeProject)) return;
     const cachedState = readWindowDesignerState(projectId);
     const nextState = normalizeWindowDesignerState({
@@ -647,6 +712,7 @@ const WpfDesigner = React.forwardRef<WpfDesignerHandle, WpfDesignerProps>(functi
         : authoritativeProject.windows[0]?.id,
       selectedControlId: cachedState.project.id === projectId ? cachedState.selectedControlId : null
     });
+    cancelPendingDesignerBroadcast();
     suppressNextDirtySignalRef.current = true;
     suppressNextProjectPublishRef.current = true;
     setProject(nextState.project);
@@ -1158,17 +1224,23 @@ const WpfDesigner = React.forwardRef<WpfDesignerHandle, WpfDesignerProps>(functi
     }
     return labels;
   }, [enabledDesignerModuleRecords]);
+  const designerModuleAccessVerifiedRef = useRef(false);
   const ensureDesignerModuleAccess = useCallback(async (force = false) => {
     if (!useNewEmojiDesigner && !force) return;
+    // 会话内已验证过权益就不再发 HTTP：属性面板每个按键都会经过这里，
+    // 逐键请求会把受控输入的回显拖成一个网络往返（2026-10-07 打字卡顿审计）。
+    // 权益过期由构建期门禁兜底，这里只承担「及时提醒」的 UX 职责。
+    if (designerModuleAccessVerifiedRef.current) return;
     const local = await fetch(`/api/module-access/status?moduleId=${encodeURIComponent(NEW_EMOJI_MODULE_ID)}`)
       .then(response => response.json())
       .catch(() => null);
-    if (local?.status?.allowed) return;
+    if (local?.status?.allowed) { designerModuleAccessVerifiedRef.current = true; return; }
     const cloudModules = window.lingBuilder?.cloudAccount;
     if (!cloudModules?.authorizeModule) throw new Error('new_emoji 是收费模块，请在 LingBuilder 桌面端注册并登录后使用。');
     const authorization = await cloudModules.authorizeModule(NEW_EMOJI_MODULE_ID);
     if (!authorization?.ok) throw new Error((authorization as { error?: string })?.error || 'new_emoji 模块授权检查失败，请稍后重试。');
     if (!authorization?.status?.allowed) throw new Error(authorization?.status?.reason || '当前账号没有 new_emoji 的有效权益。');
+    designerModuleAccessVerifiedRef.current = true;
   }, [useNewEmojiDesigner]);
   const controlToolboxGroups = useMemo(
     () => createControlToolboxGroups(CREATABLE_DESIGNER_CONTROL_TYPES, useNewEmojiDesigner),
@@ -1641,17 +1713,15 @@ const WpfDesigner = React.forwardRef<WpfDesignerHandle, WpfDesignerProps>(functi
       suppressNextProjectPublishRef.current = false;
       return;
     }
-    publishingDesignerStateRef.current = true;
-    try {
-      saveWindowDesignerState({
-        project,
-        activeWindowId,
-        selectedControlId: selectedControlIdRef.current
-      });
-    } finally {
-      publishingDesignerStateRef.current = false;
-    }
-  }, [activeWindowId, project, projectId]);
+    const state: PersistedWindowDesignerState = {
+      project,
+      activeWindowId,
+      selectedControlId: selectedControlIdRef.current
+    };
+    pendingDesignerBroadcastStateRef.current = state;
+    saveWindowDesignerState(state, { notify: false });
+    scheduleDesignerBroadcast();
+  }, [activeWindowId, project, projectId, scheduleDesignerBroadcast]);
 
   useEffect(() => {
     if (project.id !== projectId || !activeWindowId) return;
@@ -1680,21 +1750,9 @@ const WpfDesigner = React.forwardRef<WpfDesignerHandle, WpfDesignerProps>(functi
     }
     if (project.id !== projectId) return;
 
-    const state: PersistedWindowDesignerState = {
-      project,
-      activeWindowId,
-      selectedControlId
-    };
-    const detail: WindowDesignerDirtyStateDetail = {
-      projectId: project.id,
-      isDirty: true,
-      state,
-      source: 'designer'
-    };
-    onProjectChange?.(state);
-    onDirtyChange?.(detail);
-    notifyWindowDesignerDirtyStateChanged(detail);
-  }, [activeWindowId, onDirtyChange, onProjectChange, project, projectId]);
+    pendingDesignerDirtyRef.current = true;
+    scheduleDesignerBroadcast();
+  }, [activeWindowId, project, projectId, scheduleDesignerBroadcast]);
 
   const updateActiveWindow = (updater: (window: LingWindowModel) => LingWindowModel) => {
     setProject(prev => {
@@ -1833,10 +1891,21 @@ const WpfDesigner = React.forwardRef<WpfDesignerHandle, WpfDesignerProps>(functi
       const { x: _x, y: _y, width: _width, height: _height, parentId: _parentId, containerSlot: _containerSlot, designerLayout: _designerLayout, ...editableFields } = updatedFields;
       updatedFields = editableFields;
     }
-    updateActiveWindow(window => ({
-      ...window,
-      controls: reconcileRebarBands(updateControlWithDescendants(window.controls, selectedControlId, updatedFields))
-    }));
+    const batchGeometryChanges = selectedControlIdsRef.current.length > 1
+      ? buildBatchGeometryChanges(activeWindow.controls, selectedControlId, selectedControlIdsRef.current, updatedFields)
+      : null;
+    updateActiveWindow(window => {
+      if (!batchGeometryChanges) {
+        return {
+          ...window,
+          controls: reconcileRebarBands(updateControlWithDescendants(window.controls, selectedControlId, updatedFields))
+        };
+      }
+      return {
+        ...window,
+        controls: reconcileRebarBands(updateControlsWithDescendants(window.controls, batchGeometryChanges))
+      };
+    });
   };
 
   const commitControlFieldsImmediately = (controlId: string, updatedFields: Partial<LingControl>) => {
@@ -4282,8 +4351,9 @@ const WpfDesigner = React.forwardRef<WpfDesignerHandle, WpfDesignerProps>(functi
                     imageLists={(project.resources || []).filter((resource): resource is LingImageListResource => resource.type === 'ImageList')}
                     isDarkMode={isDarkMode}
                     moduleControl={selectedModuleControl}
+                    selectionCount={selectedControlIds.length}
                     onChange={fields => {
-                      if (!selectedModuleControl) { updateSelectedControl(fields); return; }
+                      if (!selectedModuleControl || designerModuleAccessVerifiedRef.current) { updateSelectedControl(fields); return; }
                       void ensureDesignerModuleAccess()
                         .then(() => updateSelectedControl(fields))
                         .catch(error => addLog(`> 【模块授权】${error instanceof Error ? error.message : String(error)}`));
@@ -6917,6 +6987,7 @@ function ControlProperties({
   imageLists,
   isDarkMode,
   moduleControl,
+  selectionCount,
   onChange,
   onTabPagesChange,
   edgePreviewState,
@@ -6930,6 +7001,7 @@ function ControlProperties({
   imageLists: LingImageListResource[];
   isDarkMode: boolean;
   moduleControl?: ModuleDesignerControlContribution;
+  selectionCount?: number;
   onChange: (fields: Partial<LingControl>) => void;
   onTabPagesChange: (controlId: string, pages: TabControlPage[], mutation?: TabControlPageMutation) => void;
   edgePreviewState: EdgeControlPreviewState;
@@ -7122,6 +7194,11 @@ function ControlProperties({
         </PropertyGroup>
       )}
       <PropertyGroup title="控件 / 布局" isDarkMode={isDarkMode}>
+        {(selectionCount ?? 0) > 1 && (
+          <div role="note" className={`rounded border px-2 py-1 text-[10px] leading-4 ${isDarkMode ? 'border-amber-500/25 bg-amber-500/5 text-amber-400' : 'border-amber-500/30 bg-amber-500/5 text-amber-600'}`}>
+            已选中 {selectionCount} 个控件：左距、顶距、宽度、高度的修改会批量应用到所有选中控件（已锁定和菜单项除外），文字、事件等其他属性只修改当前控件。
+          </div>
+        )}
         {control.type !== ('MenuBar' as any) && control.type !== ('MenuItem' as any) && (
           <PropertyRow label="父级容器" isDarkMode={isDarkMode}>
             <select

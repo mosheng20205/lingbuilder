@@ -2797,7 +2797,8 @@ test('new_emoji 原生 EU binding 均衔接到导出头文件', async t => {
     .filter(command => command.visibility === 'advanced')
     .map(command => command.name));
   const nativeBindings = bindings.filter(binding => nativeCommandNames.has(binding.command));
-  assert.equal(nativeBindings.length, 1618);
+  // ⑧A 直调改名后 advanced 绑定共 1623 条（取项矩形/取项矩形2/取标签条内容宽/两条直调）。
+  assert.equal(nativeBindings.length, 1623);
   const missing = nativeBindings.filter(binding => !declarations.includes(`${binding.runtimeName}(`));
   assert.deepEqual(missing, [], `以下 binding 未在模块头文件声明：${missing.map(item => item.command).join('、')}`);
 });
@@ -4656,6 +4657,20 @@ test('选项卡容器槽位、隐藏表头、Rebar、Pager 和 UpDown 生成真�
   assert.match(cpp, /TCM_SETMINTABWIDTH/u);
   assert.match(cpp, /textSize\.cx \+ TabHeaderHorizontalPadding\(\) \* 2/u);
   assert.match(cpp, /if \(inserted >= 0\) UpdateTabHeaderMinimumWidth\(\*control, \*runtime\)/u);
+  // 2026-10-08 修复钉子：TCM_SETMINTABWIDTH 撑宽页签后 comctl 的 UpDown 滚动上限仍按撑宽前
+  // 布局计算，溢出时最后一签永远滚不进可视区（隔离探针实证）。页签溢出必须恢复自然宽度。
+  assert.match(cpp, /const bool tabsOverflow = totalWidth > clientRect\.right - ScaleForDpi\(24, dpi_\);/u);
+  assert.match(cpp, /tabsOverflow \? static_cast<LPARAM>\(-1\) : static_cast<LPARAM>\(minimumWidth\)/u);
+  // 页内控件 y 是含页签头的客户区坐标，换算后落在页签头覆盖区内的必须保底 6 逻辑像素显示边距。
+  assert.match(cpp, /if \(parentIsTabPage\) \{[\s\S]*?controlY = std::max\(controlY, ScaleForDpi\(6, dpi_\)\);/u);
+  // 2026-10-08 补全钉子：多行 EDIT 不支持 EM_SETCUEBANNER，占位提示在控件为空时自绘灰字
+  // （只读结果框/日志框的空态），写入或清空文本后随重绘自动消失/出现。
+  assert.match(
+    cpp,
+    /IsType\(\*control, L"TextBox"\) && \(control->flags & CF_MULTILINE\)[\s\S]{0,600}?GetWindowTextLengthW\(hwnd\) == 0[\s\S]{0,300}?PaintMultilinePlaceholder/u,
+    '多行 TextBox 占位自绘必须挂在 ControlSubclassProc 的绘制消息且仅空文本时绘制'
+  );
+  assert.match(cpp, /void PaintMultilinePlaceholder\(HWND hwnd, const ControlSpec& control, const RuntimeControl& runtime, HDC targetDc = nullptr\)/u);
   assert.ok(
     cpp.indexOf('TCM_SETPADDING') < cpp.indexOf('TabCtrl_InsertItem(child, index, &item)'),
     '应先应用 DPI 内边距，再插入标签并测量最终最小宽度'
@@ -5353,7 +5368,10 @@ test('new_emoji FBro browser shell template generates one real HWND host per tab
   assert.match(cpp, /int 标签索引 = lb_tab_index;\s+std::wstring 地址 = lb_address;\s+std::wstring 标题 = lb_title;\s+bool 加载中 = lb_loading;/u);
   assert.match(cpp, /static void 重排浏览器布局\(\);/u);
   assert.match(cpp, /static void 重排浏览器布局\(\) \{[\s\S]*窗口_取事件宽度\(\)/u);
-  assert.match(cpp, /int 标签区宽度 = 0;[\s\S]*?标签区宽度 = 窗口宽度-300;[\s\S]*?标签控件宽度 = 标签数量\*标签宽度;[\s\S]*?控件_设置位置大小\(L"浏览器标签页", 16, 4, 标签控件宽度, 34\)/u);
+  // ⑧B 起模板撤掉「chromeMaxWidth 按 DPI 反推」猜测公式，改 DLL 读回值定位标签条与新建按钮。
+  // 断言按生成器实际输出形态：控件参数 L"..."、byRef 出参 &(…)、行内空格剥离。
+  assert.match(cpp, /内容宽 = NE标签页_取标签条内容宽\(L?"浏览器标签页"\);[\s\S]*?读回 = NE标签页_取项矩形2\(L?"浏览器标签页", 标签数量 ?- ?1, &\(末签横\), &\(末签纵\), &\(末签宽\), &\(末签高\)\);[\s\S]*?标签控件宽度 = 内容宽 ?\+ ?12;[\s\S]*?标签栏右边 = 16 ?\+ ?末签横 ?\+ ?末签宽;[\s\S]*?控件_设置位置大小\(L?"浏览器标签页", 16, 4, 标签控件宽度, 34\)/u);
+  assert.doesNotMatch(cpp, /标签宽度 ?= ?\d+ ?\* ?96/u);
   assert.doesNotMatch(cpp, /LB_NE_FbroDynamicHandler_/u);
   assert.equal((cpp.match(/static bool 窗口_取是否激活\(\)/gu) || []).length, 1);
   assert.match(cpp, /int 键码 = g_neWindowEventKeyCode;\s+bool Ctrl键按下 = g_neWindowEventCtrl;/u);

@@ -1,4 +1,4 @@
-import test from 'node:test'; import assert from 'node:assert/strict'; import fs from 'node:fs'; import path from 'node:path'; import { applyDesignerLayout, createNextRebarBand, DesignerHistory, nudgeControls, reconcileRebarBands, updateControlWithDescendants } from '../src/services/windowDesigner/designerOperations'; import type { LingWindowModel, LingWindowProject } from '../src/services/windowDesigner/types';
+import test from 'node:test'; import assert from 'node:assert/strict'; import fs from 'node:fs'; import path from 'node:path'; import { applyDesignerLayout, buildBatchGeometryChanges, createNextRebarBand, DesignerHistory, nudgeControls, reconcileRebarBands, updateControlWithDescendants, updateControlsWithDescendants } from '../src/services/windowDesigner/designerOperations'; import type { LingWindowModel, LingWindowProject } from '../src/services/windowDesigner/types';
 const control=(id:string,x:number,y:number,w=20,h=10):any=>({id,type:'Button',name:id,content:id,x,y,width:w,height:h,fontSize:12,background:'#fff',foreground:'#000',isEnabled:true,visibility:'Visible'}); const windowModel: LingWindowModel={id:'w',fileName:'w.lcpp',className:'W',title:'W',width:300,height:200,background:'#fff',description:'',controls:[control('a',10,20,30),control('b',80,50,20),control('c',160,90,40)]};
 test('designer multi-selection aligns, sizes, distributes and nudges controls deterministically',()=>{ assert.deepEqual(applyDesignerLayout(windowModel,['a','b'],'align-left').controls.map(x=>x.x),[10,10,160]); assert.deepEqual(applyDesignerLayout(windowModel,['a','b'],'align-right').controls.slice(0,2).map(x=>x.x),[10,20]); assert.deepEqual(applyDesignerLayout(windowModel,['a','b'],'align-top').controls.slice(0,2).map(x=>x.y),[20,20]); assert.deepEqual(applyDesignerLayout(windowModel,['a','b'],'same-width').controls.slice(0,2).map(x=>x.width),[30,30]); const distributed=applyDesignerLayout(windowModel,['a','b','c'],'distribute-horizontal'); assert.ok(distributed.controls[1].x>40&&distributed.controls[1].x<150); const nudged=nudgeControls(windowModel,['a','b'],5,-10); assert.deepEqual(nudged.controls.slice(0,2).map(x=>[x.x,x.y]),[[15,10],[85,40]]); assert.throws(()=>applyDesignerLayout(windowModel,['a'],'align-left'),/至少/u); assert.throws(()=>applyDesignerLayout(windowModel,['a','b'],'distribute-vertical'),/三个/u); assert.throws(()=>applyDesignerLayout(windowModel,['a','b'],'distribute-horizontal'),/均匀分布至少需要三个控件/u); });
 test('layout and nudge validation throws stay outside setState updaters (React 19 swallows eager updater errors and rethrows during render, unmounting the tree)',()=>{ const source=fs.readFileSync(path.resolve(import.meta.dirname,'../src/components/WpfDesigner.tsx'),'utf8'); assert.doesNotMatch(source,/setProject\(previous => \(\{ \.\.\.previous, windows: previous\.windows\.map\(item => item\.id === activeWindowId \? (applyDesignerLayout|nudgeControls)/u); assert.match(source,/const applyLayoutOperation[\s\S]{0,600}?currentProjectRef\.current[\s\S]{0,200}?applyDesignerLayout/u); assert.match(source,/const nudgeSelection[\s\S]{0,600}?currentProjectRef\.current[\s\S]{0,200}?nudgeControls/u); assert.match(source,/windows: previous === source \? nextWindows : previous\.windows/u); });
@@ -33,6 +33,46 @@ test('moving a container translates every descendant exactly once', () => {
   assert.deepEqual(nudged.controls.map(item => [item.id, item.x, item.y]), [
     ['group', 25, 35], ['combo', 45, 65], ['button', 60, 100]
   ]);
+});
+
+test('property-panel multi-selection batches geometry to every selected control', () => {
+  const locked = { ...control('locked', 200, 10, 60, 40), designerLocked: true };
+  const controls = [control('a', 10, 20, 30), control('b', 80, 50, 20), locked, control('d', 300, 10)];
+
+  // 纯非几何变更（文字/事件等）不产生批量变更表，仍走单控件链路。
+  assert.equal(buildBatchGeometryChanges(controls, 'a', ['a', 'b'], { content: '新文字' }), null);
+
+  const changes = buildBatchGeometryChanges(controls, 'a', ['a', 'b', 'locked', 'missing'], { content: '前进', height: 30, width: 364 });
+  assert.ok(changes);
+  // 主控件拿全量字段；其余选中控件只拿几何字段，锁定的和选区里已不存在的跳过。
+  assert.deepEqual(changes.get('a'), { content: '前进', height: 30, width: 364 });
+  assert.deepEqual(changes.get('b'), { height: 30, width: 364 });
+  assert.equal(changes.has('locked'), false);
+  assert.equal(changes.has('missing'), false);
+  assert.equal(changes.size, 2);
+
+  const applied = updateControlsWithDescendants(controls, changes);
+  assert.deepEqual(applied.map(item => [item.id, item.height, item.width, item.content]), [
+    ['a', 30, 364, '前进'], ['b', 30, 364, 'b'], ['locked', 40, 60, 'locked'], ['d', 10, 20, 'd']
+  ]);
+
+  // 批量移动容器时后代仍只平移一次，且选区同时含容器与后代时后代以绝对值优先。
+  const nested = [
+    { ...control('group', 20, 30, 160, 120), type: 'GroupBox' },
+    { ...control('combo', 40, 60, 100, 30), type: 'ComboBox', parentId: 'group' }
+  ];
+  const moved = updateControlsWithDescendants(nested, buildBatchGeometryChanges(nested, 'group', ['group', 'combo'], { x: 50, y: 70 })!);
+  assert.deepEqual(moved.map(item => [item.id, item.x, item.y]), [['group', 50, 70], ['combo', 50, 70]]);
+  const movedOnly = updateControlsWithDescendants(nested, buildBatchGeometryChanges(nested, 'group', ['group'], { x: 50, y: 70 })!);
+  assert.deepEqual(movedOnly.map(item => [item.id, item.x, item.y]), [['group', 50, 70], ['combo', 70, 100]]);
+});
+
+test('property panel multi-selection geometry batching is wired through updateSelectedControl with a visible hint', () => {
+  const designerSource = fs.readFileSync(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
+  assert.match(designerSource, /buildBatchGeometryChanges\(activeWindow\.controls, selectedControlId, selectedControlIdsRef\.current, updatedFields\)/u);
+  assert.match(designerSource, /reconcileRebarBands\(updateControlsWithDescendants\(window\.controls, batchGeometryChanges\)\)/u);
+  assert.match(designerSource, /selectionCount=\{selectedControlIds\.length\}/u);
+  assert.match(designerSource, /高度的修改会批量应用到所有选中控件/u);
 });
 
 test('Rebar automatically binds direct children and preserves configured band settings', () => {

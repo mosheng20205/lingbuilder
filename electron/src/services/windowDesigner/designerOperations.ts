@@ -115,6 +115,53 @@ export function updateControlWithDescendants(
   return applyControlChangesWithDescendants(controls, new Map([[controlId, fields]]));
 }
 
+export function updateControlsWithDescendants(
+  controls: LingControl[],
+  changes: Map<string, Partial<LingControl>>
+): LingControl[] {
+  if (!changes.size) return controls;
+  const applied = new Map<string, Partial<LingControl>>();
+  for (const [controlId, fields] of changes) {
+    if (controls.some(control => control.id === controlId)) applied.set(controlId, fields);
+  }
+  if (!applied.size) return controls;
+  return applyControlChangesWithDescendants(controls, applied);
+}
+
+export const DESIGNER_GEOMETRY_FIELD_KEYS = ['x', 'y', 'width', 'height'] as const;
+
+/**
+ * 属性面板多选批量应用：把几何字段（左距/顶距/宽度/高度）从主控件的字段变更中
+ * 拆出来，构成「主控件拿全量字段、其余选中控件只拿几何字段」的变更表。
+ * 主控件已锁定时几何字段由调用方剥离，因此这里只会得到 null（纯非几何变更）；
+ * 其余选中控件中已锁定的跳过几何字段。非几何字段永远只作用于主控件。
+ */
+export function buildBatchGeometryChanges(
+  controls: LingControl[],
+  primaryControlId: string,
+  selectedControlIds: string[],
+  fields: Partial<LingControl>
+): Map<string, Partial<LingControl>> | null {
+  const geometryFields: Partial<LingControl> = {};
+  let hasGeometryFields = false;
+  for (const key of DESIGNER_GEOMETRY_FIELD_KEYS) {
+    const value = fields[key];
+    if (value !== undefined) {
+      geometryFields[key] = value;
+      hasGeometryFields = true;
+    }
+  }
+  if (!hasGeometryFields) return null;
+  const changes = new Map<string, Partial<LingControl>>([[primaryControlId, fields]]);
+  const otherIds = selectedControlIds.filter(id => id !== primaryControlId);
+  for (const controlId of otherIds) {
+    const control = controls.find(item => item.id === controlId);
+    if (!control || control.designerLocked) continue;
+    changes.set(controlId, { ...geometryFields });
+  }
+  return changes;
+}
+
 export function applyDesignerLayout(
   window: LingWindowModel,
   selectedIds: string[],
