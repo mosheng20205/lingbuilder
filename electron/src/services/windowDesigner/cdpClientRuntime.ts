@@ -969,8 +969,10 @@ public:
         const std::shared_ptr<Connection> connection = FindConnection(connectionId);
         if (!connection) return Fail(L"CDP 连接 ID 无效。");
         if (!connection->connected.load()) return Fail(L"CDP 连接尚未就绪。");
+        const std::wstring sessionId = RecentPageSessionForConnection(connectionId);
+        if (sessionId.empty()) return Fail(L"CDP 连接上没有活动页面会话，请先新建或附加页面。");
         return SendCommand(connection, L"Network.getCookies", L"{\"urls\":[" + LingCdpJson::Escape(url ? url : L"") + L"]}",
-                           PendingKind::TextResult, handler ? handler : L"", L"", L"");
+                           PendingKind::TextResult, handler ? handler : L"", L"", sessionId);
     }
 
     bool SetCookie(long long connectionId, const wchar_t* name, const wchar_t* value, const wchar_t* url, const wchar_t* handler) {
@@ -979,9 +981,11 @@ public:
         if (!connection->connected.load()) return Fail(L"CDP 连接尚未就绪。");
         const std::wstring cookieName = name ? name : L"";
         if (cookieName.empty()) return Fail(L"CDP Cookie 名称不能为空。");
+        const std::wstring sessionId = RecentPageSessionForConnection(connectionId);
+        if (sessionId.empty()) return Fail(L"CDP 连接上没有活动页面会话，请先新建或附加页面。");
         const std::wstring params = L"{\"name\":" + LingCdpJson::Escape(cookieName) + L",\"value\":" +
             LingCdpJson::Escape(value ? value : L"") + L",\"url\":" + LingCdpJson::Escape(url ? url : L"") + L"}";
-        return SendCommand(connection, L"Network.setCookie", params, PendingKind::SuccessOnly, handler ? handler : L"", L"", L"");
+        return SendCommand(connection, L"Network.setCookie", params, PendingKind::SuccessOnly, handler ? handler : L"", L"", sessionId);
     }
 
     bool DeleteCookies(long long connectionId, const wchar_t* name, const wchar_t* url, const wchar_t* handler) {
@@ -990,8 +994,10 @@ public:
         if (!connection->connected.load()) return Fail(L"CDP 连接尚未就绪。");
         const std::wstring cookieName = name ? name : L"";
         if (cookieName.empty()) return Fail(L"CDP Cookie 名称不能为空。");
+        const std::wstring sessionId = RecentPageSessionForConnection(connectionId);
+        if (sessionId.empty()) return Fail(L"CDP 连接上没有活动页面会话，请先新建或附加页面。");
         const std::wstring params = L"{\"name\":" + LingCdpJson::Escape(cookieName) + L",\"url\":" + LingCdpJson::Escape(url ? url : L"") + L"}";
-        return SendCommand(connection, L"Network.deleteCookies", params, PendingKind::SuccessOnly, handler ? handler : L"", L"", L"");
+        return SendCommand(connection, L"Network.deleteCookies", params, PendingKind::SuccessOnly, handler ? handler : L"", L"", sessionId);
     }
 
     bool ClearCache(long long connectionId, const wchar_t* handler) {
@@ -1597,8 +1603,8 @@ public:
 
     // ===== 阶段 3：Performance / Storage =====
     bool GetPerformanceMetrics(long long pageId,const wchar_t* handler){const auto page=FindPage(pageId);if(!page)return false;const auto connection=FindConnection(page->connectionId);SendCommand(connection,L"Performance.enable",L"{}",PendingKind::Internal,L"",L"",page->sessionId);return SendCommand(connection,L"Performance.getMetrics",L"{}",PendingKind::PerformanceMetrics,handler?handler:L"",std::to_wstring(pageId),page->sessionId);}
-    bool GetStorageUsage(long long connectionId,const wchar_t* origin,const wchar_t* handler){auto connection=FindConnection(connectionId);std::wstring normalized;if(!connection||!NormalizeOrigin(origin?origin:L"",normalized))return Fail(L"CDP 来源必须是 exact http/https origin。");return SendCommand(connection,L"Storage.getUsageAndQuota",L"{\"origin\":"+LingCdpJson::Escape(normalized)+L"}",PendingKind::StorageUsage,handler?handler:L"",L"",L"");}
-    bool ClearStorage(long long connectionId,const wchar_t* origin,const wchar_t* types,bool confirmed,const wchar_t* handler){if(!confirmed)return Fail(L"CDP 清理来源数据必须显式确认破坏性操作。");auto connection=FindConnection(connectionId);std::wstring normalized,storage;if(!connection||!NormalizeOrigin(origin?origin:L"",normalized)||!NormalizeStorageTypes(types?types:L"",storage))return Fail(L"CDP 来源或存储类型无效。");return SendCommand(connection,L"Storage.clearDataForOrigin",L"{\"origin\":"+LingCdpJson::Escape(normalized)+L",\"storageTypes\":"+LingCdpJson::Escape(storage)+L"}",PendingKind::SuccessOnly,handler?handler:L"",L"",L"");}
+    bool GetStorageUsage(long long connectionId,const wchar_t* origin,const wchar_t* handler){auto connection=FindConnection(connectionId);std::wstring normalized;if(!connection||!NormalizeOrigin(origin?origin:L"",normalized))return Fail(L"CDP 来源必须是 exact http/https origin。");const std::wstring sessionId=RecentPageSessionForConnection(connectionId);if(sessionId.empty())return Fail(L"CDP 连接上没有活动页面会话，请先新建或附加页面。");return SendCommand(connection,L"Storage.getUsageAndQuota",L"{\"origin\":"+LingCdpJson::Escape(normalized)+L"}",PendingKind::StorageUsage,handler?handler:L"",L"",sessionId);}
+    bool ClearStorage(long long connectionId,const wchar_t* origin,const wchar_t* types,bool confirmed,const wchar_t* handler){if(!confirmed)return Fail(L"CDP 清理来源数据必须显式确认破坏性操作。");auto connection=FindConnection(connectionId);std::wstring normalized,storage;if(!connection||!NormalizeOrigin(origin?origin:L"",normalized)||!NormalizeStorageTypes(types?types:L"",storage))return Fail(L"CDP 来源或存储类型无效。");const std::wstring sessionId=RecentPageSessionForConnection(connectionId);if(sessionId.empty())return Fail(L"CDP 连接上没有活动页面会话，请先新建或附加页面。");return SendCommand(connection,L"Storage.clearDataForOrigin",L"{\"origin\":"+LingCdpJson::Escape(normalized)+L",\"storageTypes\":"+LingCdpJson::Escape(storage)+L"}",PendingKind::SuccessOnly,handler?handler:L"",L"",sessionId);}
 
     // ===== 阶段 3：Security 证书错误严格裁决 =====
     bool EnableCertificateOverride(long long connectionId, const wchar_t* origins, int lifetimeSeconds,
@@ -1618,8 +1624,10 @@ public:
             connection->certificateOverrideEnabled = true;
             connection->certificateOverrideDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(lifetimeSeconds);
         }
-        return SendCommand(connection, L"Security.setOverrideCertificateErrors", L"{\"override\":true}",
-                           PendingKind::SuccessOnly, callback, L"", L"");
+        // Security.setOverrideCertificateErrors 要求同一通道先执行 Security.enable
+        // （真机实锤：直接发 setOverride 返回 "Security domain not enabled"）。
+        // enable 成功后在 SecurityEnableThenOverride 分支继续 setOverride，完成处理器保持 SuccessOnly 回调形态。
+        return SendCommand(connection, L"Security.enable", L"{}", PendingKind::SecurityEnableThenOverride, callback, L"", L"");
     }
 
     bool DecideCertificateError(long long certificateErrorId, bool allow) {
@@ -2068,7 +2076,8 @@ private:
         TaskStart = 27,          // 任务启动命令响应：标记“记录中”并通知任务已开始
         TaskResponse = 28,       // 任务完成型命令响应（堆快照）：提交输出文件并通知任务完成
         TaskStopProfile = 29,    // Profiler.stop 响应：写入 CPU Profile JSON 并提交任务
-        TaskStopCoverage = 30    // takePreciseCoverage 响应：写入覆盖率 JSON 并提交任务
+        TaskStopCoverage = 30,   // takePreciseCoverage 响应：写入覆盖率 JSON 并提交任务
+        SecurityEnableThenOverride = 31 // Security.enable 成功后继续 setOverrideCertificateErrors（证书接管前置）
     };
 
     struct Event {
@@ -3114,7 +3123,7 @@ private:
                 } else continue;
             }
             const std::shared_ptr<Connection> connection = FindConnection(page->connectionId);
-            EmitEvent(connection, page, handler, type, text.empty() ? url : text, detail);
+            EmitEvent(connection, page, handler, type, text.empty() ? url : text, detail, detail);
             if (replayToFail) NotifyReplayStep(replayToFail, false, detail);
         }
     }
@@ -3248,14 +3257,16 @@ private:
         std::string body;
         std::wstring error;
         if (!HttpGetText(connection->httpBase + L"/json/list", 10000, body, error)) {
-            EmitEvent(connection, page, page->readyHandler, L"页面失败", url, L"CDP 无法访问调试端点 /json/list：" + error);
+            const std::wstring detail = L"CDP 无法访问调试端点 /json/list：" + error;
+            EmitEvent(connection, page, page->readyHandler, L"页面失败", url, detail, detail);
             ReleasePage(page->id, false);
             return;
         }
         std::wstring parseError;
         const LingCdpJson::ValuePtr root = LingCdpJson::Parser::Parse(body.data(), body.size(), parseError);
         if (!root || root->kind != LingCdpJson::Value::Kind::Array) {
-            EmitEvent(connection, page, page->readyHandler, L"页面失败", url, L"CDP 页面列表解析失败：" + parseError);
+            const std::wstring detail = L"CDP 页面列表解析失败：" + parseError;
+            EmitEvent(connection, page, page->readyHandler, L"页面失败", url, detail, detail);
             ReleasePage(page->id, false);
             return;
         }
@@ -3269,7 +3280,8 @@ private:
             if (targetId.empty() && urlField->text.rfind(url, 0) == 0) targetId = idField->text;
         }
         if (targetId.empty()) {
-            EmitEvent(connection, page, page->readyHandler, L"页面失败", url, L"CDP 未找到匹配该网址的可调试页面；可改用 CDP_新建页面。");
+            const std::wstring detail = L"CDP 未找到匹配该网址的可调试页面；可改用 CDP_新建页面。";
+            EmitEvent(connection, page, page->readyHandler, L"页面失败", url, detail, detail);
             ReleasePage(page->id, false);
             return;
         }
@@ -3278,7 +3290,8 @@ private:
             page->targetId = targetId;
         }
         if (!connection->connected.load()) {
-            EmitEvent(connection, page, page->readyHandler, L"页面失败", url, L"CDP 连接已断开。");
+            const std::wstring detail = L"CDP 连接已断开。";
+            EmitEvent(connection, page, page->readyHandler, L"页面失败", url, detail, detail);
             ReleasePage(page->id, false);
             return;
         }
@@ -3418,6 +3431,17 @@ private:
             const auto messageField = errorField->Find(L"message");
             if (codeField && codeField->kind == LingCdpJson::Value::Kind::Number) code = static_cast<long long>(codeField->number);
             if (messageField && messageField->kind == LingCdpJson::Value::Kind::String) message = messageField->text;
+            if (pending.kind == PendingKind::SecurityEnableThenOverride) {
+                {
+                    // Security.enable 失败：撤销本地接管状态，避免残留 enabled 标记误发裁决。
+                    std::lock_guard<std::mutex> lock(connection->mutex);
+                    connection->certificateOverrideEnabled = false;
+                    connection->certificateOrigins.clear();
+                    connection->certificateHandler.clear();
+                }
+                EmitCommand(connection, pending, false, L"CDP 无法启用 Security 域，证书接管未开启：" + message, code);
+                return;
+            }
             EmitCommand(connection, pending, false, message, code);
             return;
         }
@@ -3461,7 +3485,7 @@ private:
                 const auto targetField = result->Find(L"targetId");
                 if (!page || !targetField || targetField->kind != LingCdpJson::Value::Kind::String) {
                     if (page) {
-                        EmitEvent(connection, page, pending.handler, L"页面失败", page->url, L"CDP 新建标签页失败。");
+                        EmitEvent(connection, page, pending.handler, L"页面失败", page->url, L"CDP 新建标签页失败。", L"CDP 新建标签页失败。");
                         ReleasePage(pageId, false);
                     }
                     return;
@@ -3480,7 +3504,7 @@ private:
                 const auto sessionField = result->Find(L"sessionId");
                 if (!page || !sessionField || sessionField->kind != LingCdpJson::Value::Kind::String) {
                     if (page) {
-                        EmitEvent(connection, page, pending.handler, L"页面失败", page->url, L"CDP 附加标签页会话失败。");
+                        EmitEvent(connection, page, pending.handler, L"页面失败", page->url, L"CDP 附加标签页会话失败。", L"CDP 附加标签页会话失败。");
                         ReleasePage(pageId, false);
                     }
                     return;
@@ -3503,7 +3527,7 @@ private:
                 const auto sessionField = result->Find(L"sessionId");
                 if (!page || !sessionField || sessionField->kind != LingCdpJson::Value::Kind::String) {
                     if (page) {
-                        EmitEvent(connection, page, pending.handler, L"页面失败", page->url, L"CDP 附加标签页会话失败。");
+                        EmitEvent(connection, page, pending.handler, L"页面失败", page->url, L"CDP 附加标签页会话失败。", L"CDP 附加标签页会话失败。");
                         ReleasePage(pageId, false);
                     }
                     return;
@@ -3718,6 +3742,13 @@ private:
                     EmitCommand(connection, pending, false, L"CDP 元素截图请求失败。", 0);
                     return;
                 }
+                return;
+            }
+            case PendingKind::SecurityEnableThenOverride: {
+                // Security.enable 已成功：继续 setOverride；开启证书错误接管的完成事件
+                // 仍由后续 SuccessOnly 响应发出一次（完成处理器回调形态保持不变）。
+                SendCommand(connection, L"Security.setOverrideCertificateErrors", L"{\"override\":true}",
+                            PendingKind::SuccessOnly, pending.handler, L"", L"");
                 return;
             }
             case PendingKind::SuccessOnly: {
@@ -4280,11 +4311,37 @@ private:
                SendCommand(connection, L"Page.reload", L"{}", PendingKind::NavigateWait, handler ? handler : L"", std::to_wstring(page->id), page->sessionId);
     }
 
+    // Network.clearBrowserCache / clearBrowserCookies（CDP_清空缓存/清空Cookie 唯一调用方）：
+    // Edge 154 实测这两个方法也只在 page session 上存在（browser-level 报 wasn't found），
+    // 路由到最近活动 page session——二者本就清整个浏览器 profile，语义不变；Target.*/Browser.*/Fetch.*
+    // 的 browser-level 调用不受影响（这些域 browser 级真实可用，真机已验）。
     bool BrowserNetworkCommand(long long connectionId, const std::wstring& method, const wchar_t* handler) {
         const std::shared_ptr<Connection> connection = FindConnection(connectionId);
         if (!connection) return Fail(L"CDP 连接 ID 无效。");
         if (!connection->connected.load()) return Fail(L"CDP 连接尚未就绪。");
-        return SendCommand(connection, method, L"{}", PendingKind::SuccessOnly, handler ? handler : L"", L"", L"");
+        const std::wstring sessionId = RecentPageSessionForConnection(connectionId);
+        if (sessionId.empty()) return Fail(L"CDP 连接上没有活动页面会话，请先新建或附加页面。");
+        return SendCommand(connection, method, L"{}", PendingKind::SuccessOnly, handler ? handler : L"", L"", sessionId);
+    }
+
+    // 连接级 Cookie/Storage 命令的会话路由：Network.setCookie/getCookies/deleteCookies 与
+    // Storage.getUsageAndQuota 是会话域方法，只在 flatten 模式的 page session 上存在，
+    // 发到 browser-level 会被 Edge 以 wasn't found / Internal error 拒绝（真机实锤）。
+    // 这里取该连接最新登记且仍附加的 page session；没有则返回空串，由调用方 fail-closed。
+    std::wstring RecentPageSessionForConnection(long long connectionId) const {
+        std::lock_guard<std::mutex> lock(stage3Mutex_);
+        long long newestHandle = 0;
+        std::wstring newestSession;
+        for (const auto& pair : sessions_) {
+            const std::shared_ptr<SessionState>& session = pair.second;
+            if (!session || !session->attached || session->connectionId != connectionId) continue;
+            if (session->targetType != L"page" || session->sessionId.empty()) continue;
+            if (newestSession.empty() || session->id > newestHandle) {
+                newestHandle = session->id;
+                newestSession = session->sessionId;
+            }
+        }
+        return newestSession;
     }
 
     void RegisterPageSessionState(const std::shared_ptr<Connection>& connection,
@@ -4373,7 +4430,8 @@ private:
     void HandleTargetInfo(const std::shared_ptr<Connection>& connection,const LingCdpJson::ValuePtr& info){if(!info)return;auto id=info->Find(L"targetId");if(!id||id->kind!=LingCdpJson::Value::Kind::String)return;std::lock_guard<std::mutex> lock(stage3Mutex_);long long handle=targetByProtocolId_.count(id->text)?targetByProtocolId_[id->text]:nextTargetHandle_.fetch_add(1);auto target=targets_.count(handle)?targets_[handle]:std::make_shared<TargetState>();target->id=handle;target->connectionId=connection->id;target->targetId=id->text;auto type=info->Find(L"type");auto url=info->Find(L"url");if(type&&type->kind==LingCdpJson::Value::Kind::String)target->type=type->text;if(url&&url->kind==LingCdpJson::Value::Kind::String)target->url=url->text;targets_[handle]=target;targetByProtocolId_[id->text]=handle;}
 
     void EmitEvent(const std::shared_ptr<Connection>& connection, const std::shared_ptr<PageSession>& page,
-                   const std::wstring& handler, const std::wstring& type, const std::wstring& text, const std::wstring& detail) {
+                   const std::wstring& handler, const std::wstring& type, const std::wstring& text, const std::wstring& detail,
+                   const std::wstring& errorText = L"") {
         if (handler.empty()) return;
         auto event = std::make_shared<Event>();
         event->id = nextEventId_.fetch_add(1);
@@ -4383,6 +4441,9 @@ private:
         event->type = type;
         event->text = text;
         event->detail = detail;
+        // 失败类事件同步 error 字段：CDP_取当前错误 读的是 event->error，若只填 detail 会导致
+        // 失败原因恒为空串（真机实锤）。成功语义事件（页面就绪/加载完成/命令完成/控制台等）不传 errorText，error 保持为空。
+        event->error = errorText;
         PublishEvent(event);
     }
 
@@ -4412,7 +4473,7 @@ private:
             handler = preferConnectHandler && !connection->connectHandler.empty() ? connection->connectHandler : connection->eventHandler;
         }
         if (handler.empty()) return;
-        EmitEvent(connection, nullptr, handler, type, text, error);
+        EmitEvent(connection, nullptr, handler, type, text, error, error);
     }
 
     void EmitCommand(const std::shared_ptr<Connection>& connection, const Pending& pending, bool success,

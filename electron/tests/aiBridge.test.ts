@@ -125,7 +125,11 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.match(String(client.getInstructions() || ''), /designerInventory/u, 'instructions 必须告知外部 AI 组件表来自 designerInventory');
     assert.match(String(client.getInstructions() || ''), /codeOrganization/u, 'instructions 必须告知外部 AI 拆分时机以 codeOrganization 为准');
     assert.match(String(client.getInstructions() || ''), /功能代码/u, 'instructions 必须把“功能代码/功能性代码”口语映射为功能库');
+    assert.match(String(client.getInstructions() || ''), /功能\/.*目录下.*分类建子目录/u, 'instructions 必须写明功能库统一放 功能/ 目录且可按分类建子目录（2026-10-08 文件夹整理同步）');
+    assert.match(String(client.getInstructions() || ''), /父目录自动创建/u, 'instructions 必须告知 edit.propose 写嵌套功能库路径时父目录自动创建');
     assert.match(String(client.getInstructions() || ''), /lingcpp-designer-controls-empty/u, 'instructions 必须告知“看不到任何组件”的根因诊断');
+    assert.match(String(client.getInstructions() || ''), /Pro 专享命令/u, 'instructions 必须包含 Pro 专享命令写作口径');
+    assert.match(String(client.getInstructions() || ''), /文本_倒序/u, 'instructions 必须点名首个 Pro 专享命令 文本_倒序');
     assert.match(String(client.getInstructions() || ''), /FBro_启用无头模式/u, 'instructions 必须告知 FBro 无头开关为生成期烘焙且运行期不可切换');
     assert.match(String(client.getInstructions() || ''), /FBro_实例等待加载超时/u, 'instructions 必须给出控制台无消息泵时的同步句柄命令族口径');
     assert.match(String(client.getInstructions() || ''), /CEF3网络_发起请求/u, 'instructions 必须给出 CEF3 纯协议请求族标准流程');

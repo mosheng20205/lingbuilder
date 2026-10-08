@@ -334,3 +334,57 @@ test('阶段 3.5 命令可从 .lcpp 调用并生成任务/串流/回放调用链
   assert.ok(mainCpp.includes('if (callback == L"回放完成")'));
   assert.ok(mainCpp.includes('if (callback == L"任务完成")'));
 });
+
+function collectGeneratedCpp(enabledModules: InstalledModule[]): string {
+  const generated = generate(enabledModules);
+  assert.deepEqual(generated.blockingDiagnostics, []);
+  return generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
+}
+
+test('连接级 Cookie/存储命令路由到最近活动 page session 且无会话时 fail-closed（2026-10-08 修复）', () => {
+  const mainCpp = collectGeneratedCpp([cdpModule]);
+  // 会话路由辅助函数存在：Network.setCookie/getCookies/deleteCookies、Storage.getUsageAndQuota/clearDataForOrigin
+  // 与 Network.clearBrowserCache/clearBrowserCookies 都是会话域方法，发 browser-level 会被 Edge 以
+  // wasn't found / Internal error 拒绝（真机实锤）；Target.*/Browser.*/Fetch.* 的 browser-level 调用不受影响。
+  assert.ok(mainCpp.includes('std::wstring RecentPageSessionForConnection(long long connectionId) const'));
+  // 五条直接调用 + BrowserNetworkCommand（清空缓存/清空Cookie）内 1 次 = 6 处。
+  assert.equal(mainCpp.split('RecentPageSessionForConnection(connectionId)').length - 1, 6);
+  // BrowserNetworkCommand 自身必须带路由（防止清空缓存/清空Cookie 退回 browser-level）。
+  assert.ok(/bool BrowserNetworkCommand[\s\S]{0,400}?RecentPageSessionForConnection/.test(mainCpp));
+  assert.ok(mainCpp.includes('CDP 连接上没有活动页面会话，请先新建或附加页面。'));
+  // 路由后的发送带 sessionId（不再是空串 = browser-level）。
+  assert.ok(mainCpp.includes('PendingKind::TextResult, handler ? handler : L"", L"", sessionId);'));
+  assert.ok(mainCpp.includes('PendingKind::SuccessOnly, handler ? handler : L"", L"", sessionId);'));
+  assert.ok(mainCpp.includes('PendingKind::StorageUsage,handler?handler:L"",L"",sessionId);}'));
+  assert.ok(mainCpp.includes('PendingKind::SuccessOnly,handler?handler:L"",L"",sessionId);}'));
+});
+
+test('开启证书错误接管先发 Security.enable 且完成处理器回调形态不变（2026-10-08 修复）', () => {
+  const mainCpp = collectGeneratedCpp([cdpModule]);
+  // Security.enable 必须先于 setOverrideCertificateErrors 出现（真机：缺前置报 Security domain not enabled）。
+  const securityEnableAt = mainCpp.indexOf('L"Security.enable"');
+  const setOverrideAt = mainCpp.indexOf('L"Security.setOverrideCertificateErrors"');
+  assert.ok(securityEnableAt >= 0, '缺少 Security.enable 前置');
+  assert.ok(setOverrideAt > securityEnableAt, 'Security.enable 必须先于 setOverrideCertificateErrors');
+  // enable 成功后的续发分支与开启 PendingKind 存在。
+  assert.ok(mainCpp.includes('SecurityEnableThenOverride = 31'));
+  assert.ok(mainCpp.includes('case PendingKind::SecurityEnableThenOverride:'));
+  // 2026-10-06 修复保住：setOverride 的完成处理器仍是 SuccessOnly + callback（经 pending.handler 透传）。
+  assert.ok(mainCpp.includes('PendingKind::SuccessOnly, pending.handler, L"", L"");'));
+  // enable 失败时撤销本地接管状态并给出中文错误。
+  assert.ok(mainCpp.includes('CDP 无法启用 Security 域，证书接管未开启：'));
+});
+
+test('失败类页面事件的中文原因同步到 error 字段，成功事件保持 error 为空（2026-10-08 修复）', () => {
+  const mainCpp = collectGeneratedCpp([cdpModule]);
+  // EmitEvent 增加可选 errorText 参数并写入 event->error；CDP_取当前错误 读 event->error。
+  assert.ok(mainCpp.includes('const std::wstring& errorText = L""'));
+  assert.ok(mainCpp.includes('event->error = errorText;'));
+  assert.ok(mainCpp.includes('return event ? event->error : L"";'));
+  // 看门狗超时（页面加载超时）与附加失败路径把 detail 同步进 error。
+  assert.ok(mainCpp.includes('EmitEvent(connection, page, handler, type, text.empty() ? url : text, detail, detail);'));
+  assert.ok(mainCpp.includes('EmitEvent(connection, page, page->readyHandler, L"页面失败", url, detail, detail);'));
+  // 成功语义事件（页面就绪/控制台）不传 errorText，error 必须保持为空。
+  assert.ok(mainCpp.includes('EmitEvent(connection, page, pending.handler, L"页面就绪", page->url, L"");'));
+  assert.ok(mainCpp.includes('EmitEvent(connection, page, handler, L"控制台", text, level);'));
+});

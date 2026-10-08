@@ -63,11 +63,10 @@
 
 ## 已知边界（实测记录）
 
-- **Cookie/存储类连接级命令**（置/取/删 Cookie、来源存储用量）在部分 Edge 版本上报 `Network.setCookie wasn't found` / `Internal error`：连接级命令与页面会话的域启用路由相关，先在目标页面「绑定网络事件」后再执行可提高成功率；来源存储用量对部分 origin 返回 CDP `Internal error`（Edge 真实返回）。
-- **证书错误接管**报 `Security domain not enabled`：模块运行时需先 `Security.enable`（已知待补，2026-10-07 记录）；关闭接管幂等可用。
 - Debugger.pause 只在页面有 JS 活动时触发暂停；空闲页面可先执行 `setInterval(function(){},200)`。
-- 元素截图若元素处于页面中间态可能报 `0 width`，刷新后再试。
 - `about:blank` 上「新建页面」会在 60 秒后报加载超时（对已是 about:blank 的 target 再导航是 no-op、没有 load 事件），属 CDP 语义，不是工具缺陷；要开空白页请直接填任意真实网址。
+
+> 2026-10-08 修复并移出本节（模块运行时 `cdpClientRuntime.ts`）：① 连接级 Cookie/存储族七条命令（置/取/删 Cookie、取存储用量、清理来源数据、清空磁盘缓存、清空全部 Cookie）已路由到最近活动页面会话——真机实测 Edge 154 上 `Network.setCookie/getCookies/deleteCookies/clearBrowserCache/clearBrowserCookies` 与 `Storage.getUsageAndQuota/clearDataForOrigin` 全部只在 page session 上存在，browser-level 一律报 `wasn't found`/`Internal error`；② 开启证书错误接管已补 `Security.enable` 前置（此前报 `Security domain not enabled`）；③ 失败类页面事件的中文原因已同步进 `CDP_取当前错误()` 读取口（此前只进事件详情、`取当前错误` 恒空）。Target/Browser/Security/Fetch 域的 browser-level 调用真机验证正常，未受影响。
 
 ## 功能库代码结构
 

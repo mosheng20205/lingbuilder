@@ -48,6 +48,7 @@ import { getLingCppParameterElementType, isLingCppArrayParameterType } from '../
 import { createProjectGlobalContext, getProjectGlobalDiagnostics, isProjectGlobalsFilePath } from '../lingCpp/projectGlobalService';
 import { createProjectTypeContext, getProjectDataTypeDiagnostics, isProjectDataTypesFilePath, sortProjectDataTypes } from '../lingCpp/projectDataTypeService';
 import { getLingCppSemanticDiagnostics } from '../lingCpp/languageService';
+import type { ProCommandAuthorizationState } from '../lingCpp/proCommandAccess';
 import { createProjectFunctionContext } from '../lingCpp/functionLibraryService';
 import { CEF3_BROWSER_EVENTS, CEF3_EVENT_ASYNC_DEFAULTS, CEF3_EVENT_BRIDGE_SUBSCRIPTIONS, CEF3_RESOURCE_RESPONSE_BODY_EVENT_NAME } from '../modules/cef3BrowserEvents';
 import { FBRO_RESOURCE_RESPONSE_BODY_EVENT_NAME } from '../modules/fbroEventCatalog';
@@ -301,6 +302,11 @@ export interface GenerateLingCppNativeWin32ProjectOptions {
   outputKind?: 'application' | 'dynamic-library' | 'console-application';
   /** 真＝生成的 exe 以 UAC requireAdministrator 请求管理员权限；缺省假＝asInvoker。 */
   requireAdministrator?: boolean;
+  /**
+   * Pro 命令授权状态（构建链路必传）：随语义诊断注入，未授权调用 access:'pro' 命令
+   * 会在 blockingDiagnostics 里报 error 阻断构建；缺省按未授权（fail-closed）。
+   */
+  proCommandAuthorization?: ProCommandAuthorizationState | null;
 }
 
 interface GeneratedWindowClassBlock {
@@ -370,7 +376,7 @@ export function generateLingCppNativeWin32Project(
   const consoleAlignedProject = consoleStartup?.entry
     ? withConsoleStartupWindow(project, consoleStartup.entry.className)
     : project;
-  const aggregate = aggregateLingCppProjectSources(projectSources, enabledModules, consoleAlignedProject);
+  const aggregate = aggregateLingCppProjectSources(projectSources, enabledModules, consoleAlignedProject, options.proCommandAuthorization);
   // 项目级 DLL 命令声明：虚拟模块已在聚合期合成并供语义诊断消费，这里并入启用模块供
   // 补全/C++ 生成/构建物化复用同一实例。
   if (aggregate.projectDllModule) enabledModules = [...enabledModules, aggregate.projectDllModule];
@@ -712,7 +718,8 @@ function normalizeProjectSources(options: GenerateLingCppNativeWin32ProjectOptio
 function aggregateLingCppProjectSources(
   sources: LingCppProjectSourceFile[],
   enabledModules: InstalledModule[],
-  designerProject?: LingWindowProject
+  designerProject?: LingWindowProject,
+  proCommandAuthorization?: ProCommandAuthorizationState | null
 ): AggregatedLingCppProjectSources {
   const parsedSources = (sources.length > 0 ? sources : [{ filePath: 'source.lcpp', sourceCode: '' }]).map(source => ({
     source,
@@ -760,7 +767,7 @@ function aggregateLingCppProjectSources(
       diagnostics.push(message);
       if (diagnostic.level === 'error') blockingDiagnostics.push(message);
     });
-    getLingCppSemanticDiagnostics(source.sourceCode, designerProject, source.filePath, { availableModules: diagnosticModules, enabledModules: diagnosticModules }, projectGlobals, projectTypes, projectFunctions, { enableUnknownCommandAdmission: true })
+    getLingCppSemanticDiagnostics(source.sourceCode, designerProject, source.filePath, { availableModules: diagnosticModules, enabledModules: diagnosticModules }, projectGlobals, projectTypes, projectFunctions, { enableUnknownCommandAdmission: true, proCommandAuthorization, proCommandEnforce: true })
       .forEach(diagnostic => {
         const message = `${source.filePath} 第 ${diagnostic.line} 行：${diagnostic.message}`;
         diagnostics.push(message);
@@ -1483,7 +1490,8 @@ const NEW_EMOJI_DATA_BRIDGE_COMMANDS = [
   'NE标签页_设置标签样式', 'NE标签页_设置标签位置', 'NE标签页_设置表头对齐',
   'NE标签页_设置表头可见', 'NE标签页_设置可编辑', 'NE标签页_设置内容可见',
   'NE标签页_启用浏览器模式', 'NE标签页_设置浏览器度量', 'NE标签页_设置项目图标',
-  'NE标签页_设置项目可关闭', 'NE标签页_设置项目状态', 'NE标签页_设置新建按钮可见', 'NE标签页_设置拖拽选项'
+  'NE标签页_设置项目可关闭', 'NE标签页_设置项目状态', 'NE标签页_设置新建按钮可见', 'NE标签页_设置拖拽选项',
+  'NE标签页_取项矩形', 'NE标签页_取项矩形2', 'NE标签页_取标签条内容宽'
 ];
 
 // 数据桥接助手按需生成：源码未引用这些命令时不产出任何助手，
@@ -1921,7 +1929,7 @@ static void LB_NE_JsonAppendInt(std::wstring& json, const wchar_t* key, long lon
     const wchar_t colon = static_cast<wchar_t>(58);
     const wchar_t comma = static_cast<wchar_t>(44);
     if (first) { json += L'{'; first = false; } else json += comma;
-    json += quote; json += key; json += colon;
+    json += quote; json += key; json += quote; json += colon;
     json += std::to_wstring(value);
 }
 
@@ -1931,7 +1939,7 @@ static void LB_NE_JsonAppendText(std::wstring& json, const wchar_t* key, const s
     const wchar_t comma = static_cast<wchar_t>(44);
     const wchar_t bslash = static_cast<wchar_t>(92);
     if (first) { json += L'{'; first = false; } else json += comma;
-    json += quote; json += key; json += colon; json += quote;
+    json += quote; json += key; json += quote; json += colon; json += quote;
     for (wchar_t ch : value) {
         if (ch == quote || ch == bslash) json += bslash;
         json += ch;
@@ -2265,6 +2273,35 @@ static int NE标签页_取项目数量(const wchar_t* controlName) {
     const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Tabs" });
     if (!element) return 0;
     return EU_GetTabsItemCount(g_newEmojiWindow, element->id);
+}
+
+static std::wstring NE标签页_取项矩形(const wchar_t* controlName, int index) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Tabs" });
+    if (!element) return {};
+    int x = 0, y = 0, w = 0, h = 0;
+    if (EU_GetTabsItemRect(g_newEmojiWindow, element->id, index, &x, &y, &w, &h) != 1) return {};
+    std::wstring json;
+    bool first = true;
+    LB_NE_JsonAppendInt(json, L"x", x, first);
+    LB_NE_JsonAppendInt(json, L"y", y, first);
+    LB_NE_JsonAppendInt(json, L"w", w, first);
+    LB_NE_JsonAppendInt(json, L"h", h, first);
+    LB_NE_JsonFinish(json, first);
+    return json;
+}
+
+static int NE标签页_取项矩形2(const wchar_t* controlName, int index, int* x, int* y, int* w, int* h) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Tabs" });
+    if (!element) return 0;
+    return EU_GetTabsItemRect(g_newEmojiWindow, element->id, index, x, y, w, h);
+}
+
+static int NE标签页_取标签条内容宽(const wchar_t* controlName) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"Tabs" });
+    if (!element) return -1;
+    int width = 0;
+    if (EU_GetTabsHeaderContentWidth(g_newEmojiWindow, element->id, &width) != 1) return -1;
+    return width;
 }
 
 static int NE标签页_添加项目(const wchar_t* controlName, const std::wstring& title) {
@@ -4480,10 +4517,21 @@ ${browserShellNonDragHitTests}
   const browserShellHitRegionUpdate = browserShellFrame.preset === 'browserShell'
     ? '    LB_NE_UpdateBrowserShellHitRegions();'
     : '';
+  // 外壳的标签集合是异步维护的（环境标签延迟加入、关闭宿主等都不产生元素事件），
+  // 工程的「重排浏览器布局」依赖事件才知道要重跑；布局消息里直接调它（lcpp 方法
+  // 会生成同名的窗口级 C++ 函数），标签数量变化后控件宽度与 + 号位置立即跟上。
+  const browserShellRelayoutMethod = browserShellFrame.preset === 'browserShell'
+    ? (program?.classes.flatMap(cls => cls.methods).find(method => method.name === '重排浏览器布局')
+      ? '重排浏览器布局' : '')
+    : '';
+  const browserShellTabsEventLines = browserShellRelayoutMethod
+    ? `            ${toCppIdentifier(browserShellRelayoutMethod)}();`
+    : '';
   const browserShellLayoutMessageCase = browserShellFrame.preset === 'browserShell'
     ? `        case WM_LINGBUILDER_NE_BROWSER_SHELL_LAYOUT:
             LB_NE_UpdateBrowserShellBounds();
             LB_NE_UpdateBrowserShellHitRegions();
+${browserShellTabsEventLines}
             return 0;`
     : '';
   const browserShellHitTestCase = browserShellFrame.preset === 'browserShell'
@@ -4793,9 +4841,13 @@ function generateNewEmojiFbroEventDispatch(
   const cases: string[] = [];
   const handlerCases: string[] = [];
   const methods = new Map<string, LingCppMethod>();
-  const fbroHandlerNames = new Set(controls.flatMap(control => Object.values(control.events || {}).filter(Boolean)));
+  // 设计器事件绑定名常带 `_` 前缀（如 `_浏览器标签页_选择变化`），而解析出的方法名是
+  // normalize 形式（`浏览器标签页_选择变化`）；原始名直接比对会让全部事件 case 落空，
+  // fbro 对象事件与外壳布局通知都派发不到 lcpp。两侧统一按 normalizeIdentifier 口径折叠。
+  const normalizeEventName = (value: string) => value.trim().replace(/^_+/, '').replace(/\s+/g, '');
+  const fbroHandlerNames = new Set(controls.flatMap(control => Object.values(control.events || {}).filter(Boolean).map(name => normalizeEventName(name))));
   program.classes.forEach(lingClass => lingClass.methods.forEach(method => {
-    if (fbroHandlerNames.has(method.name)) methods.set(method.name, method);
+    if (fbroHandlerNames.has(normalizeEventName(method.name))) methods.set(method.name, method);
   }));
   [...methods.values()].forEach((method, index) => {
     const callbackName = `LB_NE_FbroDynamicHandler_${index + 1}`;
@@ -5203,6 +5255,7 @@ struct LB_NE_FbroBrowserInstance {
     std::wstring processInstanceId;
     std::wstring stableTabId;
     std::wstring title;
+    std::wstring display_name; // 标签/实例列表显示名：创建或重命名时指定（环境名），不随网页 TitleChanged 变化。
     HWND host = nullptr;
     LB_FBRO_HANDLE handle = 0;
     std::wstring url;
@@ -7220,8 +7273,10 @@ static bool LB_NE_StartBrowserShellProcess(LB_NE_FbroBrowserInstance& browser) {
     }
     SetWindowTextW(host, browser.stableTabId.c_str());
     browser.host = host;
-    if (browser.requestedViewportWidth <= 0) browser.requestedViewportWidth = width;
-    if (browser.requestedViewportHeight <= 0) browser.requestedViewportHeight = height;
+    // 伴随宿主始终自适应 viewport 元素（requestedViewportWidth 保持 0）；
+    // 若在此存入创建时的初始宽，LB_NE_UpdateBrowserShellBounds 的 min 钳制会把宿主
+    // 永久锁死在启动尺寸，窗口最大化/拉大后网页宿主不再跟随。固定尺寸只有
+    // regionEmbedded 内嵌区域场景需要（那里显式赋值）。
     RECT bounds{};
     GetClientRect(host, &bounds);
     LingFbroProcessConfig config;
@@ -7359,7 +7414,8 @@ static void LB_NE_SyncBrowserShellTabs() {
         LB_NE_FbroBrowserInstance* browser = LB_NE_FindBrowserShellTab(stableId.c_str());
         if (!browser) continue;
         if (!rows.empty()) rows += L"|";
-        const std::wstring title = LB_NE_SanitizeBrowserShellTabField(browser->title.empty() ? L"新标签页" : browser->title);
+        const std::wstring displayName = browser->display_name.empty() ? browser->title : browser->display_name;
+        const std::wstring title = LB_NE_SanitizeBrowserShellTabField(displayName.empty() ? L"新标签页" : displayName);
         const std::wstring id = LB_NE_SanitizeBrowserShellTabField(stableId);
         const std::wstring address = LB_NE_SanitizeBrowserShellTabField(browser->url);
         rows += title + L"\t" + id + L"\t" + address + L"\t🌐\t0\t1";
@@ -7373,7 +7429,7 @@ static void LB_NE_SyncBrowserShellTabs() {
         richListItems.push_back({
             {"key", lingbuilder_fbro_process_detail::JsonUtf8(stableId)},
             {"data", {
-                {"title", lingbuilder_fbro_process_detail::JsonUtf8(browser->title.empty() ? stableId : browser->title)},
+                {"title", lingbuilder_fbro_process_detail::JsonUtf8(displayName.empty() ? stableId : displayName)},
                 {"address", lingbuilder_fbro_process_detail::JsonUtf8(browser->url)},
                 {"status", lingbuilder_fbro_process_detail::JsonUtf8(browser->shellSessionOpen ? processState : L"已关闭")},
                 {"processState", lingbuilder_fbro_process_detail::JsonUtf8(processState)},
@@ -7506,6 +7562,7 @@ static bool 浏览器外壳_新建标签页(const std::wstring& stableId, const 
     browser.name = L"__lingbuilder_browser_shell__" + stableId;
     browser.stableTabId = stableId;
     browser.title = title.empty() ? L"新标签页" : title;
+    browser.display_name = browser.title;
     browser.url = address.empty() ? LB_NE_BROWSER_SHELL_DEFAULT_URL : address;
     browser.host = host;
     browser.flags = 7U;
@@ -7556,6 +7613,7 @@ static bool 浏览器外壳_新建独立实例内部(const std::wstring& stableI
     browser.processInstanceId = L"new-emoji-shell:" + std::to_wstring(reinterpret_cast<uintptr_t>(g_newEmojiWindow)) + L":" + stableId;
     browser.stableTabId = stableId;
     browser.title = title.empty() ? stableId : title;
+    browser.display_name = browser.title;
     browser.url = address.empty() ? LB_NE_BROWSER_SHELL_DEFAULT_URL : address;
     browser.profileDirectory = resolvedProfile;
     browser.createdAt = LB_NE_BrowserShellTimestamp();
@@ -7654,6 +7712,7 @@ static bool 浏览器外壳_新建内嵌实例区域(const std::wstring& stableI
     browser.processInstanceId = L"new-emoji-region:" + std::to_wstring(reinterpret_cast<uintptr_t>(g_newEmojiWindow)) + L":" + stableId;
     browser.stableTabId = stableId;
     browser.title = stableId;
+    browser.display_name = stableId;
     browser.url = address.empty() ? LB_NE_BROWSER_SHELL_DEFAULT_URL : address;
     browser.profileDirectory = resolvedProfile;
     browser.createdAt = LB_NE_BrowserShellTimestamp();
@@ -7739,7 +7798,8 @@ static bool LB_NE_SaveBrowserShellState() {
         if (!browser) continue;
         document["instances"].push_back({
             {"id", lingbuilder_fbro_process_detail::JsonUtf8(browser->stableTabId)},
-            {"name", lingbuilder_fbro_process_detail::JsonUtf8(browser->title)},
+            {"name", lingbuilder_fbro_process_detail::JsonUtf8(
+                browser->display_name.empty() ? browser->title : browser->display_name)},
             {"order", order++},
             {"cacheDirectory", lingbuilder_fbro_process_detail::JsonUtf8(
                 (std::filesystem::path(L"profiles") / LB_NE_BrowserShellSafeSegment(browser->stableTabId)).generic_wstring())},
@@ -7869,7 +7929,7 @@ static bool 浏览器外壳_重命名实例(const std::wstring& stableId, const 
     while (!normalized.empty() && iswspace(normalized.front())) normalized.erase(normalized.begin());
     while (!normalized.empty() && iswspace(normalized.back())) normalized.pop_back();
     if (!browser || normalized.empty() || normalized.size() > 80) return false;
-    browser->title = normalized;
+    browser->display_name = normalized;
     LB_NE_SyncBrowserShellTabs();
     return LB_NE_SaveBrowserShellState();
 }
@@ -8985,6 +9045,15 @@ function getNewEmojiEventArgumentExpressions(binding: NewEmojiCatalogEventBindin
     'MessageBoxResultCallback.Result': ['lb_messagebox_id', 'lb_result'],
     'MessageBoxExCallback.Result': ['lb_messagebox_id', 'lb_action', 'LB_NE_FromUtf8(lb_value_utf8, lb_value_utf8_length)'],
     'ElementTextCallback.SelectionChanged': ['LB_NE_FromUtf8(lb_utf8, lb_utf8_length)'],
+    // NE地址栏（Omnibox）的「提交回调/图标按钮回调」在 catalog 里的事件名是 TextChanged/ValueChanged：
+    // 提交参数是回车时的地址文本，图标回调参数是 图标索引/起始/结束——缺了这两条，
+    // _地址栏_提交 的地址参数恒为空（规范化后回退主页地址），图标索引恒 0。
+    'EU_SetOmniboxCommitCallback.TextChanged': ['LB_NE_FromUtf8(lb_utf8, lb_utf8_length)'],
+    '设置地址栏提交回调_整数.TextChanged': ['LB_NE_FromUtf8(lb_utf8, lb_utf8_length)'],
+    'ElementTextCallback.TextChanged': ['LB_NE_FromUtf8(lb_utf8, lb_utf8_length)'],
+    'EU_SetOmniboxIconButtonCallback.ValueChanged': ['lb_value', 'lb_range_start', 'lb_range_end'],
+    '设置地址栏图标按钮回调_整数.ValueChanged': ['lb_value', 'lb_range_start', 'lb_range_end'],
+    'ElementValueCallback.ValueChanged': ['lb_value', 'lb_range_start', 'lb_range_end'],
     'RichListEventCallback.ItemClicked': ['lb_event_json'],
     'RichListEventCallback.ItemDoubleClicked': ['lb_event_json'],
     'RichListEventCallback.ButtonClicked': ['lb_event_json'],
@@ -26086,6 +26155,7 @@ private:
         int iconHeight = 0;
         if (imageList) ImageList_GetIconSize(imageList, &iconWidth, &iconHeight);
         int minimumWidth = ScaleForDpi(48, dpi_);
+        long long totalWidth = 0;
         int itemCount = TabCtrl_GetItemCount(runtime.hwnd);
         for (int index = 0; index < itemCount; ++index) {
             wchar_t title[512] = {};
@@ -26099,12 +26169,38 @@ private:
             GetTextExtentPoint32W(hdc, title, static_cast<int>(std::wcslen(title)), &textSize);
             int desiredWidth = textSize.cx + TabHeaderHorizontalPadding() * 2;
             if (imageList && item.iImage >= 0) desiredWidth += iconWidth + TabHeaderIconGap();
+            totalWidth += desiredWidth;
             minimumWidth = std::max(minimumWidth, desiredWidth);
         }
         if (oldFont) SelectObject(hdc, oldFont);
         ReleaseDC(runtime.hwnd, hdc);
-        SendMessageW(runtime.hwnd, TCM_SETMINTABWIDTH, 0, minimumWidth);
+        RECT clientRect = {};
+        GetClientRect(runtime.hwnd, &clientRect);
+        // TCM_SETMINTABWIDTH 把页签撑宽到最宽标题后，comctl 的 UpDown 滚动上限仍按撑宽前的
+        // 布局计算，页签溢出时最后一签永远滚不进可视区（隔离探针 2×2 实证：不设最小宽或
+        // 只设 padding 都能滚到底，一旦设最小宽必坏）。因此只在页签总宽放得下时保留等宽
+        // 撑宽观感；需要滚动时恢复自然宽度（-1 = 回默认最小宽），原生滚动才能到底。
+        const bool tabsOverflow = totalWidth > clientRect.right - ScaleForDpi(24, dpi_);
+        SendMessageW(runtime.hwnd, TCM_SETMINTABWIDTH, 0, tabsOverflow ? static_cast<LPARAM>(-1) : static_cast<LPARAM>(minimumWidth));
         InvalidateRect(runtime.hwnd, nullptr, FALSE);
+    }
+
+    void PaintMultilinePlaceholder(HWND hwnd, const ControlSpec& control, const RuntimeControl& runtime, HDC targetDc = nullptr) {
+        // 多行 EDIT（典型：只读结果框/日志框的空态）不支持 EM_SETCUEBANNER，占位提示自绘灰字。
+        HDC hdc = targetDc ? targetDc : GetDC(hwnd);
+        if (!hdc) return;
+        RECT clientRect = {};
+        GetClientRect(hwnd, &clientRect);
+        HFONT oldFont = runtime.font ? reinterpret_cast<HFONT>(SelectObject(hdc, runtime.font)) : nullptr;
+        SetBkMode(hdc, TRANSPARENT);
+        SetTextColor(hdc, BlendColor(control.foreground, control.background, 55));
+        RECT textRect = clientRect;
+        textRect.left += ScaleForDpi(10, dpi_);
+        textRect.top += ScaleForDpi(8, dpi_);
+        textRect.right -= ScaleForDpi(10, dpi_);
+        DrawTextW(hdc, control.data, -1, &textRect, DT_LEFT | DT_TOP | DT_NOPREFIX | DT_END_ELLIPSIS);
+        if (oldFont) SelectObject(hdc, oldFont);
+        if (!targetDc) ReleaseDC(hwnd, hdc);
     }
 
     void PaintTabControl(HWND hwnd, HDC hdc, const ControlSpec& control, RuntimeControl& runtime) {
@@ -27931,6 +28027,18 @@ private:
                 LRESULT dataGridResult = 0;
                 if (self->HandleDataGridMessage(*runtime, *control, hwnd, message, wParam, lParam, dataGridResult)) return dataGridResult;
             }
+            if (IsType(*control, L"TextBox") && (control->flags & CF_MULTILINE)
+                && control->data && control->data[0]
+                && (message == WM_PAINT || message == WM_PRINTCLIENT)) {
+                // 多行 EDIT 不支持 EM_SETCUEBANNER（单行走 cue banner 通道）：占位提示在控件
+                // 为空时自绘成灰字，写入或清空文本后随重绘自动出现/消失（控件_设置文本不污染）。
+                LRESULT result = DefSubclassProc(hwnd, message, wParam, lParam);
+                if (GetWindowTextLengthW(hwnd) == 0) {
+                    self->PaintMultilinePlaceholder(hwnd, *control, *runtime,
+                        message == WM_PRINTCLIENT ? reinterpret_cast<HDC>(wParam) : nullptr);
+                }
+                return result;
+            }
             if (message == WM_CONTEXTMENU && self->HandleContextMenu(hwnd, lParam)) return 0;
             if (IsType(*control, L"HotKey")) {
                 if (message == WM_ERASEBKGND) return 1;
@@ -28317,6 +28425,7 @@ private:
         HWND parentHwnd = hwnd_;
         int parentContentOffsetX = 0;
         int parentContentOffsetY = 0;
+        bool parentIsTabPage = false;
         if (control.parentId > 0) {
             RuntimeControl* parent = FindRuntimeControl(control.parentId);
             if (!parent || !parent->hwnd) return false;
@@ -28328,6 +28437,7 @@ private:
                 parentHwnd = page->hwnd;
                 parentContentOffsetX = page->contentRect.left;
                 parentContentOffsetY = page->contentRect.top;
+                parentIsTabPage = true;
             }
         }
 
@@ -28511,6 +28621,14 @@ private:
 
         int controlX = ScaleForDpi(control.x, dpi_) - parentContentOffsetX;
         int controlY = ScaleForDpi(control.y, dpi_) - parentContentOffsetY;
+        if (parentIsTabPage) {
+            // 页内控件 y 的语义是「含页签头的选项卡客户区坐标」（与 IDE 画布一致），减
+            // contentRect.top 换算成页面容器坐标。设计值若不足页签头实际高度（老工程按
+            // 头高 24~28 留 y≥34 起步，现字体/DPI 下头高可达 34+），首行会贴死甚至压住
+            // 页签条（cdp-client-showcase 实锤）。页签条覆盖区本就不该放内容，保底
+            // 6 逻辑像素显示边距，只影响落在页签头覆盖区内的控件。
+            controlY = std::max(controlY, ScaleForDpi(6, dpi_));
+        }
         int controlWidth = ScaleForDpi(control.width, dpi_);
         int controlHeight = ScaleForDpi(control.height, dpi_);
         HWND frameHwnd = nullptr;

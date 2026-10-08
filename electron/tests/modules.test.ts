@@ -520,12 +520,15 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       // +5 参数）、回放执行器 2 命令与 CDP_取当前回放 快照（执行回放 3 参数/停止回放 1 参数/
       // 取当前回放 0 参数，+4 参数）。合计 +13 命令 +27 参数，无 controlRef
       // （实算摘要 6259b54a/8da8cb1d）。
+      // 基线 2026-10-06 写回（Pro 专享命令机制）：免费模块 lingbuilder.std.text 1.3.0 新增
+      // access:'pro' 演示命令 文本_倒序（+1 命令 +1 参数，无 controlRef）
+      // （实算摘要 cca88780/f6d5687a）。
       modules: 102,
-      commands: 4086,
-      parameters: 7166,
+      commands: 4087,
+      parameters: 7167,
       controlReferences: 1345,
-      commandDigest: '6259b54a',
-      parameterDigest: '8da8cb1d'
+      commandDigest: 'cca88780',
+      parameterDigest: 'f6d5687a'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -667,7 +670,8 @@ test('模块源目录中的 controlRef 补全、示例和代码片段全部保�
   // 2026-09-29 写回 64→67：并行会话在途新增 moduleAccessService.ts / paidModuleAccessRecovery.ts 等
   // 模块源文件，按当前工作区内容实算写回（全量字面量扫描 0 违规）。
   // 2026-10-01 写回 67→68：新增二维码模块 qrcodeModules.ts（全量字面量扫描 0 违规）。
-  assert.equal(sourceFiles.length, 68, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
+  // 2026-10-06 写回 68→69：新增 proAccessStateFile.ts（Pro 会员授权状态落盘，无 controlRef 字面量；全量字面量扫描 0 违规）。
+  assert.equal(sourceFiles.length, 69, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
   assert.deepEqual(violations, []);
 
   const unsafe = 'const command = { insertText: \'控件_设置文本("操作结果", "$2")\' };';
@@ -1009,12 +1013,20 @@ test('工作区已安装模块全部通过 controlRef 清单和示例门禁', as
       // 基线 2026-10-06 写回（CDP 客户端 3.1 阶段 3.5）：内置 +13 命令 +27 参数
       //（性能长任务 8 条 +18 参数、画面串流 2 条 +5 参数、回放执行器 2 条 +CDP_取当前回放 +4 参数，
       // 见上一用例）；本机磁盘仍为 11 份清单，磁盘侧 0 漂移（实算摘要 4fd80d45/b0d5063a）。
+      // 基线 2026-10-06 写回（Pro 专享命令机制）：内置 +文本_倒序 1 命令 1 参数（见上一用例）
+      // （实算摘要 345f51b3/52487a07）。
+      // 基线 2026-10-08 写回（NE 标签页读回命令批次）：磁盘清单 lingbuilder.new_emoji.ui
+      // +5 命令 +20 参数 +5 controlRef（⑧ 的 NE标签页_取项矩形/取头部内容宽度 两条直调
+      // + 取完整状态扩展 header_content_width 出参，本批 NE标签页_取项矩形/取项矩形2/
+      // 取标签条内容宽 三条收控件读回；两条直调按 NE表格_取单元格值直调 同例改挂
+      // 「直调」后缀，与收控件同名撞车解耦），内置部分不变；本机磁盘仍为 11 份清单
+      // （实算摘要 779fb1f5/4d706704）。
       modules: 113,
-      commands: 8166,
-      parameters: 19410,
-      controlReferences: 5121,
-      commandDigest: '4fd80d45',
-      parameterDigest: 'b0d5063a'
+      commands: 8172,
+      parameters: 19431,
+      controlReferences: 5126,
+      commandDigest: '779fb1f5',
+      parameterDigest: '4d706704'
   }, '内置、官方和当前工作区第三方模块的每个方法与参数都必须进入全量审计');
   // OpenCV 以内置清单为准：本机未装 SDK 时磁盘上的同名清单是只有骨架的占位包（0 命令、无 targets）。
   const manifest = BUILTIN_MODULES.find(module => module.id === OPENCV_MODULE_ID) || auditedManifests.get('lingbuilder.opencv.sdk');
@@ -6979,6 +6991,74 @@ test('FBro 与 CEF3 仅阻断进程内控件，独立进程共存时隔离两套
   }
 });
 
+test('FBro 单独启用时运行时只落 bin 顶层，并清理旧版 fbro-host 双写残留', async () => {
+  const ids = ['lingbuilder.fbro.browser'];
+  const modules = ids.map(id => {
+    const manifest = BUILTIN_MODULES.find(item => item.id === id);
+    assert.ok(manifest);
+    return { manifest, installPath: `builtin://${id}`, isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] } as InstalledModule;
+  });
+
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-fbro-only-'));
+  const fbroSdk = path.join(root, 'fbro-sdk');
+  const fbroHeader = [
+    '#pragma once',
+    '#define LB_FBRO_ABI_VERSION_V3 0x00030000u',
+    'typedef unsigned long long LB_FBRO_CONTINUATION_HANDLE;',
+    'typedef struct LB_FBRO_EVENT_PACKET_V3 {} LB_FBRO_EVENT_PACKET_V3;',
+    'typedef struct LB_FBRO_EVENT_RESPONSE_V3 {} LB_FBRO_EVENT_RESPONSE_V3;',
+    'void LB_FBro_SetEventCallbackV3();',
+    'void LB_FBro_SetEventSubscription();',
+    'void LB_FBro_CompleteEventContinuation();',
+    'void LB_FBro_CancelEventContinuation();',
+    'void LB_FBro_CreateEx2();',
+    'void LB_FBro_CookieSetJsonAsync();'
+  ].join('\n');
+  const fbroCef = Buffer.from('fbro-cef-135');
+  const fbroFiles = [{
+    path: 'libcef.dll',
+    size: fbroCef.length,
+    sha256: crypto.createHash('sha256').update(fbroCef).digest('hex')
+  }];
+  await Promise.all([
+    writeFixture(path.join(fbroSdk, 'include', 'LingBuilderFbroBridge.h'), `${fbroHeader}\n`),
+    writeFixture(path.join(fbroSdk, 'include', 'LingBuilderFbroProcessRuntime.hpp'), '#pragma once\n'),
+    writeFixture(path.join(fbroSdk, 'include', 'nlohmann', 'json.hpp'), '#pragma once\n'),
+    writeFixture(path.join(fbroSdk, 'include', 'nlohmann', 'LICENSE.MIT'), 'MIT License\n'),
+    writeFixture(path.join(fbroSdk, 'lib', 'x64', 'LingBuilderFbroBridge.lib'), 'fbro-bridge-lib'),
+    writeFixture(path.join(fbroSdk, 'bridge', 'x64', 'LingBuilderFbroBridge.dll'), 'fbro-bridge-dll'),
+    writeFixture(path.join(fbroSdk, 'runtime', 'x64', 'libcef.dll'), fbroCef.toString()),
+    writeFixture(path.join(fbroSdk, 'runtime-manifest.json'), JSON.stringify({
+      schemaVersion: 1,
+      sdkVersion: '135.0.21',
+      architecture: 'x64',
+      bridgeVersion: '2.9.3',
+      files: fbroFiles
+    })),
+    // 旧版无条件双写留下的 fbro-host 残留，物化后必须被清掉。
+    writeFixture(path.join(root, 'bin', 'fbro-host', 'libcef.dll'), 'stale-host-copy'),
+    writeFixture(path.join(root, 'bin', 'fbro-host', 'LingBuilderFbroBridge.dll'), 'stale-host-bridge')
+  ]);
+  const previousFbroSdk = process.env.FBRO_SDK_ROOT;
+  process.env.FBRO_SDK_ROOT = fbroSdk;
+  try {
+    const plan = await materializeModuleNativeDependencies(modules, {
+      buildDir: path.join(root, 'build'), sourceDir: path.join(root, 'source'),
+      binDir: path.join(root, 'bin'), exportDir: path.join(root, 'export'), preferredTargetId: 'windows-msvc-x64'
+    });
+    assert.deepEqual(plan.blockingDiagnostics, []);
+    assert.deepEqual(plan.diagnostics, []);
+    assert.equal(await fs.readFile(path.join(root, 'bin', 'libcef.dll'), 'utf8'), 'fbro-cef-135');
+    assert.equal(await fs.readFile(path.join(root, 'bin', 'LingBuilderFbroBridge.dll'), 'utf8'), 'fbro-bridge-dll');
+    assert.equal(await exists(path.join(root, 'bin', 'fbro-host')), false, 'fbro-host 冗余目录应被清理');
+    assert.ok(plan.runtimeFiles.every(file => !file.includes('fbro-host')));
+  } finally {
+    if (previousFbroSdk === undefined) delete process.env.FBRO_SDK_ROOT;
+    else process.env.FBRO_SDK_ROOT = previousFbroSdk;
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test('OpenCV SDK materializer validates hashes and materializes x64 Bridge assets', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-opencv-sdk-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
@@ -7085,7 +7165,9 @@ test('generated new_emoji bridge completions match binding parameter counts', as
   }
   // 2026-09-29 鼠标光标与悬停批次：.def 新增 EU_SetElementCursor / EU_SetTableRowHover /
   // EU_SetTableColumnHover 三条导出，advanced 直调命令 1618 → 1621。
-  assert.equal(manifest.contributes.commands.filter((command: { visibility?: string }) => command.visibility === 'advanced').length, 1621);
+  // 2026-10-08 NE 标签页读回批次：⑧ 直调 EU_GetTabsItemRect / EU_GetTabsHeaderContentWidth
+  // 两条（NE标签页_取项矩形直调 / NE标签页_取头部内容宽度直调）计入，1621 → 1623。
+  assert.equal(manifest.contributes.commands.filter((command: { visibility?: string }) => command.visibility === 'advanced').length, 1623);
   assert.ok(manifest.contributes.designerControls.every((control: any) => (
     control.namespacedType?.startsWith('lingbuilder.new_emoji.ui/')
     && control.backend === 'new-emoji'

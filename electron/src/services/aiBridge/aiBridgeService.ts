@@ -8,6 +8,8 @@ import { resolveIdeVersion } from './ideVersion';
 import { getLingCppSemanticDiagnostics } from '../lingCpp/languageService';
 import { collectControlReferenceAdmissionProblems, formatControlReferenceAdmissionBlock } from '../lingCpp/controlReferenceAdmission';
 import { collectArgumentTypeAdmissionProblems, formatArgumentTypeAdmissionBlock } from '../lingCpp/argumentTypeAdmission';
+import { collectProCommandAdmissionProblems, formatProCommandAdmissionBlock } from '../lingCpp/proCommandAdmission';
+import { readProAccessStateFile } from '../modules/proAccessStateFile';
 import { buildInlineCppUsageSummaryLine, collectInlineCppLines, summarizeInlineCppUsage } from '../lingCpp/inlineCppKnowledge';
 import { collectInlineCppAdmissionProblems, formatInlineCppAdmissionBlock } from '../lingCpp/inlineCppAdmission';
 import { createProjectGlobalContext, isProjectGlobalsFilePath } from '../lingCpp/projectGlobalService';
@@ -724,6 +726,8 @@ export class AiBridgeService {
         returnDescription: command.returnDescription,
         description: command.description,
         visibility: command.visibility,
+        // Pro 专享命令标注：外部 AI 据此避免给免费用户生成会被构建门禁拦截的调用。
+        ...(command.access === 'pro' || binding?.access === 'pro' ? { pro: true } : {}),
         parameters: parseModuleCommandParameterDocs(command, binding),
         example: command.insertText || command.signature,
         // 未命中演示语料时不下发空字段，避免外部 AI 把 null 当成「该命令不可用」。
@@ -1176,6 +1180,23 @@ export class AiBridgeService {
     }
   }
 
+  /**
+   * Pro 专享命令门禁（build/preview 共用，export 经 preview 继承）：
+   * 源码调用 access:'pro' 命令而当前无生效 Pro 授权时在生成前阻断，
+   * 中文诊断给出行列与开通指引。控制台/DLL 项目同样生效（不依赖设计器模型）。
+   */
+  private async assertProCommandsAuthorized(request: {
+    projectId: string;
+    sources: Array<{ filePath: string; sourceCode: string }>;
+    actionLabel: string;
+  }): Promise<void> {
+    const moduleContext = await this.getModuleContext(request.projectId);
+    const problems = collectProCommandAdmissionProblems({ sources: request.sources, moduleContext });
+    if (problems.length > 0) {
+      throw new Error(formatProCommandAdmissionBlock(request.actionLabel, problems));
+    }
+  }
+
   /** edit.apply 门禁上下文：按提案模型 ID 或变更 .lcpp 的 sourceRoot 最长前缀解析窗口项目，并合并「磁盘 + 提案后」最终源码。解析不出窗口项目则跳过门禁。 */
   private async resolveWindowProjectForApply(
     proposal: NonNullable<ReturnType<typeof getWorkspaceEditProposal>>,
@@ -1258,6 +1279,7 @@ export class AiBridgeService {
     ]);
     await this.assertControlReferencesInDesigner({ projectId, designerProject: request.project, sources: lingCppSources, actionLabel: 'lingbuilder.native.preview' });
     await this.assertModuleCommandArgumentTypes({ projectId, sources: lingCppSources, actionLabel: 'lingbuilder.native.preview' });
+    await this.assertProCommandsAuthorized({ projectId, sources: lingCppSources, actionLabel: 'lingbuilder.native.preview' });
     await this.assertInlineCppAdmission({ projectId, sources: lingCppSources, actionLabel: 'lingbuilder.native.preview' });
     await this.assertModuleAccess(enabledModules.map(module => module.manifest.id));
     await this.requireSdkDependencies(enabledModules.map(module => module.manifest.id));
@@ -1270,7 +1292,8 @@ export class AiBridgeService {
       lingCppSources,
       enabledModules,
       outputKind: previewOutputKind,
-      requireAdministrator: await this.resolveProjectRequireAdministrator(projectId)
+      requireAdministrator: await this.resolveProjectRequireAdministrator(projectId),
+      proCommandAuthorization: readProAccessStateFile()
     });
     const projectRef = await this.resolveAssetProject(request.project);
     const compiler = await this.compilerDetector();
@@ -1413,6 +1436,11 @@ export class AiBridgeService {
       actionLabel: 'lingbuilder.build.run'
     });
     await this.assertModuleCommandArgumentTypes({
+      projectId: request.project.id || projectId,
+      sources: buildGateSources,
+      actionLabel: 'lingbuilder.build.run'
+    });
+    await this.assertProCommandsAuthorized({
       projectId: request.project.id || projectId,
       sources: buildGateSources,
       actionLabel: 'lingbuilder.build.run'
@@ -1654,7 +1682,8 @@ export class AiBridgeService {
       lingCppSources,
       enabledModules,
       outputKind,
-      requireAdministrator: await this.resolveProjectRequireAdministrator(buildLease.projectId)
+      requireAdministrator: await this.resolveProjectRequireAdministrator(buildLease.projectId),
+      proCommandAuthorization: readProAccessStateFile()
     });
     if (generatedProject.blockingDiagnostics.length > 0) {
       throw new Error(`LCPP 项目源码存在阻止构建的错误：\n${generatedProject.blockingDiagnostics.join('\n')}`);
@@ -2399,13 +2428,13 @@ export class AiBridgeService {
     if (!request.windowProject) {
       summary = '非窗口项目：不适用功能库拆分建议。';
     } else if (functionLibraries.length === 0 && largestFile && largestFile.lineCount >= splitLines) {
-      summary = `全部逻辑集中在 ${largestFile.filePath}（${largestFile.lineCount} 行）且项目没有任何功能库：功能库（用户口中的“功能代码/功能性代码/公共代码”就是指它）是独立 .lcpp 文件里的“功能库 名称 … 结束功能库”块，不是把代码改写成更多本地函数——请新建一个文件一个功能库，按分类把可复用逻辑与大批量 @ 内嵌 C++ 下沉进去，跨文件用 库名.功能(...) 限定调用，窗口主 .lcpp 只保留事件处理器与程序主体。`;
+      summary = `全部逻辑集中在 ${largestFile.filePath}（${largestFile.lineCount} 行）且项目没有任何功能库：功能库（用户口中的“功能代码/功能性代码/公共代码”就是指它）是独立 .lcpp 文件里的“功能库 名称 … 结束功能库”块，不是把代码改写成更多本地函数——请新建一个文件一个功能库，统一放项目源码根的 功能/ 目录下（可按分类建子目录，如 功能/网络/请求工具.lcpp），把可复用逻辑与大批量 @ 内嵌 C++ 下沉进去，跨文件用 库名.功能(...) 限定调用，窗口主 .lcpp 只保留事件处理器与程序主体。`;
     } else if (largestFile && largestFile.lineCount >= heavyLines) {
-      summary = `${largestFile.filePath} 已达 ${largestFile.lineCount} 行：继续按分类新增功能库文件（“功能库 名称 … 结束功能库”，即“功能代码”文件）并迁移逻辑，避免单文件持续膨胀。`;
+      summary = `${largestFile.filePath} 已达 ${largestFile.lineCount} 行：继续按分类新增功能库文件（“功能库 名称 … 结束功能库”，即“功能代码”文件，统一放 功能/ 目录下、可按分类建子目录）并迁移逻辑，避免单文件持续膨胀。`;
     } else if (functionLibraries.length > 0) {
       summary = `代码组织良好：项目已有 ${functionLibraries.length} 个功能库，最大 .lcpp 为 ${largestFile?.lineCount ?? 0} 行；新增“功能代码”请继续落到对应功能库文件。`;
     } else {
-      summary = `当前最大 .lcpp 为 ${largestFile?.lineCount ?? 0} 行，尚未需要拆分；新增可复用逻辑（“功能代码”）时优先放进独立功能库文件（“功能库 名称 … 结束功能库”），不要继续追加进窗口主 .lcpp。`;
+      summary = `当前最大 .lcpp 为 ${largestFile?.lineCount ?? 0} 行，尚未需要拆分；新增可复用逻辑（“功能代码”）时优先放进独立功能库文件（“功能库 名称 … 结束功能库”，统一放 功能/ 目录下、可按分类建子目录），不要继续追加进窗口主 .lcpp。`;
     }
     return {
       windowProject: request.windowProject,
@@ -2426,7 +2455,9 @@ export class AiBridgeService {
     if (!needsSplit && oversized.length === 0) return [];
     const current = organization.files.find(file => file.filePath === normalizeFilePath(filePath));
     const currentDirectory = current ? path.posix.dirname(current.filePath) : path.posix.dirname(normalizeFilePath(filePath));
-    const libraryDirectory = currentDirectory === '.' ? 'src' : currentDirectory;
+    const baseDirectory = currentDirectory === '.' ? 'src' : currentDirectory;
+    // 被诊断文件本身已在 功能/ 目录时不再追加一层（避免示例写成 功能/功能/xxx.lcpp）。
+    const libraryDirectory = /(?:^|\/)功能$/u.test(baseDirectory) ? baseDirectory : `${baseDirectory}/功能`;
     const message = needsSplit
       ? `代码组织：${organization.summary}`
       : `代码组织：${oversized.map(file => `${file.filePath}（${file.lineCount} 行）`).join('、')} 体量过大。${organization.summary}`;
@@ -2436,7 +2467,7 @@ export class AiBridgeService {
       level: needsSplit && oversized.length === 0 ? 'info' : 'warning',
       message,
       codeSnippet: '',
-      suggestion: `新建一个功能库文件（文件名即功能库名，例如 ${libraryDirectory}/文本工具.lcpp），照下面的骨架写（公开段可被其他文件限定调用，私有段只能库内调用），把可复用命令与 @ 内嵌 C++ 从窗口主文件迁进去，调用处改为 文本工具.功能名(...)；窗口主 .lcpp 只保留事件处理器与程序主体。\n${createFunctionLibraryTemplate('文本工具')}`
+      suggestion: `新建一个功能库文件（文件名即功能库名，统一放项目源码根的 功能/ 目录下、可按分类建子目录，例如 ${libraryDirectory}/文本工具.lcpp），照下面的骨架写（公开段可被其他文件限定调用，私有段只能库内调用），把可复用命令与 @ 内嵌 C++ 从窗口主文件迁进去，调用处改为 文本工具.功能名(...)；窗口主 .lcpp 只保留事件处理器与程序主体。\n${createFunctionLibraryTemplate('文本工具')}`
     }];
   }
 
