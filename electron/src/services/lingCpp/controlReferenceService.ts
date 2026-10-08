@@ -680,15 +680,19 @@ function selectDesignerWindows(project: LingWindowProject, source: string, fileP
   const associatedFile = extractAssociatedDesignerFile(source);
   if (associatedFile) {
     const byDesignerFile = project.windows.filter(window => normalizePathName(window.fileName) === normalizePathName(associatedFile));
-    return byDesignerFile;
+    if (byDesignerFile.length) return byDesignerFile;
   }
   const classNames = sourceClassNames || new Set(parseLingCpp(source).program.classes.map(item => normalizeIdentifier(item.name)));
   const byClass = project.windows.filter(window => classNames.has(normalizeIdentifier(window.className)));
   if (byClass.length) return byClass;
   const normalizedPath = filePath?.replace(/\\/gu, '/').toLocaleLowerCase();
   if (!normalizedPath) return project.windows;
-  return project.windows.filter(window => normalizedPath.endsWith(`${window.className}.lcpp`.toLocaleLowerCase())
+  const byPath = project.windows.filter(window => normalizedPath.endsWith(`${window.className}.lcpp`.toLocaleLowerCase())
     || normalizedPath.endsWith(window.fileName.replace(/\.xml$/iu, '.lcpp').toLocaleLowerCase()));
+  // 功能库等非窗口绑定源码（如 src/功能库/*.lcpp：无 类 声明、路径不以 <窗口类名>.lcpp 结尾）
+  // 不归属任何单一窗口，控件引用按项目全部窗口解析——与生成器运行期按名解析一致；
+  // 返回空集会把这类源码的全部控件引用误报成「不属于当前源码关联的窗口」（F5 构建 cdp-client-showcase 实锤）。
+  return byPath.length ? byPath : project.windows;
 }
 
 function controlToSymbol(

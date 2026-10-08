@@ -7,6 +7,8 @@ export interface BeginnerProcedureCall {
   name: string;
   start: number;
   end: number;
+  /** 以 `&名字` 处理器引用形态命中（否则是 `名字(` 调用形态）。 */
+  viaHandler?: boolean;
 }
 
 export interface BeginnerProcedureDefinition {
@@ -101,7 +103,8 @@ export function getBeginnerProcedureCallAtCursor(
     return {
       name,
       start: lineStart + columnStart,
-      end: lineStart + columnEnd
+      end: lineStart + columnEnd,
+      viaHandler: isHandlerReference
     };
   }
 

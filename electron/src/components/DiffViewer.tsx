@@ -143,6 +143,7 @@ import { getLingCppParameterElementType, isLingCppArrayParameterType, setLingCpp
 import { getProjectConstantNameAtCursor, getProjectGlobalNameAtCursor } from '../services/lingCpp/projectConstantReferenceService';
 import { formatBeginnerConstantValue, getBeginnerConstantInfoAtCursor } from '../services/lingCpp/beginnerConstantInfo';
 import type { BeginnerConstantInfo } from '../services/lingCpp/beginnerConstantInfo';
+import { getBeginnerHoverInfoAtOffset, getBeginnerTypeHoverInfo, isSameBeginnerHoverInfo, type BeginnerHoverInfo } from '../services/lingCpp/beginnerHoverInfo';
 import {
   classifyLingCppPresentationCode,
   extractLingCppNativeVariableNames,
@@ -1808,12 +1809,14 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   } | null>(null);
   const [hoveredBeginnerFlowLine, setHoveredBeginnerFlowLine] = useState<BeginnerFlowLineTarget | null>(null);
   const [activeBeginnerFlowLine, setActiveBeginnerFlowLine] = useState<BeginnerFlowLineTarget | null>(null);
-  // 常量值悬停气泡：鼠标移到 #常量 引用上直接显示「类型 + 值 + 来源」，
-  // 免去「常量只读、只能 Ctrl+跳声明才能看到值」。锚定进入常量时的鼠标位置。
-  const [beginnerConstantHoverTip, setBeginnerConstantHoverTip] = useState<{
+  // 符号悬停气泡：鼠标移到识别器全链命中的符号（#常量/局部变量/参数/项目变量/子程序/
+  // &处理器/功能库调用/模块命令/控件引用）上直接显示「类别 + 类型 + 值/签名/摘要」，
+  // 免去跳声明才能看声明信息。识别与 Ctrl 悬停跳转同链同优先级；
+  // Ctrl 按住时气泡让位给跳转下划线（普通悬停=看信息，Ctrl 悬停=准备跳转）。
+  const [beginnerHoverTip, setBeginnerHoverTip] = useState<{
     x: number;
     y: number;
-    info: BeginnerConstantInfo;
+    info: BeginnerHoverInfo;
   } | null>(null);
   const [expandedBeginnerCommand, setExpandedBeginnerCommand] = useState<string | null>(null);
   const [beginnerCommandArgumentDrafts, setBeginnerCommandArgumentDrafts] = useState<Record<string, string>>({});
@@ -2045,7 +2048,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     setActiveBeginnerFlowLine(null);
     setExpandedBeginnerCommand(null);
     setBeginnerCommandArgumentDrafts({});
-    setBeginnerConstantHoverTip(null);
+    setBeginnerHoverTip(null);
     onShowCommandHint?.(null);
   }, [activeFile?.path, onShowCommandHint]);
 
@@ -2655,6 +2658,22 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     () => new Set(Object.keys(beginnerCommandHints)),
     [beginnerCommandHints]
   );
+  // 类型悬停目录：启用模块 contributes.types 公开的类型（含描述），与项目数据类型共同供类型悬停解析。
+  const beginnerModuleTypeSummaries = useMemo(
+    () => (moduleContext?.enabledModules || []).flatMap(module => (module.manifest.contributes?.types || []).map(type => ({
+      name: type.name,
+      description: type.description,
+      moduleName: module.manifest.displayName || module.manifest.name,
+      kind: type.kind,
+      fields: type.fields,
+      elementType: type.elementType
+    }))),
+    [moduleContext]
+  );
+  const beginnerTypeHoverContext = useMemo(
+    () => ({ projectTypes: projectTypes?.dataTypes || [], moduleTypes: beginnerModuleTypeSummaries }),
+    [beginnerModuleTypeSummaries, projectTypes]
+  );
   const beginnerCommandParameterCatalog = useMemo<BeginnerCommandParameterCatalog>(() => {
     const catalog: Record<string, Array<{ name: string; type?: string; note?: string }>> = {};
     Object.values(beginnerCommandHints).forEach(hint => {
@@ -2755,10 +2774,13 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       const active = event.ctrlKey || event.metaKey;
       setBeginnerCtrlNavActive(active);
       if (!active) setBeginnerCtrlHoverSpan(null);
+      // Ctrl 按住时符号悬停气泡让位给跳转下划线：普通悬停=看信息，Ctrl 悬停=准备跳转。
+      else setBeginnerHoverTip(current => (current === null ? current : null));
     };
     const clearAll = () => {
       setBeginnerCtrlNavActive(false);
       setBeginnerCtrlHoverSpan(null);
+      setBeginnerHoverTip(current => (current === null ? current : null));
     };
     window.addEventListener('keydown', syncFromEvent);
     window.addEventListener('keyup', syncFromEvent);
@@ -2769,6 +2791,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       window.removeEventListener('blur', clearAll);
       setBeginnerCtrlNavActive(false);
       setBeginnerCtrlHoverSpan(null);
+      setBeginnerHoverTip(current => (current === null ? current : null));
     };
   }, [isLingCppBeginnerStructureMode]);
   const isLingCppNativeMode = activeFile?.language === 'lingcpp' && editorExperienceMode === 'native';
@@ -6097,28 +6120,77 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       cache.byName.set(key, content);
       return content;
     };
-    // 常量值悬停气泡：与 Ctrl 悬停跳转同一命中口径，无需按 Ctrl。
-    // 气泡锚定「进入该常量」时的鼠标位置，同一常量内移动鼠标不写状态
-    // （root state 每次写入都会重渲整棵画布）。
-    const updateBeginnerConstantHoverTip = (
+    // 符号悬停气泡：与 Ctrl 悬停跳转同一命中口径（识别器全链、同一优先级），无需按 Ctrl。
+    // 气泡锚定「进入该符号」时的鼠标位置，同一符号内移动鼠标不写状态
+    // （root state 每次写入都会重渲整棵画布）；Ctrl 按住时清空、让位给跳转下划线。
+    const updateBeginnerHoverTip = (
+      target: BeginnerCodeTarget,
       input: HTMLTextAreaElement,
       clientX: number,
       clientY: number
     ) => {
+      if (beginnerCtrlNavActiveRef.current) {
+        clearBeginnerHoverTip();
+        return;
+      }
       const offset = getBeginnerTextareaOffsetAtPoint(input, clientX, clientY);
-      const constantInfo = getBeginnerConstantInfoAtCursor(input.value, offset, completionCatalog.constantInfos);
-      setBeginnerConstantHoverTip(current => {
-        if (!constantInfo) return current === null ? current : null;
-        if (current
-          && normalizeIdentifier(current.info.name) === normalizeIdentifier(constantInfo.name)
-          && current.info.origin === constantInfo.origin) {
-          return current;
+      const info = getBeginnerHoverInfoAtOffset(input.value, offset, {
+        className: target.className,
+        method: target.method,
+        program: lingCppLanguageContext?.program,
+        libraries: lingCppLanguageContext?.projectFunctions?.libraries || [],
+        procedureNames: codeTargets.map(candidate => candidate.method.name),
+        localDeclarations: getBeginnerLocalDeclarationHints(target),
+        globals: projectGlobals?.globals || [],
+        constants: completionCatalog.constantInfos,
+        commandNames: beginnerCommandHintNames,
+        types: beginnerTypeHoverContext,
+        resolveCommandHint: name => beginnerCommandHints[name],
+        resolveControl: span => {
+          const sourcePosition = beginnerSourcePositionAtOffset(input, span.start);
+          const reference = getLingCppControlReferenceAtPosition(
+            normalizedSourceCode,
+            sourcePosition.line,
+            sourcePosition.column,
+            designerProject,
+            moduleContext,
+            activeFile?.path
+          );
+          if (!reference?.symbol) return undefined;
+          return {
+            name: reference.symbol.name,
+            controlType: reference.symbol.designerType || reference.symbol.controlType,
+            windowName: reference.symbol.windowName,
+            kind: reference.symbol.kind
+          };
         }
-        return { x: clientX, y: clientY, info: constantInfo };
+      });
+      setBeginnerHoverTip(current => {
+        if (!info) return current === null ? current : null;
+        if (current && isSameBeginnerHoverInfo(current.info, info)) return current;
+        return { x: clientX, y: clientY, info };
       });
     };
-    const clearBeginnerConstantHoverTip = () => {
-      setBeginnerConstantHoverTip(current => (current === null ? current : null));
+    const clearBeginnerHoverTip = () => {
+      setBeginnerHoverTip(current => (current === null ? current : null));
+    };
+    // 类型单元格悬停（局部声明/参数表/程序集变量/返回值类型的类型输入框）：
+    // 与符号气泡共用同一状态与定位，Ctrl 按住同样让位；空类型不出泡。
+    const showBeginnerTypeHover = (
+      rawType: string,
+      clientX: number,
+      clientY: number
+    ) => {
+      if (beginnerCtrlNavActiveRef.current) {
+        clearBeginnerHoverTip();
+        return;
+      }
+      const info = getBeginnerTypeHoverInfo(rawType, beginnerTypeHoverContext);
+      setBeginnerHoverTip(current => {
+        if (!info) return current === null ? current : null;
+        if (current && isSameBeginnerHoverInfo(current.info, info)) return current;
+        return { x: clientX, y: clientY, info };
+      });
     };
     const moveBeginnerCompletionSelection = (target: BeginnerCodeTarget, delta: number) => {
       const targetKey = codeTargetKey(target);
@@ -6284,7 +6356,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       _event: React.FocusEvent<HTMLTextAreaElement>
     ) => {
       closeBeginnerCompletion(target);
-      clearBeginnerConstantHoverTip();
+      clearBeginnerHoverTip();
       const targetKey = codeTargetKey(target);
       const nextBody = beginnerCodeDraftsRef.current[targetKey] ?? currentBody;
       const applied = commitBeginnerCodeBody(
@@ -7969,6 +8041,9 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
             readOnly={!onUpdateSourceContent || !editable}
             onInput={event => ensureProcedureNameIsVisible(event.currentTarget)}
             onChange={event => updateTypeCompletion(event.currentTarget)}
+            onMouseEnter={field === 'returnType' ? event => showBeginnerTypeHover(value, event.clientX, event.clientY) : undefined}
+            onMouseLeave={field === 'returnType' ? clearBeginnerHoverTip : undefined}
+            onFocus={field === 'returnType' ? clearBeginnerHoverTip : undefined}
             onBlur={event => {
               window.setTimeout(() => {
                 setBeginnerTypeCompletionState(current => current?.inputKey === inputKey ? null : current);
@@ -8011,8 +8086,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               }
             }}
             className={`${directInputClasses(tone)} w-full whitespace-nowrap`}
-            title={field === 'returnType' ? '支持中文、英文、拼音输入，例如 int、string、void' : value}
           />
+          {field === 'returnType' && renderBeginnerTypeCompletionPopup(inputKey, applyTypeCompletion)}
           {(typeCompletion && typeCompletion.items.length > 0) && (
             <div className={`absolute left-0 z-[90] w-64 overflow-hidden rounded border text-[11px] shadow-xl ${
               typeCompletion.placement === 'above' ? 'bottom-full mb-1' : 'top-full mt-1'
@@ -8187,6 +8262,9 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
             onChange={event => {
               if (field === 'type') updateBeginnerTypeCompletion(inputKey, event.currentTarget);
             }}
+            onMouseEnter={field === 'type' ? event => showBeginnerTypeHover(value, event.clientX, event.clientY) : undefined}
+            onMouseLeave={field === 'type' ? clearBeginnerHoverTip : undefined}
+            onFocus={field === 'type' ? clearBeginnerHoverTip : undefined}
             onBlur={event => {
               if (field === 'type') closeBeginnerTypeCompletionLater(inputKey);
               if (event.currentTarget.dataset.beginnerTypeApplied === 'true') {
@@ -8232,7 +8310,6 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               }
             }}
             className={directInputClasses(tone)}
-            title={field === 'type' ? '支持中文、英文和拼音简写，例如 wb、zs、string、int' : undefined}
           />
           {field === 'type' && renderBeginnerTypeCompletionPopup(inputKey, applyTypeCompletion)}
         </div>
@@ -8507,10 +8584,10 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                 onKeyDown={event => handleBeginnerCodeKeyDown(target, event)}
                 onKeyUp={event => { updateBeginnerCommandHint(target, event.currentTarget); captureBeginnerTextareaView(event.currentTarget); }}
                 onSelect={event => scheduleBeginnerPointerSync(target, event.currentTarget)}
-                onMouseMove={event => updateBeginnerConstantHoverTip(event.currentTarget, event.clientX, event.clientY)}
-                onMouseLeave={clearBeginnerConstantHoverTip}
+                onMouseMove={event => updateBeginnerHoverTip(target, event.currentTarget, event.clientX, event.clientY)}
+                onMouseLeave={clearBeginnerHoverTip}
                 onScroll={event => {
-                  clearBeginnerConstantHoverTip();
+                  clearBeginnerHoverTip();
                   const lineNumberColumn = event.currentTarget.closest('[data-beginner-editor-root]')?.querySelector('[data-beginner-line-numbers]');
                   const flowGuideColumn = event.currentTarget.closest('[data-beginner-editor-root]')?.querySelector('[data-beginner-flow-guide]');
                   const nestedFlowGuide = event.currentTarget.closest('[data-beginner-editor-root]')?.querySelector('[data-beginner-nested-flow-guide]');
@@ -9728,6 +9805,9 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
             onChange={event => {
               if (field === 'member-type') updateBeginnerTypeCompletion(inputKey, event.currentTarget);
             }}
+            onMouseEnter={field === 'member-type' ? event => showBeginnerTypeHover(value, event.clientX, event.clientY) : undefined}
+            onMouseLeave={field === 'member-type' ? clearBeginnerHoverTip : undefined}
+            onFocus={field === 'member-type' ? clearBeginnerHoverTip : undefined}
             onBlur={event => {
               if (field === 'member-type') closeBeginnerTypeCompletionLater(inputKey);
               if (event.currentTarget.dataset.beginnerTypeApplied === 'true') {
@@ -10096,6 +10176,9 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
             onChange={event => {
               if (field === 'type') updateBeginnerTypeCompletion(inputKey, event.currentTarget);
             }}
+            onMouseEnter={field === 'type' ? event => showBeginnerTypeHover(value, event.clientX, event.clientY) : undefined}
+            onMouseLeave={field === 'type' ? clearBeginnerHoverTip : undefined}
+            onFocus={field === 'type' ? clearBeginnerHoverTip : undefined}
             onBlur={event => {
               if (field === 'type') closeBeginnerTypeCompletionLater(inputKey);
               if (event.currentTarget.dataset.beginnerTypeApplied === 'true') {
@@ -10143,7 +10226,6 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               }
             }}
             className={directInputClasses(tone)}
-            title={field === 'type' ? '支持中文、英文和拼音简写，例如 wb、zs、string、int' : undefined}
           />
           {field === 'type' && renderBeginnerTypeCompletionPopup(inputKey, applyTypeCompletion)}
         </div>
@@ -11027,11 +11109,11 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               onMouseMove={event => {
                 updateHoveredBeginnerFlowLine(event.currentTarget, event.clientY);
                 updateBeginnerCtrlHoverSpan(targetKey, segmentId, target, event.currentTarget, event.clientX, event.clientY);
-                updateBeginnerConstantHoverTip(event.currentTarget, event.clientX, event.clientY);
+                updateBeginnerHoverTip(target, event.currentTarget, event.clientX, event.clientY);
               }}
-              onMouseLeave={clearBeginnerConstantHoverTip}
+              onMouseLeave={clearBeginnerHoverTip}
               onScroll={event => {
-                clearBeginnerConstantHoverTip();
+                clearBeginnerHoverTip();
                 const root = event.currentTarget.closest('[data-beginner-editor-root]');
                 const lineNumberColumn = root?.querySelector('[data-beginner-line-numbers]');
                 const flowGuideColumn = root?.querySelector('[data-beginner-flow-guide]');
@@ -11632,7 +11714,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         onFocusCapture={() => activeLingCppBeginnerCommandTargetService.activate(beginnerCommandTargetId)}
         onPointerDownCapture={() => activeLingCppBeginnerCommandTargetService.activate(beginnerCommandTargetId)}
         onKeyDown={handleBeginnerCreationShortcut}
-        onScroll={event => { saveBeginnerViewState(); setBeginnerConstantHoverTip(null); }}
+        onScroll={event => { saveBeginnerViewState(); setBeginnerHoverTip(null); }}
         onContextMenu={event => openBeginnerContextMenu(event, activeCanvasTarget)}
         overlay={(
           <>
@@ -11690,34 +11772,39 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           {methodNameSuggestions.map(item => <option key={item} value={item} />)}
         </datalist>
         {renderBeginnerContextMenu()}
-        {beginnerConstantHoverTip && (
-          /* 常量值悬停气泡：fixed 锚定进入常量时的鼠标位置，不拦截鼠标事件；
-             右/下越界时收进视口。 */
+        {beginnerHoverTip && (
+          /* 符号悬停气泡：fixed 锚定进入符号时的鼠标位置，不拦截鼠标事件；
+             右/下越界时收进视口。Ctrl 按住时已让位给跳转下划线。 */
           <div
-            data-beginner-constant-hover-tip
+            data-beginner-hover-tip
             className={`pointer-events-none fixed z-[80] max-w-[360px] rounded border px-2.5 py-1.5 text-[11px] leading-5 shadow-xl ${
               isDarkMode
                 ? 'border-[#343746] bg-[#191b22] text-slate-200 shadow-black/40'
                 : 'border-slate-200 bg-white text-slate-700 shadow-slate-300/60'
             }`}
             style={{
-              left: Math.max(8, Math.min(beginnerConstantHoverTip.x + 14, window.innerWidth - 380)),
-              top: Math.max(8, Math.min(beginnerConstantHoverTip.y + 18, window.innerHeight - 96))
+              left: Math.max(8, Math.min(beginnerHoverTip.x + 14, window.innerWidth - 380)),
+              top: Math.max(8, Math.min(beginnerHoverTip.y + 18, window.innerHeight - 96))
             }}
           >
             <div className="font-semibold">
-              #{beginnerConstantHoverTip.info.name}
-              <span className="ml-2 font-normal opacity-70">{beginnerConstantHoverTip.info.type}</span>
+              {beginnerHoverTip.info.name}
+              {beginnerHoverTip.info.type && (
+                <span className="ml-2 font-normal opacity-70">{beginnerHoverTip.info.type}</span>
+              )}
             </div>
-            <div className="mt-0.5">
-              <span className="opacity-60">值</span>
-              <span className="ml-1.5 font-mono">{beginnerConstantHoverTip.info.value}</span>
-            </div>
-            <div className="mt-0.5 opacity-60">
-              {beginnerConstantHoverTip.info.origin === '模块常量'
-                ? `模块「${beginnerConstantHoverTip.info.moduleName || ''}」公开常量 · 只读`
-                : '项目常量 · 项目全局变量.lcpp · 只读'}
-            </div>
+            {beginnerHoverTip.info.detail && (
+              <div className="mt-0.5 font-mono">{beginnerHoverTip.info.detail}</div>
+            )}
+            {beginnerHoverTip.info.summary && (
+              <div className="mt-0.5">{beginnerHoverTip.info.summary}</div>
+            )}
+            {beginnerHoverTip.info.origin && (
+              <div className="mt-0.5 opacity-60">{beginnerHoverTip.info.origin}</div>
+            )}
+            {beginnerHoverTip.info.jumpLabel && (
+              <div className="mt-0.5 opacity-60">{beginnerHoverTip.info.jumpLabel}</div>
+            )}
           </div>
         )}
         {canvasItems.length === 0 && (
