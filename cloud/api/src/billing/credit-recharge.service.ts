@@ -38,8 +38,16 @@ export class CreditRechargeService {
 
   /** 电脑网站支付托管页：校验订单归属与有效期后渲染自动提交的支付宝表单。 */
   async paymentPageHtml(orderId: string): Promise<string> {
-    const order = await this.prisma.creditRechargeOrder.findUnique({ where: { id: orderId } });
-    if (!order || !order.paymentForm || order.status !== 'PENDING') throw Object.assign(new Error('充值订单不存在或已失效。'), { status: 404, code: 'VALIDATION_FAILED' });
+    // 双查找：积分充值订单优先；模块/Pro 会籍订单（module-commerce 建单）同样以 page 表单收银。
+    // 两种订单的收银渲染只共用 paymentForm/status/expiresAt 三个字段，取交集避免类型并集扩散。
+    const recharge = await this.prisma.creditRechargeOrder.findUnique({ where: { id: orderId } });
+    const moduleOrder = recharge ? null : await this.prisma.moduleOrder.findUnique({ where: { id: orderId } });
+    const form = recharge?.paymentForm || moduleOrder?.paymentForm;
+    const status = recharge ? recharge.status : moduleOrder?.status;
+    const expiresAt = recharge ? recharge.expiresAt : moduleOrder?.expiresAt;
+    if ((!recharge && !moduleOrder) || !form || status !== 'PENDING') throw Object.assign(new Error('充值订单不存在或已失效。'), { status: 404, code: 'VALIDATION_FAILED' });
+    void expiresAt;
+    const order = { paymentForm: form, expiresAt: expiresAt as Date };
     if (order.expiresAt <= new Date()) throw Object.assign(new Error('充值订单已过期，请在客户端重新发起充值。'), { status: 410, code: 'VALIDATION_FAILED' });
     const fields = JSON.parse(order.paymentForm) as Record<string, string>;
     const inputs = Object.entries(fields).map(([key, value]) => `<input type="hidden" name="${escapeHtml(key)}" value="${escapeHtml(String(value))}"/>`).join('');

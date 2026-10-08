@@ -1122,9 +1122,15 @@ async function materializeFbroSdkUnlocked(
       plan.runtimeFiles.push(bridgeTarget);
     }
     const hostRuntimeDirectory = path.join(layout.binDir, 'fbro-host');
-    const hostBridgeTarget = path.join(hostRuntimeDirectory, 'LingBuilderFbroBridge.dll');
-    await copyFileAtomicallyIfDifferent(bridgeDll, hostBridgeTarget);
-    plan.runtimeFiles.push(hostBridgeTarget);
+    if (hostOnly) {
+      const hostBridgeTarget = path.join(hostRuntimeDirectory, 'LingBuilderFbroBridge.dll');
+      await copyFileAtomicallyIfDifferent(bridgeDll, hostBridgeTarget);
+      plan.runtimeFiles.push(hostBridgeTarget);
+    } else {
+      // 仅 FBro（无第二个 Chromium 模块）时运行时全部落在 bin 顶层、fbro-host 无人加载；
+      // 顺带清掉旧版本无条件双写留下的目录，避免每个工程常驻 ~370MB 冗余拷贝。
+      await fs.rm(hostRuntimeDirectory, { recursive: true, force: true });
+    }
 
     const copiedFiles: FbroRuntimeManifestFile[] = [];
     for (const entry of manifest.files) {
@@ -1134,22 +1140,25 @@ async function materializeFbroSdkUnlocked(
       }
       const source = path.join(sdkRoot, 'runtime', 'x64', ...normalized.split('/'));
       const target = path.join(layout.binDir, ...normalized.split('/'));
-      const hostTarget = path.join(hostRuntimeDirectory, ...normalized.split('/'));
       const sourceMatches = await fileMatchesManifest(source, entry);
       if (!sourceMatches) throw new Error(`源 SDK 文件缺失或哈希错误：runtime/x64/${normalized}`);
       if (!hostOnly && !await fileMatchesManifest(target, entry)) {
         await copyFileAtomically(source, target);
         if (!await fileMatchesManifest(target, entry)) throw new Error(`复制后校验失败：${normalized}`);
       }
-      if (!await fileMatchesManifest(hostTarget, entry)) {
-        await copyFileAtomically(source, hostTarget);
-        if (!await fileMatchesManifest(hostTarget, entry)) throw new Error(`复制 FBro Host 后校验失败：${normalized}`);
+      if (hostOnly) {
+        // 混用另一个 Chromium 模块时主程序 libcef 让给对方，FBro 运行时只进 fbro-host。
+        const hostTarget = path.join(hostRuntimeDirectory, ...normalized.split('/'));
+        if (!await fileMatchesManifest(hostTarget, entry)) {
+          await copyFileAtomically(source, hostTarget);
+          if (!await fileMatchesManifest(hostTarget, entry)) throw new Error(`复制 FBro Host 后校验失败：${normalized}`);
+        }
+        plan.runtimeFiles.push(hostTarget);
       }
       const exportTarget = path.join(exportModuleRoot, 'runtime', 'x64', ...normalized.split('/'));
       if (!await fileMatchesManifest(exportTarget, entry)) await copyFileAtomically(source, exportTarget);
       copiedFiles.push(entry);
       if (!hostOnly) plan.runtimeFiles.push(target);
-      plan.runtimeFiles.push(hostTarget);
     }
 
     const statePath = path.join(layout.binDir, '.lingbuilder-fbro-runtime.json');
@@ -1178,10 +1187,14 @@ function fbroExportMaterializerScript(): string {
     `New-Item -ItemType Directory -Force -Path $Destination | Out-Null\n` +
     `$hostDestination = Join-Path $Destination 'fbro-host'\n` +
     `New-Item -ItemType Directory -Force -Path $hostDestination | Out-Null\n` +
+    `if (-not $HostOnly) {\n` +
+    `  # 仅 FBro（无第二个 Chromium 模块）时运行时只在顶层、fbro-host 无人加载，清掉历史双写残留。\n` +
+    `  Remove-Item -LiteralPath $hostDestination -Recurse -Force -ErrorAction SilentlyContinue\n` +
+    `}\n` +
     `foreach ($entry in $manifest.files) {\n` +
     `  $relative = $entry.path -replace '/', '\\'\n` +
     `  $source = Join-Path $RuntimeRoot $relative\n` +
-    `  $targets = if ($HostOnly) { @((Join-Path $hostDestination $relative)) } else { @((Join-Path $Destination $relative), (Join-Path $hostDestination $relative)) }\n` +
+    `  $targets = if ($HostOnly) { @((Join-Path $hostDestination $relative)) } else { @((Join-Path $Destination $relative)) }\n` +
     `  foreach ($target in $targets) {\n` +
     `  $copy = -not (Test-Path -LiteralPath $target)\n` +
     `  if (-not $copy) { $info = Get-Item -LiteralPath $target; $copy = $info.Length -ne [int64]$entry.size }\n` +
@@ -1196,7 +1209,7 @@ function fbroExportMaterializerScript(): string {
     `}\n` +
     `$bridge = Join-Path $Destination 'LingBuilderFbroBridge.dll'\n` +
     `if (-not (Test-Path -LiteralPath $bridge)) { $bridge = Join-Path $moduleRoot 'bin\\x64\\LingBuilderFbroBridge.dll' }\n` +
-    `if (Test-Path -LiteralPath $bridge) { Copy-Item -LiteralPath $bridge -Destination (Join-Path $hostDestination 'LingBuilderFbroBridge.dll') -Force }\n`;
+    `if ($HostOnly -and (Test-Path -LiteralPath $bridge)) { Copy-Item -LiteralPath $bridge -Destination (Join-Path $hostDestination 'LingBuilderFbroBridge.dll') -Force }\n`;
 }
 
 function validateFbroRuntimeManifest(value: FbroRuntimeManifest): string | null {

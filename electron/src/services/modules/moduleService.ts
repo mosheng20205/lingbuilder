@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { BUILTIN_MODULES } from './builtinModules';
+import { applyProCommandRules, readProCommandRulesFile } from './proAccessStateFile';
 import { validateModuleManifest, validateModuleManifestContents, validateModuleRelativePath, type ModuleValidationOptions } from './manifest';
 import { createModuleTemplate } from './moduleSdkService';
 import {
@@ -217,7 +218,10 @@ export class ModuleService {
   }
 
   async getEnabledProjectModules(projectId = DEFAULT_PROJECT_ID): Promise<InstalledModule[]> {
-    return (await this.scanInstalledModules(projectId)).filter(module => module.isEnabledForProject);
+    const enabled = (await this.scanInstalledModules(projectId)).filter(module => module.isEnabledForProject);
+    // Pro 专享命令远程开关（管理后台维护）：构建/诊断/补全的启用模块上下文在此统一合并，
+    // 门禁、生成器、module.info、补全等下游全部自动生效；读取失败按无远程规则处理。
+    return applyProCommandRules(enabled, readProCommandRulesFile()?.rules);
   }
 
   /** Returns the normalized project module IDs used for inheritance and diagnostics. */

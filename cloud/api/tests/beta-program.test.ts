@@ -48,10 +48,17 @@ test('entitlement reports enrollment, expiry and channel suspension', async () =
 test('apply rejects enrolled users and resets rejected applications to pending', async () => {
   const enrolled = betaPrisma({});
   enrolled.prisma.betaProgramMember.findUnique = async () => ({ status: 'ACTIVE', validUntil: null });
+  enrolled.prisma.proMembership = { findFirst: async () => ({ tier: 'PERPETUAL' }) };
   await assert.rejects(() => new BetaProgramService(enrolled.prisma).apply('user-1', {}), /你已在体验计划中/u);
+
+  // 未开通 Pro：申请被 402 权益门槛拒绝（2026-10-07 起体验计划是 Pro 权益）。
+  const notPro = betaPrisma({});
+  notPro.prisma.proMembership = { findFirst: async () => null };
+  await assert.rejects(() => new BetaProgramService(notPro.prisma).apply('user-2', {}), (error: any) => error?.status === 402 && /Pro 会员权益/u.test(error.message));
 
   let captured: any;
   const reapply = betaPrisma({});
+  reapply.prisma.proMembership = { findFirst: async () => ({ tier: 'PERPETUAL' }) };
   reapply.prisma.betaProgramApplication.upsert = async (args: any) => { captured = args; return { id: 'application-1', status: 'PENDING', updatedAt: new Date() }; };
   const result = await new BetaProgramService(reapply.prisma).apply('user-1', { message: '想抢先体验新功能' });
   assert.equal(result.ok, true);

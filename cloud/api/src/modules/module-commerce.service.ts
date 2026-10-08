@@ -18,7 +18,7 @@ export class ModuleCommerceService {
     return await Promise.all(products.map(async product => {
       const access = userId ? await this.resolveAccess(userId, product.moduleId, false) : undefined;
       const freeWindow = product.freeWindows.find(window => window.startsAt <= now && window.endsAt > now) || product.freeWindows[0];
-      return json({ moduleId: product.moduleId, productId: product.id, name: product.name, description: product.description, listed: product.listed, enabled: product.enabled, policyVersion: product.policyVersion, offers: product.offers.map(offer => ({ id: offer.id, productId: offer.productId, name: offer.name, kind: offer.kind.toLowerCase(), priceMinor: offer.priceMinor, currency: offer.currency, durationDays: offer.durationDays })), freeWindow, access });
+      return json({ moduleId: product.moduleId, productId: product.id, name: product.name, description: product.description, listed: product.listed, enabled: product.enabled, kind: product.kind || 'module', policyVersion: product.policyVersion, offers: product.offers.map(offer => ({ id: offer.id, productId: offer.productId, name: offer.name, kind: offer.kind.toLowerCase(), priceMinor: offer.priceMinor, currency: offer.currency, durationDays: offer.durationDays })), freeWindow, access });
     }));
   }
 
@@ -81,6 +81,12 @@ export class ModuleCommerceService {
     const offer = await this.prisma.moduleOffer.findUnique({ where: { id: offerId }, include: { product: true } });
     if (!offer || !offer.enabled || !offer.product.enabled || !offer.product.listed) throw Object.assign(new Error('模块报价不存在或已下架。'), { status: 404, code: 'VALIDATION_FAILED' });
     if (offer.priceMinor <= 0n) throw Object.assign(new Error('零价模块无需创建支付订单。'), { status: 400, code: 'VALIDATION_FAILED' });
+    // Pro 会籍商品：已是永久会员时禁止任何重复购买（年费会员可买永久=升级、可续费顺延）。
+    if ((offer.product as { kind?: string }).kind === 'MEMBERSHIP') {
+      const nowMembership = new Date();
+      const membership = await this.prisma.proMembership.findFirst({ where: { userId, revokedAt: null, startsAt: { lte: nowMembership }, OR: [{ endsAt: null }, { endsAt: { gt: nowMembership } }] } });
+      if (membership?.tier === 'PERPETUAL') throw Object.assign(new Error('你已是 Pro 永久会员，无需重复购买。'), { status: 409, code: 'VALIDATION_FAILED' });
+    }
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
     const order = await this.prisma.moduleOrder.create({ data: { userId, productId: offer.productId, offerId: offer.id, idempotencyKey, provider, amountMinor: offer.priceMinor, currency: offer.currency, offerKind: offer.kind, durationDays: offer.durationDays, expiresAt }, include: { product: true } });
     try {
@@ -112,6 +118,23 @@ export class ModuleCommerceService {
       const now = new Date();
       const endsAt = order.offerKind === 'FIXED_TERM' ? new Date(now.getTime() + (order.durationDays || 0) * 86_400_000) : null;
       await tx.moduleOrder.update({ where: { id: order.id }, data: { status: 'PAID', paidAt: now } });
+      const paidProduct = await tx.moduleProduct.findUnique({ where: { id: order.productId } });
+      if ((paidProduct as { kind?: string } | null)?.kind === 'MEMBERSHIP') {
+        // Pro 会籍商品：支付成功建/续会籍（年费在现有到期日上顺延；买永久=升级为买断）。
+        const tier = order.offerKind === 'PERPETUAL' ? 'PERPETUAL' : 'YEARLY';
+        const durationDays = tier === 'YEARLY' ? (order.durationDays || 365) : 0;
+        const existing = await tx.proMembership.findUnique({ where: { userId: order.userId } });
+        const amountMinor = Number(order.amountMinor);
+        if (!existing || existing.revokedAt) {
+          await tx.proMembership.create({ data: { userId: order.userId, tier, source: 'PURCHASE', paidMinor: amountMinor, startsAt: now, endsAt: tier === 'PERPETUAL' ? null : new Date(now.getTime() + durationDays * 86_400_000), note: `在线支付订单 ${order.id}` } });
+        } else if (tier === 'YEARLY') {
+          const base = existing.endsAt && existing.endsAt > now ? existing.endsAt : now;
+          await tx.proMembership.update({ where: { id: existing.id }, data: { tier: 'YEARLY', source: 'PURCHASE', paidMinor: existing.paidMinor + amountMinor, endsAt: new Date(base.getTime() + durationDays * 86_400_000), note: `${existing.note ? `${existing.note}｜` : ''}续费订单 ${order.id}` } });
+        } else {
+          await tx.proMembership.update({ where: { id: existing.id }, data: { tier: 'PERPETUAL', source: 'PURCHASE', paidMinor: existing.paidMinor + amountMinor, endsAt: null, note: `${existing.note ? `${existing.note}｜` : ''}购买永久订单 ${order.id}` } });
+        }
+        return { ok: true, paid: true, membership: true };
+      }
       await tx.moduleEntitlement.create({ data: { userId: order.userId, productId: order.productId, orderId: order.id, source: 'PURCHASE', startsAt: now, endsAt, reason: '模块订单支付成功' } });
       return { ok: true, paid: true };
     }, { isolationLevel: 'Serializable' });

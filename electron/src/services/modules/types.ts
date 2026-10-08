@@ -19,6 +19,8 @@ export interface ModuleCommandContribution {
   officialCapability?: boolean;
   /** 默认命令进入常规补全；advanced 仅在显式开启底层 API 时展示；internal 不进入用户补全。 */
   visibility?: 'default' | 'advanced' | 'internal';
+  /** Pro 专享命令：仅生效中的 Pro 会员（或该模块有效权益）可在构建中使用；免费模块也可声明。 */
+  access?: 'pro';
 }
 
 export interface ModuleDesignerEventParameter {
@@ -431,6 +433,8 @@ export interface ModuleCommandBinding {
   description?: string;
   /** 由语言服务和生成器共同校验并展开的受管处理器调用。 */
   invocation?: ModuleManagedTaskInvocation | ModuleDelayedCallInvocation;
+  /** Pro 专享命令标记：与 contributes.commands 的 access 字段同源，语言服务/生成器按此拦截。 */
+  access?: 'pro';
 }
 
 export interface ModuleBindingsContribution {
