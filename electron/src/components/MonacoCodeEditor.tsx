@@ -11,6 +11,7 @@ import {
   useState
 } from 'react';
 import { requestWorkbenchAlert, requestWorkbenchConfirm } from '../services/workbench/workbenchConfirmService';
+import { getCloudAccountSessionState } from '../services/workbench/cloudAccountSessionStore';
 import Editor, { loader } from '@monaco-editor/react';
 import * as monacoRuntime from 'monaco-editor/esm/vs/editor/editor.api.js';
 import MonacoEditorWorker from 'monaco-editor/esm/vs/editor/editor.worker.js?worker';
@@ -1381,7 +1382,8 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
     const timer = window.setTimeout(() => {
       if (monacoRef.current !== monaco || editorRef.current !== editor || model.isDisposed?.() || editor.getModel?.() !== model) return;
 
-      const markers = getLingCppSemanticDiagnostics(sourceCode, designerProject, filePath, moduleContext, projectGlobals, projectTypes, createProjectFunctionContext((projectSources || []).map(item => ({ ...item, language: 'lingcpp' })))).map(diagnostic => {
+      // Pro 命令授权随会话实时读取：编辑器永远 warning（不打断输入），硬拦截在构建链路。
+      const markers = getLingCppSemanticDiagnostics(sourceCode, designerProject, filePath, moduleContext, projectGlobals, projectTypes, createProjectFunctionContext((projectSources || []).map(item => ({ ...item, language: 'lingcpp' }))), { proCommandAuthorization: getCloudAccountSessionState().pro ? { active: true, endsAt: getCloudAccountSessionState().pro?.endsAt || null } : { active: false } }).map(diagnostic => {
         const line = Math.max(1, Math.min(diagnostic.line, model.getLineCount()));
         return {
           severity: toMonacoMarkerSeverity(diagnostic.level, monaco),
