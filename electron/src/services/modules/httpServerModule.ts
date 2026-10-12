@@ -46,7 +46,7 @@ const specs: HttpServerCommandSpec[] = [
   },
   {
     name: 'HTTP_配置服务', signature: 'HTTP_配置服务(服务端, 监听地址, 端口, 工作线程数, 等待队列上限)', description: '配置监听地址、端口、有界工作线程和连接等待队列；只能在停止状态修改。',
-    parameters: [parameter('服务端', 'HTTP服务端', serverStopped), parameter('监听地址', 'wideString', '要监听的 IPv4/IPv6 地址文本，如 "127.0.0.1"；空文本按 127.0.0.1 处理；非回环地址必须先调用 HTTP_允许外部监听。'), parameter('端口', 'int', '监听端口，0 到 65535；0 表示由系统分配临时端口，启动后用 HTTP_取监听端口 读取实际端口。'), parameter('工作线程数', 'int', '后台工作线程数量，1 到 64，决定可同时处理的请求连接数。'), parameter('等待队列上限', 'int', '等待被工作线程取走的连接队列上限，1 到 65535；队列满时新连接会被直接关闭。')],
+    parameters: [parameter('服务端', 'HTTP服务端', serverStopped), parameter('监听地址', 'wideString', '要监听的 IPv4/IPv6 地址文本，如 "127.0.0.1"；空文本按 127.0.0.1 处理；非回环地址必须先调用 HTTP_允许外部监听。'), parameter('端口', 'int', '监听端口，0 到 65535；0 表示由系统分配临时端口，启动后用 HTTP_取监听端口 读取实际端口。'), parameter('工作线程数', 'int', '后台工作线程数量，≥ 1 不设固定上限（过大值受系统线程资源约束，建议按 CPU 核数的 1～4 倍设置），决定可同时处理的请求连接数；资源不足导致线程创建失败时 HTTP_启动 返回假。'), parameter('等待队列上限', 'int', '等待被工作线程取走的连接队列上限，1 到 65535；队列满时新连接会被直接关闭。')],
     returnType: 'bool', returnLabel: '逻辑型', category: '服务', insertText: 'HTTP_配置服务($1, "127.0.0.1", 8080, 4, 256)'
   },
   {

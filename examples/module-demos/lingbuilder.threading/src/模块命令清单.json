@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.995Z",
+  "generatedAt": "2026-10-11T09:47:40.658Z",
   "module": {
     "id": "lingbuilder.threading",
     "name": "多线程模块",
-    "version": "2.0.0",
-    "description": "提供项目级受管任务、类型化多参数、进度与完成回调、线程池和同步原语。"
+    "version": "2.1.0",
+    "description": "提供项目级受管任务、类型化多参数、进度与完成回调、线程池和同步原语，并提供文本/整数/字节集元素的线程安全队列族。"
   },
-  "commandCount": 54,
+  "commandCount": 66,
   "commands": [
     {
       "index": 1,
@@ -24,7 +24,8 @@
         "parameters": [
           {
             "name": "工作处理器",
-            "type": "handler"
+            "type": "handler",
+            "description": "必须使用 &处理器名；在工作线程执行，形参按提交的可变参数顺序和类型声明，返回值会交给完成处理器。"
           },
           {
             "name": "参数",
@@ -61,11 +62,13 @@
         "parameters": [
           {
             "name": "工作处理器",
-            "type": "handler"
+            "type": "handler",
+            "description": "必须使用 &处理器名；在工作线程执行，形参按提交的可变参数顺序和类型声明，返回值会交给完成处理器。"
           },
           {
             "name": "完成处理器",
-            "type": "handler"
+            "type": "handler",
+            "description": "必须使用 &处理器名；在发起任务的窗口 UI 线程执行，签名必须是 空 处理器(线程任务 任务) 或 空 处理器(线程任务 任务, 工作返回值)。"
           },
           {
             "name": "参数",
@@ -103,15 +106,18 @@
         "parameters": [
           {
             "name": "工作处理器",
-            "type": "handler"
+            "type": "handler",
+            "description": "必须使用 &处理器名；在工作线程执行，形参按提交的可变参数顺序和类型声明，返回值会交给完成处理器。"
           },
           {
             "name": "进度处理器",
-            "type": "handler"
+            "type": "handler",
+            "description": "必须使用 &处理器名；在发起任务的窗口 UI 线程执行，签名必须是 空 处理器(线程任务 任务, 整数型 百分比, 文本型 说明)。"
           },
           {
             "name": "完成处理器",
-            "type": "handler"
+            "type": "handler",
+            "description": "必须使用 &处理器名；在发起任务的窗口 UI 线程执行，签名必须是 空 处理器(线程任务 任务) 或 空 处理器(线程任务 任务, 工作返回值)。"
           },
           {
             "name": "参数",
@@ -170,7 +176,8 @@
         "parameters": [
           {
             "name": "任务",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "线程_提交* 或 线程池_提交* 返回的线程任务 ID；记录已被释放或从未存在时命令按说明返回失败值。已经成功、失败或取消的终态任务返回假。"
           }
         ],
         "returnType": "bool",
@@ -195,7 +202,8 @@
         "parameters": [
           {
             "name": "任务",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "线程任务 ID；传 0 表示查询当前正在执行的工作处理器所属任务。"
           }
         ],
         "returnType": "bool",
@@ -220,7 +228,8 @@
         "parameters": [
           {
             "name": "任务",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "线程_提交* 或 线程池_提交* 返回的线程任务 ID；记录已被释放或从未存在时命令按说明返回失败值。任务不存在时返回 -1。"
           }
         ],
         "returnType": "int",
@@ -245,7 +254,8 @@
         "parameters": [
           {
             "name": "任务",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "线程_提交* 或 线程池_提交* 返回的线程任务 ID；记录已被释放或从未存在时命令按说明返回失败值。"
           }
         ],
         "returnType": "wideString",
@@ -270,7 +280,8 @@
         "parameters": [
           {
             "name": "任务",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "线程_提交* 或 线程池_提交* 返回的线程任务 ID；记录已被释放或从未存在时命令按说明返回失败值。"
           }
         ],
         "returnType": "bool",
@@ -295,7 +306,8 @@
         "parameters": [
           {
             "name": "任务",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "线程_提交* 或 线程池_提交* 返回的线程任务 ID；记录已被释放或从未存在时命令按说明返回失败值。传 0 时返回项目级最近一次线程操作的中文错误；任务记录不存在时返回任务不存在提示。"
           }
         ],
         "returnType": "wideString",
@@ -320,11 +332,13 @@
         "parameters": [
           {
             "name": "任务",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "线程_提交* 或 线程池_提交* 返回的线程任务 ID；记录已被释放或从未存在时命令按说明返回失败值。不能等待当前工作处理器自身所属的任务。"
           },
           {
             "name": "超时毫秒",
-            "type": "int"
+            "type": "int",
+            "description": "等待超时毫秒数，只允许 -1 或非负整数；-1 表示无限等待，其它负值判为参数错误并返回假。在界面事件里等待会冻结界面。"
           }
         ],
         "returnType": "bool",
@@ -349,7 +363,8 @@
         "parameters": [
           {
             "name": "超时毫秒",
-            "type": "int"
+            "type": "int",
+            "description": "等待超时毫秒数，只允许 -1 或非负整数；-1 表示无限等待，其它负值判为参数错误并返回假。逐个任务按剩余时间继续等待，总时长不超过该值。"
           },
           {
             "name": "参数",
@@ -380,7 +395,8 @@
         "parameters": [
           {
             "name": "毫秒",
-            "type": "int"
+            "type": "int",
+            "description": "要等待的总毫秒数，不能为负；内部按不超过 10 毫秒分片休眠，并在每片前检查取消请求。"
           }
         ],
         "returnType": "bool",
@@ -405,11 +421,13 @@
         "parameters": [
           {
             "name": "百分比",
-            "type": "int"
+            "type": "int",
+            "description": "要报告的进度，0 到 100；小于 0 按 0、大于 100 按 100 记录。"
           },
           {
             "name": "说明",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "随本次进度一起上报的中文说明文本，进度处理器原样收到。"
           }
         ],
         "returnType": "bool",
@@ -434,7 +452,8 @@
         "parameters": [
           {
             "name": "任务",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "线程_提交* 或 线程池_提交* 返回的线程任务 ID；记录已被释放或从未存在时命令按说明返回失败值。"
           }
         ],
         "returnType": "int",
@@ -459,7 +478,8 @@
         "parameters": [
           {
             "name": "任务",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "线程_提交* 或 线程池_提交* 返回的线程任务 ID；记录已被释放或从未存在时命令按说明返回失败值。任务不存在时返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -484,7 +504,8 @@
         "parameters": [
           {
             "name": "任务",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "线程_提交* 或 线程池_提交* 返回的线程任务 ID；记录已被释放或从未存在时命令按说明返回失败值。只有已终结的任务可以释放，运行中或排队的任务返回假。"
           }
         ],
         "returnType": "bool",
@@ -538,7 +559,7 @@
       "index": 20,
       "name": "线程池_创建",
       "signature": "线程池_创建(并发数, 队列容量)",
-      "description": "创建项目级自定义有界线程池；并发数 1～64，容量 1～100000，最多 16 个。",
+      "description": "创建项目级自定义有界线程池；并发数 ≥ 1 不设固定上限（过大值受系统线程资源约束，建议按 CPU 核数的 1～4 倍设置），容量 1～100000，最多 16 个。",
       "insertText": "线程池_创建($1, $2)",
       "returnType": "线程池",
       "category": "线程池",
@@ -549,17 +570,19 @@
         "parameters": [
           {
             "name": "并发数",
-            "type": "int"
+            "type": "int",
+            "description": "工作线程数量，≥ 1，不设固定上限；系统线程资源不足时按实际可启动数量降级运行；一个项目最多存在 16 个自定义线程池。"
           },
           {
             "name": "队列容量",
-            "type": "int"
+            "type": "int",
+            "description": "有界等待队列的最大排队任务数，1 到 100000。"
           }
         ],
         "returnType": "longLong",
         "encoding": "raw",
         "example": "线程池_创建()",
-        "description": "创建项目级自定义有界线程池；并发数 1～64，容量 1～100000，最多 16 个。"
+        "description": "创建项目级自定义有界线程池；并发数 ≥ 1 不设固定上限（过大值受系统线程资源约束，建议按 CPU 核数的 1～4 倍设置），容量 1～100000，最多 16 个。"
       },
       "demoInvocation": "线程池_创建(1, 1)"
     },
@@ -578,11 +601,13 @@
         "parameters": [
           {
             "name": "线程池",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "线程池_创建 或 线程池_取默认池 返回的线程池 ID；池不存在或已销毁时命令返回假。"
           },
           {
             "name": "工作处理器",
-            "type": "handler"
+            "type": "handler",
+            "description": "必须使用 &处理器名；在工作线程执行，形参按提交的可变参数顺序和类型声明，返回值会交给完成处理器。"
           },
           {
             "name": "参数",
@@ -620,15 +645,18 @@
         "parameters": [
           {
             "name": "线程池",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "线程池_创建 或 线程池_取默认池 返回的线程池 ID；池不存在或已销毁时命令返回假。"
           },
           {
             "name": "工作处理器",
-            "type": "handler"
+            "type": "handler",
+            "description": "必须使用 &处理器名；在工作线程执行，形参按提交的可变参数顺序和类型声明，返回值会交给完成处理器。"
           },
           {
             "name": "完成处理器",
-            "type": "handler"
+            "type": "handler",
+            "description": "必须使用 &处理器名；在发起任务的窗口 UI 线程执行，签名必须是 空 处理器(线程任务 任务) 或 空 处理器(线程任务 任务, 工作返回值)。"
           },
           {
             "name": "参数",
@@ -667,19 +695,23 @@
         "parameters": [
           {
             "name": "线程池",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "线程池_创建 或 线程池_取默认池 返回的线程池 ID；池不存在或已销毁时命令返回假。"
           },
           {
             "name": "工作处理器",
-            "type": "handler"
+            "type": "handler",
+            "description": "必须使用 &处理器名；在工作线程执行，形参按提交的可变参数顺序和类型声明，返回值会交给完成处理器。"
           },
           {
             "name": "进度处理器",
-            "type": "handler"
+            "type": "handler",
+            "description": "必须使用 &处理器名；在发起任务的窗口 UI 线程执行，签名必须是 空 处理器(线程任务 任务, 整数型 百分比, 文本型 说明)。"
           },
           {
             "name": "完成处理器",
-            "type": "handler"
+            "type": "handler",
+            "description": "必须使用 &处理器名；在发起任务的窗口 UI 线程执行，签名必须是 空 处理器(线程任务 任务) 或 空 处理器(线程任务 任务, 工作返回值)。"
           },
           {
             "name": "参数",
@@ -719,11 +751,13 @@
         "parameters": [
           {
             "name": "线程池",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "线程池_创建 或 线程池_取默认池 返回的线程池 ID；池不存在或已销毁时命令返回假。只有空闲的池才允许调整。"
           },
           {
             "name": "并发数",
-            "type": "int"
+            "type": "int",
+            "description": "调整后的工作线程数量，≥ 1 不设固定上限；资源不足时按实际可启动数量降级。"
           }
         ],
         "returnType": "bool",
@@ -748,7 +782,8 @@
         "parameters": [
           {
             "name": "线程池",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "线程池_创建 或 线程池_取默认池 返回的线程池 ID；池不存在或已销毁时命令返回假。池不存在时返回 0。"
           }
         ],
         "returnType": "int",
@@ -773,7 +808,8 @@
         "parameters": [
           {
             "name": "线程池",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "线程池_创建 或 线程池_取默认池 返回的线程池 ID；池不存在或已销毁时命令返回假。池不存在时返回 -1。"
           }
         ],
         "returnType": "int",
@@ -798,7 +834,8 @@
         "parameters": [
           {
             "name": "线程池",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "线程池_创建 或 线程池_取默认池 返回的线程池 ID；池不存在或已销毁时命令返回假。池不存在时返回 -1。"
           }
         ],
         "returnType": "int",
@@ -823,7 +860,8 @@
         "parameters": [
           {
             "name": "线程池",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "线程池_创建 或 线程池_取默认池 返回的线程池 ID；池不存在或已销毁时命令返回假。"
           }
         ],
         "returnType": "bool",
@@ -848,11 +886,13 @@
         "parameters": [
           {
             "name": "线程池",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "线程池_创建 或 线程池_取默认池 返回的线程池 ID；池不存在或已销毁时命令返回假。工作处理器不能等待自身所属线程池。"
           },
           {
             "name": "超时毫秒",
-            "type": "int"
+            "type": "int",
+            "description": "等待超时毫秒数，只允许 -1 或非负整数；-1 表示无限等待，其它负值判为参数错误并返回假。"
           }
         ],
         "returnType": "bool",
@@ -877,7 +917,8 @@
         "parameters": [
           {
             "name": "线程池",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "线程池_创建 或 线程池_取默认池 返回的线程池 ID；池不存在或已销毁时命令返回假。默认池同样可以请求停止。"
           }
         ],
         "returnType": "bool",
@@ -902,11 +943,13 @@
         "parameters": [
           {
             "name": "线程池",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "线程池_创建 或 线程池_取默认池 返回的线程池 ID；池不存在或已销毁时命令返回假。工作处理器不能关闭自身所属线程池。"
           },
           {
             "name": "超时毫秒",
-            "type": "int"
+            "type": "int",
+            "description": "等待工作线程退出的超时毫秒数，只允许 -1 或非负整数；超时返回假且不会强杀线程。"
           }
         ],
         "returnType": "bool",
@@ -931,7 +974,8 @@
         "parameters": [
           {
             "name": "线程池",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "线程池_创建 或 线程池_取默认池 返回的线程池 ID；池不存在或已销毁时命令返回假。必须是已关闭且空闲的自定义线程池。"
           }
         ],
         "returnType": "bool",
@@ -956,7 +1000,8 @@
         "parameters": [
           {
             "name": "线程池",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "线程池_创建 或 线程池_取默认池 返回的线程池 ID；池不存在或已销毁时命令返回假。必须是已停止且空闲的自定义线程池，项目默认池不能销毁。"
           }
         ],
         "returnType": "bool",
@@ -1021,11 +1066,13 @@
         "parameters": [
           {
             "name": "互斥锁",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "互斥锁_创建 返回的互斥锁 ID；非递归锁，同一线程重入会失败。"
           },
           {
             "name": "处理器",
-            "type": "handler"
+            "type": "handler",
+            "description": "必须使用 &处理器名；无参数、无返回值的处理器，在持锁期间同步执行完毕。"
           },
           {
             "name": "参数",
@@ -1062,15 +1109,18 @@
         "parameters": [
           {
             "name": "互斥锁",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "互斥锁_创建 返回的互斥锁 ID；非递归锁，同一线程重入会失败。"
           },
           {
             "name": "超时毫秒",
-            "type": "int"
+            "type": "int",
+            "description": "获取锁的最长等待毫秒数，只允许 -1 或非负整数；超时未拿到锁则不执行处理器并返回假。"
           },
           {
             "name": "处理器",
-            "type": "handler"
+            "type": "handler",
+            "description": "必须使用 &处理器名；无参数、无返回值的处理器，在持锁期间同步执行完毕。"
           },
           {
             "name": "参数",
@@ -1108,7 +1158,8 @@
         "parameters": [
           {
             "name": "互斥锁",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "互斥锁_创建 返回的互斥锁 ID；非递归锁，同一线程重入会失败。仍被持有或有等待者时返回假。"
           }
         ],
         "returnType": "bool",
@@ -1133,7 +1184,8 @@
         "parameters": [
           {
             "name": "初始值",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "原子整数的起始值。"
           }
         ],
         "returnType": "longLong",
@@ -1158,7 +1210,8 @@
         "parameters": [
           {
             "name": "原子整数",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "原子整数_创建 返回的原子整数 ID；不存在时读取和写入返回 0。"
           }
         ],
         "returnType": "longLong",
@@ -1183,11 +1236,13 @@
         "parameters": [
           {
             "name": "原子整数",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "原子整数_创建 返回的原子整数 ID；不存在时读取和写入返回 0。"
           },
           {
             "name": "新值",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "要写入的新值；命令同时返回写入前的旧值。"
           }
         ],
         "returnType": "longLong",
@@ -1212,11 +1267,13 @@
         "parameters": [
           {
             "name": "原子整数",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "原子整数_创建 返回的原子整数 ID；不存在时读取和写入返回 0。"
           },
           {
             "name": "增量",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "要累加的增量，可以为负数；命令返回相加后的新值。"
           }
         ],
         "returnType": "longLong",
@@ -1241,15 +1298,18 @@
         "parameters": [
           {
             "name": "原子整数",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "原子整数_创建 返回的原子整数 ID；不存在时读取和写入返回 0。"
           },
           {
             "name": "预期值",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "期望的当前值，只有实际值等于它才会交换。"
           },
           {
             "name": "新值",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "交换成功时写入的新值。"
           }
         ],
         "returnType": "bool",
@@ -1274,7 +1334,8 @@
         "parameters": [
           {
             "name": "原子整数",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "原子整数_创建 返回的原子整数 ID；不存在时读取和写入返回 0。"
           }
         ],
         "returnType": "bool",
@@ -1299,11 +1360,13 @@
         "parameters": [
           {
             "name": "手动重置",
-            "type": "bool"
+            "type": "bool",
+            "description": "传真创建手动重置事件，置位后放行全部等待者；传假为自动重置事件，只放行一个等待者。"
           },
           {
             "name": "初始置位",
-            "type": "bool"
+            "type": "bool",
+            "description": "传真时创建后立即处于已置位状态，传假为未置位。"
           }
         ],
         "returnType": "longLong",
@@ -1328,7 +1391,8 @@
         "parameters": [
           {
             "name": "事件",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "线程事件_创建 返回的同步事件 ID；已销毁或不存在时命令返回假。"
           }
         ],
         "returnType": "bool",
@@ -1353,7 +1417,8 @@
         "parameters": [
           {
             "name": "事件",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "线程事件_创建 返回的同步事件 ID；已销毁或不存在时命令返回假。"
           }
         ],
         "returnType": "bool",
@@ -1378,11 +1443,13 @@
         "parameters": [
           {
             "name": "事件",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "线程事件_创建 返回的同步事件 ID；已销毁或不存在时命令返回假。"
           },
           {
             "name": "超时毫秒",
-            "type": "int"
+            "type": "int",
+            "description": "等待超时毫秒数，只允许 -1 或非负整数；-1 表示无限等待，其它负值判为参数错误并返回假。超时返回假且事件状态不变。"
           }
         ],
         "returnType": "bool",
@@ -1407,7 +1474,8 @@
         "parameters": [
           {
             "name": "事件",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "线程事件_创建 返回的同步事件 ID；已销毁或不存在时命令返回假。销毁会把正在等待的线程唤醒并使其返回假。"
           }
         ],
         "returnType": "bool",
@@ -1432,11 +1500,13 @@
         "parameters": [
           {
             "name": "初始值",
-            "type": "int"
+            "type": "int",
+            "description": "创建时的可用计数，必须落在 0 到最大值之间。"
           },
           {
             "name": "最大值",
-            "type": "int"
+            "type": "int",
+            "description": "可用计数上限，必须大于 0；释放后超过上限会被拒绝。"
           }
         ],
         "returnType": "longLong",
@@ -1461,11 +1531,13 @@
         "parameters": [
           {
             "name": "信号量",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "信号量_创建 返回的信号量 ID；已销毁或不存在时命令返回假。"
           },
           {
             "name": "超时毫秒",
-            "type": "int"
+            "type": "int",
+            "description": "等待超时毫秒数，只允许 -1 或非负整数；-1 表示无限等待，其它负值判为参数错误并返回假。等待成功会消耗一个计数。"
           }
         ],
         "returnType": "bool",
@@ -1490,11 +1562,13 @@
         "parameters": [
           {
             "name": "信号量",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "信号量_创建 返回的信号量 ID；已销毁或不存在时命令返回假。"
           },
           {
             "name": "数量",
-            "type": "int"
+            "type": "int",
+            "description": "本次释放的计数，必须大于 0，且释放后可用数不得超过创建时的最大值。"
           }
         ],
         "returnType": "bool",
@@ -1519,7 +1593,8 @@
         "parameters": [
           {
             "name": "信号量",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "信号量_创建 返回的信号量 ID；已销毁或不存在时命令返回假。不存在时返回 -1。"
           }
         ],
         "returnType": "int",
@@ -1544,7 +1619,8 @@
         "parameters": [
           {
             "name": "信号量",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "信号量_创建 返回的信号量 ID；已销毁或不存在时命令返回假。销毁会把正在等待的线程唤醒并使其返回假。"
           }
         ],
         "returnType": "bool",
@@ -1553,6 +1629,357 @@
         "description": "销毁信号量并唤醒等待者使其失败返回。"
       },
       "demoInvocation": "信号量_销毁(1)"
+    },
+    {
+      "index": 55,
+      "name": "队列_创建",
+      "signature": "队列_创建(容量上限)",
+      "description": "创建项目级线程安全先进先出队列；容量上限 0 表示无界，1～100000 为有界队列。",
+      "insertText": "队列_创建(1000)",
+      "returnType": "线程队列",
+      "category": "队列",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "队列_创建",
+        "runtimeName": "队列_创建",
+        "parameters": [
+          {
+            "name": "容量上限",
+            "type": "int",
+            "description": "同时排队的元素上限，0 表示无界队列，1 到 100000 表示有界队列；超出范围返回句柄 0。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "raw",
+        "example": "队列_创建(1000)",
+        "description": "创建项目级线程安全先进先出队列；容量上限 0 表示无界，1～100000 为有界队列。"
+      },
+      "demoInvocation": "队列_创建(1)"
+    },
+    {
+      "index": 56,
+      "name": "队列_入队",
+      "signature": "队列_入队(队列, 文本, 超时毫秒)",
+      "description": "把文本放入队尾；有界队列已满时在超时内阻塞等待（-1 无限等待，0 立即返回），队列已销毁时返回假。",
+      "insertText": "队列_入队($1, \"$2\", -1)",
+      "returnType": "逻辑型",
+      "category": "队列",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "队列_入队",
+        "runtimeName": "队列_入队",
+        "parameters": [
+          {
+            "name": "队列",
+            "type": "longLong",
+            "description": "队列_创建 返回的线程队列 ID；队列不存在或已销毁时命令返回失败值。"
+          },
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "放入队尾的文本元素，可以传空文本；取出时原样返回。"
+          },
+          {
+            "name": "超时毫秒",
+            "type": "int",
+            "description": "队列已满时的阻塞毫秒数，只允许 -1 或非负整数；-1 无限等待，0 表示队列满时立即返回假。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "队列_入队(示例值, \"示例值\", -1)",
+        "description": "把文本放入队尾；有界队列已满时在超时内阻塞等待（-1 无限等待，0 立即返回），队列已销毁时返回假。"
+      },
+      "demoInvocation": "队列_入队(1, \"演示参数2\", 1)"
+    },
+    {
+      "index": 57,
+      "name": "队列_出队",
+      "signature": "队列_出队(队列, 超时毫秒)",
+      "description": "从队首取出并转为文本：文本原样，整数转十进制文本，字节集按 UTF-8 解码（非法返回空文本）；队列为空时在超时内阻塞等待。返回空文本不代表失败，须用上次出队是否成功判断。",
+      "insertText": "队列_出队($1, -1)",
+      "returnType": "文本型",
+      "category": "队列",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "队列_出队",
+        "runtimeName": "队列_出队",
+        "parameters": [
+          {
+            "name": "队列",
+            "type": "longLong",
+            "description": "队列_创建 返回的线程队列 ID；队列不存在或已销毁时命令返回失败值。"
+          },
+          {
+            "name": "超时毫秒",
+            "type": "int",
+            "description": "队列为空时的阻塞毫秒数，只允许 -1 或非负整数；返回空文本不代表成功，需用 队列_上次出队是否成功 判断。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "raw",
+        "example": "队列_出队(示例值, -1)",
+        "description": "从队首取出并转为文本：文本原样，整数转十进制文本，字节集按 UTF-8 解码（非法返回空文本）；队列为空时在超时内阻塞等待。返回空文本不代表失败，须用上次出队是否成功判断。"
+      },
+      "demoInvocation": "队列_出队(1, 1)"
+    },
+    {
+      "index": 58,
+      "name": "队列_上次出队是否成功",
+      "signature": "队列_上次出队是否成功()",
+      "description": "返回当前线程最近一次队列出队是否真正取到数据；用于区分空文本元素与超时空返回。",
+      "insertText": "队列_上次出队是否成功()",
+      "returnType": "逻辑型",
+      "category": "队列",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "队列_上次出队是否成功",
+        "runtimeName": "队列_上次出队是否成功",
+        "parameters": [],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "队列_上次出队是否成功()",
+        "description": "返回当前线程最近一次队列出队是否真正取到数据；用于区分空文本元素与超时空返回。"
+      },
+      "demoInvocation": "队列_上次出队是否成功()"
+    },
+    {
+      "index": 59,
+      "name": "队列_取长度",
+      "signature": "队列_取长度(队列)",
+      "description": "返回队列中等待取出的元素数量；队列不存在或已销毁时返回 -1。",
+      "insertText": "队列_取长度($1)",
+      "returnType": "整数型",
+      "category": "队列",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "队列_取长度",
+        "runtimeName": "队列_取长度",
+        "parameters": [
+          {
+            "name": "队列",
+            "type": "longLong",
+            "description": "队列_创建 返回的线程队列 ID；队列不存在或已销毁时命令返回失败值。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "raw",
+        "example": "队列_取长度(示例值)",
+        "description": "返回队列中等待取出的元素数量；队列不存在或已销毁时返回 -1。"
+      },
+      "demoInvocation": "队列_取长度(1)"
+    },
+    {
+      "index": 60,
+      "name": "队列_是否为空",
+      "signature": "队列_是否为空(队列)",
+      "description": "判断队列是否没有元素；队列不存在或已销毁时返回假。",
+      "insertText": "队列_是否为空($1)",
+      "returnType": "逻辑型",
+      "category": "队列",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "队列_是否为空",
+        "runtimeName": "队列_是否为空",
+        "parameters": [
+          {
+            "name": "队列",
+            "type": "longLong",
+            "description": "队列_创建 返回的线程队列 ID；队列不存在或已销毁时命令返回失败值。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "队列_是否为空(示例值)",
+        "description": "判断队列是否没有元素；队列不存在或已销毁时返回假。"
+      },
+      "demoInvocation": "队列_是否为空(1)"
+    },
+    {
+      "index": 61,
+      "name": "队列_清空",
+      "signature": "队列_清空(队列)",
+      "description": "丢弃队列中全部未取出的元素并唤醒等待者重新检查状态。",
+      "insertText": "队列_清空($1)",
+      "returnType": "逻辑型",
+      "category": "队列",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "队列_清空",
+        "runtimeName": "队列_清空",
+        "parameters": [
+          {
+            "name": "队列",
+            "type": "longLong",
+            "description": "队列_创建 返回的线程队列 ID；队列不存在或已销毁时命令返回失败值。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "队列_清空(示例值)",
+        "description": "丢弃队列中全部未取出的元素并唤醒等待者重新检查状态。"
+      },
+      "demoInvocation": "队列_清空(1)"
+    },
+    {
+      "index": 62,
+      "name": "队列_销毁",
+      "signature": "队列_销毁(队列)",
+      "description": "销毁队列并唤醒全部等待者（其后续操作返回失败）；未取出的元素被丢弃。队列 ID 不可复用。",
+      "insertText": "队列_销毁($1)",
+      "returnType": "逻辑型",
+      "category": "队列",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "队列_销毁",
+        "runtimeName": "队列_销毁",
+        "parameters": [
+          {
+            "name": "队列",
+            "type": "longLong",
+            "description": "队列_创建 返回的线程队列 ID；队列不存在或已销毁时命令返回失败值。销毁后队列 ID 不会被复用。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "队列_销毁(示例值)",
+        "description": "销毁队列并唤醒全部等待者（其后续操作返回失败）；未取出的元素被丢弃。队列 ID 不可复用。"
+      },
+      "demoInvocation": "队列_销毁(1)"
+    },
+    {
+      "index": 63,
+      "name": "队列_入队整数",
+      "signature": "队列_入队整数(队列, 整数, 超时毫秒)",
+      "description": "把整数放入队尾；有界队列已满时在超时内阻塞等待（-1 无限等待，0 立即返回），队列已销毁时返回假。",
+      "insertText": "队列_入队整数($1, $2, -1)",
+      "returnType": "逻辑型",
+      "category": "队列",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "队列_入队整数",
+        "runtimeName": "队列_入队整数",
+        "parameters": [
+          {
+            "name": "队列",
+            "type": "longLong",
+            "description": "队列_创建 返回的线程队列 ID；队列不存在或已销毁时命令返回失败值。"
+          },
+          {
+            "name": "整数",
+            "type": "longLong",
+            "description": "放入队尾的长整数元素；取出按文本读取时转为十进制文本。"
+          },
+          {
+            "name": "超时毫秒",
+            "type": "int",
+            "description": "队列已满时的阻塞毫秒数，只允许 -1 或非负整数；-1 无限等待，0 表示队列满时立即返回假。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "队列_入队整数(示例值, 示例值, -1)",
+        "description": "把整数放入队尾；有界队列已满时在超时内阻塞等待（-1 无限等待，0 立即返回），队列已销毁时返回假。"
+      },
+      "demoInvocation": "队列_入队整数(1, 1, 1)"
+    },
+    {
+      "index": 64,
+      "name": "队列_出队整数",
+      "signature": "队列_出队整数(队列, 超时毫秒)",
+      "description": "从队首取出并转为整数：整数原样，文本按完整十进制解析（失败返回 0），字节集取前 8 字节小端（不足补 0）；队列为空时在超时内阻塞等待。有效性用上次出队是否成功判断。",
+      "insertText": "队列_出队整数($1, -1)",
+      "returnType": "长整数型",
+      "category": "队列",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "队列_出队整数",
+        "runtimeName": "队列_出队整数",
+        "parameters": [
+          {
+            "name": "队列",
+            "type": "longLong",
+            "description": "队列_创建 返回的线程队列 ID；队列不存在或已销毁时命令返回失败值。"
+          },
+          {
+            "name": "超时毫秒",
+            "type": "int",
+            "description": "队列为空时的阻塞毫秒数，只允许 -1 或非负整数；返回 0 不代表成功，需用 队列_上次出队是否成功 判断。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "raw",
+        "example": "队列_出队整数(示例值, -1)",
+        "description": "从队首取出并转为整数：整数原样，文本按完整十进制解析（失败返回 0），字节集取前 8 字节小端（不足补 0）；队列为空时在超时内阻塞等待。有效性用上次出队是否成功判断。"
+      },
+      "demoInvocation": "队列_出队整数(1, 1)"
+    },
+    {
+      "index": 65,
+      "name": "队列_入队字节集",
+      "signature": "队列_入队字节集(队列, 字节集, 超时毫秒)",
+      "description": "把字节集放入队尾；有界队列已满时在超时内阻塞等待（-1 无限等待，0 立即返回），队列已销毁时返回假。",
+      "insertText": "队列_入队字节集($1, $2, -1)",
+      "returnType": "逻辑型",
+      "category": "队列",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "队列_入队字节集",
+        "runtimeName": "队列_入队字节集",
+        "parameters": [
+          {
+            "name": "队列",
+            "type": "longLong",
+            "description": "队列_创建 返回的线程队列 ID；队列不存在或已销毁时命令返回失败值。"
+          },
+          {
+            "name": "字节集",
+            "type": "bytes",
+            "description": "放入队尾的字节集元素；取出按文本读取时按 UTF-8 解码。"
+          },
+          {
+            "name": "超时毫秒",
+            "type": "int",
+            "description": "队列已满时的阻塞毫秒数，只允许 -1 或非负整数；-1 无限等待，0 表示队列满时立即返回假。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "队列_入队字节集(示例值, 示例值, -1)",
+        "description": "把字节集放入队尾；有界队列已满时在超时内阻塞等待（-1 无限等待，0 立即返回），队列已销毁时返回假。"
+      },
+      "demoInvocation": "队列_入队字节集(1, {}, 1)"
+    },
+    {
+      "index": 66,
+      "name": "队列_出队字节集",
+      "signature": "队列_出队字节集(队列, 超时毫秒)",
+      "description": "从队首取出并转为字节集：字节集原样，文本按 UTF-8 编码，整数转 8 字节小端；队列为空时在超时内阻塞等待。有效性用上次出队是否成功判断。",
+      "insertText": "队列_出队字节集($1, -1)",
+      "returnType": "字节集",
+      "category": "队列",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "队列_出队字节集",
+        "runtimeName": "队列_出队字节集",
+        "parameters": [
+          {
+            "name": "队列",
+            "type": "longLong",
+            "description": "队列_创建 返回的线程队列 ID；队列不存在或已销毁时命令返回失败值。"
+          },
+          {
+            "name": "超时毫秒",
+            "type": "int",
+            "description": "队列为空时的阻塞毫秒数，只允许 -1 或非负整数；返回空字节集不代表成功，需用 队列_上次出队是否成功 判断。"
+          }
+        ],
+        "returnType": "bytes",
+        "encoding": "raw",
+        "example": "队列_出队字节集(示例值, -1)",
+        "description": "从队首取出并转为字节集：字节集原样，文本按 UTF-8 编码，整数转 8 字节小端；队列为空时在超时内阻塞等待。有效性用上次出队是否成功判断。"
+      },
+      "demoInvocation": "队列_出队字节集(1, 1)"
     }
   ]
 }

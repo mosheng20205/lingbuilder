@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-20T16:11:18.823Z",
+  "generatedAt": "2026-10-11T10:16:40.215Z",
   "module": {
     "id": "lingbuilder.http.server",
     "name": "HTTP 服务端模块",
@@ -60,7 +60,7 @@
           {
             "name": "工作线程数",
             "type": "int",
-            "description": "后台工作线程数量，1 到 64，决定可同时处理的请求连接数。"
+            "description": "后台工作线程数量，≥ 1 不设固定上限（过大值受系统线程资源约束，建议按 CPU 核数的 1～4 倍设置），决定可同时处理的请求连接数；资源不足导致线程创建失败时 HTTP_启动 返回假。"
           },
           {
             "name": "等待队列上限",
@@ -277,7 +277,7 @@
       "index": 8,
       "name": "HTTP_添加静态文件路由",
       "signature": "HTTP_添加静态文件路由(服务端, 方法, 路径模式, 文件路径, 下载名称, 内容类型)",
-      "description": "注册工作线程直接分块发送磁盘文件的路由（页面、图片、附件下载）；不占用 UI 线程；每次请求读取当前文件内容，文件不存在时该请求返回 404。",
+      "description": "注册工作线程直接分块发送磁盘文件的路由（页面、图片、附件下载）；不占用 UI 线程；每次请求读取当前文件内容，文件不存在时该请求返回 404；自动响应 Range 断点续传请求（206 Partial Content），配合 HTTP客户端_设置续传文件 可实现局域网大文件断点续传。",
       "insertText": "HTTP_添加静态文件路由($1, \"GET\", \"/page\", \"C:\\\\site\\\\index.html\", \"\", \"text/html; charset=utf-8\")",
       "returnType": "逻辑型",
       "category": "路由",
@@ -320,7 +320,7 @@
         "returnType": "bool",
         "encoding": "wide",
         "example": "HTTP_添加静态文件路由(示例值, \"GET\", \"/page\", \"C:\\\\site\\\\index.html\", \"\", \"text/html; charset=utf-8\")",
-        "description": "注册工作线程直接分块发送磁盘文件的路由（页面、图片、附件下载）；不占用 UI 线程；每次请求读取当前文件内容，文件不存在时该请求返回 404。"
+        "description": "注册工作线程直接分块发送磁盘文件的路由（页面、图片、附件下载）；不占用 UI 线程；每次请求读取当前文件内容，文件不存在时该请求返回 404；自动响应 Range 断点续传请求（206 Partial Content），配合 HTTP客户端_设置续传文件 可实现局域网大文件断点续传。"
       },
       "demoInvocation": "HTTP_添加静态文件路由(0, \"演示参数2\", \"module-demo-temp.txt\", \"module-demo-temp.txt\", \"演示参数5\", \"演示参数6\")"
     },
@@ -1295,7 +1295,7 @@
       "index": 42,
       "name": "HTTP_发送文件",
       "signature": "HTTP_发送文件(请求, 文件路径, 下载名称, 内容类型, 状态码)",
-      "description": "以分块读取方式发送文件，不把整个文件载入内存；自动设置长度和可选下载名称。",
+      "description": "以分块读取方式发送文件，不把整个文件载入内存；自动设置长度和可选下载名称；请求带 Range 头时自动按 206 断点续传响应。",
       "insertText": "HTTP_发送文件($1, $2, $3, $4, $5)",
       "returnType": "逻辑型",
       "category": "响应",
@@ -1333,7 +1333,7 @@
         "returnType": "bool",
         "encoding": "wide",
         "example": "HTTP_发送文件()",
-        "description": "以分块读取方式发送文件，不把整个文件载入内存；自动设置长度和可选下载名称。"
+        "description": "以分块读取方式发送文件，不把整个文件载入内存；自动设置长度和可选下载名称；请求带 Range 头时自动按 206 断点续传响应。"
       },
       "demoInvocation": "HTTP_发送文件(0, \"module-demo-temp.txt\", \"演示参数3\", \"演示参数4\", 1)"
     },

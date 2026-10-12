@@ -117,7 +117,7 @@ public:
     }
 
     long long CreatePool(int concurrency, int capacity) {
-        if (concurrency < 1 || concurrency > 64) return FailId(L"线程池并发数必须在 1 到 64 之间。");
+        if (concurrency < 1) return FailId(L"线程池并发数必须大于 0；并发数不设固定上限，但过大值会受系统线程资源约束。");
         if (capacity < 1 || capacity > 100000) return FailId(L"线程池队列容量必须在 1 到 100000 之间。");
         auto pool = std::make_shared<Pool>();
         {
@@ -130,7 +130,12 @@ public:
             pool->capacity = capacity;
             pools_[pool->id] = pool;
         }
-        StartPool(pool);
+        const int started = StartPool(pool);
+        if (started <= 0) {
+            { std::lock_guard<std::mutex> lock(registryMutex_); pools_.erase(pool->id); }
+            return FailId(L"系统线程资源不足，线程池未能启动任何工作线程。");
+        }
+        if (started < pool->concurrency) ReportError(L"系统线程资源不足，线程池实际启动 " + std::to_wstring(started) + L" 个工作线程（申请 " + std::to_wstring(pool->concurrency) + L" 个）。");
         return pool->id;
     }
 
@@ -336,7 +341,7 @@ public:
     }
 
     bool SetPoolConcurrency(long long poolId, int concurrency) {
-        if (concurrency < 1 || concurrency > 64) return Fail(L"线程池并发数必须在 1 到 64 之间。");
+        if (concurrency < 1) return Fail(L"线程池并发数必须大于 0；并发数不设固定上限，但过大值会受系统线程资源约束。");
         auto pool = FindPool(poolId);
         if (!pool || !IsPoolIdle(pool)) return Fail(L"只能在线程池空闲时调整并发数。");
         if (!ClosePool(poolId, -1)) return false;
@@ -410,7 +415,12 @@ public:
             pool->closed = false;
             pool->stopRequested = false;
         }
-        StartPool(pool);
+        const int started = StartPool(pool);
+        if (started <= 0) {
+            { std::lock_guard<std::mutex> lock(pool->mutex); pool->closed = true; }
+            return Fail(L"系统线程资源不足，线程池未能重启任何工作线程。");
+        }
+        if (started < pool->concurrency) ReportError(L"系统线程资源不足，线程池实际启动 " + std::to_wstring(started) + L" 个工作线程（申请 " + std::to_wstring(pool->concurrency) + L" 个）。");
         return true;
     }
 
@@ -702,8 +712,14 @@ private:
         ReportError(error);
     }
 
-    void StartPool(const std::shared_ptr<Pool>& pool) {
-        for (int index = 0; index < pool->concurrency; ++index) pool->workers.emplace_back([this, pool]() { WorkerLoop(pool); });
+    // 返回实际启动的工作线程数。并发数不设固定上限，线程资源耗尽时降级为部分启动而不是崩溃。
+    int StartPool(const std::shared_ptr<Pool>& pool) {
+        int started = 0;
+        while (started < pool->concurrency) {
+            try { pool->workers.emplace_back([this, pool]() { WorkerLoop(pool); }); ++started; }
+            catch (...) { break; }
+        }
+        return started;
     }
     void JoinPool(const std::shared_ptr<Pool>& pool) {
         for (auto& worker : pool->workers) if (worker.joinable() && worker.get_id() != std::this_thread::get_id()) worker.join();
