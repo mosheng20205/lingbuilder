@@ -1108,7 +1108,20 @@ private:
         }
 
         debuggingPort_ = (flags & 16U) ? lingbuilder_fbro_process_detail::ReserveLoopbackPort() : 0;
-        const std::wstring runtimeDirectory = lingbuilder_fbro_process_detail::ExecutableDirectory();
+        // 宿主 exe 由控制器复制到 binbro-host\，而 CEF 运行时（libcef/pak/locales）物化在 bin 根：
+        // 自省定位——exe 目录有 libcef.dll（hostOnly 混用场景）就用它，否则回退上级目录的运行时，
+        // 避免 fbro-host 里再维护一份 ~370MB 的运行时拷贝。两者都没有时保持 exe 目录（沿用报错路径）。
+        std::wstring runtimeDirectory = lingbuilder_fbro_process_detail::ExecutableDirectory();
+        {
+            const std::filesystem::path exeDirectory(runtimeDirectory);
+            const std::filesystem::path parentDirectory = exeDirectory.parent_path();
+            std::error_code probeError;
+            if (!std::filesystem::exists(exeDirectory / L"libcef.dll", probeError) || probeError) {
+                if (std::filesystem::exists(parentDirectory / L"libcef.dll", probeError) && !probeError) {
+                    runtimeDirectory = parentDirectory.wstring();
+                }
+            }
+        }
         const std::wstring profile = lingbuilder_fbro_process_detail::JsonWide(config, "profileDirectory");
         const std::wstring rootCacheDirectory = profile.empty()
             ? (std::filesystem::path(runtimeDirectory) / L".fbro-host-cache" /

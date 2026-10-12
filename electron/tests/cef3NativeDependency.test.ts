@@ -30,7 +30,10 @@ test('CEF3 native dependency materializer rejects a stale Bridge header without 
   assert.ok(manifest);
   const module: InstalledModule = { manifest, installPath: 'builtin://lingbuilder.cef3.browser', isBuiltin: true, isInstalled: true, diagnostics: [] };
   const previous = process.env.CEF3_SDK_ROOT;
+  const previousCacheRoot = process.env.LINGBUILDER_SDK_CACHE_ROOT;
   process.env.CEF3_SDK_ROOT = sdk;
+  // 钉空缓存根：机器级缓存若装有带新 ABI 的 CEF3 SDK，会按“优者胜”压过本用例的陈旧夹具。
+  process.env.LINGBUILDER_SDK_CACHE_ROOT = path.join(root, 'empty-cache');
   try {
     const plan = await materializeModuleNativeDependencies([module], {
       buildDir: path.join(root, 'build'), sourceDir: path.join(root, 'source'),
@@ -40,6 +43,8 @@ test('CEF3 native dependency materializer rejects a stale Bridge header without 
   } finally {
     if (previous === undefined) delete process.env.CEF3_SDK_ROOT;
     else process.env.CEF3_SDK_ROOT = previous;
+    if (previousCacheRoot === undefined) delete process.env.LINGBUILDER_SDK_CACHE_ROOT;
+    else process.env.LINGBUILDER_SDK_CACHE_ROOT = previousCacheRoot;
   }
 });
 

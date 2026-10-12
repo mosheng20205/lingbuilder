@@ -26,7 +26,7 @@ import { EDGEVIEW_WEBVIEW2_SDK_VERSION, locateWebView2SdkPackage } from './webVi
 export { EDGEVIEW_WEBVIEW2_SDK_VERSION };
 
 const FBRO_SDK_VERSION = '135.0.21';
-const FBRO_BRIDGE_VERSION = '2.9.3';
+const FBRO_BRIDGE_VERSION = '2.9.4';
 const FBRO_V3_HEADER_MARKERS = [
   'LB_FBRO_ABI_VERSION_V3',
   'LB_FBRO_EVENT_PACKET_V3',
@@ -1123,12 +1123,15 @@ async function materializeFbroSdkUnlocked(
     }
     const hostRuntimeDirectory = path.join(layout.binDir, 'fbro-host');
     if (hostOnly) {
+      // 混用另一个 Chromium 模块（顶层 libcef 归对方）时，FBro 运行时整体进 fbro-host，
+      // 宿主进程自省会优先使用 exe 目录的运行时。
       const hostBridgeTarget = path.join(hostRuntimeDirectory, 'LingBuilderFbroBridge.dll');
       await copyFileAtomicallyIfDifferent(bridgeDll, hostBridgeTarget);
       plan.runtimeFiles.push(hostBridgeTarget);
     } else {
-      // 仅 FBro（无第二个 Chromium 模块）时运行时全部落在 bin 顶层、fbro-host 无人加载；
-      // 顺带清掉旧版本无条件双写留下的目录，避免每个工程常驻 ~370MB 冗余拷贝。
+      // 仅 FBro：CEF 运行时只在 bin 顶层。fbro-host 运行期才由桥创建（只承载宿主 exe），
+      // 宿主进程启动时自省——exe 目录没有 libcef.dll 就回退上级目录的运行时——
+      // 所以物化层不写它，并把历史双写残留清掉，避免 ~370MB 冗余拷贝。
       await fs.rm(hostRuntimeDirectory, { recursive: true, force: true });
     }
 
@@ -1147,7 +1150,6 @@ async function materializeFbroSdkUnlocked(
         if (!await fileMatchesManifest(target, entry)) throw new Error(`复制后校验失败：${normalized}`);
       }
       if (hostOnly) {
-        // 混用另一个 Chromium 模块时主程序 libcef 让给对方，FBro 运行时只进 fbro-host。
         const hostTarget = path.join(hostRuntimeDirectory, ...normalized.split('/'));
         if (!await fileMatchesManifest(hostTarget, entry)) {
           await copyFileAtomically(source, hostTarget);
@@ -1186,9 +1188,11 @@ function fbroExportMaterializerScript(): string {
     `if ([string]::IsNullOrWhiteSpace($RuntimeRoot)) { $RuntimeRoot = Join-Path $moduleRoot 'runtime\\x64' }\n` +
     `New-Item -ItemType Directory -Force -Path $Destination | Out-Null\n` +
     `$hostDestination = Join-Path $Destination 'fbro-host'\n` +
-    `New-Item -ItemType Directory -Force -Path $hostDestination | Out-Null\n` +
-    `if (-not $HostOnly) {\n` +
-    `  # 仅 FBro（无第二个 Chromium 模块）时运行时只在顶层、fbro-host 无人加载，清掉历史双写残留。\n` +
+    `if ($HostOnly) {\n` +
+    `  New-Item -ItemType Directory -Force -Path $hostDestination | Out-Null\n` +
+    `} else {\n` +
+    `  # 仅 FBro：运行时只在顶层。fbro-host 由 FBro 桥运行期创建（只承载宿主 exe），\n` +
+    `  # 宿主进程启动时自省回退上级目录——这里清掉历史双写残留，避免冗余拷贝。\n` +
     `  Remove-Item -LiteralPath $hostDestination -Recurse -Force -ErrorAction SilentlyContinue\n` +
     `}\n` +
     `foreach ($entry in $manifest.files) {\n` +
@@ -1207,9 +1211,11 @@ function fbroExportMaterializerScript(): string {
     `  }\n` +
     `  }\n` +
     `}\n` +
-    `$bridge = Join-Path $Destination 'LingBuilderFbroBridge.dll'\n` +
-    `if (-not (Test-Path -LiteralPath $bridge)) { $bridge = Join-Path $moduleRoot 'bin\\x64\\LingBuilderFbroBridge.dll' }\n` +
-    `if ($HostOnly -and (Test-Path -LiteralPath $bridge)) { Copy-Item -LiteralPath $bridge -Destination (Join-Path $hostDestination 'LingBuilderFbroBridge.dll') -Force }\n`;
+    `if ($HostOnly) {\n` +
+    `  $bridge = Join-Path $Destination 'LingBuilderFbroBridge.dll'\n` +
+    `  if (-not (Test-Path -LiteralPath $bridge)) { $bridge = Join-Path $moduleRoot 'bin\\x64\\LingBuilderFbroBridge.dll' }\n` +
+    `  if (Test-Path -LiteralPath $bridge) { Copy-Item -LiteralPath $bridge -Destination (Join-Path $hostDestination 'LingBuilderFbroBridge.dll') -Force }\n` +
+    `}\n`;
 }
 
 function validateFbroRuntimeManifest(value: FbroRuntimeManifest): string | null {
@@ -1235,11 +1241,32 @@ async function findFbroSdkRoot(layout: ModuleNativeDependencyLayout): Promise<st
     cacheRoot: resolveSdkCacheRoot(),
     resourcesPath: process.resourcesPath
   });
+  // 工作区播种的旧版本副本必须让位给机器级缓存等新候选：SDK 面板按版本校验会报告
+  // 「已安装」，这里若照单全收旧副本就会反过来阻断构建且面板重装无解。先选版本
+  // 三元组与构建要求一致的候选；全部不匹配时退回首个旧副本，由深门禁给出精确的
+  // 版本不匹配中文诊断（此时面板也能正常引导下载到缓存，闭环成立）。
+  let staleCandidate: string | null = null;
   for (const candidate of candidates) {
     if (await pathExists(path.join(candidate.root, 'runtime-manifest.json')) &&
-        await pathExists(path.join(candidate.root, 'include', 'LingBuilderFbroBridge.h'))) return candidate.root;
+        await pathExists(path.join(candidate.root, 'include', 'LingBuilderFbroBridge.h'))) {
+      if (await fbroRuntimeManifestMatches(candidate.root)) return candidate.root;
+      staleCandidate ||= candidate.root;
+    }
   }
-  return null;
+  return staleCandidate;
+}
+
+/** 候选根的 runtime-manifest 版本三元组是否与当前构建要求一致；清单损坏按不匹配处理。 */
+async function fbroRuntimeManifestMatches(sdkRoot: string): Promise<boolean> {
+  try {
+    const manifest = JSON.parse(await fs.readFile(path.join(sdkRoot, 'runtime-manifest.json'), 'utf8')) as Partial<FbroRuntimeManifest> | null;
+    return !!manifest
+      && manifest.sdkVersion === FBRO_SDK_VERSION
+      && manifest.bridgeVersion === FBRO_BRIDGE_VERSION
+      && manifest.architecture === 'x64';
+  } catch {
+    return false;
+  }
 }
 
 interface CryptoSdkManifestFile {
@@ -1373,17 +1400,36 @@ async function materializeSunnyNetSdk(
 
 async function findSunnyNetSdkRoot(layout: ModuleNativeDependencyLayout): Promise<string | null> {
   const workspaceRoot = inferWorkspaceRootFromBuildDir(layout.buildDir);
+  // 与 SDK 面板 validateSdkRoot 同口径：候选根旁模块清单版本必须与内置目录版本一致，
+  // 过期的工作区播种副本让位给机器级缓存等新候选；全部过期时退回首个旧副本兜底。
+  const expectedVersion = getSdkDependencyResource('sunnynet').version;
   const candidates = getSdkRootCandidates(getSdkDependencyResource('sunnynet'), {
     workspaceRoot,
     cacheRoot: resolveSdkCacheRoot(),
     resourcesPath: process.resourcesPath
   });
+  let staleCandidate: string | null = null;
   for (const candidate of candidates) {
     if (await pathExists(path.join(candidate.root, 'runtime-manifest.json')) &&
         await pathExists(path.join(candidate.root, 'bin', 'Win32', 'SunnyNet.dll')) &&
-        await pathExists(path.join(candidate.root, 'bin', 'x64', 'SunnyNet64.dll'))) return candidate.root;
+        await pathExists(path.join(candidate.root, 'bin', 'x64', 'SunnyNet64.dll'))) {
+      if (await sdkModuleManifestVersionMatches(candidate.root, expectedVersion)) return candidate.root;
+      staleCandidate ||= candidate.root;
+    }
   }
-  return null;
+  return staleCandidate;
+}
+
+/** 候选根旁模块清单的版本是否与期望一致；无清单视为可接受（面板同口径），损坏或版本不符按过期处理。 */
+async function sdkModuleManifestVersionMatches(sdkRoot: string, expectedVersion: string): Promise<boolean> {
+  const manifestPath = path.join(path.dirname(sdkRoot), 'lingbuilder.module.json');
+  if (!await pathExists(manifestPath)) return true;
+  try {
+    const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8')) as { version?: unknown };
+    return typeof manifest.version === 'string' && manifest.version === expectedVersion;
+  } catch {
+    return false;
+  }
 }
 
 async function findCryptoSdkRoot(layout: ModuleNativeDependencyLayout): Promise<string | null> {
@@ -1542,6 +1588,22 @@ async function fileMatchesManifest(target: string, entry: FbroRuntimeManifestFil
 async function sha256File(target: string): Promise<string> {
   const data = await fs.readFile(target);
   return crypto.createHash('sha256').update(data).digest('hex');
+}
+
+/** 硬链接落盘（同卷零拷贝），跨卷/已存在/不支持时回落原子复制。 */
+async function linkOrCopyFileAtomically(linkFrom: string, target: string): Promise<void> {
+  await fs.mkdir(path.dirname(target), { recursive: true });
+  try {
+    await fs.rm(target, { force: true });
+    await fs.link(linkFrom, target);
+    return;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException)?.code;
+    if (code !== 'EXDEV' && code !== 'EPERM' && code !== 'EACCES' && code !== 'ENOENT') {
+      if (code !== 'EEXIST') throw error;
+    }
+  }
+  await copyFileAtomically(linkFrom, target);
 }
 
 async function copyFileAtomically(source: string, target: string): Promise<void> {
