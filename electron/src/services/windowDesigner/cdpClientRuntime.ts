@@ -15,7 +15,6 @@ export function generateCdpClientGlobalMethods(enabledModules: InstalledModule[]
   if (!enabledModules.some(module => module.manifest.id === CDP_CLIENT_MODULE_ID)) return '';
   return CDP_CLIENT_WINDOW_METHODS
     .replaceAll('cdpClientRuntime_', 'g_cdpClientRuntime')
-    .replaceAll('cdpClientReturnText_', 'g_cdpClientReturnText')
     .replace(/^    /gmu, 'static ');
 }
 
@@ -340,6 +339,15 @@ public:
         }
     }
     ~LingCdpRuntime() { Shutdown(); }
+
+    // 返回文本槽：thread_local 轮转，多线程并发调用文本类命令互不踩踏。
+    const wchar_t* ReturnText(std::wstring value) const {
+        static thread_local std::vector<std::wstring> slots(16);
+        static thread_local size_t index = 0;
+        std::wstring& slot = slots[index++ % slots.size()];
+        slot = std::move(value);
+        return slot.c_str();
+    }
 
     // ===== 连接管理（多开核心：每个连接独立 WebSocket、独立 CDP id 与回调表） =====
     long long Connect(const wchar_t* httpAddress, const wchar_t* readyHandler, bool allowRemote) {
@@ -4874,14 +4882,14 @@ const CDP_CLIENT_WINDOW_METHODS = String.raw`
     bool CDP_断开连接(long long connection) { return cdpClientRuntime_.Disconnect(connection); }
     int CDP_取连接数量() { return cdpClientRuntime_.ConnectionCount(); }
     bool CDP_是否已连接(long long connection) { return cdpClientRuntime_.IsConnected(connection); }
-    const wchar_t* CDP_取连接状态(long long connection) { cdpClientReturnText_ = cdpClientRuntime_.ConnectionState(connection); return cdpClientReturnText_.c_str(); }
-    const wchar_t* CDP_取浏览器版本(long long connection) { cdpClientReturnText_ = cdpClientRuntime_.BrowserVersion(connection); return cdpClientReturnText_.c_str(); }
+    const wchar_t* CDP_取连接状态(long long connection) { return cdpClientRuntime_.ReturnText(cdpClientRuntime_.ConnectionState(connection)); }
+    const wchar_t* CDP_取浏览器版本(long long connection) { return cdpClientRuntime_.ReturnText(cdpClientRuntime_.BrowserVersion(connection)); }
     long long CDP_附加页面(long long connection, const wchar_t* url, const wchar_t* handler) { return cdpClientRuntime_.AttachPage(connection, url, handler); }
     long long CDP_新建页面(long long connection, const wchar_t* url, const wchar_t* handler) { return cdpClientRuntime_.NewPage(connection, url, handler); }
     bool CDP_关闭页面(long long page) { return cdpClientRuntime_.ClosePage(page); }
     bool CDP_激活页面(long long page) { return cdpClientRuntime_.ActivatePage(page); }
     int CDP_取页面数量(long long connection) { return cdpClientRuntime_.PageCount(connection); }
-    const wchar_t* CDP_取页面网址(long long page) { cdpClientReturnText_ = cdpClientRuntime_.PageUrl(page); return cdpClientReturnText_.c_str(); }
+    const wchar_t* CDP_取页面网址(long long page) { return cdpClientRuntime_.ReturnText(cdpClientRuntime_.PageUrl(page)); }
     bool CDP_取页面标题(long long page, const wchar_t* handler) { return cdpClientRuntime_.GetTitle(page, handler); }
     bool CDP_取页面HTML(long long page, const wchar_t* handler) { return cdpClientRuntime_.GetHtml(page, handler); }
     bool CDP_打开网址(long long page, const wchar_t* url, const wchar_t* handler) { return cdpClientRuntime_.Navigate(page, url, handler); }
@@ -4917,14 +4925,14 @@ const CDP_CLIENT_WINDOW_METHODS = String.raw`
     bool CDP_打印PDF(long long page, const wchar_t* path, const wchar_t* handler) { return cdpClientRuntime_.PrintPdf(page, path, handler); }
     bool CDP_绑定连接事件(long long connection, const wchar_t* handler) { return cdpClientRuntime_.BindConnectionHandler(connection, handler); }
     bool CDP_绑定页面事件(long long page, const wchar_t* handler) { return cdpClientRuntime_.BindPageHandler(page, handler); }
-    const wchar_t* CDP_取当前事件类型() { cdpClientReturnText_ = cdpClientRuntime_.CurrentType(); return cdpClientReturnText_.c_str(); }
-    const wchar_t* CDP_取当前事件文本() { cdpClientReturnText_ = cdpClientRuntime_.CurrentText(); return cdpClientReturnText_.c_str(); }
-    const wchar_t* CDP_取当前事件详情() { cdpClientReturnText_ = cdpClientRuntime_.CurrentDetail(); return cdpClientReturnText_.c_str(); }
-    const wchar_t* CDP_取当前错误() { cdpClientReturnText_ = cdpClientRuntime_.CurrentError(); return cdpClientReturnText_.c_str(); }
-    const wchar_t* CDP_取最后错误() { cdpClientReturnText_ = cdpClientRuntime_.LastError(); return cdpClientReturnText_.c_str(); }
-    const wchar_t* CDP_取当前网络网址() { cdpClientReturnText_ = cdpClientRuntime_.CurrentNetUrl(); return cdpClientReturnText_.c_str(); }
-    const wchar_t* CDP_取当前网络方法() { cdpClientReturnText_ = cdpClientRuntime_.CurrentNetMethod(); return cdpClientReturnText_.c_str(); }
-    const wchar_t* CDP_取当前网络编号() { cdpClientReturnText_ = cdpClientRuntime_.CurrentNetRequestId(); return cdpClientReturnText_.c_str(); }
+    const wchar_t* CDP_取当前事件类型() { return cdpClientRuntime_.ReturnText(cdpClientRuntime_.CurrentType()); }
+    const wchar_t* CDP_取当前事件文本() { return cdpClientRuntime_.ReturnText(cdpClientRuntime_.CurrentText()); }
+    const wchar_t* CDP_取当前事件详情() { return cdpClientRuntime_.ReturnText(cdpClientRuntime_.CurrentDetail()); }
+    const wchar_t* CDP_取当前错误() { return cdpClientRuntime_.ReturnText(cdpClientRuntime_.CurrentError()); }
+    const wchar_t* CDP_取最后错误() { return cdpClientRuntime_.ReturnText(cdpClientRuntime_.LastError()); }
+    const wchar_t* CDP_取当前网络网址() { return cdpClientRuntime_.ReturnText(cdpClientRuntime_.CurrentNetUrl()); }
+    const wchar_t* CDP_取当前网络方法() { return cdpClientRuntime_.ReturnText(cdpClientRuntime_.CurrentNetMethod()); }
+    const wchar_t* CDP_取当前网络编号() { return cdpClientRuntime_.ReturnText(cdpClientRuntime_.CurrentNetRequestId()); }
     int CDP_取当前网络状态() { return cdpClientRuntime_.CurrentNetStatus(); }
     long long CDP_取当前连接() { return cdpClientRuntime_.CurrentConnection(); }
     long long CDP_取当前页面() { return cdpClientRuntime_.CurrentPage(); }
@@ -4939,12 +4947,12 @@ const CDP_CLIENT_WINDOW_METHODS = String.raw`
     bool CDP_拦截停止(long long page) { return cdpClientRuntime_.InterceptStop(page); }
     bool CDP_绑定对话框事件(long long page, const wchar_t* handler) { return cdpClientRuntime_.BindDialogHandler(page, handler); }
     bool CDP_应答对话框(long long page, bool accept, const wchar_t* promptText) { return cdpClientRuntime_.AnswerDialog(page, accept, promptText); }
-    const wchar_t* CDP_取当前对话框消息() { cdpClientReturnText_ = cdpClientRuntime_.CurrentDialogMessage(); return cdpClientReturnText_.c_str(); }
-    const wchar_t* CDP_取当前对话框类型() { cdpClientReturnText_ = cdpClientRuntime_.CurrentDialogType(); return cdpClientReturnText_.c_str(); }
-    const wchar_t* CDP_取当前对话框默认文本() { cdpClientReturnText_ = cdpClientRuntime_.CurrentDialogDefaultText(); return cdpClientReturnText_.c_str(); }
+    const wchar_t* CDP_取当前对话框消息() { return cdpClientRuntime_.ReturnText(cdpClientRuntime_.CurrentDialogMessage()); }
+    const wchar_t* CDP_取当前对话框类型() { return cdpClientRuntime_.ReturnText(cdpClientRuntime_.CurrentDialogType()); }
+    const wchar_t* CDP_取当前对话框默认文本() { return cdpClientRuntime_.ReturnText(cdpClientRuntime_.CurrentDialogDefaultText()); }
     bool CDP_设置下载目录(long long connection, const wchar_t* directory, bool allow) { return cdpClientRuntime_.SetDownloadBehavior(connection, directory, allow); }
     bool CDP_绑定下载事件(long long connection, const wchar_t* handler) { return cdpClientRuntime_.BindDownloadHandler(connection, handler); }
-    const wchar_t* CDP_取当前下载文件名() { cdpClientReturnText_ = cdpClientRuntime_.CurrentDownloadFile(); return cdpClientReturnText_.c_str(); }
+    const wchar_t* CDP_取当前下载文件名() { return cdpClientRuntime_.ReturnText(cdpClientRuntime_.CurrentDownloadFile()); }
     int CDP_取当前下载进度() { return cdpClientRuntime_.CurrentDownloadProgress(); }
     long long CDP_取当前拦截() { return cdpClientRuntime_.CurrentIntercept(); }
     bool CDP_设置元素文件(long long element, const wchar_t* filePath, const wchar_t* handler) { return cdpClientRuntime_.SetElementFiles(element, filePath, handler); }
@@ -4969,13 +4977,13 @@ const CDP_CLIENT_WINDOW_METHODS = String.raw`
     bool CDP_调用函数(long long element, const wchar_t* functionCode, const wchar_t* handler) { return cdpClientRuntime_.CallFunction(element, functionCode, handler); }
     bool CDP_设置自动附加(long long connection, bool enabled, bool waitForDebugger, const wchar_t* handler) { return cdpClientRuntime_.SetAutoAttach(connection, enabled, waitForDebugger, handler); }
     bool CDP_绑定目标事件(long long connection, const wchar_t* handler) { return cdpClientRuntime_.BindTargetHandler(connection, handler); }
-    const wchar_t* CDP_枚举目标JSON(long long connection, const wchar_t* type) { cdpClientReturnText_ = cdpClientRuntime_.ListTargetsJson(connection, type ? type : L""); return cdpClientReturnText_.c_str(); }
+    const wchar_t* CDP_枚举目标JSON(long long connection, const wchar_t* type) { return cdpClientRuntime_.ReturnText(cdpClientRuntime_.ListTargetsJson(connection, type ? type : L"")); }
     long long CDP_附加目标(long long target, const wchar_t* handler) { return cdpClientRuntime_.AttachGenericTarget(target, handler); }
     bool CDP_分离会话(long long session) { return cdpClientRuntime_.DetachSession(session); }
     bool CDP_会话执行脚本(long long session, const wchar_t* code, const wchar_t* handler) { return cdpClientRuntime_.EvaluateSession(session, code, handler); }
-    const wchar_t* CDP_取目标JSON(long long target) { cdpClientReturnText_ = cdpClientRuntime_.TargetSnapshot(target); return cdpClientReturnText_.c_str(); }
-    const wchar_t* CDP_取会话JSON(long long session) { cdpClientReturnText_ = cdpClientRuntime_.SessionSnapshot(session); return cdpClientReturnText_.c_str(); }
-    const wchar_t* CDP_枚举帧JSON(long long page) { cdpClientReturnText_ = cdpClientRuntime_.FramesJson(page); return cdpClientReturnText_.c_str(); }
+    const wchar_t* CDP_取目标JSON(long long target) { return cdpClientRuntime_.ReturnText(cdpClientRuntime_.TargetSnapshot(target)); }
+    const wchar_t* CDP_取会话JSON(long long session) { return cdpClientRuntime_.ReturnText(cdpClientRuntime_.SessionSnapshot(session)); }
+    const wchar_t* CDP_枚举帧JSON(long long page) { return cdpClientRuntime_.ReturnText(cdpClientRuntime_.FramesJson(page)); }
     long long CDP_添加页面绑定(long long page, const wchar_t* name, const wchar_t* handler) { return cdpClientRuntime_.AddBinding(page, name, handler); }
     bool CDP_移除页面绑定(long long binding) { return cdpClientRuntime_.RemoveBinding(binding); }
     bool CDP_高亮元素(long long element, const wchar_t* color) { return cdpClientRuntime_.HighlightElement(element, color); }
@@ -4991,7 +4999,7 @@ const CDP_CLIENT_WINDOW_METHODS = String.raw`
     bool CDP_调试单步(long long page, int kind, const wchar_t* handler) { return cdpClientRuntime_.DebugStep(page, kind, handler); }
     int CDP_取当前调用帧数量() { return cdpClientRuntime_.CurrentFrameCount(); }
     long long CDP_取当前调用帧(int index) { return cdpClientRuntime_.CurrentFrameAt(index); }
-    const wchar_t* CDP_取调用帧JSON(long long frame) { cdpClientReturnText_ = cdpClientRuntime_.CallFrameSnapshot(frame); return cdpClientReturnText_.c_str(); }
+    const wchar_t* CDP_取调用帧JSON(long long frame) { return cdpClientRuntime_.ReturnText(cdpClientRuntime_.CallFrameSnapshot(frame)); }
     bool CDP_调用帧执行脚本(long long frame, const wchar_t* code, const wchar_t* handler) { return cdpClientRuntime_.EvaluateFrame(frame, code, handler); }
     bool CDP_取作用域变量(long long frame, int scopeIndex, int maximum, const wchar_t* handler) { return cdpClientRuntime_.GetScopeVariables(frame, scopeIndex, maximum, handler); }
     bool CDP_取性能指标(long long page, const wchar_t* handler) { return cdpClientRuntime_.GetPerformanceMetrics(page, handler); }
@@ -5005,16 +5013,16 @@ const CDP_CLIENT_WINDOW_METHODS = String.raw`
     bool CDP_记录步骤(long long recording, const wchar_t* type, const wchar_t* json) { return cdpClientRuntime_.RecordStep(recording, type, json); }
     bool CDP_停止录制(long long recording) { return cdpClientRuntime_.StopRecording(recording); }
     long long CDP_加载回放(long long connection, const wchar_t* path) { return cdpClientRuntime_.LoadReplay(connection, path); }
-    const wchar_t* CDP_取录制状态(long long recording) { cdpClientReturnText_ = cdpClientRuntime_.RecordingStateText(recording); return cdpClientReturnText_.c_str(); }
-    const wchar_t* CDP_取回放状态(long long replay) { cdpClientReturnText_ = cdpClientRuntime_.ReplayStateText(replay); return cdpClientReturnText_.c_str(); }
+    const wchar_t* CDP_取录制状态(long long recording) { return cdpClientRuntime_.ReturnText(cdpClientRuntime_.RecordingStateText(recording)); }
+    const wchar_t* CDP_取回放状态(long long replay) { return cdpClientRuntime_.ReturnText(cdpClientRuntime_.ReplayStateText(replay)); }
     long long CDP_开始堆快照(long long page, const wchar_t* path, const wchar_t* handler) { return cdpClientRuntime_.StartHeapSnapshot(page, path, handler); }
     long long CDP_开始追踪(long long page, const wchar_t* categories, const wchar_t* path, const wchar_t* handler) { return cdpClientRuntime_.StartTrace(page, categories, path, handler); }
     long long CDP_开始CPU分析(long long page, const wchar_t* path, const wchar_t* handler) { return cdpClientRuntime_.StartCpuProfile(page, path, handler); }
     long long CDP_开始覆盖率(long long page, const wchar_t* path, const wchar_t* handler) { return cdpClientRuntime_.StartPreciseCoverage(page, path, handler); }
     bool CDP_停止任务(long long task, const wchar_t* handler) { return cdpClientRuntime_.StopTask(task, handler); }
-    const wchar_t* CDP_取任务状态(long long task) { cdpClientReturnText_ = cdpClientRuntime_.TaskStateText(task); return cdpClientReturnText_.c_str(); }
+    const wchar_t* CDP_取任务状态(long long task) { return cdpClientRuntime_.ReturnText(cdpClientRuntime_.TaskStateText(task)); }
     int CDP_取任务进度(long long task) { return cdpClientRuntime_.TaskProgress(task); }
-    const wchar_t* CDP_取任务结果路径(long long task) { cdpClientReturnText_ = cdpClientRuntime_.TaskResultPath(task); return cdpClientReturnText_.c_str(); }
+    const wchar_t* CDP_取任务结果路径(long long task) { return cdpClientRuntime_.ReturnText(cdpClientRuntime_.TaskResultPath(task)); }
     bool CDP_开始串流(long long page, const wchar_t* directory, const wchar_t* optionsJson, const wchar_t* handler) { return cdpClientRuntime_.StartScreencast(page, directory, optionsJson, handler); }
     bool CDP_停止串流(long long page) { return cdpClientRuntime_.StopScreencast(page); }
     bool CDP_执行回放(long long replay, long long page, const wchar_t* handler) { return cdpClientRuntime_.ExecuteReplay(replay, page, handler); }

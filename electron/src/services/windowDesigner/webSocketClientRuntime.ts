@@ -17,7 +17,6 @@ export function generateWebSocketClientGlobalMethods(enabledModules: InstalledMo
   if (!enabledModules.some(module => module.manifest.id === WEBSOCKET_CLIENT_MODULE_ID)) return '';
   return WEBSOCKET_CLIENT_WINDOW_METHODS
     .replaceAll('wsClientRuntime_', 'g_wsClientRuntime')
-    .replaceAll('wsClientReturnText_', 'g_wsClientReturnText')
     .replace(/^    /gmu, 'static ');
 }
 
@@ -43,6 +42,15 @@ public:
 
     explicit LingWebSocketClientRuntime(NotifyEvent notify) : notify_(std::move(notify)) {}
     ~LingWebSocketClientRuntime() { Shutdown(); }
+
+    // 返回文本槽：thread_local 轮转，多线程并发调用文本类命令互不踩踏。
+    const wchar_t* ReturnText(std::wstring value) const {
+        static thread_local std::vector<std::wstring> slots(16);
+        static thread_local size_t index = 0;
+        std::wstring& slot = slots[index++ % slots.size()];
+        slot = std::move(value);
+        return slot.c_str();
+    }
 
     long long Create() {
         auto connection = std::make_shared<Connection>();
@@ -598,12 +606,12 @@ const WEBSOCKET_CLIENT_WINDOW_METHODS = String.raw`
     bool WS_强制断开(long long connection) { return wsClientRuntime_.ForceDisconnect(connection); }
     bool WS_销毁连接(long long connection) { return wsClientRuntime_.Destroy(connection); }
     bool WS_是否已连接(long long connection) { return wsClientRuntime_.IsConnected(connection); }
-    const wchar_t* WS_取连接状态(long long connection) { wsClientReturnText_ = wsClientRuntime_.State(connection); return wsClientReturnText_.c_str(); }
-    const wchar_t* WS_取连接地址(long long connection) { wsClientReturnText_ = wsClientRuntime_.Url(connection); return wsClientReturnText_.c_str(); }
-    const wchar_t* WS_取协商子协议(long long connection) { wsClientReturnText_ = wsClientRuntime_.Protocol(connection); return wsClientReturnText_.c_str(); }
-    const wchar_t* WS_取握手响应头(long long connection) { wsClientReturnText_ = wsClientRuntime_.ResponseHeaders(connection); return wsClientReturnText_.c_str(); }
+    const wchar_t* WS_取连接状态(long long connection) { return wsClientRuntime_.ReturnText(wsClientRuntime_.State(connection)); }
+    const wchar_t* WS_取连接地址(long long connection) { return wsClientRuntime_.ReturnText(wsClientRuntime_.Url(connection)); }
+    const wchar_t* WS_取协商子协议(long long connection) { return wsClientRuntime_.ReturnText(wsClientRuntime_.Protocol(connection)); }
+    const wchar_t* WS_取握手响应头(long long connection) { return wsClientRuntime_.ReturnText(wsClientRuntime_.ResponseHeaders(connection)); }
     int WS_取握手状态码(long long connection) { return wsClientRuntime_.StatusCode(connection); }
-    const wchar_t* WS_取连接错误(long long connection) { wsClientReturnText_ = wsClientRuntime_.Error(connection); return wsClientReturnText_.c_str(); }
+    const wchar_t* WS_取连接错误(long long connection) { return wsClientRuntime_.ReturnText(wsClientRuntime_.Error(connection)); }
     long long WS_取连接时长(long long connection) { return wsClientRuntime_.ConnectedMilliseconds(connection); }
     long long WS_取发送字节数(long long connection) { return wsClientRuntime_.SentBytes(connection); }
     long long WS_取接收字节数(long long connection) { return wsClientRuntime_.ReceivedBytes(connection); }
@@ -612,18 +620,18 @@ const WEBSOCKET_CLIENT_WINDOW_METHODS = String.raw`
     int WS_取重连次数(long long connection) { return wsClientRuntime_.ReconnectAttempts(connection); }
     bool WS_发送文本到连接(long long connection, const wchar_t* text) { return wsClientRuntime_.SendText(connection, text); }
     bool WS_发送二进制到连接(long long connection, const std::vector<unsigned char>& data) { return wsClientRuntime_.SendBinary(connection, data); }
-    const wchar_t* WS_取当前事件类型() { wsClientReturnText_ = wsClientRuntime_.CurrentType(); return wsClientReturnText_.c_str(); }
+    const wchar_t* WS_取当前事件类型() { return wsClientRuntime_.ReturnText(wsClientRuntime_.CurrentType()); }
     long long WS_取当前连接() { return wsClientRuntime_.CurrentConnection(); }
-    const wchar_t* WS_取当前消息类型() { wsClientReturnText_ = wsClientRuntime_.CurrentMessageType(); return wsClientReturnText_.c_str(); }
-    const wchar_t* WS_取当前文本() { wsClientReturnText_ = wsClientRuntime_.CurrentText(); return wsClientReturnText_.c_str(); }
+    const wchar_t* WS_取当前消息类型() { return wsClientRuntime_.ReturnText(wsClientRuntime_.CurrentMessageType()); }
+    const wchar_t* WS_取当前文本() { return wsClientRuntime_.ReturnText(wsClientRuntime_.CurrentText()); }
     std::vector<unsigned char> WS_取当前二进制() { return wsClientRuntime_.CurrentBinary(); }
     int WS_取当前关闭代码() { return wsClientRuntime_.CurrentCloseCode(); }
-    const wchar_t* WS_取当前关闭原因() { wsClientReturnText_ = wsClientRuntime_.CurrentCloseReason(); return wsClientReturnText_.c_str(); }
-    const wchar_t* WS_取当前错误() { wsClientReturnText_ = wsClientRuntime_.CurrentError(); return wsClientReturnText_.c_str(); }
+    const wchar_t* WS_取当前关闭原因() { return wsClientRuntime_.ReturnText(wsClientRuntime_.CurrentCloseReason()); }
+    const wchar_t* WS_取当前错误() { return wsClientRuntime_.ReturnText(wsClientRuntime_.CurrentError()); }
     int WS_取当前重连次数() { return wsClientRuntime_.CurrentReconnectAttempt(); }
     int WS_连接(const wchar_t* url) { return wsClientRuntime_.LegacyConnect(url); }
     int WS_发送文本(const wchar_t* text) { return wsClientRuntime_.LegacySendText(text); }
     int WS_接收到调试输出() { const std::wstring text = wsClientRuntime_.LegacyReceiveText(30000); if (text.empty()) return 0; 调试输出(text.c_str()); return 1; }
-    const wchar_t* WS_接收文本() { wsClientReturnText_ = wsClientRuntime_.LegacyReceiveText(30000); return wsClientReturnText_.c_str(); }
+    const wchar_t* WS_接收文本() { return wsClientRuntime_.ReturnText(wsClientRuntime_.LegacyReceiveText(30000)); }
     void WS_关闭() { wsClientRuntime_.LegacyClose(); }
 `;

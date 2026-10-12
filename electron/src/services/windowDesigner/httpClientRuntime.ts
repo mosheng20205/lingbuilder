@@ -16,7 +16,6 @@ export function generateHttpClientGlobalMethods(enabledModules: InstalledModule[
   if (!enabledModules.some(module => module.manifest.id === HTTP_CLIENT_MODULE_ID)) return '';
   return HTTP_CLIENT_WINDOW_METHODS
     .replaceAll('httpClientRuntime_', 'g_httpClientRuntime')
-    .replaceAll('httpClientReturnText_', 'g_httpClientReturnText')
     .replace(/^    /gmu, 'static ');
 }
 
@@ -38,6 +37,17 @@ public:
 
     explicit LingHttpClientRuntime(NotifyEvent notify) : notify_(std::move(notify)) {}
     ~LingHttpClientRuntime() { Shutdown(); }
+
+    // 返回文本槽：thread_local 轮转，工作线程并发调用文本类命令互不踩踏（与标准库 LB_ReturnText 同范式）。
+    // 2026-10-12 修复：此前共享单个 httpClientReturnText_ 成员，多线程并发「取响应文本编码/取请求错误」
+    // 会并发写同一 std::wstring → 堆损坏 0xC0000374（判据：并发 + 请求超时同醒必崩，单线程永不崩）。
+    const wchar_t* ReturnText(std::wstring value) const {
+        static thread_local std::vector<std::wstring> slots(16);
+        static thread_local size_t index = 0;
+        std::wstring& slot = slots[index++ % slots.size()];
+        slot = std::move(value);
+        return slot.c_str();
+    }
 
     long long CreateClient() {
         auto client = std::make_shared<Client>();
@@ -1210,17 +1220,17 @@ const HTTP_CLIENT_WINDOW_METHODS = String.raw`
     bool HTTP客户端_设置代理(long long client, int mode, const wchar_t* address, const wchar_t* bypass) { return httpClientRuntime_.SetProxy(client, mode, address, bypass); }
     bool HTTP客户端_设置服务器凭据(long long client, const wchar_t* user, const wchar_t* password) { return httpClientRuntime_.SetCredentials(client, user, password, false); }
     bool HTTP客户端_设置代理凭据(long long client, const wchar_t* user, const wchar_t* password) { return httpClientRuntime_.SetCredentials(client, user, password, true); }
-    const wchar_t* HTTP客户端_解析跳转链(long long client, const wchar_t* url, int maxHops) { httpClientReturnText_ = httpClientRuntime_.ResolveRedirectChain(client, url, maxHops); return httpClientReturnText_.c_str(); }
+    const wchar_t* HTTP客户端_解析跳转链(long long client, const wchar_t* url, int maxHops) { return httpClientRuntime_.ReturnText(httpClientRuntime_.ResolveRedirectChain(client, url, maxHops)); }
     int HTTP客户端请求_设置代理(long long request, const wchar_t* address) { return httpClientRuntime_.SetRequestProxy(request, address) ? 1 : 0; }
     int HTTP客户端请求_设置代理凭据(long long request, const wchar_t* user, const wchar_t* password) { return httpClientRuntime_.SetRequestCredentials(request, user, password) ? 1 : 0; }
     int HTTP客户端_设置TLS指纹(long long client, const wchar_t* target) { return httpClientRuntime_.SetImpersonateTarget(client, target) ? 1 : 0; }
-    const wchar_t* HTTP客户端_取TLS指纹(long long client) { httpClientReturnText_ = httpClientRuntime_.GetImpersonateTarget(client); return httpClientReturnText_.c_str(); }
+    const wchar_t* HTTP客户端_取TLS指纹(long long client) { return httpClientRuntime_.ReturnText(httpClientRuntime_.GetImpersonateTarget(client)); }
     bool HTTP客户端_设置TLS策略(long long client, bool verify, bool allowSelfSigned) { return httpClientRuntime_.SetTls(client, verify, allowSelfSigned); }
     bool HTTP客户端_设置证书固定(long long client, const wchar_t* fingerprint) { return httpClientRuntime_.SetCertificatePin(client, fingerprint); }
     bool HTTP客户端_设置自动解压(long long client, bool enabled) { return httpClientRuntime_.SetDecompression(client, enabled); }
     bool HTTP客户端_设置Cookie(long long client, bool enabled) { return httpClientRuntime_.SetCookies(client, enabled); }
     bool HTTP客户端_置Cookie(long long client, const wchar_t* name, const wchar_t* value, const wchar_t* domain, const wchar_t* path) { return httpClientRuntime_.SetManualCookie(client, name, value, domain, path); }
-    const wchar_t* HTTP客户端_取CookieJSON(long long client) { httpClientReturnText_ = httpClientRuntime_.ManualCookiesJson(client); return httpClientReturnText_.c_str(); }
+    const wchar_t* HTTP客户端_取CookieJSON(long long client) { return httpClientRuntime_.ReturnText(httpClientRuntime_.ManualCookiesJson(client)); }
     bool HTTP客户端_删除全部Cookie(long long client) { return httpClientRuntime_.ClearManualCookies(client); }
     bool HTTP客户端_设置默认请求头(long long client, const wchar_t* name, const wchar_t* value) { return httpClientRuntime_.SetClientHeader(client, name, value, false); }
     bool HTTP客户端_添加默认请求头(long long client, const wchar_t* name, const wchar_t* value) { return httpClientRuntime_.SetClientHeader(client, name, value, true); }
@@ -1229,7 +1239,7 @@ const HTTP_CLIENT_WINDOW_METHODS = String.raw`
     int HTTP客户端_取消全部请求(long long client) { return httpClientRuntime_.CancelAll(client); }
     int HTTP客户端_取活动请求数(long long client) { return httpClientRuntime_.ActiveCount(client); }
     long long HTTP客户端_取累计请求数(long long client) { return httpClientRuntime_.TotalCount(client); }
-    const wchar_t* HTTP客户端_取客户端错误(long long client) { httpClientReturnText_ = httpClientRuntime_.ClientError(client); return httpClientReturnText_.c_str(); }
+    const wchar_t* HTTP客户端_取客户端错误(long long client) { return httpClientRuntime_.ReturnText(httpClientRuntime_.ClientError(client)); }
     long long HTTP客户端_创建请求(long long client, const wchar_t* method, const wchar_t* url) { return httpClientRuntime_.CreateRequest(client, method, url); }
     bool HTTP客户端_设置请求头(long long request, const wchar_t* name, const wchar_t* value) { return httpClientRuntime_.SetRequestHeader(request, name, value, false); }
     bool HTTP客户端_添加请求头(long long request, const wchar_t* name, const wchar_t* value) { return httpClientRuntime_.SetRequestHeader(request, name, value, true); }
@@ -1250,30 +1260,30 @@ const HTTP_CLIENT_WINDOW_METHODS = String.raw`
     bool HTTP客户端_取消请求(long long request) { return httpClientRuntime_.Cancel(request); }
     bool HTTP客户端_销毁请求(long long request) { return httpClientRuntime_.DestroyRequest(request); }
     long long HTTP客户端_取请求客户端(long long request) { return httpClientRuntime_.RequestClient(request); }
-    const wchar_t* HTTP客户端_取请求方法(long long request) { httpClientReturnText_ = httpClientRuntime_.RequestMethod(request); return httpClientReturnText_.c_str(); }
-    const wchar_t* HTTP客户端_取请求地址(long long request) { httpClientReturnText_ = httpClientRuntime_.RequestUrl(request); return httpClientReturnText_.c_str(); }
-    const wchar_t* HTTP客户端_取请求状态(long long request) { httpClientReturnText_ = httpClientRuntime_.RequestState(request); return httpClientReturnText_.c_str(); }
+    const wchar_t* HTTP客户端_取请求方法(long long request) { return httpClientRuntime_.ReturnText(httpClientRuntime_.RequestMethod(request)); }
+    const wchar_t* HTTP客户端_取请求地址(long long request) { return httpClientRuntime_.ReturnText(httpClientRuntime_.RequestUrl(request)); }
+    const wchar_t* HTTP客户端_取请求状态(long long request) { return httpClientRuntime_.ReturnText(httpClientRuntime_.RequestState(request)); }
     bool HTTP客户端_请求是否完成(long long request) { return httpClientRuntime_.IsComplete(request); }
     bool HTTP客户端_请求是否成功(long long request) { return httpClientRuntime_.IsSuccess(request); }
-    const wchar_t* HTTP客户端_取请求错误(long long request) { httpClientReturnText_ = httpClientRuntime_.RequestError(request); return httpClientReturnText_.c_str(); }
+    const wchar_t* HTTP客户端_取请求错误(long long request) { return httpClientRuntime_.ReturnText(httpClientRuntime_.RequestError(request)); }
     int HTTP客户端_取系统错误码(long long request) { return httpClientRuntime_.SystemError(request); }
     long long HTTP客户端_取请求耗时(long long request) { return httpClientRuntime_.Duration(request); }
     long long HTTP客户端_取上传字节数(long long request) { return httpClientRuntime_.Uploaded(request); }
     long long HTTP客户端_取下载字节数(long long request) { return httpClientRuntime_.Downloaded(request); }
     int HTTP客户端_取响应状态码(long long request) { return httpClientRuntime_.StatusCode(request); }
-    const wchar_t* HTTP客户端_取响应状态文本(long long request) { httpClientReturnText_ = httpClientRuntime_.StatusText(request); return httpClientReturnText_.c_str(); }
-    const wchar_t* HTTP客户端_取响应协议(long long request) { httpClientReturnText_ = httpClientRuntime_.Protocol(request); return httpClientReturnText_.c_str(); }
-    const wchar_t* HTTP客户端_取最终地址(long long request) { httpClientReturnText_ = httpClientRuntime_.FinalUrl(request); return httpClientReturnText_.c_str(); }
-    const wchar_t* HTTP客户端_取全部响应头(long long request) { httpClientReturnText_ = httpClientRuntime_.Headers(request); return httpClientReturnText_.c_str(); }
-    const wchar_t* HTTP客户端_取响应头JSON(long long request) { httpClientReturnText_ = httpClientRuntime_.HeadersJson(request); return httpClientReturnText_.c_str(); }
-    const wchar_t* HTTP客户端_取响应十六进制(long long request) { httpClientReturnText_ = httpClientRuntime_.ResponseHex(request); return httpClientReturnText_.c_str(); }
+    const wchar_t* HTTP客户端_取响应状态文本(long long request) { return httpClientRuntime_.ReturnText(httpClientRuntime_.StatusText(request)); }
+    const wchar_t* HTTP客户端_取响应协议(long long request) { return httpClientRuntime_.ReturnText(httpClientRuntime_.Protocol(request)); }
+    const wchar_t* HTTP客户端_取最终地址(long long request) { return httpClientRuntime_.ReturnText(httpClientRuntime_.FinalUrl(request)); }
+    const wchar_t* HTTP客户端_取全部响应头(long long request) { return httpClientRuntime_.ReturnText(httpClientRuntime_.Headers(request)); }
+    const wchar_t* HTTP客户端_取响应头JSON(long long request) { return httpClientRuntime_.ReturnText(httpClientRuntime_.HeadersJson(request)); }
+    const wchar_t* HTTP客户端_取响应十六进制(long long request) { return httpClientRuntime_.ReturnText(httpClientRuntime_.ResponseHex(request)); }
     long long HTTP客户端_取响应大小(long long request) { return httpClientRuntime_.ResponseSize(request); }
-    const wchar_t* HTTP客户端_取响应文件(long long request) { httpClientReturnText_ = httpClientRuntime_.ResponseFile(request); return httpClientReturnText_.c_str(); }
-    const wchar_t* HTTP客户端_取内容类型(long long request) { httpClientReturnText_ = httpClientRuntime_.ContentType(request); return httpClientReturnText_.c_str(); }
-    const wchar_t* HTTP客户端_取服务器证书SHA256(long long request) { httpClientReturnText_ = httpClientRuntime_.CertificateSha256(request); return httpClientReturnText_.c_str(); }
-    const wchar_t* HTTP客户端_取响应头(long long request, const wchar_t* name) { httpClientReturnText_ = httpClientRuntime_.ResponseHeader(request, name); return httpClientReturnText_.c_str(); }
+    const wchar_t* HTTP客户端_取响应文件(long long request) { return httpClientRuntime_.ReturnText(httpClientRuntime_.ResponseFile(request)); }
+    const wchar_t* HTTP客户端_取内容类型(long long request) { return httpClientRuntime_.ReturnText(httpClientRuntime_.ContentType(request)); }
+    const wchar_t* HTTP客户端_取服务器证书SHA256(long long request) { return httpClientRuntime_.ReturnText(httpClientRuntime_.CertificateSha256(request)); }
+    const wchar_t* HTTP客户端_取响应头(long long request, const wchar_t* name) { return httpClientRuntime_.ReturnText(httpClientRuntime_.ResponseHeader(request, name)); }
     std::vector<unsigned char> HTTP客户端_取响应字节集(long long request) { return httpClientRuntime_.ResponseBytes(request); }
-    const wchar_t* HTTP客户端_取响应文本编码(long long request, const wchar_t* encoding) { httpClientReturnText_ = httpClientRuntime_.ResponseText(request, encoding); return httpClientReturnText_.c_str(); }
+    const wchar_t* HTTP客户端_取响应文本编码(long long request, const wchar_t* encoding) { return httpClientRuntime_.ReturnText(httpClientRuntime_.ResponseText(request, encoding)); }
     bool HTTP客户端_保存响应文件(long long request, const wchar_t* path, bool overwrite) { return httpClientRuntime_.SaveResponse(request, path, overwrite); }
     long long HTTP客户端_取当前请求() { return httpClientRuntime_.CurrentRequest(); }
     long long HTTP客户端_GET异步(long long client, const wchar_t* url, const wchar_t* handler) { const long long request = httpClientRuntime_.CreateRequest(client, L"GET", url); if (!request || !httpClientRuntime_.BindHandler(request, handler) || !httpClientRuntime_.Start(request)) return 0; return request; }
@@ -1282,7 +1292,7 @@ const HTTP_CLIENT_WINDOW_METHODS = String.raw`
     bool HTTP客户端_GET(const wchar_t* url) { return httpClientRuntime_.LegacyGet(url); }
     bool HTTP客户端_POST(const wchar_t* url, const wchar_t* body) { return httpClientRuntime_.LegacyPost(url, body); }
     int HTTP客户端_取状态码() { return httpClientRuntime_.LegacyStatus(); }
-    const wchar_t* HTTP客户端_取响应文本() { httpClientReturnText_ = httpClientRuntime_.LegacyText(); return httpClientReturnText_.c_str(); }
-    const wchar_t* HTTP客户端_取错误() { httpClientReturnText_ = httpClientRuntime_.LegacyError(); return httpClientReturnText_.c_str(); }
+    const wchar_t* HTTP客户端_取响应文本() { return httpClientRuntime_.ReturnText(httpClientRuntime_.LegacyText()); }
+    const wchar_t* HTTP客户端_取错误() { return httpClientRuntime_.ReturnText(httpClientRuntime_.LegacyError()); }
     void HTTP客户端_清空状态() { httpClientRuntime_.LegacyClear(); }
 `;

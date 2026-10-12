@@ -1,6 +1,7 @@
 import { InstalledModule } from '../modules/types';
 import { COM_RUNTIME, generateComWindowMethods, generateComWndProcCase } from './comRuntime';
 import { MEMORY_DLL_MODULE_ID, MEMORY_DLL_RUNTIME } from './memoryDllRuntime';
+import { ARCHIVE_MINIZ_INLINE_C } from './archiveMinizInline.generated';
 
 export { generateComWindowMethods, generateComWndProcCase };
 
@@ -12,6 +13,109 @@ static bool LB_RunTar(const std::wstring& arguments, std::wstring& output) { SEC
 bool 压缩_ZIP创建(const wchar_t* source, const wchar_t* archive) { std::filesystem::path input(LB_Wide(source)), target(LB_Wide(archive)); std::wstring parent = input.has_parent_path() ? input.parent_path().wstring() : L"."; std::wstring name = input.filename().wstring(); if (!LB_SafeProcessArgument(parent) || !LB_SafeProcessArgument(name) || !LB_SafeProcessArgument(target.wstring())) return false; std::wstring output; return LB_RunTar(L"-a -cf \"" + target.wstring() + L"\" -C \"" + parent + L"\" \"" + name + L"\"", output); }
 bool 压缩_ZIP解压(const wchar_t* archive, const wchar_t* target) { std::wstring input = LB_Wide(archive), destination = LB_Wide(target); if (!LB_SafeProcessArgument(input) || !LB_SafeProcessArgument(destination)) return false; std::error_code error; std::filesystem::create_directories(destination, error); std::wstring output; return !error && LB_RunTar(L"-xf \"" + input + L"\" -C \"" + destination + L"\"", output); }
 const wchar_t* 压缩_ZIP列出(const wchar_t* archive) { std::wstring input = LB_Wide(archive), output; if (!LB_SafeProcessArgument(input) || !LB_RunTar(L"-tf \"" + input + L"\"", output)) return LB_ReturnText(L""); return LB_ReturnText(std::move(output)); }
+` + ARCHIVE_MINIZ_INLINE_C + String.raw`
+// ===== 内存字节集压缩/解压（随包 vendored miniz 3.0.2，公共域；ZIP 归档仍走 tar.exe，互不影响）=====
+static constexpr size_t LB_ARCHIVE_INFLATE_LIMIT = 67108864; // 64MB；与模块常量 #压缩_解压上限字节 同值，zip-bomb 防护。
+static const unsigned char LB_EMPTY_DEFLATE_STREAM[] = { 0x03, 0x00 };
+struct LB_ArchiveInflateSink { std::vector<unsigned char> output; size_t limit = LB_ARCHIVE_INFLATE_LIMIT; bool exceeded = false; };
+static mz_bool LB_ArchiveInflateSinkPut(const void* buffer, int length, void* user) {
+    LB_ArchiveInflateSink* sink = static_cast<LB_ArchiveInflateSink*>(user);
+    const size_t count = length > 0 ? static_cast<size_t>(length) : 0;
+    if (count == 0) return MZ_TRUE;
+    if (sink->output.size() + count > sink->limit) { sink->exceeded = true; return MZ_FALSE; }
+    const unsigned char* begin = static_cast<const unsigned char*>(buffer);
+    sink->output.insert(sink->output.end(), begin, begin + count);
+    return MZ_TRUE;
+}
+// 原始 deflate 解压（tinfl 流式回调，输出超限即中止）；失败写 g_lbArchiveError 并返回空字节集。
+static std::vector<unsigned char> LB_ArchiveRawInflate(const unsigned char* data, size_t size, int tinflFlags) {
+    LB_ArchiveInflateSink sink;
+    size_t inputSize = size;
+    const int result = tinfl_decompress_mem_to_callback(data, &inputSize, LB_ArchiveInflateSinkPut, &sink, tinflFlags);
+    if (sink.exceeded) { g_lbArchiveError = L"解压结果超过上限 67108864 字节（zip-bomb 防护），已中止。"; return std::vector<unsigned char>(); }
+    if (!result) { g_lbArchiveError = L"deflate 数据损坏或被截断，无法完成解压。"; return std::vector<unsigned char>(); }
+    return std::move(sink.output);
+}
+static unsigned long LB_ArchiveCrc32(const std::vector<unsigned char>& data) {
+    unsigned long crc = static_cast<unsigned long>(mz_crc32(0, nullptr, 0));
+    if (!data.empty()) crc = static_cast<unsigned long>(mz_crc32(crc, data.data(), data.size()));
+    return crc;
+}
+std::vector<unsigned char> 压缩_DEFLATE解压(const std::vector<unsigned char>& data) {
+    g_lbArchiveError.clear();
+    if (data.empty()) { g_lbArchiveError = L"输入为空字节集：raw deflate 流至少需要 2 字节（空内容的标准空流是 03 00）。"; return std::vector<unsigned char>(); }
+    return LB_ArchiveRawInflate(data.data(), data.size(), 0);
+}
+std::vector<unsigned char> 压缩_ZLIB解压(const std::vector<unsigned char>& data) {
+    g_lbArchiveError.clear();
+    if (data.size() < 2) { g_lbArchiveError = L"输入为空或不足 zlib 容器头（2 字节）。"; return std::vector<unsigned char>(); }
+    const unsigned cmf = data[0], flg = data[1];
+    if ((cmf & 0x0F) != 8 || (((static_cast<unsigned>(cmf) << 8) | flg) % 31) != 0) { g_lbArchiveError = L"zlib 容器头无效（CMF/FLG 校验失败，可能不是 zlib 格式）。"; return std::vector<unsigned char>(); }
+    if (flg & 0x20) { g_lbArchiveError = L"zlib 预设字典（FDICT）不受支持。"; return std::vector<unsigned char>(); }
+    return LB_ArchiveRawInflate(data.data(), data.size(), TINFL_FLAG_PARSE_ZLIB_HEADER);
+}
+std::vector<unsigned char> 压缩_GZIP解压(const std::vector<unsigned char>& data) {
+    g_lbArchiveError.clear();
+    if (data.size() < 19) { g_lbArchiveError = L"输入为空或不足 gzip 最小长度（10 字节头 + deflate 流 + 8 字节尾）。"; return std::vector<unsigned char>(); }
+    if (data[0] != 0x1F || data[1] != 0x8B) { g_lbArchiveError = L"gzip 魔数无效（前两字节必须是 1F 8B）。"; return std::vector<unsigned char>(); }
+    if (data[2] != 8) { g_lbArchiveError = L"gzip 压缩方法只支持 DEFLATE（CM=8）。"; return std::vector<unsigned char>(); }
+    const unsigned flags = data[3];
+    size_t offset = 10;
+    if (flags & 0x04) {
+        if (offset + 2 > data.size()) { g_lbArchiveError = L"gzip 头部 FEXTRA 长度字段越界。"; return std::vector<unsigned char>(); }
+        const size_t extra = static_cast<size_t>(data[offset]) | (static_cast<size_t>(data[offset + 1]) << 8);
+        offset += 2 + extra;
+        if (offset > data.size()) { g_lbArchiveError = L"gzip 头部 FEXTRA 字段越界。"; return std::vector<unsigned char>(); }
+    }
+    if (flags & 0x08) { while (offset < data.size() && data[offset] != 0) ++offset; if (offset >= data.size()) { g_lbArchiveError = L"gzip 头部 FNAME 未正常终止。"; return std::vector<unsigned char>(); } ++offset; }
+    if (flags & 0x10) { while (offset < data.size() && data[offset] != 0) ++offset; if (offset >= data.size()) { g_lbArchiveError = L"gzip 头部 FCOMMENT 未正常终止。"; return std::vector<unsigned char>(); } ++offset; }
+    if (flags & 0x02) { offset += 2; if (offset > data.size()) { g_lbArchiveError = L"gzip 头部 FHCRC 字段越界。"; return std::vector<unsigned char>(); } }
+    if (offset + 8 >= data.size()) { g_lbArchiveError = L"gzip 数据被截断（deflate 正文或 8 字节尾缺失）。"; return std::vector<unsigned char>(); }
+    std::vector<unsigned char> output = LB_ArchiveRawInflate(data.data() + offset, data.size() - offset - 8, 0);
+    if (output.empty() && !g_lbArchiveError.empty()) return output;
+    const size_t trailer = data.size() - 8;
+    const unsigned long expectedCrc = static_cast<unsigned long>(data[trailer]) | (static_cast<unsigned long>(data[trailer + 1]) << 8) | (static_cast<unsigned long>(data[trailer + 2]) << 16) | (static_cast<unsigned long>(data[trailer + 3]) << 24);
+    if (LB_ArchiveCrc32(output) != expectedCrc) { g_lbArchiveError = L"gzip CRC32 校验失败：解压结果与尾部记录不一致。"; return std::vector<unsigned char>(); }
+    const unsigned long expectedSize = static_cast<unsigned long>(data[trailer + 4]) | (static_cast<unsigned long>(data[trailer + 5]) << 8) | (static_cast<unsigned long>(data[trailer + 6]) << 16) | (static_cast<unsigned long>(data[trailer + 7]) << 24);
+    if (static_cast<unsigned long>(output.size() & 0xFFFFFFFFUL) != expectedSize) { g_lbArchiveError = L"gzip ISIZE 校验失败：解压字节数与尾部记录不一致。"; return std::vector<unsigned char>(); }
+    return output;
+}
+// deflate 级别 6、windowBits -15（raw，无 zlib 头、无 adler）；返回空且非空输入代表失败。
+static std::vector<unsigned char> LB_ArchiveDeflateCompress(const std::vector<unsigned char>& data) {
+    size_t compressedSize = 0;
+    const int flags = static_cast<int>(tdefl_create_comp_flags_from_zip_params(6, -15, 0));
+    void* compressed = tdefl_compress_mem_to_heap(data.data(), data.size(), &compressedSize, flags);
+    if (!compressed || compressedSize == 0) {
+        if (data.empty()) return std::vector<unsigned char>(LB_EMPTY_DEFLATE_STREAM, LB_EMPTY_DEFLATE_STREAM + 2);
+        if (compressed) MZ_FREE(compressed);
+        g_lbArchiveError = L"deflate 压缩失败（内存分配或内部错误）。";
+        return std::vector<unsigned char>();
+    }
+    std::vector<unsigned char> output(static_cast<const unsigned char*>(compressed), static_cast<const unsigned char*>(compressed) + compressedSize);
+    MZ_FREE(compressed);
+    return output;
+}
+std::vector<unsigned char> 压缩_DEFLATE压缩(const std::vector<unsigned char>& data) {
+    g_lbArchiveError.clear();
+    if (data.empty()) return std::vector<unsigned char>(LB_EMPTY_DEFLATE_STREAM, LB_EMPTY_DEFLATE_STREAM + 2);
+    return LB_ArchiveDeflateCompress(data);
+}
+std::vector<unsigned char> 压缩_GZIP压缩(const std::vector<unsigned char>& data) {
+    g_lbArchiveError.clear();
+    const std::vector<unsigned char> body = data.empty() ? std::vector<unsigned char>(LB_EMPTY_DEFLATE_STREAM, LB_EMPTY_DEFLATE_STREAM + 2) : LB_ArchiveDeflateCompress(data);
+    if (body.empty() && !data.empty()) return body;
+    std::vector<unsigned char> output;
+    output.reserve(18 + body.size());
+    output.push_back(0x1F); output.push_back(0x8B); output.push_back(8); output.push_back(0);
+    output.push_back(0); output.push_back(0); output.push_back(0); output.push_back(0); // MTIME=0，确定性输出
+    output.push_back(0); output.push_back(0xFF); // XFL=0、OS=255（未知）
+    output.insert(output.end(), body.begin(), body.end());
+    const unsigned long crc = LB_ArchiveCrc32(data);
+    const unsigned long isize = static_cast<unsigned long>(data.size() & 0xFFFFFFFFUL);
+    for (int shift = 0; shift < 32; shift += 8) output.push_back(static_cast<unsigned char>((crc >> shift) & 0xFF));
+    for (int shift = 0; shift < 32; shift += 8) output.push_back(static_cast<unsigned char>((isize >> shift) & 0xFF));
+    return output;
+}
 `;
 
 const SMTP_RUNTIME = String.raw`

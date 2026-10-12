@@ -17,7 +17,6 @@ export function generateWebSocketServerGlobalMethods(enabledModules: InstalledMo
   if (!enabledModules.some(module => module.manifest.id === WEBSOCKET_SERVER_MODULE_ID)) return '';
   return WEBSOCKET_SERVER_WINDOW_METHODS
     .replaceAll('wssRuntime_', 'g_wssRuntime')
-    .replaceAll('wssReturnText_', 'g_wssReturnText')
     .replace(/^    /gmu, 'static ');
 }
 
@@ -49,6 +48,15 @@ public:
     ~LingWebSocketServerRuntime() {
         Shutdown();
         if (socketsStarted_) WSACleanup();
+    }
+
+    // 返回文本槽：thread_local 轮转，多线程并发调用文本类命令互不踩踏。
+    const wchar_t* ReturnText(std::wstring value) const {
+        static thread_local std::vector<std::wstring> slots(16);
+        static thread_local size_t index = 0;
+        std::wstring& slot = slots[index++ % slots.size()];
+        slot = std::move(value);
+        return slot.c_str();
     }
 
     long long CreateServer() {
@@ -1032,27 +1040,27 @@ const WEBSOCKET_SERVER_WINDOW_METHODS = String.raw`
     bool WSS_停止(long long server) { return wssRuntime_.Stop(server); }
     bool WSS_销毁服务(long long server) { return wssRuntime_.Destroy(server); }
     bool WSS_是否运行(long long server) { return wssRuntime_.IsRunning(server); }
-    const wchar_t* WSS_取监听地址(long long server) { wssReturnText_ = wssRuntime_.Address(server); return wssReturnText_.c_str(); }
+    const wchar_t* WSS_取监听地址(long long server) { return wssRuntime_.ReturnText(wssRuntime_.Address(server)); }
     int WSS_取监听端口(long long server) { return wssRuntime_.Port(server); }
     int WSS_取在线客户端数(long long server) { return wssRuntime_.OnlineClients(server); }
     long long WSS_取累计连接数(long long server) { return wssRuntime_.TotalConnections(server); }
     long long WSS_取累计消息数(long long server) { return wssRuntime_.TotalMessages(server); }
-    const wchar_t* WSS_取服务错误(long long server) { wssReturnText_ = wssRuntime_.Error(server); return wssReturnText_.c_str(); }
-    const wchar_t* WSS_取当前事件类型() { wssReturnText_ = wssRuntime_.CurrentType(); return wssReturnText_.c_str(); }
+    const wchar_t* WSS_取服务错误(long long server) { return wssRuntime_.ReturnText(wssRuntime_.Error(server)); }
+    const wchar_t* WSS_取当前事件类型() { return wssRuntime_.ReturnText(wssRuntime_.CurrentType()); }
     long long WSS_取当前客户端() { return wssRuntime_.CurrentClient(); }
-    const wchar_t* WSS_取当前消息类型() { wssReturnText_ = wssRuntime_.CurrentMessageType(); return wssReturnText_.c_str(); }
-    const wchar_t* WSS_取当前文本() { wssReturnText_ = wssRuntime_.CurrentText(); return wssReturnText_.c_str(); }
+    const wchar_t* WSS_取当前消息类型() { return wssRuntime_.ReturnText(wssRuntime_.CurrentMessageType()); }
+    const wchar_t* WSS_取当前文本() { return wssRuntime_.ReturnText(wssRuntime_.CurrentText()); }
     std::vector<unsigned char> WSS_取当前二进制() { return wssRuntime_.CurrentBinary(); }
     int WSS_取当前关闭代码() { return wssRuntime_.CurrentCloseCode(); }
-    const wchar_t* WSS_取当前关闭原因() { wssReturnText_ = wssRuntime_.CurrentCloseReason(); return wssReturnText_.c_str(); }
+    const wchar_t* WSS_取当前关闭原因() { return wssRuntime_.ReturnText(wssRuntime_.CurrentCloseReason()); }
     bool WSS_客户端是否在线(long long client) { return wssRuntime_.ClientOnline(client); }
-    const wchar_t* WSS_取客户端地址(long long client) { wssReturnText_ = wssRuntime_.ClientAddress(client); return wssReturnText_.c_str(); }
+    const wchar_t* WSS_取客户端地址(long long client) { return wssRuntime_.ReturnText(wssRuntime_.ClientAddress(client)); }
     int WSS_取客户端端口(long long client) { return wssRuntime_.ClientPort(client); }
-    const wchar_t* WSS_取客户端路径(long long client) { wssReturnText_ = wssRuntime_.ClientPath(client); return wssReturnText_.c_str(); }
-    const wchar_t* WSS_取客户端来源(long long client) { wssReturnText_ = wssRuntime_.ClientOrigin(client); return wssReturnText_.c_str(); }
-    const wchar_t* WSS_取客户端子协议(long long client) { wssReturnText_ = wssRuntime_.ClientProtocol(client); return wssReturnText_.c_str(); }
+    const wchar_t* WSS_取客户端路径(long long client) { return wssRuntime_.ReturnText(wssRuntime_.ClientPath(client)); }
+    const wchar_t* WSS_取客户端来源(long long client) { return wssRuntime_.ReturnText(wssRuntime_.ClientOrigin(client)); }
+    const wchar_t* WSS_取客户端子协议(long long client) { return wssRuntime_.ReturnText(wssRuntime_.ClientProtocol(client)); }
     long long WSS_取客户端连接时长(long long client) { return wssRuntime_.ClientConnectedMilliseconds(client); }
-    const wchar_t* WSS_取客户端列表JSON(long long server) { wssReturnText_ = wssRuntime_.ClientsJson(server); return wssReturnText_.c_str(); }
+    const wchar_t* WSS_取客户端列表JSON(long long server) { return wssRuntime_.ReturnText(wssRuntime_.ClientsJson(server)); }
     bool WSS_发送文本给客户端(long long client, const wchar_t* text) { return wssRuntime_.SendText(client, text); }
     bool WSS_发送二进制给客户端(long long client, const std::vector<unsigned char>& data) { return wssRuntime_.SendBinary(client, data); }
     int WSS_广播文本(long long server, const wchar_t* text) { return wssRuntime_.BroadcastText(server, text); }
@@ -1062,7 +1070,7 @@ const WEBSOCKET_SERVER_WINDOW_METHODS = String.raw`
     bool WSS_强制断开客户端(long long client) { return wssRuntime_.ForceDisconnect(client); }
     int WSS_启动服务(int port) { return wssRuntime_.LegacyStart(port); }
     int WSS_等待连接() { return wssRuntime_.LegacyWaitConnection(30000); }
-    const wchar_t* WSS_接收文本() { wssReturnText_ = wssRuntime_.LegacyReceiveText(30000); return wssReturnText_.c_str(); }
+    const wchar_t* WSS_接收文本() { return wssRuntime_.ReturnText(wssRuntime_.LegacyReceiveText(30000)); }
     int WSS_接收到调试输出() { const wchar_t* text = WSS_接收文本(); if (!text || !text[0]) return 0; 调试输出(text); return 1; }
     int WSS_发送文本(const wchar_t* text) { return wssRuntime_.LegacySendText(text); }
     void WSS_关闭服务() { wssRuntime_.LegacyClose(); }

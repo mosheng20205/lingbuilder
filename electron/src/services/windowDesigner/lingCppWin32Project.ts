@@ -3044,7 +3044,6 @@ function generateNewEmojiMainCpp(
 #pragma comment(lib, "winhttp.lib")
 static constexpr UINT WM_LINGBUILDER_NE_HTTP_CLIENT_EVENT = WM_APP + 0x55;
 static HWND g_httpClientEventWindow = nullptr;
-static std::wstring g_httpClientReturnText;
 static void LB_NE_DispatchHttpClientEvent(const wchar_t* handler);
 static LingHttpClientRuntime g_httpClientRuntime([](long long eventId) {
     return g_httpClientEventWindow && PostMessageW(g_httpClientEventWindow, WM_LINGBUILDER_NE_HTTP_CLIENT_EVENT, static_cast<WPARAM>(eventId), 0) != FALSE;
@@ -3100,7 +3099,6 @@ ${uiaCleanupLine}
 #pragma comment(lib, "winhttp.lib")
 static constexpr UINT WM_LINGBUILDER_NE_WS_CLIENT_EVENT = WM_APP + 0x54;
 static HWND g_wsClientEventWindow = nullptr;
-static std::wstring g_wsClientReturnText;
 static void LB_NE_DispatchWebSocketClientEvent(const wchar_t* handler);
 static LingWebSocketClientRuntime g_wsClientRuntime([](long long eventId) {
     return g_wsClientEventWindow && PostMessageW(g_wsClientEventWindow, WM_LINGBUILDER_NE_WS_CLIENT_EVENT, static_cast<WPARAM>(eventId), 0) != FALSE;
@@ -3149,7 +3147,6 @@ ${uiaCleanupLine}
   const cdpClientIntegration = cdpClientRuntime ? `
 static constexpr UINT WM_LINGBUILDER_NE_CDP_CLIENT_EVENT = WM_APP + 0x58;
 static HWND g_cdpClientEventWindow = nullptr;
-static std::wstring g_cdpClientReturnText;
 static void LB_NE_DispatchCdpClientEvent(const wchar_t* handler);
 static LingCdpRuntime g_cdpClientRuntime([](long long eventId) {
     return g_cdpClientEventWindow && PostMessageW(g_cdpClientEventWindow, WM_LINGBUILDER_NE_CDP_CLIENT_EVENT, static_cast<WPARAM>(eventId), 0) != FALSE;
@@ -3198,7 +3195,6 @@ ${uiaCleanupLine}
   const webSocketServerIntegration = webSocketServerRuntime ? `
 static constexpr UINT WM_LINGBUILDER_NE_WSS_EVENT = WM_APP + 0x52;
 static HWND g_wssEventWindow = nullptr;
-static std::wstring g_wssReturnText;
 static void LB_NE_DispatchWebSocketServerEvent(const wchar_t* handler);
 static LingWebSocketServerRuntime g_wssRuntime([](long long eventId) {
     return g_wssEventWindow && PostMessageW(g_wssEventWindow, WM_LINGBUILDER_NE_WSS_EVENT, static_cast<WPARAM>(eventId), 0) != FALSE;
@@ -3249,7 +3245,6 @@ ${uiaCleanupLine}
   const httpServerIntegration = httpServerRuntime ? `
 static constexpr UINT WM_LINGBUILDER_NE_HTTP_SERVER_REQUEST = WM_APP + 0x53;
 static HWND g_httpServerEventWindow = nullptr;
-static std::wstring g_httpServerReturnText;
 static LingHttpServerRuntime g_httpServerRuntime([](long long requestId) {
     return g_httpServerEventWindow && PostMessageW(g_httpServerEventWindow, WM_LINGBUILDER_NE_HTTP_SERVER_REQUEST, static_cast<WPARAM>(requestId), 0) != FALSE;
 });
@@ -8634,6 +8629,8 @@ struct LB_NE_CookieDialogContext {
     HWND addressEdit = nullptr;
     HWND cookieEdit = nullptr;
     bool accepted = false;
+    HFONT font = nullptr;
+    int hoveredControl = 0;
 };
 
 static std::wstring LB_NE_ReadWindowText(HWND window) {
@@ -8651,31 +8648,148 @@ static LRESULT CALLBACK LB_NE_CookieDialogWindowProc(HWND window, UINT message, 
         SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(context));
     }
     if (!context) return DefWindowProcW(window, message, wParam, lParam);
-    if (message == WM_CREATE) {
-        HFONT font = static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+    const UINT dpi = GetDpiForWindow(window);
+    const auto su = [dpi](int logical) { return MulDiv(logical, static_cast<int>(dpi ? dpi : 96), 96); };
+    // 深色主题配色（与浏览器外壳一致）。
+    const COLORREF panelColor = RGB(0x20, 0x21, 0x24);
+    const COLORREF titleColor = RGB(0xE8, 0xEA, 0xED);
+    const COLORREF mutedColor = RGB(0x9A, 0xA0, 0xA6);
+    const COLORREF fieldBg = RGB(0x30, 0x31, 0x34);
+    const COLORREF fieldBorder = RGB(0x5F, 0x63, 0x68);
+    const COLORREF cancelBg = RGB(0x3C, 0x40, 0x43);
+    const COLORREF confirmBg = RGB(0x8A, 0xB4, 0xF8);
+    const COLORREF confirmText = RGB(0x1F, 0x1F, 0x1F);
+    switch (message) {
+    case WM_CREATE: {
+        context->font = CreateFontW(-su(13), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+            DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+            DEFAULT_PITCH | FF_DONTCARE, L"Microsoft YaHei UI");
         auto createChild = [&](DWORD exStyle, const wchar_t* className, const wchar_t* text, DWORD style,
                                int x, int y, int width, int height, int id) {
             HWND child = CreateWindowExW(exStyle, className, text, WS_CHILD | WS_VISIBLE | style,
-                x, y, width, height, window, reinterpret_cast<HMENU>(static_cast<intptr_t>(id)), GetModuleHandleW(nullptr), nullptr);
-            if (child) SendMessageW(child, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
+                su(x), su(y), su(width), su(height), window, reinterpret_cast<HMENU>(static_cast<intptr_t>(id)), GetModuleHandleW(nullptr), nullptr);
+            if (child) SendMessageW(child, WM_SETFONT, reinterpret_cast<WPARAM>(context->font), TRUE);
             return child;
         };
-        createChild(0, L"STATIC", L"目标网址或域名", 0, 20, 18, 500, 22, 0);
-        context->addressEdit = createChild(WS_EX_CLIENTEDGE, L"EDIT", context->defaultAddress.c_str(),
-            ES_AUTOHSCROLL | WS_TABSTOP, 20, 44, 500, 30, 4101);
-        createChild(0, L"STATIC", L"Cookie 文本（名称=值；多个值用分号分隔）", 0, 20, 88, 500, 22, 0);
-        context->cookieEdit = createChild(WS_EX_CLIENTEDGE, L"EDIT", L"",
+        createChild(0, L"STATIC", L"目标网址或域名", 0, 24, 62, 400, 22, 0);
+        context->addressEdit = createChild(0, L"EDIT", context->defaultAddress.c_str(),
+            ES_AUTOHSCROLL | WS_TABSTOP, 24, 88, 632, 36, 4101);
+        createChild(0, L"STATIC", L"Cookie 文本（名称=值；多个值用分号分隔）", 0, 24, 140, 500, 22, 0);
+        context->cookieEdit = createChild(0, L"EDIT", L"",
             ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_VSCROLL | WS_TABSTOP,
-            20, 114, 500, 126, 4102);
-        createChild(0, L"STATIC", L"Cookie 仅写入当前稳定会话；操作日志不会记录明文。", 0, 20, 250, 500, 22, 0);
-        createChild(0, L"BUTTON", L"取消", BS_PUSHBUTTON | WS_TABSTOP, 340, 282, 84, 32, IDCANCEL);
-        HWND confirm = createChild(0, L"BUTTON", L"置入 Cookie", BS_DEFPUSHBUTTON | WS_TABSTOP, 434, 282, 86, 32, IDOK);
+            24, 166, 632, 140, 4102);
+        createChild(0, L"STATIC", L"Cookie 仅写入当前稳定会话；操作日志不会记录明文。", 0, 24, 322, 500, 22, 0);
+        createChild(0, L"BUTTON", L"取消", BS_OWNERDRAW | WS_TABSTOP, 340, 352, 150, 36, IDCANCEL);
+        createChild(0, L"BUTTON", L"置入 Cookie", BS_OWNERDRAW | WS_TABSTOP, 506, 352, 150, 36, IDOK);
         SendMessageW(window, DM_SETDEFID, IDOK, 0);
         if (context->cookieEdit) SetFocus(context->cookieEdit);
-        (void)confirm;
         return 0;
     }
-    if (message == WM_COMMAND) {
+    case WM_ERASEBKGND:
+        return 1;
+    case WM_PAINT: {
+        PAINTSTRUCT paint{};
+        HDC hdc = BeginPaint(window, &paint);
+        RECT full{};
+        GetClientRect(window, &full);
+        SetBkMode(hdc, TRANSPARENT);
+        HBRUSH panel = CreateSolidBrush(panelColor);
+        FillRect(hdc, &full, panel);
+        DeleteObject(panel);
+        SelectObject(hdc, context->font);
+        SetTextColor(hdc, titleColor);
+        RECT titleRect = { su(24), 0, su(600), su(44) };
+        DrawTextW(hdc, L"为当前浏览器置入 Cookie", -1, &titleRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        SetTextColor(hdc, mutedColor);
+        RECT closeRect = { su(624), 0, su(664), su(44) };
+        DrawTextW(hdc, L"✕", -1, &closeRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        HBRUSH borderBrush = CreateSolidBrush(fieldBorder);
+        RECT fieldFrames[2] = {
+            { su(23), su(86), su(23) + su(634), su(86) + su(38) },
+            { su(23), su(164), su(23) + su(634), su(164) + su(144) }
+        };
+        for (const auto& frame : fieldFrames) FrameRect(hdc, &frame, borderBrush);
+        DeleteObject(borderBrush);
+        EndPaint(window, &paint);
+        return 0;
+    }
+    case WM_CTLCOLOREDIT: {
+        HDC hdc = reinterpret_cast<HDC>(wParam);
+        SetBkColor(hdc, fieldBg);
+        SetTextColor(hdc, titleColor);
+        static HBRUSH fieldBrush = CreateSolidBrush(fieldBg);
+        return reinterpret_cast<LRESULT>(fieldBrush);
+    }
+    case WM_CTLCOLORSTATIC: {
+        HDC hdc = reinterpret_cast<HDC>(wParam);
+        SetBkColor(hdc, panelColor);
+        SetTextColor(hdc, mutedColor);
+        static HBRUSH panelBrush = CreateSolidBrush(panelColor);
+        return reinterpret_cast<LRESULT>(panelBrush);
+    }
+    case WM_DRAWITEM: {
+        const auto* draw = reinterpret_cast<const DRAWITEMSTRUCT*>(lParam);
+        if (draw->CtlType != ODT_BUTTON) break;
+        // 按钮子窗口默认白底会从圆角四角露出来，先以面板底色填满整个按钮矩形。
+        HBRUSH panelFill = CreateSolidBrush(panelColor);
+        FillRect(draw->hDC, &draw->rcItem, panelFill);
+        DeleteObject(panelFill);
+        const bool isConfirm = draw->itemID == static_cast<UINT>(IDOK);
+        const bool hovered = context->hoveredControl == static_cast<int>(draw->itemID);
+        COLORREF bg = isConfirm ? (hovered ? RGB(0xAE, 0xCB, 0xFA) : confirmBg)
+                                : (hovered ? RGB(0x4A, 0x4E, 0x53) : cancelBg);
+        COLORREF text = isConfirm ? confirmText : titleColor;
+        HBRUSH brush = CreateSolidBrush(bg);
+        HBRUSH oldBrush = static_cast<HBRUSH>(SelectObject(draw->hDC, brush));
+        HPEN pen = CreatePen(PS_NULL, 0, 0);
+        HPEN oldPen = static_cast<HPEN>(SelectObject(draw->hDC, pen));
+        const LONG radius = su(8);
+        RoundRect(draw->hDC, draw->rcItem.left, draw->rcItem.top,
+            draw->rcItem.right + 1, draw->rcItem.bottom + 1, radius, radius);
+        SelectObject(draw->hDC, oldBrush);
+        DeleteObject(brush);
+        SelectObject(draw->hDC, oldPen);
+        DeleteObject(pen);
+        SetBkMode(draw->hDC, TRANSPARENT);
+        SetTextColor(draw->hDC, text);
+        SelectObject(draw->hDC, context->font);
+        wchar_t label[64]{};
+        GetWindowTextW(draw->hwndItem, label, 64);
+        RECT textRect = draw->rcItem;
+        DrawTextW(draw->hDC, label, -1, &textRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        return TRUE;
+    }
+    case WM_MOUSEMOVE: {
+        const POINT point{ GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+        int hit = 0;
+        if (point.y >= su(342) && point.y <= su(398)) {
+            if (point.x >= su(340) && point.x <= su(490)) hit = IDCANCEL;
+            else if (point.x >= su(506) && point.x <= su(656)) hit = IDOK;
+        } else if (point.x >= su(616) && point.x <= su(664) && point.y <= su(44)) {
+            hit = 9999; // ✕ 关闭区
+        }
+        if (hit != context->hoveredControl) {
+            context->hoveredControl = hit;
+            InvalidateRect(window, nullptr, FALSE);
+        }
+        TRACKMOUSEEVENT track{ sizeof(track), TME_LEAVE, window, 0 };
+        TrackMouseEvent(&track);
+        break;
+    }
+    case WM_MOUSELEAVE:
+        if (context->hoveredControl != 0) { context->hoveredControl = 0; InvalidateRect(window, nullptr, FALSE); }
+        break;
+    case WM_LBUTTONDOWN: {
+        const POINT point{ GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+        if (point.x >= su(616) && point.x <= su(664) && point.y >= su(6) && point.y <= su(44)) {
+            PostMessageW(window, WM_CLOSE, 0, 0);
+            return 0;
+        }
+        ReleaseCapture();
+        SendMessageW(window, WM_NCLBUTTONDOWN, HTCAPTION, 0);
+        return 0;
+    }
+    case WM_COMMAND: {
         const int command = LOWORD(wParam);
         if (command == IDOK) {
             const std::wstring address = LB_NE_ReadWindowText(context->addressEdit);
@@ -8701,12 +8815,14 @@ static LRESULT CALLBACK LB_NE_CookieDialogWindowProc(HWND window, UINT message, 
             DestroyWindow(window);
             return 0;
         }
+        break;
     }
-    if (message == WM_CLOSE) {
+    case WM_CLOSE:
+    case WM_DESTROY:
         context->resultText = L"已取消 Cookie 置入。";
         if (context->cookieEdit) SetWindowTextW(context->cookieEdit, L"");
-        DestroyWindow(window);
-        return 0;
+        if (message == WM_CLOSE) { DestroyWindow(window); return 0; }
+        break;
     }
     return DefWindowProcW(window, message, wParam, lParam);
 }
@@ -8723,7 +8839,7 @@ static std::wstring 浏览器外壳_打开Cookie对话框(const std::wstring& st
     WNDCLASSEXW windowClass{};
     windowClass.cbSize = sizeof(windowClass);
     if (!GetClassInfoExW(GetModuleHandleW(nullptr), className, &windowClass)) {
-        windowClass.style = CS_DBLCLKS;
+        windowClass.style = CS_DBLCLKS | CS_DROPSHADOW;
         windowClass.lpfnWndProc = LB_NE_CookieDialogWindowProc;
         windowClass.hInstance = GetModuleHandleW(nullptr);
         windowClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
@@ -8736,12 +8852,16 @@ static std::wstring 浏览器外壳_打开Cookie对话框(const std::wstring& st
     context.defaultAddress = defaultAddress.empty() ? browser->url : defaultAddress;
     RECT ownerBounds{};
     GetWindowRect(g_newEmojiWindow, &ownerBounds);
-    const int width = 560;
-    const int height = 360;
+    const UINT ownerDpi = GetDpiForWindow(g_newEmojiWindow);
+    const auto sd = [ownerDpi](int logical) { return MulDiv(logical, static_cast<int>(ownerDpi ? ownerDpi : 96), 96); };
+    // 680×400 逻辑：给「置入 Cookie」按钮留足文字宽度；整个对话框按 DPI 缩放到物理，
+    // 与 WM_CREATE 里控件坐标的 su() 同一口径，避免高 DPI 下内容超出窗口被裁切。
+    const int width = sd(680);
+    const int height = sd(400);
     const int x = ownerBounds.left + ((ownerBounds.right - ownerBounds.left) - width) / 2;
     const int y = ownerBounds.top + ((ownerBounds.bottom - ownerBounds.top) - height) / 2;
-    HWND dialog = CreateWindowExW(WS_EX_DLGMODALFRAME, className, L"为当前浏览器置入 Cookie",
-        WS_POPUP | WS_CAPTION | WS_SYSMENU, x, y, width, height, g_newEmojiWindow, nullptr,
+    HWND dialog = CreateWindowExW(0, className, L"为当前浏览器置入 Cookie",
+        WS_POPUP | WS_CLIPCHILDREN, x, y, width, height, g_newEmojiWindow, nullptr,
         GetModuleHandleW(nullptr), &context);
     if (!dialog) {
         browser->configuredVisible = restoreVisible;
@@ -11017,13 +11137,13 @@ function generateMainCpp(
   const httpClientConstructorInitializer = httpClientRuntime
     ? `,\n          httpClientRuntime_([this](long long eventId) { return hwnd_ && PostMessageW(hwnd_, WM_LINGBUILDER_HTTP_CLIENT_EVENT, static_cast<WPARAM>(eventId), 0) != FALSE; })`
     : '';
-  const httpClientWindowField = httpClientRuntime ? '    LingHttpClientRuntime httpClientRuntime_;\n    std::wstring httpClientReturnText_;' : '';
+  const httpClientWindowField = httpClientRuntime ? '    LingHttpClientRuntime httpClientRuntime_;' : '';
   const httpClientShutdown = httpClientRuntime ? '        httpClientRuntime_.Shutdown();' : '';
   const httpServerWindowMethods = generateHttpServerWindowMethods(enabledModules);
   const httpServerConstructorInitializer = httpServerRuntime
     ? `,\n          httpServerRuntime_([this](long long requestId) { return hwnd_ && PostMessageW(hwnd_, WM_LINGBUILDER_HTTP_SERVER_REQUEST, static_cast<WPARAM>(requestId), 0) != FALSE; })`
     : '';
-  const httpServerWindowField = httpServerRuntime ? '    LingHttpServerRuntime httpServerRuntime_;\n    std::wstring httpServerReturnText_;' : '';
+  const httpServerWindowField = httpServerRuntime ? '    LingHttpServerRuntime httpServerRuntime_;' : '';
   const httpServerShutdown = httpServerRuntime ? '        httpServerRuntime_.Shutdown();' : '';
   const sunnyNetWindowMethods = generateSunnyNetWindowMethods(enabledModules);
   const sunnyNetConstructorInitializer = sunnyNetRuntime
@@ -11036,14 +11156,14 @@ function generateMainCpp(
   const webSocketClientConstructorInitializer = webSocketClientRuntime
     ? `,\n          wsClientRuntime_([this](long long eventId) { return hwnd_ && PostMessageW(hwnd_, WM_LINGBUILDER_WS_CLIENT_EVENT, static_cast<WPARAM>(eventId), 0) != FALSE; })`
     : '';
-  const webSocketClientWindowField = webSocketClientRuntime ? '    LingWebSocketClientRuntime wsClientRuntime_;\n    std::wstring wsClientReturnText_;' : '';
+  const webSocketClientWindowField = webSocketClientRuntime ? '    LingWebSocketClientRuntime wsClientRuntime_;' : '';
   const webSocketClientShutdown = webSocketClientRuntime ? '        wsClientRuntime_.Shutdown();' : '';
   const cdpClientRuntime = generateCdpClientRuntime(enabledModules);
   const cdpClientWindowMethods = generateCdpClientWindowMethods(enabledModules);
   const cdpClientConstructorInitializer = cdpClientRuntime
     ? `,\n          cdpClientRuntime_([this](long long eventId) { return hwnd_ && PostMessageW(hwnd_, WM_LINGBUILDER_CDP_CLIENT_EVENT, static_cast<WPARAM>(eventId), 0) != FALSE; })`
     : '';
-  const cdpClientWindowField = cdpClientRuntime ? '    LingCdpRuntime cdpClientRuntime_;\n    std::wstring cdpClientReturnText_;' : '';
+  const cdpClientWindowField = cdpClientRuntime ? '    LingCdpRuntime cdpClientRuntime_;' : '';
   const cdpClientShutdown = cdpClientRuntime ? '        cdpClientRuntime_.Shutdown();' : '';
   const webSocketServerRuntime = generateWebSocketServerRuntime(enabledModules);
   const fbroProcessRuntime = fbroModuleEnabled
@@ -13240,7 +13360,6 @@ ${sunnyNetWindowField}
 ${webSocketClientWindowField}
 ${cdpClientWindowField}
 ${webSocketServerWindowField}
-    std::wstring wssReturnText_;
     FINDREPLACEW findReplace_ = {};
     wchar_t findBuffer_[256] = {};
     wchar_t replaceBuffer_[256] = {};
@@ -23932,7 +24051,23 @@ protected:
 #endif
 
 #ifdef LINGBUILDER_WEB_HTTP_MODULE
-    int 网页_异步访问(const wchar_t* url, int accessMethod, const wchar_t* completionHandler) {
+    // 可选参数与 网页_访问_对象 对齐（提交正文/Cookie/附加协议头/字节集正文/代理/超时/重定向/协议头处理）。
+    // 形参按值接收以便闭包捕获；省略尾部实参时由 C++ 默认值兜底，旧 3 参调用行为不变。
+    // 对象继承/返回出参不开放：出参按请求编号经 网页_异步取* 族读取，跨线程引用出参是错误形态。
+    int 网页_异步访问(const wchar_t* url, int accessMethod, const wchar_t* completionHandler,
+        std::wstring 提交信息 = L"",
+        std::wstring 提交Cookies = L"",
+        std::wstring 附加协议头 = L"",
+        bool 禁止重定向 = false,
+        std::vector<unsigned char> 字节集提交 = std::vector<unsigned char>(),
+        std::wstring 代理地址 = L"",
+        int 超时 = 15,
+        std::wstring 代理用户名 = L"",
+        std::wstring 代理密码 = L"",
+        int 代理标识 = 1,
+        bool 是否自动合并更新Cookie = true,
+        bool 是否补全必要协议头 = true,
+        bool 是否处理协议头大小写 = true) {
         const std::wstring address = url ? url : L"";
         const std::wstring handler = completionHandler ? completionHandler : L"";
         if (address.empty() || handler.empty()) {
@@ -23950,11 +24085,16 @@ protected:
 
         try {
             std::lock_guard<std::mutex> lock(asyncWebThreadsMutex_);
-            asyncWebThreads_.emplace_back([this, requestId, address, accessMethod]() {
+            asyncWebThreads_.emplace_back([this, requestId, address, accessMethod, 提交信息, 提交Cookies, 附加协议头, 禁止重定向, 字节集提交, 代理地址, 超时, 代理用户名, 代理密码, 代理标识, 是否自动合并更新Cookie, 是否补全必要协议头, 是否处理协议头大小写]() {
                 AsyncWebResult completed;
                 {
                     std::lock_guard<std::mutex> executionLock(asyncWebExecutionMutex_);
-                    网页_访问_对象(address, accessMethod);
+                    // asyncWebExecutionMutex_ 串行化「请求+结果读取」临界区：同步族的
+                    // WebHttpSaveLastResult 写全局 lastWebAccessResult_，并发下会互相覆盖，
+                    // 持锁保证每个异步请求取回属于自己的结果。
+                    网页_访问_对象(address, accessMethod, 提交信息, 提交Cookies, L"", 附加协议头, L"", 0,
+                        禁止重定向, 字节集提交, 代理地址, 超时, 代理用户名, 代理密码, 代理标识, nullptr,
+                        是否自动合并更新Cookie, 是否补全必要协议头, 是否处理协议头大小写);
                     completed.text = 网页_取返回文本();
                     completed.cookies = 网页_取返回Cookies();
                     completed.headers = 网页_取返回协议头();

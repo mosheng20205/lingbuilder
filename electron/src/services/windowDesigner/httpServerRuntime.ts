@@ -16,7 +16,6 @@ export function generateHttpServerGlobalMethods(enabledModules: InstalledModule[
   if (!enabledModules.some(module => module.manifest.id === HTTP_SERVER_MODULE_ID)) return '';
   return HTTP_SERVER_WINDOW_METHODS
     .replaceAll('httpServerRuntime_', 'g_httpServerRuntime')
-    .replaceAll('httpServerReturnText_', 'g_httpServerReturnText')
     .replace(/^    /gmu, 'static ');
 }
 
@@ -31,6 +30,15 @@ public:
         socketsStarted_ = WSAStartup(MAKEWORD(2, 2), &data) == 0;
     }
     ~LingHttpServerRuntime() { Shutdown(); if (socketsStarted_) WSACleanup(); }
+
+    // 返回文本槽：thread_local 轮转，多线程（工作线程处理器等）并发调用文本类命令互不踩踏。
+    const wchar_t* ReturnText(std::wstring value) const {
+        static thread_local std::vector<std::wstring> slots(16);
+        static thread_local size_t index = 0;
+        std::wstring& slot = slots[index++ % slots.size()];
+        slot = std::move(value);
+        return slot.c_str();
+    }
 
     long long CreateServer() {
         if (!socketsStarted_) return FailId(L"HTTP 网络运行时初始化失败。");
@@ -48,7 +56,7 @@ public:
         if (server->running.load()) return ServerFail(server, L"HTTP 服务正在运行，不能修改监听配置。");
         const std::wstring host = address && address[0] ? address : L"127.0.0.1";
         if (port < 0 || port > 65535) return ServerFail(server, L"HTTP 端口必须在 0 到 65535 之间。");
-        if (workers < 1 || workers > 64) return ServerFail(server, L"HTTP 工作线程数必须在 1 到 64 之间。");
+        if (workers < 1) return ServerFail(server, L"HTTP 工作线程数必须大于 0；不设固定上限，但过大值会受系统线程资源约束。");
         if (queueLimit < 1 || queueLimit > 65535) return ServerFail(server, L"HTTP 等待队列上限必须在 1 到 65535 之间。");
         server->address = host;
         server->configuredPort = port;
@@ -184,7 +192,7 @@ public:
             CloseSocket(server->listenSocket);
             server->queueChanged.notify_all();
             JoinThreads(server);
-            return ServerFail(server, L"HTTP 服务启动失败：无法创建工作线程。");
+            return ServerFail(server, L"HTTP 服务启动失败：无法创建工作线程（系统线程资源不足或数值过大）。");
         }
         return true;
     }
@@ -794,26 +802,26 @@ const HTTP_SERVER_WINDOW_METHODS = String.raw`
     bool HTTP_停止(long long server) { return httpServerRuntime_.Stop(server); }
     bool HTTP_销毁服务(long long server) { return httpServerRuntime_.Destroy(server); }
     bool HTTP_是否运行(long long server) { return httpServerRuntime_.IsRunning(server); }
-    const wchar_t* HTTP_取监听地址(long long server) { httpServerReturnText_ = httpServerRuntime_.Address(server); return httpServerReturnText_.c_str(); }
+    const wchar_t* HTTP_取监听地址(long long server) { return httpServerRuntime_.ReturnText(httpServerRuntime_.Address(server)); }
     int HTTP_取监听端口(long long server) { return httpServerRuntime_.Port(server); }
     int HTTP_取活动连接数(long long server) { return httpServerRuntime_.ActiveConnections(server); }
     long long HTTP_取累计请求数(long long server) { return httpServerRuntime_.TotalRequests(server); }
-    const wchar_t* HTTP_取服务错误(long long server) { httpServerReturnText_ = httpServerRuntime_.Error(server); return httpServerReturnText_.c_str(); }
+    const wchar_t* HTTP_取服务错误(long long server) { return httpServerRuntime_.ReturnText(httpServerRuntime_.Error(server)); }
     long long HTTP_取当前请求() { return httpServerRuntime_.CurrentRequest(); }
     long long HTTP_取请求服务(long long request) { return httpServerRuntime_.RequestServer(request); }
-    const wchar_t* HTTP_取请求方法(long long request) { httpServerReturnText_ = httpServerRuntime_.RequestMethod(request); return httpServerReturnText_.c_str(); }
-    const wchar_t* HTTP_取请求目标(long long request) { httpServerReturnText_ = httpServerRuntime_.RequestTarget(request); return httpServerReturnText_.c_str(); }
-    const wchar_t* HTTP_取请求路径(long long request) { httpServerReturnText_ = httpServerRuntime_.RequestPath(request); return httpServerReturnText_.c_str(); }
-    const wchar_t* HTTP_取查询字符串(long long request) { httpServerReturnText_ = httpServerRuntime_.RequestQuery(request); return httpServerReturnText_.c_str(); }
-    const wchar_t* HTTP_取查询参数(long long request, const wchar_t* name) { httpServerReturnText_ = httpServerRuntime_.RequestQueryValue(request, name); return httpServerReturnText_.c_str(); }
-    const wchar_t* HTTP_取请求头(long long request, const wchar_t* name) { httpServerReturnText_ = httpServerRuntime_.RequestHeader(request, name); return httpServerReturnText_.c_str(); }
-    const wchar_t* HTTP_取全部请求头(long long request) { httpServerReturnText_ = httpServerRuntime_.RequestHeadersJson(request); return httpServerReturnText_.c_str(); }
-    const wchar_t* HTTP_取请求正文(long long request) { httpServerReturnText_ = httpServerRuntime_.RequestBody(request); return httpServerReturnText_.c_str(); }
-    const wchar_t* HTTP_取请求正文十六进制(long long request) { httpServerReturnText_ = httpServerRuntime_.RequestBodyHex(request); return httpServerReturnText_.c_str(); }
+    const wchar_t* HTTP_取请求方法(long long request) { return httpServerRuntime_.ReturnText(httpServerRuntime_.RequestMethod(request)); }
+    const wchar_t* HTTP_取请求目标(long long request) { return httpServerRuntime_.ReturnText(httpServerRuntime_.RequestTarget(request)); }
+    const wchar_t* HTTP_取请求路径(long long request) { return httpServerRuntime_.ReturnText(httpServerRuntime_.RequestPath(request)); }
+    const wchar_t* HTTP_取查询字符串(long long request) { return httpServerRuntime_.ReturnText(httpServerRuntime_.RequestQuery(request)); }
+    const wchar_t* HTTP_取查询参数(long long request, const wchar_t* name) { return httpServerRuntime_.ReturnText(httpServerRuntime_.RequestQueryValue(request, name)); }
+    const wchar_t* HTTP_取请求头(long long request, const wchar_t* name) { return httpServerRuntime_.ReturnText(httpServerRuntime_.RequestHeader(request, name)); }
+    const wchar_t* HTTP_取全部请求头(long long request) { return httpServerRuntime_.ReturnText(httpServerRuntime_.RequestHeadersJson(request)); }
+    const wchar_t* HTTP_取请求正文(long long request) { return httpServerRuntime_.ReturnText(httpServerRuntime_.RequestBody(request)); }
+    const wchar_t* HTTP_取请求正文十六进制(long long request) { return httpServerRuntime_.ReturnText(httpServerRuntime_.RequestBodyHex(request)); }
     long long HTTP_取请求正文大小(long long request) { return httpServerRuntime_.RequestBodySize(request); }
-    const wchar_t* HTTP_取客户端地址(long long request) { httpServerReturnText_ = httpServerRuntime_.RequestClientAddress(request); return httpServerReturnText_.c_str(); }
+    const wchar_t* HTTP_取客户端地址(long long request) { return httpServerRuntime_.ReturnText(httpServerRuntime_.RequestClientAddress(request)); }
     int HTTP_取客户端端口(long long request) { return httpServerRuntime_.RequestClientPort(request); }
-    const wchar_t* HTTP_取协议版本(long long request) { httpServerReturnText_ = httpServerRuntime_.RequestProtocol(request); return httpServerReturnText_.c_str(); }
+    const wchar_t* HTTP_取协议版本(long long request) { return httpServerRuntime_.ReturnText(httpServerRuntime_.RequestProtocol(request)); }
     bool HTTP_设置状态码(long long request, int status) { return httpServerRuntime_.SetStatus(request, status); }
     bool HTTP_设置响应头(long long request, const wchar_t* name, const wchar_t* value) { return httpServerRuntime_.SetHeader(request, name, value, false); }
     bool HTTP_添加响应头(long long request, const wchar_t* name, const wchar_t* value) { return httpServerRuntime_.SetHeader(request, name, value, true); }
@@ -827,7 +835,7 @@ const HTTP_SERVER_WINDOW_METHODS = String.raw`
     bool HTTP_是否已响应(long long request) { return httpServerRuntime_.IsCompleted(request); }
     bool HTTP_中止请求(long long request) { return httpServerRuntime_.Abort(request); }
     int HTTP_启动服务(int port) { return httpServerRuntime_.LegacyStart(port); }
-    const wchar_t* HTTP_等待请求() { httpServerReturnText_ = httpServerRuntime_.LegacyWaitRaw(); return httpServerReturnText_.c_str(); }
+    const wchar_t* HTTP_等待请求() { return httpServerRuntime_.ReturnText(httpServerRuntime_.LegacyWaitRaw()); }
     int HTTP_等待请求到调试输出() { const wchar_t* request = HTTP_等待请求(); if (!request || !request[0]) return 0; 调试输出(request); return 1; }
     int HTTP_回复文本(const wchar_t* text) { return httpServerRuntime_.LegacyReply(text); }
     void HTTP_关闭服务() { httpServerRuntime_.LegacyClose(); }
