@@ -2,7 +2,7 @@
 
 更新时间：2026-09-29
 
-本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **102 个内置模块、4087 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
+本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **102 个内置模块、4092 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
 
 - `schemaVersion: 2`。
 - `contributes.commands` 与 `bindings.commands` 一一对应。
@@ -47,7 +47,7 @@ JSON 数据模块 2.0 提供受管 `JSON值`、严格 RFC 8259 解析与创建�
 | 已封装 | `lingbuilder.system.shell` | 系统外壳模块 | 6 |
 | 已封装 | `lingbuilder.process` | 进程管理模块 1.1.0（进程_枚举全部 支撑进程列表界面） | 10 |
 | 已封装 | `lingbuilder.ipc` | 进程通信模块 | 8 |
-| 已封装 | `lingbuilder.archive` | ZIP 压缩模块 | 4 |
+| 已封装 | `lingbuilder.archive` | ZIP 压缩模块 1.1.0（新增字节集 DEFLATE/ZLIB/GZIP 压缩解压五命令，随包 miniz 3.0.2 静态内联实现，不新增 DLL） | 9 |
 
 磁盘信息模块 `1.1.0` 保留原 5 条容量/卷标兼容命令，并扩展为 28 条命令和 8 个公开 `record/array` 类型。覆盖精确字节容量、用户可用/总空闲/已用容量、使用率、逻辑驱动器、全部卷、卷 GUID、挂载点、文件系统能力标志、物理磁盘描述、总线、SSD、TRIM、逻辑/物理扇区及 MBR/GPT/RAW 分区布局。模块只执行只读 Windows 查询，不提供格式化、分区修改或写盘能力。
 
@@ -81,7 +81,7 @@ WebSocket 服务端模块 `2.0.0` 已从 6 条同步单连接原型升级为 50 
 | 已封装 | `lingbuilder.net.cookie` | Cookie 文本模块 | 8 |
 | 已封装 | `lingbuilder.net.ftp` | FTP 客户端模块 | 7 |
 | 已封装（普通 SMTP） | `lingbuilder.net.mail` | SMTP 邮件模块 | 2 |
-| 已完整封装 | `lingbuilder.web.http` | 网页访问模块 1.1.1（易语言风格 网页_访问_对象 / 网页_异步访问，内置运行时） | 12 |
+| 已完整封装 | `lingbuilder.web.http` | 网页访问模块 1.3.0（易语言风格 网页_访问_对象 / 网页_异步访问，内置运行时；1.3.0 异步命令尾部可选参数与同步命令对齐，旧三参调用兼容） | 13 |
 | 已完整封装（Windows x64） | `lingbuilder.net.aria2` | Aria2 异步下载模块 | 12 |
 
 SMTP 模块当前只支持普通 SMTP/局域网调试服务，不支持 STARTTLS。服务端要求 TLS 时会明确失败，不能用于传输真实生产凭据。

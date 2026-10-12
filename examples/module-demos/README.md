@@ -12,7 +12,7 @@
 | `lingbuilder.advanced.hook` 键盘Hook模块 | `module-demo-lingbuilder.advanced.hook` | 4 | 0 | 1 | `键盘Hook模块完整演示.lcpppkg` |
 | `lingbuilder.advanced.memory` 受控内存模块 | `module-demo-lingbuilder.advanced.memory` | 6 | 0 | 1 | `受控内存模块完整演示.lcpppkg` |
 | `lingbuilder.advanced.process-memory` 进程内存模块 | `module-demo-lingbuilder.advanced.process-memory` | 4 | 0 | 1 | `进程内存模块完整演示.lcpppkg` |
-| `lingbuilder.archive` ZIP压缩模块 | `module-demo-lingbuilder.archive` | 4 | 0 | 1 | `ZIP压缩模块完整演示.lcpppkg` |
+| `lingbuilder.archive` ZIP压缩模块 | `module-demo-lingbuilder.archive` | 9 | 0 | 1 | `ZIP压缩模块完整演示.lcpppkg` |
 | `lingbuilder.cef3.automation` CEF3自动化模块 | `module-demo-lingbuilder.cef3.automation` | 6 | 0 | 1 | `CEF3自动化模块完整演示.lcpppkg` |
 | `lingbuilder.cef3.browser` CEF3浏览器模块 | `module-demo-lingbuilder.cef3.browser` | 64 | 1 | 4 | `CEF3浏览器模块完整演示.lcpppkg` |
 | `lingbuilder.cef3.devtools` CEF3开发者工具模块 | `module-demo-lingbuilder.cef3.devtools` | 8 | 0 | 1 | `CEF3开发者工具模块完整演示.lcpppkg` |
@@ -82,8 +82,8 @@
 | `lingbuilder.system.disk` 磁盘信息模块 | `module-demo-lingbuilder.system.disk` | 28 | 0 | 2 | `磁盘信息模块完整演示.lcpppkg` |
 | `lingbuilder.system.info` 系统信息模块 | `module-demo-lingbuilder.system.info` | 7 | 0 | 1 | `系统信息模块完整演示.lcpppkg` |
 | `lingbuilder.system.shell` 系统外壳模块 | `module-demo-lingbuilder.system.shell` | 5 | 0 | 1 | `系统外壳模块完整演示.lcpppkg` |
-| `lingbuilder.threading` 多线程模块 | `module-demo-lingbuilder.threading` | 54 | 0 | 3 | `多线程模块完整演示.lcpppkg` |
-| `lingbuilder.web.http` 网页访问模块 | `module-demo-lingbuilder.web.http` | 12 | 0 | 1 | `网页访问模块完整演示.lcpppkg` |
+| `lingbuilder.threading` 多线程模块 | `module-demo-lingbuilder.threading` | 66 | 0 | 4 | `多线程模块完整演示.lcpppkg` |
+| `lingbuilder.web.http` 网页访问模块 | `module-demo-lingbuilder.web.http` | 13 | 0 | 1 | `网页访问模块完整演示.lcpppkg` |
 | `lingbuilder.websocket.client` WebSocket 客户端模块 | `module-demo-lingbuilder.websocket.client` | 51 | 0 | 3 | `WebSocket客户端模块完整演示.lcpppkg` |
 | `lingbuilder.websocket.server` WebSocket 服务端模块 | `module-demo-lingbuilder.websocket.server` | 50 | 0 | 3 | `WebSocket服务端模块完整演示.lcpppkg` |
 | `lingbuilder.win32.accessibility` 辅助功能模块 | `module-demo-lingbuilder.win32.accessibility` | 4 | 0 | 1 | `辅助功能模块完整演示.lcpppkg` |

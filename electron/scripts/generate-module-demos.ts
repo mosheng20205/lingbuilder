@@ -290,6 +290,33 @@ function createSource(manifest: LingBuilderModuleManifest, groups: DemoGroup[]):
     lines.push('    结束', '');
   }
 
+  if (manifest.id === 'lingbuilder.archive') {
+    // archive 1.1.0 专属：字节集往返一键演示（纯内存、无副作用，不要求勾选“允许实际执行”）。
+    // 样本经 @ 内联构造（"LingBuilder" + 00 01 FF 00，演示对含 0x00 二进制的安全往返），
+    // 字节数经 @ 取 vector 长度，规避对 std.bytes 的额外启用依赖。
+    lines.push(
+      '    事件 _字节集往返演示_被单击()',
+      '        局部 字节集 原始',
+      '        @ 原始.assign({0x4C, 0x69, 0x6E, 0x67, 0x42, 0x75, 0x69, 0x6C, 0x64, 0x65, 0x72, 0x00, 0x01, 0xFF, 0x00});',
+      '        局部 字节集 压缩包',
+      '        压缩包 = 压缩_GZIP压缩(原始)',
+      '        局部 字节集 往返',
+      '        往返 = 压缩_GZIP解压(压缩包)',
+      '        @ const long long 原始长度 = static_cast<long long>(原始.size());',
+      '        @ const long long 压缩长度 = static_cast<long long>(压缩包.size());',
+      '        @ const long long 往返长度 = static_cast<long long>(往返.size());',
+      '        局部 文本型 一致文本',
+      '        一致文本 = "一致"',
+      '        如果 (往返长度 <> 原始长度)',
+      '            一致文本 = "不一致"',
+      '        如果结束',
+      '        控件_设置文本(演示状态, "字节集往返演示：原始 " + 到文本(原始长度) + " 字节 → GZIP " + 到文本(压缩长度) + " 字节 → 解压 " + 到文本(往返长度) + " 字节，往返" + 一致文本)',
+      '        调试输出("字节集往返演示完成：压缩包 " + 到文本(压缩长度) + " 字节")',
+      '    结束',
+      ''
+    );
+  }
+
   if (manifest.id === 'lingbuilder.threading') {
     lines.push(
       '    空 模块演示工作()',
@@ -661,6 +688,15 @@ function createDesigner(manifest: LingBuilderModuleManifest, groups: DemoGroup[]
       x: 58, y: 420, width: 300, height: 44, background: '#0369A1', foreground: '#FFFFFF', parentId: 'tabs', containerSlot: slot,
       events: { Click: `_运行第${pad(group.index)}组_被单击` }
     }));
+    if (manifest.id === 'lingbuilder.archive' && group.index === groups[groups.length - 1].index) {
+      // archive 1.1.0：最后一组页签内放「字节集往返演示」按钮（纯内存安全，不要求勾选允许实际执行）。
+      controls.push(controlBase({
+        id: 'archive-roundtrip', type: 'Button',
+        name: '字节集往返演示', content: '字节集往返演示（GZIP 压缩→解压→字节数比对）',
+        x: 400, y: 420, width: 460, height: 44, background: '#065F46', foreground: '#FFFFFF', parentId: 'tabs', containerSlot: slot,
+        events: { Click: '_字节集往返演示_被单击' }
+      }));
+    }
   }
   const controlFixtures = createControlReferenceFixtures(manifest);
   controlFixtures.filter(fixture => fixture.kind !== 'resource' && !isBuiltinDemoFixture(fixture)).forEach((fixture, index) => {

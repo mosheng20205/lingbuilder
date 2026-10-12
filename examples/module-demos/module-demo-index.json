@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-03T09:44:27.577Z",
+  "generatedAt": "2026-10-11T10:16:40.806Z",
   "modules": [
     {
       "moduleId": "lingbuilder.advanced.assembly",
@@ -72,12 +72,13 @@
       "moduleId": "lingbuilder.archive",
       "moduleName": "ZIP压缩模块",
       "projectId": "module-demo-lingbuilder.archive",
-      "commandCount": 4,
+      "commandCount": 9,
       "controlCount": 0,
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.archive/src",
-      "packageName": "ZIP压缩模块完整演示.lcpppkg"
+      "packageName": "ZIP压缩模块完整演示.lcpppkg",
+      "packageBytes": 11634
     },
     {
       "moduleId": "lingbuilder.cef3.automation",
@@ -497,7 +498,8 @@
       "groupCount": 3,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.http.server/src",
-      "packageName": "HTTP服务端模块完整演示.lcpppkg"
+      "packageName": "HTTP服务端模块完整演示.lcpppkg",
+      "packageBytes": 23283
     },
     {
       "moduleId": "lingbuilder.image.bitmap",
@@ -847,23 +849,25 @@
       "moduleId": "lingbuilder.threading",
       "moduleName": "多线程模块",
       "projectId": "module-demo-lingbuilder.threading",
-      "commandCount": 54,
+      "commandCount": 66,
       "controlCount": 0,
-      "groupCount": 3,
+      "groupCount": 4,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.threading/src",
-      "packageName": "多线程模块完整演示.lcpppkg"
+      "packageName": "多线程模块完整演示.lcpppkg",
+      "packageBytes": 23368
     },
     {
       "moduleId": "lingbuilder.web.http",
       "moduleName": "网页访问模块",
       "projectId": "module-demo-lingbuilder.web.http",
-      "commandCount": 12,
+      "commandCount": 13,
       "controlCount": 0,
       "groupCount": 1,
-      "builtin": false,
+      "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.web.http/src",
-      "packageName": "网页访问模块完整演示.lcpppkg"
+      "packageName": "网页访问模块完整演示.lcpppkg",
+      "packageBytes": 14173
     },
     {
       "moduleId": "lingbuilder.websocket.client",
