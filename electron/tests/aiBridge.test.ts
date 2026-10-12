@@ -219,6 +219,15 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.match(String(client.getInstructions() || ''), /对称_RC4加密裸/u, 'instructions 必须给出协议级裸 RC4 命令');
     assert.match(String(client.getInstructions() || ''), /ARC4\.new/u, 'instructions 必须钉住裸 RC4 与 pycryptodome ARC4 逐字节一致口径');
     assert.match(String(client.getInstructions() || ''), /网页_异步取返回协议头/u, 'instructions 必须给出异步网页访问读响应头命令');
+    assert.match(String(client.getInstructions() || ''), /web\.http 1\.3\.0/u, 'instructions 必须给出 1.3.0 异步参数对齐批次');
+    assert.match(String(client.getInstructions() || ''), /第6参 附加协议头/u, 'instructions 必须写明异步命令第 6 参附加协议头的 UA 口径');
+    assert.match(String(client.getInstructions() || ''), /旧三参调用完全兼容/u, 'instructions 必须写明尾部可选参数向后兼容');
+    assert.match(String(client.getInstructions() || ''), /只解决 UA 拦截、不解决 TLS\/HTTP2 指纹对抗/u, 'instructions 必须保留指纹场景改用 net.http-client 的红线');
+    assert.match(String(client.getInstructions() || ''), /压缩_GZIP解压\(压缩_GZIP压缩\(X\)\)==X/u, 'instructions 必须给出 archive 1.1.0 字节集压缩往返自测写法');
+    assert.match(String(client.getInstructions() || ''), /压缩_ZLIB解压/u, 'instructions 必须给出 zlib 容器解压命令');
+    assert.match(String(client.getInstructions() || ''), /压缩_取错误/u, 'instructions 必须钉住压缩失败走 压缩_取错误 的统一口径');
+    assert.match(String(client.getInstructions() || ''), /67108864/u, 'instructions 必须写明解压输出上限（zip-bomb 防护）');
+    assert.match(String(client.getInstructions() || ''), /miniz 3\.0\.2/u, 'instructions 必须写明随包 miniz 3.0.2 的实现来源');
     assert.match(String(client.getInstructions() || ''), /软取消/u, 'instructions 必须写明 TLS 指纹路径的软取消语义');
     assert.match(String(client.getInstructions() || ''), /socks5:\/\//u, 'instructions 必须写明指纹路径固定代理支持 socks5:// 与凭据命令');
     assert.match(String(client.getInstructions() || ''), /进程内存_写字节集/u, 'instructions 必须给出批量写进程内存命令');

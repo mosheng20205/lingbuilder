@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.713Z",
+  "generatedAt": "2026-10-10T03:39:24.635Z",
   "module": {
     "id": "lingbuilder.archive",
     "name": "ZIP压缩模块",
-    "version": "1.0.0",
-    "description": "通过 Windows 自带 tar.exe 的受控参数封装创建、解压和列出 ZIP，不开放任意命令行。"
+    "version": "1.1.0",
+    "description": "通过 Windows 自带 tar.exe 的受控参数封装创建、解压和列出 ZIP，不开放任意命令行；内存字节集形态的 DEFLATE/ZLIB/GZIP 压缩解压由随包公共域 miniz 3.0.2 静态内联实现（随包 Botan 未编译 zlib、Windows 无系统 zlib，故不新增任何 DLL 依赖），失败统一返回空字节集并用 压缩_取错误() 给出中文原因。"
   },
-  "commandCount": 4,
+  "commandCount": 9,
   "commands": [
     {
       "index": 1,
@@ -22,11 +22,13 @@
         "parameters": [
           {
             "name": "来源路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要打包的文件或目录路径；以它的父目录为工作目录、文件名作为条目写入 ZIP。路径不能含双引号、回车或换行。"
           },
           {
             "name": "ZIP路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "ZIP 文件路径，不能包含双引号、回车或换行，否则直接判为非法参数。目标已存在时会被覆盖。"
           }
         ],
         "returnType": "bool",
@@ -47,11 +49,13 @@
         "parameters": [
           {
             "name": "ZIP路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "ZIP 文件路径，不能包含双引号、回车或换行，否则直接判为非法参数。"
           },
           {
             "name": "目标目录",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "解压目标目录；目录不存在时会递归创建，路径不能含双引号、回车或换行。"
           }
         ],
         "returnType": "bool",
@@ -72,7 +76,8 @@
         "parameters": [
           {
             "name": "ZIP路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "ZIP 文件路径，不能包含双引号、回车或换行，否则直接判为非法参数。返回的条目按行分隔，失败返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -95,6 +100,116 @@
         "encoding": "wide"
       },
       "demoInvocation": "压缩_取错误()"
+    },
+    {
+      "index": 5,
+      "name": "压缩_DEFLATE解压",
+      "signature": "压缩_DEFLATE解压(数据)",
+      "description": "把 raw deflate 字节流解压回原始字节集；失败返回空字节集，中文原因用 压缩_取错误() 查看。与 压缩_DEFLATE压缩 互为逆操作。",
+      "insertText": "压缩_DEFLATE解压($1)",
+      "returnType": "字节集",
+      "binding": {
+        "command": "压缩_DEFLATE解压",
+        "runtimeName": "压缩_DEFLATE解压",
+        "parameters": [
+          {
+            "name": "数据",
+            "type": "bytes",
+            "description": "raw deflate 流（RFC1951，无 zlib/gzip 容器头）；空字节集或截断流返回空字节集，解压输出超过 67108864 字节（#压缩_解压上限字节）时中止并返回空字节集。"
+          }
+        ],
+        "returnType": "bytes",
+        "example": "局部 字节集 压缩流\n压缩流 = 压缩_DEFLATE压缩(字节集_从文本(\"LingBuilder\"))\n调试输出(字节集_长度(压缩_DEFLATE解压(压缩流)))"
+      },
+      "demoInvocation": "压缩_DEFLATE解压({})"
+    },
+    {
+      "index": 6,
+      "name": "压缩_ZLIB解压",
+      "signature": "压缩_ZLIB解压(数据)",
+      "description": "解压 zlib 容器字节流为原始字节集（Adler32 自动校验）；失败返回空字节集，原因用 压缩_取错误() 查看。",
+      "insertText": "压缩_ZLIB解压($1)",
+      "returnType": "字节集",
+      "binding": {
+        "command": "压缩_ZLIB解压",
+        "runtimeName": "压缩_ZLIB解压",
+        "parameters": [
+          {
+            "name": "数据",
+            "type": "bytes",
+            "description": "zlib 容器流（RFC1950，CMF/FLG 头 + Adler32 校验，不支持 FDICT 预设字典）；头无效、截断或校验失败返回空字节集。"
+          }
+        ],
+        "returnType": "bytes",
+        "example": "局部 字节集 明文\n明文 = 压缩_ZLIB解压(压缩包数据)\n调试输出(字节集_长度(明文))"
+      },
+      "demoInvocation": "压缩_ZLIB解压({})"
+    },
+    {
+      "index": 7,
+      "name": "压缩_GZIP解压",
+      "signature": "压缩_GZIP解压(数据)",
+      "description": "解压 gzip 容器字节流为原始字节集（CRC32 与 ISIZE 自动校验）；失败返回空字节集，原因用 压缩_取错误() 查看。与 压缩_GZIP压缩 互为逆操作。",
+      "insertText": "压缩_GZIP解压($1)",
+      "returnType": "字节集",
+      "binding": {
+        "command": "压缩_GZIP解压",
+        "runtimeName": "压缩_GZIP解压",
+        "parameters": [
+          {
+            "name": "数据",
+            "type": "bytes",
+            "description": "gzip 容器流（RFC1952，10 字节头 + deflate 正文 + CRC32/ISIZE 尾；FEXTRA/FNAME/FCOMMENT/FHCRC 可选字段自动跳过）；魔数、校验或长度不符时返回空字节集。"
+          }
+        ],
+        "returnType": "bytes",
+        "example": "调试输出(字节集_长度(压缩_GZIP解压(压缩_GZIP压缩(字节集_从文本(\"压缩往返测试\")))))"
+      },
+      "demoInvocation": "压缩_GZIP解压({})"
+    },
+    {
+      "index": 8,
+      "name": "压缩_DEFLATE压缩",
+      "signature": "压缩_DEFLATE压缩(数据)",
+      "description": "把字节集压缩为 raw deflate 流（RFC1951，级别 6，无容器头）；失败返回空字节集，原因用 压缩_取错误() 查看。",
+      "insertText": "压缩_DEFLATE压缩($1)",
+      "returnType": "字节集",
+      "binding": {
+        "command": "压缩_DEFLATE压缩",
+        "runtimeName": "压缩_DEFLATE压缩",
+        "parameters": [
+          {
+            "name": "数据",
+            "type": "bytes",
+            "description": "要压缩的原始字节集；空字节集返回标准空 deflate 流（03 00），不是错误。"
+          }
+        ],
+        "returnType": "bytes",
+        "example": "局部 字节集 压缩流\n压缩流 = 压缩_DEFLATE压缩(字节集_从文本(\"LingBuilder\"))"
+      },
+      "demoInvocation": "压缩_DEFLATE压缩({})"
+    },
+    {
+      "index": 9,
+      "name": "压缩_GZIP压缩",
+      "signature": "压缩_GZIP压缩(数据)",
+      "description": "把字节集压缩为 gzip 容器（RFC1952，MTIME=0/OS=255 的确定性输出，便于逐字节对拍）；失败返回空字节集，原因用 压缩_取错误() 查看。",
+      "insertText": "压缩_GZIP压缩($1)",
+      "returnType": "字节集",
+      "binding": {
+        "command": "压缩_GZIP压缩",
+        "runtimeName": "压缩_GZIP压缩",
+        "parameters": [
+          {
+            "name": "数据",
+            "type": "bytes",
+            "description": "要压缩的原始字节集；空字节集产出的仍是合法 gzip（空 deflate 流）。"
+          }
+        ],
+        "returnType": "bytes",
+        "example": "局部 字节集 压缩包\n压缩包 = 压缩_GZIP压缩(字节集_从文本(\"LingBuilder 压缩演示\"))"
+      },
+      "demoInvocation": "压缩_GZIP压缩({})"
     }
   ]
 }

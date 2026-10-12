@@ -8,6 +8,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 import { getLingCppCompletions, getLingCppSemanticDiagnostics } from '../src/services/lingCpp/languageService';
+import { buildChineseCompletionSearchAliases } from '../src/services/lingCpp/completionSearchAliases';
 import { areLingCppTypesCompatible, inferLingCppExpressionType } from '../src/services/lingCpp/expressionTypeService';
 import { BUILTIN_MODULES } from '../src/services/modules/builtinModules';
 import { ARIA2_COMMAND_SPECS, ARIA2_MODULE, ARIA2_MODULE_ID } from '../src/services/modules/aria2Module';
@@ -523,12 +524,21 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       // 基线 2026-10-06 写回（Pro 专享命令机制）：免费模块 lingbuilder.std.text 1.3.0 新增
       // access:'pro' 演示命令 文本_倒序（+1 命令 +1 参数，无 controlRef）
       // （实算摘要 cca88780/f6d5687a）。
+      // 基线 2026-10-10 写回（网页_异步访问 参数对齐批次）：lingbuilder.web.http 1.2.0→1.3.0
+      // 网页_异步访问 尾部新增 13 个可选参数（提交信息/提交Cookies/附加协议头/禁止重定向/
+      // 字节集提交/代理地址/超时/代理用户名/代理密码/代理标识/是否自动合并更新Cookie/
+      // 是否补全必要协议头/是否处理协议头大小写，与 网页_访问_对象 对齐；命令数不变，
+      // 无 controlRef，旧三参调用靠 C++ 默认参数兜底完全兼容）（实算摘要 95a4d14c/431f4eb4）。
+      // 基线 2026-10-10 再写回（archive 内存压缩批次）：lingbuilder.archive 1.0.0→1.1.0 新增
+      // 5 命令 5 参数（压缩_DEFLATE解压/压缩_ZLIB解压/压缩_GZIP解压/压缩_DEFLATE压缩/
+      // 压缩_GZIP压缩，各 1 个 bytes 参数；运行时由随包 miniz 3.0.2 内联实现，模块另登记
+      // 常量 #压缩_解压上限字节，无 controlRef）（实算摘要 6e97f44a/e8eb479e）。
       modules: 102,
-      commands: 4087,
-      parameters: 7167,
+      commands: 4092,
+      parameters: 7185,
       controlReferences: 1345,
-      commandDigest: 'cca88780',
-      parameterDigest: 'f6d5687a'
+      commandDigest: '6e97f44a',
+      parameterDigest: 'e8eb479e'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -1021,12 +1031,17 @@ test('工作区已安装模块全部通过 controlRef 清单和示例门禁', as
       // 取标签条内容宽 三条收控件读回；两条直调按 NE表格_取单元格值直调 同例改挂
       // 「直调」后缀，与收控件同名撞车解耦），内置部分不变；本机磁盘仍为 11 份清单
       // （实算摘要 779fb1f5/4d706704）。
+      // 基线 2026-10-09 写回（网页_异步访问 参数对齐批次）：内置 web.http 1.3.0 +13 参数
+      //（见上一用例），磁盘侧 0 漂移（实算摘要 af1b88bb/3851492e）。
+      // 基线 2026-10-10 三写回（archive 内存压缩批次）：内置 +5 命令 +5 参数
+      //（lingbuilder.archive 1.1.0 字节集压缩解压五命令，见上一用例）；本机磁盘仍为 11 份清单，
+      // 磁盘侧 0 漂移（实算摘要 66e83039/ceabdc7c）。
       modules: 113,
-      commands: 8172,
-      parameters: 19431,
+      commands: 8177,
+      parameters: 19449,
       controlReferences: 5126,
-      commandDigest: '779fb1f5',
-      parameterDigest: '4d706704'
+      commandDigest: '66e83039',
+      parameterDigest: 'ceabdc7c'
   }, '内置、官方和当前工作区第三方模块的每个方法与参数都必须进入全量审计');
   // OpenCV 以内置清单为准：本机未装 SDK 时磁盘上的同名清单是只有骨架的占位包（0 命令、无 targets）。
   const manifest = BUILTIN_MODULES.find(module => module.id === OPENCV_MODULE_ID) || auditedManifests.get('lingbuilder.opencv.sdk');
@@ -1054,6 +1069,71 @@ test('OpenCV 模块生成稳定 C ABI 包装且不暴露 cv::Mat', () => {
   assert.match(cpp, /LB_OCV_AnalyzeGap/u);
   assert.match(cpp, /OpenCV_分析缺口/u);
   assert.doesNotMatch(cpp, /cv::Mat/u);
+});
+
+test('archive 1.1.0 字节集压缩解压五命令进入清单、绑定、拼音检索与生成 C++（随包 miniz 内联）', () => {
+  const manifest = BUILTIN_MODULES.find(module => module.id === 'lingbuilder.archive');
+  assert.ok(manifest);
+  assert.equal(manifest.version, '1.1.0');
+  assert.deepEqual(validateModuleManifest(manifest).diagnostics, [], 'archive 1.1.0 清单必须通过门禁');
+  const memoryCommands = ['压缩_DEFLATE解压', '压缩_ZLIB解压', '压缩_GZIP解压', '压缩_DEFLATE压缩', '压缩_GZIP压缩'];
+  for (const name of memoryCommands) {
+    const contribution = manifest.contributes?.commands?.find(item => item.name === name);
+    const binding = manifest.bindings?.commands?.find(item => item.command === name);
+    assert.ok(contribution && binding, `${name} 必须同时登记清单与 binding`);
+    assert.deepEqual(binding.parameters?.map(item => item.name), ['数据']);
+    assert.equal(binding.parameters?.[0].type, 'bytes');
+    assert.equal(binding.returnType, 'bytes');
+    assert.ok(contribution.description.includes('压缩_取错误'), `${name} 说明必须给出压缩_取错误失败口径`);
+  }
+  // 既有 4 条文件路径 ZIP 命令的签名与顺序不动（只追加，不改写）。
+  assert.deepEqual(manifest.contributes?.commands?.map(item => item.name).slice(0, 4), ['压缩_ZIP创建', '压缩_ZIP解压', '压缩_ZIP列出', '压缩_取错误']);
+  // 模块常量：解压输出上限与生成 C++ 内的运行时上限同值。
+  assert.deepEqual(
+    manifest.contributes?.constants?.map(item => [item.name, item.type, item.value]),
+    [['压缩_解压上限字节', '整数型', 67108864]]
+  );
+  // 中文补全检索键由统一目录按命令名生成（全拼/首字母并保留 `_`），不得为单条命令硬编码拼音。
+  const aliases = buildChineseCompletionSearchAliases('压缩_DEFLATE解压');
+  assert.ok(aliases.includes('ys_deflatejy'), `中拼键应包含首字母形态：${JSON.stringify(aliases)}`);
+  assert.ok(aliases.includes('yasuo_deflatejieya'), `中拼键应包含全拼形态：${JSON.stringify(aliases)}`);
+  const archiveModule: InstalledModule = { manifest, installPath: 'builtin://lingbuilder.archive', isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] };
+  const source = [
+    '类 MainWindow',
+    '    事件 _MainWindow_创建完毕()',
+    '        局部 字节集 原始',
+    '        局部 字节集 压缩包',
+    '        压缩包 = 压缩_GZIP压缩(原始)',
+    '        局部 字节集 往返',
+    '        往返 = 压缩_GZIP解压(压缩包)',
+    '        调试输出(压缩_取错误())',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const generated = generateLingCppNativeWin32Project(sampleProject, { lingCppSourceCode: source, enabledModules: [archiveModule] });
+  assert.deepEqual(generated.blockingDiagnostics, [], `archive 生成不得有阻断诊断：${JSON.stringify(generated.blockingDiagnostics)}`);
+  const cpp = generated.files.filter(file => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp').map(file => file.content).join('\n');
+  ['std::vector<unsigned char> 压缩_DEFLATE解压(const std::vector<unsigned char>& data)',
+    'std::vector<unsigned char> 压缩_ZLIB解压(const std::vector<unsigned char>& data)',
+    'std::vector<unsigned char> 压缩_GZIP解压(const std::vector<unsigned char>& data)',
+    'std::vector<unsigned char> 压缩_DEFLATE压缩(const std::vector<unsigned char>& data)',
+    'std::vector<unsigned char> 压缩_GZIP压缩(const std::vector<unsigned char>& data)',
+    'LB_ARCHIVE_INFLATE_LIMIT = 67108864',
+    'tinfl_decompress_mem_to_callback',
+    'tdefl_compress_mem_to_heap',
+    'LingBuilder vendored miniz 3.0.2'
+  ].forEach(marker => assert.ok(cpp.includes(marker), `生成 C++ 缺少 ${marker}`));
+  assert.ok(cpp.includes('压缩_GZIP压缩(原始)'), '调用语句必须按位置透传生成');
+  assert.ok(cpp.includes('压缩_解压上限字节 = 67108864'), '模块常量必须物化为同值编译期常量');
+  // zlib 兼容名宏（#define deflate/inflate/crc32）必须被裁剪：我们的 MINIZ_NO_ZLIB_COMPATIBLE_NAMES
+  // 必须先于 miniz 头部的兼容名守卫出现，守卫分支才会被预处理器整体跳过。
+  const compatDefineAt = cpp.indexOf('#define MINIZ_NO_ZLIB_COMPATIBLE_NAMES');
+  const compatGuardAt = cpp.indexOf('#ifndef MINIZ_NO_ZLIB_COMPATIBLE_NAMES');
+  assert.ok(compatDefineAt >= 0 && compatGuardAt > compatDefineAt, 'MINIZ_NO_ZLIB_COMPATIBLE_NAMES 必须先于 miniz 兼容名守卫定义');
+  // 未启用 archive 时不得内联 miniz（防无关项目体积回归）。
+  const plainGenerated = generateLingCppNativeWin32Project(sampleProject, { lingCppSourceCode: '类 MainWindow\n    事件 _MainWindow_创建完毕()\n        调试输出("hi")\n    结束\n结束类', enabledModules: [] });
+  const plainCpp = plainGenerated.files.filter(file => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp').map(file => file.content).join('\n');
+  assert.ok(!plainCpp.includes('LingBuilder vendored miniz'), '未启用 archive 不得内联 miniz');
 });
 
 test('编码转换模块公开完整的文本安全字符编码、BOM 与通用转码命令', () => {
@@ -5368,6 +5448,48 @@ test('web HTTP async command translates handler references and emits a UI-thread
   assert.doesNotMatch(cpp, /&获取IP完成/);
 });
 
+test('web.http 1.3.0 异步访问尾部可选参数按位透传到同步运行时调用', () => {
+  const webHttp = BUILTIN_MODULES.find(module => module.id === 'lingbuilder.web.http');
+  assert.ok(webHttp, '内置网页访问模块清单应存在');
+  const module: InstalledModule = {
+    manifest: webHttp!,
+    installPath: 'C:/modules/lingbuilder.web.http',
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const asyncSignature = (webHttp!.bindings?.commands || []).find(binding => binding.command === '网页_异步访问');
+  assert.equal(asyncSignature?.parameters.length, 16, '1.3.0 异步命令应声明 3 必备 + 13 可选参数');
+  assert.equal(asyncSignature?.parameters[3]?.name, '提交信息');
+  assert.equal(asyncSignature?.parameters[5]?.name, '附加协议头');
+  assert.equal(asyncSignature?.parameters[6]?.name, '禁止重定向');
+  assert.equal(asyncSignature?.parameters[7]?.type, 'bytes');
+
+  const source = [
+    '类 MainWindow',
+    '    整数型 请求编号',
+    '    文本型 结果文本',
+    '    事件 _按钮1_被单击()',
+    '        请求编号 = 网页_异步访问("https://api.example.com", 1, &提交完成, "name=lingbuilder", "", "User-Agent: LBTestUA/1.0")',
+    '    结束',
+    '    事件 提交完成()',
+    '        结果文本 = 网页_异步取返回文本(网页_异步取当前请求编号())',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const generated = generateLingCppNativeWin32Project(sampleProject, { lingCppSourceCode: source, enabledModules: [module] });
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
+
+  // 调用点：6 实参按位落到运行时方法（wideString 字面量直出 L"..."，与既有形态一致）
+  assert.ok(cpp.includes('网页_异步访问(L"https://api.example.com", 1, L"提交完成", L"name=lingbuilder", L"", L"User-Agent: LBTestUA/1.0")'));
+  // 运行时透传：后台线程把可选参数逐位交给 网页_访问_对象（跳过三个同步出参占位）
+  assert.ok(cpp.includes('网页_访问_对象(address, accessMethod, 提交信息, 提交Cookies, L"", 附加协议头, L"", 0,'));
+  assert.ok(cpp.includes('是否自动合并更新Cookie, 是否补全必要协议头, 是否处理协议头大小写);'));
+  // 缺省形参兜底：省略的尾部参数在运行时方法签名上有 C++ 默认值，旧三参调用不报错
+  assert.match(cpp, /int 网页_异步访问\(const wchar_t\* url, int accessMethod, const wchar_t\* completionHandler,\s*\n\s*std::wstring 提交信息 = L"",/u);
+  assert.equal(generated.diagnostics.filter(message => /异步访问/.test(message)).length, 0);
+});
+
 test('CEF3 module exposes the complete event catalog and generates thread-safe handler bridges', () => {
   const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.cef3.browser');
   assert.ok(manifest);
@@ -6846,7 +6968,7 @@ test('FBro native dependency materializer preserves directories and only repairs
     files.push({ path: relative, size: content.length, sha256: crypto.createHash('sha256').update(content).digest('hex') });
   }
   await fs.writeFile(path.join(sdk, 'runtime-manifest.json'), JSON.stringify({
-    schemaVersion: 1, sdkVersion: '135.0.21', architecture: 'x64', bridgeVersion: '2.9.3', files
+    schemaVersion: 1, sdkVersion: '135.0.21', architecture: 'x64', bridgeVersion: '2.9.4', files
   }), 'utf8');
   const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.browser');
   assert.ok(manifest);
@@ -6882,6 +7004,101 @@ test('FBro native dependency materializer preserves directories and only repairs
   } finally {
     if (previous === undefined) delete process.env.FBRO_SDK_ROOT;
     else process.env.FBRO_SDK_ROOT = previous;
+  }
+});
+
+/** FBro SDK 夹具：V3 头 + 桥库/桥 DLL + CEF 运行时与清单，bridgeVersion 与桥 DLL 内容可参数化以区分候选副本。 */
+async function writeFbroVersionFixture(sdk: string, bridgeVersion: string, bridgeDllContent: string): Promise<void> {
+  const fbroV3Header = [
+    '#pragma once',
+    '#define LB_FBRO_ABI_VERSION_V3 0x00030000u',
+    'typedef unsigned long long LB_FBRO_CONTINUATION_HANDLE;',
+    'typedef struct LB_FBRO_EVENT_PACKET_V3 {} LB_FBRO_EVENT_PACKET_V3;',
+    'typedef struct LB_FBRO_EVENT_RESPONSE_V3 {} LB_FBRO_EVENT_RESPONSE_V3;',
+    'void LB_FBro_SetEventCallbackV3();',
+    'void LB_FBro_SetEventSubscription();',
+    'void LB_FBro_CompleteEventContinuation();',
+    'void LB_FBro_CancelEventContinuation();',
+    'void LB_FBro_CreateEx2();',
+    'void LB_FBro_CookieSetJsonAsync();'
+  ].join('\n');
+  const cefRuntime = Buffer.from('cef-runtime');
+  await Promise.all([
+    writeFixture(path.join(sdk, 'include', 'LingBuilderFbroBridge.h'), `${fbroV3Header}\n`),
+    writeFixture(path.join(sdk, 'include', 'LingBuilderFbroProcessRuntime.hpp'), '#pragma once\n'),
+    writeFixture(path.join(sdk, 'include', 'nlohmann', 'json.hpp'), '#pragma once\n'),
+    writeFixture(path.join(sdk, 'include', 'nlohmann', 'LICENSE.MIT'), 'MIT License\n'),
+    writeFixture(path.join(sdk, 'lib', 'x64', 'LingBuilderFbroBridge.lib'), 'bridge-lib'),
+    writeFixture(path.join(sdk, 'bridge', 'x64', 'LingBuilderFbroBridge.dll'), bridgeDllContent),
+    writeFixture(path.join(sdk, 'runtime', 'x64', 'libcef.dll'), cefRuntime.toString()),
+    writeFixture(path.join(sdk, 'runtime-manifest.json'), JSON.stringify({
+      schemaVersion: 1,
+      sdkVersion: '135.0.21',
+      architecture: 'x64',
+      bridgeVersion,
+      files: [{ path: 'libcef.dll', size: cefRuntime.length, sha256: crypto.createHash('sha256').update(cefRuntime).digest('hex') }]
+    }))
+  ]);
+}
+
+test('FBro 工作区旧版本 SDK 副本让位给机器级缓存的匹配版本', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-fbro-shadow-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  // 模拟打包版播种残留：工作区副本停在当前门禁之前的 Bridge 版本，
+  // 机器级缓存已由 SDK 面板装到当前版本（真实事故：多标签浏览器工作区 2.9.3 遮蔽 2.9.4 缓存）。
+  await writeFbroVersionFixture(path.join(root, 'ws', '.lingbuilder', 'modules', 'lingbuilder.fbro.sdk', 'sdk'), '2.9.3', 'stale-workspace-bridge');
+  const cacheRoot = path.join(root, 'sdk-cache');
+  await writeFbroVersionFixture(path.join(cacheRoot, 'modules', 'lingbuilder.fbro.sdk', 'sdk'), '2.9.4', 'fresh-cache-bridge');
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.browser');
+  assert.ok(manifest);
+  const module: InstalledModule = { manifest, installPath: 'builtin://lingbuilder.fbro.browser', isBuiltin: true, isInstalled: true, diagnostics: [] };
+  const previousFbroSdkRoot = process.env.FBRO_SDK_ROOT;
+  const previousCacheRoot = process.env.LINGBUILDER_SDK_CACHE_ROOT;
+  delete process.env.FBRO_SDK_ROOT;
+  process.env.LINGBUILDER_SDK_CACHE_ROOT = cacheRoot;
+  try {
+    const layout = {
+      buildDir: path.join(root, 'ws', '.lingbuilder-build', '项目'), sourceDir: path.join(root, 'ws', 'source'),
+      binDir: path.join(root, 'bin'), exportDir: path.join(root, 'export'),
+      preferredTargetId: 'windows-msvc-x64'
+    };
+    const plan = await materializeModuleNativeDependencies([module], layout);
+    assert.deepEqual(plan.blockingDiagnostics, []);
+    // 物化必须来自缓存里的当前版本，而不是候选序更靠前的工作区旧副本。
+    assert.equal((await fs.readFile(path.join(layout.binDir, 'LingBuilderFbroBridge.dll'))).toString(), 'fresh-cache-bridge');
+  } finally {
+    if (previousFbroSdkRoot === undefined) delete process.env.FBRO_SDK_ROOT;
+    else process.env.FBRO_SDK_ROOT = previousFbroSdkRoot;
+    if (previousCacheRoot === undefined) delete process.env.LINGBUILDER_SDK_CACHE_ROOT;
+    else process.env.LINGBUILDER_SDK_CACHE_ROOT = previousCacheRoot;
+  }
+});
+
+test('FBro 所有候选版本都不匹配时回退旧副本并给出精确版本诊断', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-fbro-allstale-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await writeFbroVersionFixture(path.join(root, 'ws', '.lingbuilder', 'modules', 'lingbuilder.fbro.sdk', 'sdk'), '2.9.3', 'stale-workspace-bridge');
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.browser');
+  assert.ok(manifest);
+  const module: InstalledModule = { manifest, installPath: 'builtin://lingbuilder.fbro.browser', isBuiltin: true, isInstalled: true, diagnostics: [] };
+  const previousFbroSdkRoot = process.env.FBRO_SDK_ROOT;
+  const previousCacheRoot = process.env.LINGBUILDER_SDK_CACHE_ROOT;
+  delete process.env.FBRO_SDK_ROOT;
+  // 空缓存根：不存在任何版本匹配的候选，旧副本兜底后由深门禁报版本不匹配。
+  process.env.LINGBUILDER_SDK_CACHE_ROOT = path.join(root, 'empty-cache');
+  try {
+    const layout = {
+      buildDir: path.join(root, 'ws', '.lingbuilder-build', '项目'), sourceDir: path.join(root, 'ws', 'source'),
+      binDir: path.join(root, 'bin'), exportDir: path.join(root, 'export'),
+      preferredTargetId: 'windows-msvc-x64'
+    };
+    const plan = await materializeModuleNativeDependencies([module], layout);
+    assert.match(plan.blockingDiagnostics.join('\n'), /需要 135\.0\.21\/Bridge 2\.9\.4\/x64，实际为 135\.0\.21\/Bridge 2\.9\.3\/x64/u);
+  } finally {
+    if (previousFbroSdkRoot === undefined) delete process.env.FBRO_SDK_ROOT;
+    else process.env.FBRO_SDK_ROOT = previousFbroSdkRoot;
+    if (previousCacheRoot === undefined) delete process.env.LINGBUILDER_SDK_CACHE_ROOT;
+    else process.env.LINGBUILDER_SDK_CACHE_ROOT = previousCacheRoot;
   }
 });
 
@@ -6955,7 +7172,7 @@ test('FBro 与 CEF3 仅阻断进程内控件，独立进程共存时隔离两套
       schemaVersion: 1,
       sdkVersion: '135.0.21',
       architecture: 'x64',
-      bridgeVersion: '2.9.3',
+      bridgeVersion: '2.9.4',
       files: fbroFiles
     })),
     writeFixture(path.join(cef3Sdk, 'include', 'cef_app.h'), '#pragma once\n'),
@@ -6991,7 +7208,7 @@ test('FBro 与 CEF3 仅阻断进程内控件，独立进程共存时隔离两套
   }
 });
 
-test('FBro 单独启用时运行时只落 bin 顶层，并清理旧版 fbro-host 双写残留', async () => {
+test('FBro 单独启用时运行时只落 bin 顶层，fbro-host 只承载宿主 exe（宿主自省回退上级）', async () => {
   const ids = ['lingbuilder.fbro.browser'];
   const modules = ids.map(id => {
     const manifest = BUILTIN_MODULES.find(item => item.id === id);
@@ -7032,7 +7249,7 @@ test('FBro 单独启用时运行时只落 bin 顶层，并清理旧版 fbro-host
       schemaVersion: 1,
       sdkVersion: '135.0.21',
       architecture: 'x64',
-      bridgeVersion: '2.9.3',
+      bridgeVersion: '2.9.4',
       files: fbroFiles
     })),
     // 旧版无条件双写留下的 fbro-host 残留，物化后必须被清掉。
@@ -7050,7 +7267,9 @@ test('FBro 单独启用时运行时只落 bin 顶层，并清理旧版 fbro-host
     assert.deepEqual(plan.diagnostics, []);
     assert.equal(await fs.readFile(path.join(root, 'bin', 'libcef.dll'), 'utf8'), 'fbro-cef-135');
     assert.equal(await fs.readFile(path.join(root, 'bin', 'LingBuilderFbroBridge.dll'), 'utf8'), 'fbro-bridge-dll');
-    assert.equal(await exists(path.join(root, 'bin', 'fbro-host')), false, 'fbro-host 冗余目录应被清理');
+    // fbro-host 由 FBro 桥运行期创建（只承载宿主 exe）；物化层不写它，
+    // 且必须清掉旧版无条件双写留下的残留（宿主进程启动时自省回退上级目录）。
+    assert.equal(await exists(path.join(root, 'bin', 'fbro-host')), false, 'fbro-host 冗余物化应被清理');
     assert.ok(plan.runtimeFiles.every(file => !file.includes('fbro-host')));
   } finally {
     if (previousFbroSdk === undefined) delete process.env.FBRO_SDK_ROOT;
