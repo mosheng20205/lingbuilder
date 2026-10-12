@@ -21,6 +21,15 @@ import { spawn } from 'node:child_process';
 import { diskBuildDiffersFromRunning, readBuildMetaFile, resolveBuildMetaPath } from './buildIdentity';
 import { buildWorkspaceWindowSpawnPlan, DesktopWorkspaceService, findWorkspaceFileArgument, getArgumentValue } from './workspaceService';
 import { CloudAccountService } from './cloudAccountService';
+import {
+  CLOUD_REFRESH_TOKEN_FILE_NAME,
+  clearSharedCredential,
+  migrateLegacyCloudCredentialIfNeeded,
+  readSharedCredentialBytes,
+  resolveSharedCloudCredentialDir,
+  withCloudCredentialLock,
+  writeSharedCredentialBytes
+} from './cloudCredentialStore';
 import { checkLatestVersion, type VersionCheckResult } from './versionCheckService';
 import { UpdateDownloadService } from './updateDownloadService';
 import { AiBridgeManagerService, type ManagedAiBridgePermission, type ManagedAiBridgeLifecycle } from './aiBridgeManagerService';
@@ -310,9 +319,29 @@ function skillKitService(): SkillKitService {
   }
   return skillKit;
 }
+// 登录凭据存储（2026-10-11 起迁到机器级共享目录，见 cloudCredentialStore.ts）：
+// 「在新窗口打开工作区」/例程实例带 LINGBUILDER_REC_USER_DATA 独立 userData，
+// 凭据留在 userData 内它们打开即未登录；机器级共享 + 跨进程刷新锁让一处登录处处登录，
+// 且同一刷新令牌绝不被两个实例先后发给云端（云端重复使用检测会撤销全会话族）。
+// 旧 userData 内的凭据在首次读取时一次性迁移（move）；cloudRefreshPath 仅作迁移源保留。
 function cloudRefreshPath(): string { return path.join(app.getPath('userData'), 'credentials', 'cloud-refresh-token.bin'); }
-async function readCloudRefresh(): Promise<string> { try { if (!safeStorage.isEncryptionAvailable()) return ''; return safeStorage.decryptString(await fs.readFile(cloudRefreshPath())); } catch { return ''; } }
-async function writeCloudRefresh(value: string): Promise<void> { if (!safeStorage.isEncryptionAvailable()) throw new Error('当前系统不支持安全账号凭据存储。'); const file = cloudRefreshPath(); await fs.mkdir(path.dirname(file), { recursive: true }); if (!value) { await fs.rm(file, { force: true }); return; } const temporary = `${file}.${crypto.randomUUID()}.tmp`; await fs.writeFile(temporary, safeStorage.encryptString(value)); await fs.rename(temporary, file); }
+function sharedCloudCredentialDir(): string { return resolveSharedCloudCredentialDir(app.isPackaged); }
+async function readCloudRefresh(): Promise<string> {
+  if (!safeStorage.isEncryptionAvailable()) return '';
+  let bytes = await readSharedCredentialBytes(sharedCloudCredentialDir(), CLOUD_REFRESH_TOKEN_FILE_NAME);
+  if (!bytes) {
+    await migrateLegacyCloudCredentialIfNeeded(sharedCloudCredentialDir(), cloudRefreshPath());
+    bytes = await readSharedCredentialBytes(sharedCloudCredentialDir(), CLOUD_REFRESH_TOKEN_FILE_NAME);
+  }
+  if (!bytes) return '';
+  try { return safeStorage.decryptString(bytes); } catch { return ''; }
+}
+async function writeCloudRefresh(value: string): Promise<void> {
+  if (!safeStorage.isEncryptionAvailable()) throw new Error('当前系统不支持安全账号凭据存储。');
+  // 写入/清除的跨进程互斥由 CloudAccountService 的 withCredentialLock 在调用侧保证（刷新/登录/退出临界区）。
+  if (!value) { await clearSharedCredential(sharedCloudCredentialDir(), CLOUD_REFRESH_TOKEN_FILE_NAME); return; }
+  await writeSharedCredentialBytes(sharedCloudCredentialDir(), CLOUD_REFRESH_TOKEN_FILE_NAME, safeStorage.encryptString(value));
+}
 function modulePermitCachePath(): string { return path.join(app.getPath('userData'), 'credentials', 'module-permits.bin'); }
 // Pro 会员授权状态落盘（镜像 src/services/modules/proAccessStateFile.ts 的文件名与格式；
 // 主进程 tsconfig rootDir 不含 src，只能镜像——与 ideVersion 同一口径）：
@@ -388,7 +417,13 @@ function cloudApiOrigin(): string {
     return 'https://cloud-config-missing.invalid';
   }
 }
-const cloudAccountService = new CloudAccountService(cloudApiOrigin(), readCloudRefresh, writeCloudRefresh);
+const cloudAccountService = new CloudAccountService(
+  cloudApiOrigin(),
+  readCloudRefresh,
+  writeCloudRefresh,
+  // 多实例共享凭据的跨进程互斥锁：刷新/登录/退出的「重读→请求→写回」整体临界区。
+  <T>(work: () => Promise<T>) => withCloudCredentialLock(sharedCloudCredentialDir(), work)
+);
 let lastVersionCheck: VersionCheckResult | null = null;
 /** 应用内更新下载器：安装包落在 userData/updates，进度经 app-update:progress 广播到所有窗口。 */
 const updateDownloadService = new UpdateDownloadService({

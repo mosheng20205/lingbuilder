@@ -11,7 +11,14 @@ type StreamListener = (requestKey: string, event: unknown) => void;
 export class CloudAccountService {
   private accessToken = ''; private refreshToken = ''; private email = ''; private readonly requests = new Map<string, AbortController>();
   private refreshInFlight: Promise<void> | null = null;
-  constructor(private readonly origin: string, private readonly readRefresh: () => Promise<string>, private readonly writeRefresh: (value: string) => Promise<void>) {}
+  // withCredentialLock：多实例（主窗口 /「在新窗口打开工作区」/例程）共享同一份凭据文件后的
+  // 跨进程互斥锁，见 electron/cloudCredentialStore.ts。缺省直通保持单进程测试语义。
+  constructor(
+    private readonly origin: string,
+    private readonly readRefresh: () => Promise<string>,
+    private readonly writeRefresh: (value: string) => Promise<void>,
+    private readonly withCredentialLock: <T>(work: () => Promise<T>) => Promise<T> = work => work()
+  ) {}
   // 刷新失败绝不在 initialize 里清除凭据：网络抖动/云端 5xx 只保留令牌下次重试，
   // 只有 refresh 内部判定云端明确 401 才 clear。错误向 main.ts 传播并写「系统 AI 账号恢复失败：<原因>」。
   async initialize() { this.refreshToken = await this.readRefresh(); if (this.refreshToken) await this.refresh(); }
@@ -21,8 +28,23 @@ export class CloudAccountService {
   async forgotPassword(email: string) { return await this.publicRequest('/v1/auth/password/forgot', { email }); }
   /** 找回密码第 2 步：凭邮件令牌设置新密码；成功后云端吊销全部登录会话。 */
   async resetPassword(token: string, password: string) { return await this.publicRequest('/v1/auth/password/reset', { token, password }); }
-  async login(email: string, password: string) { const value = await this.publicRequest('/v1/auth/login', { email, password, deviceName: 'LingBuilder IDE' }); await this.acceptTokens(value, email); return await this.snapshot(); }
-  async logout() { if (this.refreshToken) await this.publicRequest('/v1/auth/logout', { refreshToken: this.refreshToken }).catch(() => undefined); await this.clear(); return { ok: true }; }
+  // 登录/退出与刷新同用一把跨进程锁：登录写入与退出清除都不许和另一实例的刷新写回交错，
+  // 否则共享凭据文件会在两个会话之间漂移。锁不可重入，snapshot 必须放在锁外
+  // （其内部在 access token 过期时会再走 refresh → 二次拿锁会等满超时）。
+  async login(email: string, password: string) {
+    await this.withCredentialLock(async () => {
+      const value = await this.publicRequest('/v1/auth/login', { email, password, deviceName: 'LingBuilder IDE' });
+      await this.acceptTokens(value, email);
+    });
+    return await this.snapshot();
+  }
+  async logout() {
+    await this.withCredentialLock(async () => {
+      if (this.refreshToken) await this.publicRequest('/v1/auth/logout', { refreshToken: this.refreshToken }).catch(() => undefined);
+      await this.clear();
+    });
+    return { ok: true };
+  }
   async snapshot(): Promise<CloudSessionSnapshot> {
     if (!this.accessToken && this.refreshToken) await this.refresh().catch(() => undefined);
     if (!this.accessToken) return { authenticated: false };
@@ -163,16 +185,21 @@ export class CloudAccountService {
       if (!terminalEventSeen) listener(requestKey, { type: 'error', requestId: requestKey, code: 'PROVIDER_FAILED', message: '系统 AI 连接已中断，请重试。', retryable: true });
     }
   }
-  // 并发调用共享同一在途刷新：同一刷新令牌绝不能并发双发——云端轮换令牌后，旧令牌再次使用
-  // 会被判定「重复使用」并撤销整个会话族（auth.service refresh 的 reused 检测），登录态直接丢失。
+  // 并发调用共享同一在途刷新（进程内）+ 跨进程凭据锁（多实例）：同一刷新令牌绝不能并发
+  // 双发——云端轮换令牌后，旧令牌再次使用会被判定「重复使用」并撤销整个会话族
+  // （auth.service refresh 的 reused 检测），登录态直接丢失。
   private async refresh() {
     if (!this.refreshToken) throw new Error('尚未登录系统 AI。');
     if (this.refreshInFlight) return this.refreshInFlight;
-    this.refreshInFlight = this.doRefresh().finally(() => { this.refreshInFlight = null; });
+    this.refreshInFlight = this.withCredentialLock(() => this.doRefresh()).finally(() => { this.refreshInFlight = null; });
     return this.refreshInFlight;
   }
   private async doRefresh() {
     try {
+      // 临界区第一步重读共享凭据：另一实例可能已轮换令牌，采纳最新值，
+      // 绝不把内存里的旧令牌发给云端（那正是重复使用检测的触发条件）。
+      const latest = await this.readRefresh();
+      if (latest && latest !== this.refreshToken) { this.refreshToken = latest; this.accessToken = ''; }
       const value = await this.publicRequest('/v1/auth/refresh', { refreshToken: this.refreshToken });
       // 刷新在途期间用户已退出登录（clear 清空了令牌）：丢弃结果，避免把已注销的会话写回凭据文件。
       if (!this.refreshToken) return;

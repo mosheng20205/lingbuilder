@@ -206,3 +206,50 @@ test('刷新令牌行为回归：401 才清凭据、网络失败保留并可再�
   await initializeDone;
   assert.equal(refreshCalls, 1, '并发刷新必须合并为一次请求');
 });
+
+test('登录凭据迁移到机器级共享目录：新窗口/例程实例共享登录态，刷新走跨进程锁', () => {
+  const main = fs.readFileSync(new URL('../electron/main.ts', import.meta.url), 'utf8');
+  const cloud = fs.readFileSync(new URL('../electron/cloudAccountService.ts', import.meta.url), 'utf8');
+  // 2026-10-11：「在新窗口打开工作区」/例程实例带独立 userData，凭据留在 userData 内打开即未登录；
+  // 凭据迁到机器级共享目录（cloudCredentialStore）+ 跨进程刷新锁，一处登录处处登录。
+  // 「复制凭据给新实例」被明令排除：云端重用检测会撤销全会话族，两实例先后刷新必然互踢。
+  assert.match(main, /cloudCredentialStore/u);
+  assert.match(main, /migrateLegacyCloudCredentialIfNeeded/u, '旧 userData 凭据必须一次性迁移，改路径不得让现网用户掉登录');
+  assert.match(main, /withCloudCredentialLock\(sharedCloudCredentialDir\(\), work\)/u, '刷新/登录/退出必须包进跨进程锁');
+  assert.match(main, /cloud-refresh-token\.bin/u, '旧 userData 凭据路径仅作迁移源保留');
+  assert.match(cloud, /withCredentialLock[\s\S]*doRefresh/u, '刷新临界区必须套跨进程锁');
+  assert.match(cloud, /latest !== this\.refreshToken/u, '锁内必须重读共享凭据：另一实例已轮换时采纳新值，绝不双发旧令牌');
+});
+
+test('锁内重读：另一实例已轮换共享凭据时采纳新令牌刷新，绝不双发内存旧值', async (t) => {
+  const { CloudAccountService } = await import('../electron/cloudAccountService.ts');
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const jsonResponse = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+
+  // 本实例内存令牌 rt-1（初始化时网络失败，凭据保留——场景二同款前置）。
+  let storedToken = 'rt-1';
+  const service = new CloudAccountService('https://cloud.test', async () => storedToken, async (value) => { storedToken = value; });
+  globalThis.fetch = (async () => { throw new TypeError('fetch failed'); }) as never;
+  await assert.rejects(service.initialize(), /无法连接 LingBuilder 云端服务/u);
+
+  // 另一实例此刻已轮换共享凭据到 rt-2 并落盘。
+  storedToken = 'rt-2';
+  const refreshBodies: string[] = [];
+  globalThis.fetch = (async (input: any, init: any) => {
+    const url = String(input);
+    if (url.endsWith('/v1/auth/refresh')) {
+      refreshBodies.push(String(init?.body || ''));
+      if (refreshBodies.length === 1) return jsonResponse({ accessToken: 'at-2', refreshToken: 'rt-3', expiresIn: 900 });
+      throw new Error(`unexpected extra refresh: ${init?.body}`);
+    }
+    if (url.endsWith('/v1/me')) return jsonResponse({ user: { email: 'user@lingbuilder.test' } });
+    if (url.endsWith('/v1/usage/balance')) return jsonResponse({ balance: { available: '0', reserved: '0' } });
+    throw new Error(`unexpected url: ${url}`);
+  }) as never;
+  // 若实现把内存旧值 rt-1 发给云端，会触发云端重复使用检测并撤销全会话族——此处只允许收到 rt-2。
+  const session = await service.snapshot();
+  assert.equal(session.authenticated, true, '采纳另一实例轮换后的令牌应能恢复登录');
+  assert.deepEqual(refreshBodies, ['{"refreshToken":"rt-2"}'], '必须用锁内重读到的最新令牌刷新，绝不能把内存旧令牌发给云端');
+  assert.equal(storedToken, 'rt-3', '轮换结果必须写回共享凭据');
+});
