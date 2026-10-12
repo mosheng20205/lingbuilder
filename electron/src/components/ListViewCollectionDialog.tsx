@@ -26,6 +26,7 @@ import {
   type ListViewEditableColumn,
   type ListViewEditableRow
 } from '../services/windowDesigner/listViewCollectionModel';
+import NumberFieldInput from './NumberFieldInput';
 
 export type ListViewCollectionEditorKind = 'columns' | 'rows';
 
@@ -47,58 +48,6 @@ function moveItem<T>(items: T[], from: number, to: number): T[] {
   const [item] = next.splice(from, 1);
   next.splice(to, 0, item);
   return next;
-}
-
-interface ColumnWidthInputProps {
-  columnIndex: number;
-  value: number;
-  className: string;
-  onCommit: (value: number) => void;
-}
-
-function ColumnWidthInput({ columnIndex, value, className, onCommit }: ColumnWidthInputProps) {
-  const [draft, setDraft] = useState(String(value));
-
-  useEffect(() => setDraft(String(value)), [value]);
-
-  const commitDraft = (nextDraft: string, finalize = false) => {
-    setDraft(nextDraft);
-    if (nextDraft.trim() === '') {
-      if (finalize) setDraft(String(value));
-      return;
-    }
-
-    const parsed = Number(nextDraft);
-    if (!Number.isFinite(parsed)) {
-      if (finalize) setDraft(String(value));
-      return;
-    }
-
-    const integer = Math.trunc(parsed);
-    if (!finalize && (integer < 24 || integer > 2000)) return;
-    const normalized = Math.min(2000, Math.max(24, integer));
-    setDraft(String(normalized));
-    if (normalized !== value) onCommit(normalized);
-  };
-
-  return (
-    <input
-      aria-label={`第 ${columnIndex + 1} 列宽度`}
-      type="number"
-      min={24}
-      max={2000}
-      value={draft}
-      onChange={event => commitDraft(event.target.value)}
-      onBlur={() => commitDraft(draft, true)}
-      onKeyDown={event => {
-        if (event.key === 'Enter') {
-          commitDraft(draft, true);
-          event.currentTarget.select();
-        }
-      }}
-      className={className}
-    />
-  );
 }
 
 export default function ListViewCollectionDialog({
@@ -346,7 +295,7 @@ export default function ListViewCollectionDialog({
                       <tr key={index} className={isDarkMode ? 'hover:bg-white/[0.025]' : 'hover:bg-slate-100/60'}>
                         <td className="border-b p-2 font-mono text-slate-500">{index + 1}</td>
                         <td className="border-b p-2"><input aria-label={`第 ${index + 1} 列标题`} value={column.title} onChange={event => updateColumn(index, { title: event.target.value })} className={inputClass} /></td>
-                        <td className="border-b p-2"><ColumnWidthInput columnIndex={index} value={column.width} onCommit={width => updateColumn(index, { width })} className={inputClass} /></td>
+                        <td className="border-b p-2"><NumberFieldInput ariaLabel={`第 ${index + 1} 列宽度`} min={24} max={2000} value={column.width} onCommit={width => updateColumn(index, { width })} className={inputClass} /></td>
                         <td className="border-b p-2">
                           <select
                             aria-label={`第 ${index + 1} 列对齐方式`}
@@ -359,7 +308,7 @@ export default function ListViewCollectionDialog({
                             <option value="right">右对齐</option>
                           </select>
                         </td>
-                        {showImages && <td className="border-b p-2"><input aria-label={`第 ${index + 1} 列图片编号`} type="number" min={-1} value={column.image} onChange={event => updateColumn(index, { image: Number(event.target.value) || 0 })} className={inputClass} /></td>}
+                        {showImages && <td className="border-b p-2"><NumberFieldInput ariaLabel={`第 ${index + 1} 列图片编号`} min={-1} value={column.image} onCommit={image => updateColumn(index, { image })} className={inputClass} /></td>}
                         <td className="border-b p-2"><div className="flex justify-end gap-0.5"><button type="button" aria-label={`左移第 ${index + 1} 列`} disabled={index === 0} onClick={() => moveColumn(index, index - 1)} className={iconButton}><ArrowLeft className="h-3.5 w-3.5" /></button><button type="button" aria-label={`右移第 ${index + 1} 列`} disabled={index === columns.length - 1} onClick={() => moveColumn(index, index + 1)} className={iconButton}><ArrowRight className="h-3.5 w-3.5" /></button><button type="button" aria-label={`删除第 ${index + 1} 列`} disabled={columns.length === 1} onClick={() => deleteColumn(index)} className={`${iconButton} text-rose-400`}><Trash2 className="h-3.5 w-3.5" /></button></div></td>
                       </tr>
                     ))}</tbody>
@@ -369,7 +318,7 @@ export default function ListViewCollectionDialog({
                   <section key={index} className={`rounded border p-3 ${isDarkMode ? 'border-[#3d3d46] bg-[#202026]' : 'border-slate-200 bg-white'}`}>
                     <div className="mb-2 flex items-center justify-between"><span className="text-xs font-semibold">第 {index + 1} 列</span><div className="flex"><button type="button" aria-label={`左移第 ${index + 1} 列`} disabled={index === 0} onClick={() => moveColumn(index, index - 1)} className={iconButton}><ArrowLeft className="h-3.5 w-3.5" /></button><button type="button" aria-label={`右移第 ${index + 1} 列`} disabled={index === columns.length - 1} onClick={() => moveColumn(index, index + 1)} className={iconButton}><ArrowRight className="h-3.5 w-3.5" /></button><button type="button" aria-label={`删除第 ${index + 1} 列`} disabled={columns.length === 1} onClick={() => deleteColumn(index)} className={`${iconButton} text-rose-400`}><Trash2 className="h-3.5 w-3.5" /></button></div></div>
                     <label className="mb-2 block text-[10px] text-slate-500">标题<input value={column.title} onChange={event => updateColumn(index, { title: event.target.value })} className={`${inputClass} mt-1`} /></label>
-                    <label className="block text-[10px] text-slate-500">宽度<ColumnWidthInput columnIndex={index} value={column.width} onCommit={width => updateColumn(index, { width })} className={`${inputClass} mt-1`} /></label>
+                    <label className="block text-[10px] text-slate-500">宽度<NumberFieldInput ariaLabel={`第 ${index + 1} 列宽度`} min={24} max={2000} value={column.width} onCommit={width => updateColumn(index, { width })} className={`${inputClass} mt-1`} /></label>
                     <label className="mt-2 block text-[10px] text-slate-500">
                       对齐方式
                       <select
@@ -382,7 +331,7 @@ export default function ListViewCollectionDialog({
                         <option value="right">右对齐</option>
                       </select>
                     </label>
-                    {showImages && <label className="mt-2 block text-[10px] text-slate-500">图片编号<input type="number" min={-1} value={column.image} onChange={event => updateColumn(index, { image: Number(event.target.value) || 0 })} className={`${inputClass} mt-1`} /></label>}
+                    {showImages && <label className="mt-2 block text-[10px] text-slate-500">图片编号<NumberFieldInput ariaLabel={`第 ${index + 1} 列图片编号`} min={-1} value={column.image} onCommit={image => updateColumn(index, { image })} className={`${inputClass} mt-1`} /></label>}
                   </section>
                 ))}</div>
               </>
@@ -405,7 +354,7 @@ export default function ListViewCollectionDialog({
                     <tr key={row.id} className={isDarkMode ? 'hover:bg-white/[0.025]' : 'hover:bg-slate-100/60'}>
                       <td className={`sticky left-0 z-10 border-b p-2 text-center font-mono text-slate-500 ${isDarkMode ? 'bg-[#18181d]' : 'bg-slate-50'}`}>{rowIndex + 1}</td>
                       {columns.map((column, columnIndex) => <td key={columnIndex} className="border-b p-1.5"><input data-list-view-cell={`${rowIndex}-${columnIndex}`} aria-label={`第 ${rowIndex + 1} 行，${column.title || `第 ${columnIndex + 1} 列`}`} value={row.cells[columnIndex] ?? ''} onChange={event => updateRowCell(rowIndex, columnIndex, event.target.value)} onKeyDown={event => handleCellKeyDown(event, rowIndex, columnIndex)} onPaste={event => handleCellPaste(event, rowIndex, columnIndex)} className={inputClass} /></td>)}
-                      {showImages && <td className="border-b p-1.5"><input aria-label={`第 ${rowIndex + 1} 行图片编号`} type="number" min={-1} value={row.image} onChange={event => publishChange(columns, rows.map((item, index) => index === rowIndex ? { ...item, image: Number(event.target.value) || 0 } : item))} className={inputClass} /></td>}
+                      {showImages && <td className="border-b p-1.5"><NumberFieldInput ariaLabel={`第 ${rowIndex + 1} 行图片编号`} min={-1} value={row.image} onCommit={image => publishChange(columns, rows.map((item, index) => index === rowIndex ? { ...item, image } : item))} className={inputClass} /></td>}
                       <td className={`sticky right-0 z-10 border-b p-1.5 ${isDarkMode ? 'bg-[#18181d]' : 'bg-slate-50'}`}>{renderRowActions(rowIndex)}</td>
                     </tr>
                   ))}</tbody>
@@ -414,7 +363,7 @@ export default function ListViewCollectionDialog({
               <div className="space-y-2 md:hidden">{rows.map((row, rowIndex) => (
                 <section key={row.id} className={`rounded border p-3 ${isDarkMode ? 'border-[#3d3d46] bg-[#202026]' : 'border-slate-200 bg-white'}`}>
                   <div className="mb-2 flex items-center justify-between"><span className="text-xs font-semibold">第 {rowIndex + 1} 行</span>{renderRowActions(rowIndex)}</div>
-                  <div className="space-y-2">{columns.map((column, columnIndex) => <label key={columnIndex} className="block text-[10px] text-slate-500">{column.title || `列 ${columnIndex + 1}`}<input data-list-view-cell={`${rowIndex}-${columnIndex}`} value={row.cells[columnIndex] ?? ''} onChange={event => updateRowCell(rowIndex, columnIndex, event.target.value)} onKeyDown={event => handleCellKeyDown(event, rowIndex, columnIndex)} onPaste={event => handleCellPaste(event, rowIndex, columnIndex)} className={`${inputClass} mt-1`} /></label>)}{showImages && <label className="block text-[10px] text-slate-500">图片编号<input type="number" min={-1} value={row.image} onChange={event => publishChange(columns, rows.map((item, index) => index === rowIndex ? { ...item, image: Number(event.target.value) || 0 } : item))} className={`${inputClass} mt-1`} /></label>}</div>
+                  <div className="space-y-2">{columns.map((column, columnIndex) => <label key={columnIndex} className="block text-[10px] text-slate-500">{column.title || `列 ${columnIndex + 1}`}<input data-list-view-cell={`${rowIndex}-${columnIndex}`} value={row.cells[columnIndex] ?? ''} onChange={event => updateRowCell(rowIndex, columnIndex, event.target.value)} onKeyDown={event => handleCellKeyDown(event, rowIndex, columnIndex)} onPaste={event => handleCellPaste(event, rowIndex, columnIndex)} className={`${inputClass} mt-1`} /></label>)}{showImages && <label className="block text-[10px] text-slate-500">图片编号<NumberFieldInput ariaLabel={`第 ${rowIndex + 1} 行图片编号`} min={-1} value={row.image} onCommit={image => publishChange(columns, rows.map((item, index) => index === rowIndex ? { ...item, image } : item))} className={`${inputClass} mt-1`} /></label>}</div>
                 </section>
               ))}</div>
             </>

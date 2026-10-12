@@ -15,6 +15,7 @@ import {
   type RichListNodeDraft,
   type RichListTemplateDraft
 } from '../services/windowDesigner/newEmojiDataFormats';
+import NumberFieldInput from './NumberFieldInput';
 
 type RichListEditorTab = 'template' | 'items' | 'selection';
 
@@ -205,7 +206,7 @@ export default function NewEmojiRichListEditorDialog({
           </div>
           {tab === 'template' && <button type="button" onClick={addNode} className={buttonClass}><Plus className="h-3.5 w-3.5" />添加节点</button>}
           {tab === 'items' && <button type="button" onClick={addItem} disabled={dataColumns.length === 0} className={buttonClass}><Plus className="h-3.5 w-3.5" />添加项目</button>}
-          {tab === 'template' && <label className="ml-auto flex items-center gap-2 text-[11px]"><span className={isDarkMode ? 'text-slate-400' : 'text-slate-600'}>行高（像素，24~4096）</span><input aria-label="行高" type="number" min={24} max={4096} value={template.rowHeight} onChange={event => setTemplate(current => ({ ...current, rowHeight: clampRowHeight(Number(event.target.value)) }))} className={`${inputClass} w-24`} /></label>}
+          {tab === 'template' && <label className="ml-auto flex items-center gap-2 text-[11px]"><span className={isDarkMode ? 'text-slate-400' : 'text-slate-600'}>行高（像素，24~4096）</span><NumberFieldInput ariaLabel="行高" min={24} max={4096} value={template.rowHeight} onCommit={rowHeight => setTemplate(current => ({ ...current, rowHeight }))} className={`${inputClass} w-24`} /></label>}
           {tab === 'items' && <span className={`ml-auto text-[11px] ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>内容列来自行模板的「绑定字段」</span>}
         </div>
 
@@ -222,7 +223,7 @@ export default function NewEmojiRichListEditorDialog({
                       <td className="border-b p-1"><input aria-label={`第 ${index + 1} 个节点 ID`} defaultValue={node.id} onBlur={event => updateNodeById(node.id, event.target.value)} title="节点在本行内的唯一标识" className={inputClass} /></td>
                       <td className="border-b p-1"><input aria-label={`第 ${index + 1} 个节点绑定字段`} value={node.field} onChange={event => updateNode(node.id, { field: event.target.value })} placeholder="如 title" title="填写「项目数据」里的列名；留空表示只显示固定文本" className={inputClass} /></td>
                       <td className="border-b p-1"><input aria-label={`第 ${index + 1} 个节点固定文本`} value={node.text} onChange={event => updateNode(node.id, { text: event.target.value })} placeholder={node.type === 'button' ? '按钮文字' : '可选'} className={inputClass} /></td>
-                      {(['x', 'y', 'w', 'h'] as const).map(field => <td key={field} className="border-b p-1"><input aria-label={`第 ${index + 1} 个节点 ${field}`} type="number" value={node[field]} onChange={event => updateNode(node.id, { [field]: Math.max(0, Math.trunc(Number(event.target.value) || 0)) } as Partial<RichListNodeDraft>)} className={inputClass} /></td>)}
+                      {(['x', 'y', 'w', 'h'] as const).map(field => <td key={field} className="border-b p-1"><NumberFieldInput ariaLabel={`第 ${index + 1} 个节点 ${field}`} min={0} value={node[field]} onCommit={value => updateNode(node.id, { [field]: value } as Partial<RichListNodeDraft>)} className={inputClass} /></td>)}
                       <td className="border-b p-1"><div className="flex justify-end gap-0.5"><button type="button" aria-label={`选中第 ${index + 1} 个节点`} title="编辑详情" onClick={() => setActiveNodeId(node.id)} className={`${iconButton} ${activeNode?.id === node.id ? 'text-cyan-500' : ''}`}><LayoutList className="h-3.5 w-3.5" /></button><button type="button" aria-label={`上移第 ${index + 1} 个节点`} title="上移" disabled={index === 0} onClick={() => moveNode(index, index - 1)} className={iconButton}><ArrowUp className="h-3.5 w-3.5" /></button><button type="button" aria-label={`下移第 ${index + 1} 个节点`} title="下移" disabled={index === template.nodes.length - 1} onClick={() => moveNode(index, index + 1)} className={iconButton}><ArrowDown className="h-3.5 w-3.5" /></button><button type="button" aria-label={`删除第 ${index + 1} 个节点`} title="删除节点" onClick={() => deleteNode(node.id)} className={`${iconButton} text-rose-400`}><Trash2 className="h-3.5 w-3.5" /></button></div></td>
                     </tr>
                   ))}
@@ -241,7 +242,7 @@ export default function NewEmojiRichListEditorDialog({
                 </div>
                 <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
                   {(activeNode.type === 'text' || activeNode.type === 'icon') && <>
-                    <label className="text-[11px] text-slate-500">字号<input aria-label="节点字号" type="number" min={8} max={72} value={activeNode.size} onChange={event => updateNode(activeNode.id, { size: Math.min(72, Math.max(8, Math.trunc(Number(event.target.value) || 14))) })} className={`${inputClass} mt-1`} /></label>
+                    <label className="text-[11px] text-slate-500">字号<NumberFieldInput ariaLabel="节点字号" min={8} max={72} value={activeNode.size} onCommit={size => updateNode(activeNode.id, { size })} className={`${inputClass} mt-1`} /></label>
                     <label className="text-[11px] text-slate-500">字重<select aria-label="节点字重" value={String(activeNode.weight)} onChange={event => updateNode(activeNode.id, { weight: Number(event.target.value) })} className={`${inputClass} mt-1`}><option value="400">常规</option><option value="600">加粗</option><option value="700">特粗</option></select></label>
                     <label className="text-[11px] text-slate-500">颜色角色<select aria-label="节点颜色角色" value={activeNode.role} onChange={event => updateNode(activeNode.id, { role: event.target.value })} className={`${inputClass} mt-1`}><option value="">默认颜色</option><option value="primary">主要文字（亮）</option><option value="secondary">次要文字（暗）</option></select></label>
                     <label className="text-[11px] text-slate-500">水平对齐<select aria-label="节点水平对齐" value={String(activeNode.align)} onChange={event => updateNode(activeNode.id, { align: Number(event.target.value) })} className={`${inputClass} mt-1`}><option value="0">居左</option><option value="1">居中</option><option value="2">居右</option></select></label>
@@ -254,8 +255,8 @@ export default function NewEmojiRichListEditorDialog({
                   </>}
                   {activeNode.type === 'countdown' && <label className="text-[11px] text-slate-500">倒计时格式<input aria-label="倒计时格式" value={activeNode.format} onChange={event => updateNode(activeNode.id, { format: event.target.value })} placeholder="HH:mm:ss" className={`${inputClass} mt-1`} /></label>}
                   {activeNode.type === 'badge' && <>
-                    <label className="text-[11px] text-slate-500">徽标类型序号<input aria-label="徽标类型序号" type="number" min={0} value={activeNode.badgeType} onChange={event => updateNode(activeNode.id, { badgeType: Math.max(0, Math.trunc(Number(event.target.value) || 0)) })} className={`${inputClass} mt-1`} /></label>
-                    <label className="text-[11px] text-slate-500">数字最大值<input aria-label="徽标数字最大值" type="number" min={1} value={activeNode.badgeMax} onChange={event => updateNode(activeNode.id, { badgeMax: Math.max(1, Math.trunc(Number(event.target.value) || 99)) })} className={`${inputClass} mt-1`} /></label>
+                    <label className="text-[11px] text-slate-500">徽标类型序号<NumberFieldInput ariaLabel="徽标类型序号" min={0} value={activeNode.badgeType} onCommit={badgeType => updateNode(activeNode.id, { badgeType })} className={`${inputClass} mt-1`} /></label>
+                    <label className="text-[11px] text-slate-500">数字最大值<NumberFieldInput ariaLabel="徽标数字最大值" min={1} value={activeNode.badgeMax} onCommit={badgeMax => updateNode(activeNode.id, { badgeMax })} className={`${inputClass} mt-1`} /></label>
                     <label className="mt-5 flex items-center gap-1.5 text-[11px] text-slate-500"><input type="checkbox" checked={activeNode.dot} onChange={event => updateNode(activeNode.id, { dot: event.target.checked })} className="accent-cyan-500" />只显示小红点</label>
                   </>}
                 </div>

@@ -168,7 +168,7 @@ export function normalizeDataGridColumns(value: unknown): DataGridColumn[] {
     const record = asRecord(item) || {};
     const typeCandidate = asString(record.type) as DataGridColumnType;
     const type = COLUMN_TYPES.has(typeCandidate) ? typeCandidate : 'text';
-    const width = clamp(Math.round(asNumber(record.width, 140)), 32, 4000);
+    const width = clamp(Math.round(asNumber(record.width, 140)), 24, 4000);
     const minWidth = clamp(Math.round(asNumber(record.minWidth, 32)), 16, width);
     const maxWidth = clamp(Math.round(asNumber(record.maxWidth, Math.max(width, 600))), width, 8000);
     const alignmentCandidate = asString(record.alignment) as DataGridAlignment;

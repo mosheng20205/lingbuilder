@@ -39,6 +39,9 @@ test('DataGrid model normalizes stable ids, typed cells and column mutations', (
   });
   assert.deepEqual(model.columns.map(column => column.id), ['value', 'value_2', 'progress']);
   assert.deepEqual(model.columns.map(column => column.alignment), ['center', 'center', 'center']);
+  // 宽度下限 24：与 NE 引擎表头拖拽下限对齐（引擎 kv 路径本身无下限钳制）。
+  const narrow = normalizeDataGridModel({ columns: [{ id: 'narrow', title: '窄列', type: 'text', width: 20 }] as any, rows: [] as any });
+  assert.equal(narrow.columns[0].width, 24);
   assert.equal(model.rows[0].cells.value, 42);
   assert.equal(model.rows[0].cells.value_2, true);
   assert.equal(model.rows[0].cells.progress, 20);

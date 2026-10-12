@@ -9,6 +9,7 @@ import {
   type DesignerImageResource
 } from '../services/windowDesigner/designerAssetClient';
 import { PropertyGroup } from './PropertyGroup';
+import NumberFieldInput from './NumberFieldInput';
 
 interface ImageListResourceEditorProps {
   projectId: string;
@@ -150,8 +151,8 @@ export default function ImageListResourceEditor({
                 </div>
                 <div className="text-[9px] text-slate-500">资源 ID：{resource.id}</div>
                 <div className="flex gap-1">
-                  <input aria-label="图像宽度" type="number" min={1} value={resource.imageWidth} onChange={event => update(resource.id, { imageWidth: Math.max(1, Number(event.target.value) || 1) })} className={inputClass} />
-                  <input aria-label="图像高度" type="number" min={1} value={resource.imageHeight} onChange={event => update(resource.id, { imageHeight: Math.max(1, Number(event.target.value) || 1) })} className={inputClass} />
+                  <NumberFieldInput ariaLabel="图像宽度" min={1} value={resource.imageWidth} onCommit={imageWidth => update(resource.id, { imageWidth })} className={inputClass} />
+                  <NumberFieldInput ariaLabel="图像高度" min={1} value={resource.imageHeight} onCommit={imageHeight => update(resource.id, { imageHeight })} className={inputClass} />
                 </div>
                 {resource.images.length === 0 ? (
                   <div className={`rounded border border-dashed px-2 py-1.5 text-[9px] text-slate-500 ${isDarkMode ? 'border-[#3c3c44]' : 'border-slate-300'}`}>
