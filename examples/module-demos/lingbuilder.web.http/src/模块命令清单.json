@@ -1,19 +1,19 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.998Z",
+  "generatedAt": "2026-10-09T15:38:47.449Z",
   "module": {
     "id": "lingbuilder.web.http",
     "name": "网页访问模块",
-    "version": "1.1.1",
-    "description": "基于 Windows WinHTTP 封装易语言风格的网页_访问_对象命令，支持 GET、POST、Cookie、请求头、响应头、状态码、代理、超时和重定向控制。"
+    "version": "1.3.0",
+    "description": "基于 Windows WinHTTP 封装易语言风格的网页_访问_对象命令，支持 GET、POST、Cookie、请求头、响应头、状态码、代理、超时和重定向控制，并提供回到 UI 主线程的网页_异步访问后台线程命令族（1.3.0 起异步命令支持请求头/正文/代理/超时/重定向等完整参数）。"
   },
-  "commandCount": 12,
+  "commandCount": 13,
   "commands": [
     {
       "index": 1,
       "name": "网页_异步访问",
-      "signature": "网页_异步访问(网址, 访问方式, 完成处理器)",
-      "description": "在受控后台线程中访问网页，立即返回请求编号；完成处理器使用 &处理器名 引用，并在 UI 主线程执行。",
+      "signature": "网页_异步访问(网址, 访问方式, 完成处理器, 提交信息, 提交Cookies, 附加协议头, 禁止重定向, 字节集提交, 代理地址, 超时, 代理用户名, 代理密码, 代理标识, 是否自动合并更新Cookie, 是否补全必要协议头, 是否处理协议头大小写)",
+      "description": "在受控后台线程中访问网页，立即返回请求编号；完成处理器使用 &处理器名 引用，并在 UI 主线程执行。1.3.0 起可选参数与 网页_访问_对象 对齐：POST/PUT/PATCH 正文用 提交信息（自动 UTF-8）或 字节集提交，UA/自定义请求头经 附加协议头 传入（一行一个协议头，如 \"User-Agent: Mozilla/5.0 ...\"；传了 User-Agent 就不再补默认头），支持 Cookie、代理、超时与禁止重定向。省略的尾部参数按默认值处理，旧三参调用完全兼容。默认 UA 被网关拒绝（412/302 验证码）只是栈指纹问题的表象——需要 TLS/HTTP2 指纹画像仍应改用 net.http-client。",
       "insertText": "网页_异步访问(\"${1:https://example.com}\", 0, &${2:网页访问完成})",
       "returnType": "整数型",
       "returnDescription": "成功启动时返回大于 0 的请求编号，用于读取本次请求的文本、状态码和错误信息；返回 0 表示网址或完成处理器无效，或者后台线程未能启动。此返回值不是 HTTP 状态码。",
@@ -35,24 +35,85 @@
             "name": "完成处理器",
             "type": "handler",
             "description": "当前窗口中的无参数事件或方法引用，使用 &处理器名"
+          },
+          {
+            "name": "提交信息",
+            "type": "wideString",
+            "description": "POST/PUT/PATCH 正文，自动 UTF-8 编码；省略时不发正文。"
+          },
+          {
+            "name": "提交Cookies",
+            "type": "wideString",
+            "description": "请求携带的 Cookie 文本，形如 name=value; name2=value2。"
+          },
+          {
+            "name": "附加协议头",
+            "type": "wideString",
+            "description": "一行一个协议头（如 User-Agent: xxx\\r\\nReferer: yyy）；传了 User-Agent 后不再自动补默认头。"
+          },
+          {
+            "name": "禁止重定向",
+            "type": "bool",
+            "description": "为真时禁止 WinHTTP 自动重定向，网关 302 直接以 302 状态码返回。"
+          },
+          {
+            "name": "字节集提交",
+            "type": "bytes",
+            "description": "以字节集作为请求正文提交（优先于 提交信息，用于二进制/预编码正文）。"
+          },
+          {
+            "name": "代理地址",
+            "type": "wideString",
+            "description": "格式如 8.8.8.8:88；与 代理标识 配合。"
+          },
+          {
+            "name": "超时",
+            "type": "int",
+            "description": "秒，默认 15，-1 为无限等待"
+          },
+          {
+            "name": "代理用户名",
+            "type": "wideString",
+            "description": "代理身份验证用户名。"
+          },
+          {
+            "name": "代理密码",
+            "type": "wideString",
+            "description": "代理身份验证密码。"
+          },
+          {
+            "name": "代理标识",
+            "type": "int",
+            "description": "默认 1，0 使用系统默认代理"
+          },
+          {
+            "name": "是否自动合并更新Cookie",
+            "type": "bool",
+            "description": "为真时自动合并响应中的 Cookie（仅影响本次请求内合并）。"
+          },
+          {
+            "name": "是否补全必要协议头",
+            "type": "bool",
+            "description": "为真时在未传 User-Agent 的情况下自动补默认 User-Agent。"
+          },
+          {
+            "name": "是否处理协议头大小写",
+            "type": "bool",
+            "description": "为真时统一协议头名称大小写。"
           }
         ],
         "returnType": "int",
         "encoding": "wide",
-        "targetIds": [
-          "windows-msvc-win32",
-          "windows-msvc-x64"
-        ],
-        "example": "网页_异步访问(\"https://example.com\", 0, &网页访问完成)"
+        "example": "网页_异步访问(\"https://ipinfo.io/json\", 0, &获取IP完成)"
       },
-      "demoInvocation": "网页_异步访问(\"https://example.com\", 1, &模块演示回调)"
+      "demoInvocation": "网页_异步访问(\"https://example.com\", 1, &模块演示回调, \"演示参数4\", \"演示参数5\", \"演示参数6\", 真, {}, \"https://example.com\", 1, \"演示参数11\", \"演示参数12\", 1, 真, 真, 真)"
     },
     {
       "index": 2,
       "name": "网页_异步取返回文本",
       "signature": "网页_异步取返回文本(请求编号)",
       "description": "按请求编号读取异步网页访问的 UTF-8 文本结果。",
-      "insertText": "网页_异步取返回文本(${1:请求编号})",
+      "insertText": "网页_异步取返回文本($1)",
       "returnType": "文本型",
       "binding": {
         "command": "网页_异步取返回文本",
@@ -60,14 +121,12 @@
         "parameters": [
           {
             "name": "请求编号",
-            "type": "int"
+            "type": "int",
+            "description": "网页_异步访问 返回的请求编号。"
           }
         ],
         "returnType": "wideString",
-        "targetIds": [
-          "windows-msvc-win32",
-          "windows-msvc-x64"
-        ]
+        "encoding": "wide"
       },
       "demoInvocation": "网页_异步取返回文本(1)"
     },
@@ -76,7 +135,7 @@
       "name": "网页_异步取状态代码",
       "signature": "网页_异步取状态代码(请求编号)",
       "description": "按请求编号读取 HTTP 状态代码。",
-      "insertText": "网页_异步取状态代码(${1:请求编号})",
+      "insertText": "网页_异步取状态代码($1)",
       "returnType": "整数型",
       "binding": {
         "command": "网页_异步取状态代码",
@@ -84,14 +143,11 @@
         "parameters": [
           {
             "name": "请求编号",
-            "type": "int"
+            "type": "int",
+            "description": "网页_异步访问 返回的请求编号。"
           }
         ],
-        "returnType": "int",
-        "targetIds": [
-          "windows-msvc-win32",
-          "windows-msvc-x64"
-        ]
+        "returnType": "int"
       },
       "demoInvocation": "网页_异步取状态代码(1)"
     },
@@ -100,7 +156,7 @@
       "name": "网页_异步取错误信息",
       "signature": "网页_异步取错误信息(请求编号)",
       "description": "按请求编号读取异步访问的中文错误信息。",
-      "insertText": "网页_异步取错误信息(${1:请求编号})",
+      "insertText": "网页_异步取错误信息($1)",
       "returnType": "文本型",
       "binding": {
         "command": "网页_异步取错误信息",
@@ -108,19 +164,39 @@
         "parameters": [
           {
             "name": "请求编号",
-            "type": "int"
+            "type": "int",
+            "description": "网页_异步访问 返回的请求编号。"
           }
         ],
         "returnType": "wideString",
-        "targetIds": [
-          "windows-msvc-win32",
-          "windows-msvc-x64"
-        ]
+        "encoding": "wide"
       },
       "demoInvocation": "网页_异步取错误信息(1)"
     },
     {
       "index": 5,
+      "name": "网页_异步取返回协议头",
+      "signature": "网页_异步取返回协议头(请求编号)",
+      "description": "按请求编号读取异步网页访问的完整响应协议头（首行状态行 + CRLF 响应头，形如 网页_取返回协议头 的异步版）；Xy-Ter-Str 这类只出现在响应头里的取值用它。请求尚未完成或编号不存在时返回空文本。需要 TLS 指纹/代理画像的场景请改用 net.http-client（网页_异步访问 走裸 WinHTTP，容易被网关 302 到验证码页）。",
+      "insertText": "网页_异步取返回协议头($1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "网页_异步取返回协议头",
+        "runtimeName": "网页_异步取返回协议头",
+        "parameters": [
+          {
+            "name": "请求编号",
+            "type": "int",
+            "description": "网页_异步访问 返回的请求编号。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "网页_异步取返回协议头(1)"
+    },
+    {
+      "index": 6,
       "name": "网页_异步取当前请求编号",
       "signature": "网页_异步取当前请求编号()",
       "description": "在异步完成处理器中读取当前正在分发的请求编号。",
@@ -130,20 +206,16 @@
         "command": "网页_异步取当前请求编号",
         "runtimeName": "网页_异步取当前请求编号",
         "parameters": [],
-        "returnType": "int",
-        "targetIds": [
-          "windows-msvc-win32",
-          "windows-msvc-x64"
-        ]
+        "returnType": "int"
       },
       "demoInvocation": "网页_异步取当前请求编号()"
     },
     {
-      "index": 6,
+      "index": 7,
       "name": "网页_异步取消",
       "signature": "网页_异步取消(请求编号)",
       "description": "标记取消指定异步请求；当前 WinHTTP 请求返回后会以已取消状态分发完成处理器。",
-      "insertText": "网页_异步取消(${1:请求编号})",
+      "insertText": "网页_异步取消($1)",
       "returnType": "逻辑型",
       "binding": {
         "command": "网页_异步取消",
@@ -151,24 +223,22 @@
         "parameters": [
           {
             "name": "请求编号",
-            "type": "int"
+            "type": "int",
+            "description": "网页_异步访问 返回的请求编号。"
           }
         ],
-        "returnType": "bool",
-        "targetIds": [
-          "windows-msvc-win32",
-          "windows-msvc-x64"
-        ]
+        "returnType": "bool"
       },
       "demoInvocation": "网页_异步取消(1)"
     },
     {
-      "index": 7,
+      "index": 8,
       "name": "网页_访问_对象",
       "signature": "网页_访问_对象(网址, 访问方式, 提交信息, 提交Cookies, 返回Cookies, 附加协议头, 返回协议头, 返回状态代码, 禁止重定向, 字节集提交, 代理地址, 超时, 代理用户名, 代理密码, 代理标识, 对象继承, 是否自动合并更新Cookie, 是否补全必要协议头, 是否处理协议头大小写)",
       "description": "使用 WinHTTP 对象方式访问网页。访问方式：0=GET，1=POST，2=HEAD，3=PUT，4=OPTIONS，5=DELETE，6=TRACE，7=CONNECT，8=PATCH。",
       "insertText": "网页_访问_对象(\"${1:https://example.com}\", 0)",
       "returnType": "字节集",
+      "returnDescription": "返回 HTTP 响应体的原始字节集；请求失败返回空字节集，可通过 网页_取错误信息 读取中文错误、网页_取返回状态代码 读取状态码。",
       "binding": {
         "command": "网页_访问_对象",
         "runtimeName": "网页_访问_对象",
@@ -196,7 +266,7 @@
           {
             "name": "返回Cookies",
             "type": "wideString",
-            "description": "当前生成器暂以最近一次结果函数读取"
+            "description": "当前生成器暂以 网页_取返回Cookies 读取"
           },
           {
             "name": "附加协议头",
@@ -206,20 +276,22 @@
           {
             "name": "返回协议头",
             "type": "wideString",
-            "description": "当前生成器暂以最近一次结果函数读取"
+            "description": "当前生成器暂以 网页_取返回协议头 读取"
           },
           {
             "name": "返回状态代码",
             "type": "int",
-            "description": "当前生成器暂以最近一次结果函数读取"
+            "description": "当前生成器暂以 网页_取返回状态代码 读取"
           },
           {
             "name": "禁止重定向",
-            "type": "bool"
+            "type": "bool",
+            "description": "为真时禁止自动重定向。"
           },
           {
             "name": "字节集提交",
-            "type": "bytes"
+            "type": "bytes",
+            "description": "以字节集作为请求正文提交。"
           },
           {
             "name": "代理地址",
@@ -233,11 +305,13 @@
           },
           {
             "name": "代理用户名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "代理身份验证用户名。"
           },
           {
             "name": "代理密码",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "代理身份验证密码。"
           },
           {
             "name": "代理标识",
@@ -251,29 +325,28 @@
           },
           {
             "name": "是否自动合并更新Cookie",
-            "type": "bool"
+            "type": "bool",
+            "description": "为真时自动合并响应中的 Cookie。"
           },
           {
             "name": "是否补全必要协议头",
-            "type": "bool"
+            "type": "bool",
+            "description": "为真时自动补全 Referer、User-Agent 等必要协议头。"
           },
           {
             "name": "是否处理协议头大小写",
-            "type": "bool"
+            "type": "bool",
+            "description": "为真时统一协议头名称大小写。"
           }
         ],
         "returnType": "bytes",
         "encoding": "wide",
-        "targetIds": [
-          "windows-msvc-win32",
-          "windows-msvc-x64"
-        ],
         "example": "网页_访问_对象(\"https://example.com\", 0)"
       },
       "demoInvocation": "网页_访问_对象(\"https://example.com\", 1, \"演示参数3\", \"演示参数4\", \"演示参数5\", \"演示参数6\", \"演示参数7\", 1, 真, {}, \"https://example.com\", 1, \"演示参数13\", \"演示参数14\", 1, 0, 真, 真, 真)"
     },
     {
-      "index": 8,
+      "index": 9,
       "name": "网页_取返回文本",
       "signature": "网页_取返回文本()",
       "description": "读取最近一次网页_访问_对象返回的 UTF-8 文本内容。",
@@ -284,17 +357,12 @@
         "runtimeName": "网页_取返回文本",
         "parameters": [],
         "returnType": "wideString",
-        "encoding": "wide",
-        "targetIds": [
-          "windows-msvc-win32",
-          "windows-msvc-x64"
-        ],
-        "example": "网页_取返回文本()"
+        "encoding": "wide"
       },
       "demoInvocation": "网页_取返回文本()"
     },
     {
-      "index": 9,
+      "index": 10,
       "name": "网页_取返回Cookies",
       "signature": "网页_取返回Cookies()",
       "description": "读取最近一次网页_访问_对象返回的 Cookie。",
@@ -305,17 +373,12 @@
         "runtimeName": "网页_取返回Cookies",
         "parameters": [],
         "returnType": "wideString",
-        "encoding": "wide",
-        "targetIds": [
-          "windows-msvc-win32",
-          "windows-msvc-x64"
-        ],
-        "example": "网页_取返回Cookies()"
+        "encoding": "wide"
       },
       "demoInvocation": "网页_取返回Cookies()"
     },
     {
-      "index": 10,
+      "index": 11,
       "name": "网页_取返回协议头",
       "signature": "网页_取返回协议头()",
       "description": "读取最近一次网页_访问_对象返回的响应协议头。",
@@ -326,17 +389,12 @@
         "runtimeName": "网页_取返回协议头",
         "parameters": [],
         "returnType": "wideString",
-        "encoding": "wide",
-        "targetIds": [
-          "windows-msvc-win32",
-          "windows-msvc-x64"
-        ],
-        "example": "网页_取返回协议头()"
+        "encoding": "wide"
       },
       "demoInvocation": "网页_取返回协议头()"
     },
     {
-      "index": 11,
+      "index": 12,
       "name": "网页_取返回状态代码",
       "signature": "网页_取返回状态代码()",
       "description": "读取最近一次网页_访问_对象返回的 HTTP 状态代码。",
@@ -346,18 +404,12 @@
         "command": "网页_取返回状态代码",
         "runtimeName": "网页_取返回状态代码",
         "parameters": [],
-        "returnType": "int",
-        "encoding": "wide",
-        "targetIds": [
-          "windows-msvc-win32",
-          "windows-msvc-x64"
-        ],
-        "example": "网页_取返回状态代码()"
+        "returnType": "int"
       },
       "demoInvocation": "网页_取返回状态代码()"
     },
     {
-      "index": 12,
+      "index": 13,
       "name": "网页_取错误信息",
       "signature": "网页_取错误信息()",
       "description": "读取最近一次网页访问失败时的中文错误信息。",
@@ -368,12 +420,7 @@
         "runtimeName": "网页_取错误信息",
         "parameters": [],
         "returnType": "wideString",
-        "encoding": "wide",
-        "targetIds": [
-          "windows-msvc-win32",
-          "windows-msvc-x64"
-        ],
-        "example": "网页_取错误信息()"
+        "encoding": "wide"
       },
       "demoInvocation": "网页_取错误信息()"
     }

@@ -8,9 +8,9 @@ export const WEB_HTTP_MODULE: LingBuilderModuleManifest = {
   ...createStandardModule({
     id: 'lingbuilder.web.http',
     name: '网页访问模块',
-    version: '1.2.0',
+    version: '1.3.0',
     category: '网络',
-    description: '基于 Windows WinHTTP 封装易语言风格的网页_访问_对象命令，支持 GET、POST、Cookie、请求头、响应头、状态码、代理、超时和重定向控制，并提供回到 UI 主线程的网页_异步访问后台线程命令族。',
+    description: '基于 Windows WinHTTP 封装易语言风格的网页_访问_对象命令，支持 GET、POST、Cookie、请求头、响应头、状态码、代理、超时和重定向控制，并提供回到 UI 主线程的网页_异步访问后台线程命令族（1.3.0 起异步命令支持请求头/正文/代理/超时/重定向等完整参数）。',
     tags: ['网络', 'HTTP', 'HTTPS', 'WinHTTP', '易语言兼容', '异步'],
     docs: [{ title: '网页访问模块使用说明', path: 'docs/modules/web-http/README.md' }],
     snippets: [
@@ -28,22 +28,40 @@ export const WEB_HTTP_MODULE: LingBuilderModuleManifest = {
         label: '网页异步访问',
         insertText: '网页_异步访问("https://example.com", 0, &网页访问完成)',
         description: '在窗口事件中启动后台线程访问，完成处理器在 UI 主线程执行。'
+      },
+      {
+        label: '网页异步访问带请求头',
+        insertText: '网页_异步访问("${1:https://example.com/api}", ${2:0}, &${3:网页访问完成}, "${4:}", "", "User-Agent: ${5:Mozilla/5.0 (Windows NT 10.0; Win64; x64)}")',
+        description: '1.3.0 起：默认 UA 被网关拒绝（412/302 验证码）或需要 POST 正文时，尾部可选参数传 提交信息/提交Cookies/附加协议头；需要 TLS/HTTP2 指纹画像请改用 net.http-client。'
       }
     ],
     commands: [
       {
         name: '网页_异步访问',
-        signature: '网页_异步访问(网址, 访问方式, 完成处理器)',
-        description: '在受控后台线程中访问网页，立即返回请求编号；完成处理器使用 &处理器名 引用，并在 UI 主线程执行。',
+        signature: '网页_异步访问(网址, 访问方式, 完成处理器, 提交信息, 提交Cookies, 附加协议头, 禁止重定向, 字节集提交, 代理地址, 超时, 代理用户名, 代理密码, 代理标识, 是否自动合并更新Cookie, 是否补全必要协议头, 是否处理协议头大小写)',
+        description: '在受控后台线程中访问网页，立即返回请求编号；完成处理器使用 &处理器名 引用，并在 UI 主线程执行。1.3.0 起可选参数与 网页_访问_对象 对齐：POST/PUT/PATCH 正文用 提交信息（自动 UTF-8）或 字节集提交，UA/自定义请求头经 附加协议头 传入（一行一个协议头，如 "User-Agent: Mozilla/5.0 ..."；传了 User-Agent 就不再补默认头），支持 Cookie、代理、超时与禁止重定向。省略的尾部参数按默认值处理，旧三参调用完全兼容。默认 UA 被网关拒绝（412/302 验证码）只是栈指纹问题的表象——需要 TLS/HTTP2 指纹画像仍应改用 net.http-client。',
         insertText: '网页_异步访问("${1:https://example.com}", 0, &${2:网页访问完成})',
         parameters: [
           { name: '网址', type: 'wideString', description: '要访问的完整 HTTP/HTTPS 地址，例如 https://ipinfo.io/json。' },
           { name: '访问方式', type: 'int', description: '0=GET，1=POST，2=HEAD，3=PUT，4=OPTIONS，5=DELETE，6=TRACE，7=CONNECT，8=PATCH' },
-          { name: '完成处理器', type: 'handler', description: '当前窗口中的无参数事件或方法引用，使用 &处理器名' }
+          { name: '完成处理器', type: 'handler', description: '当前窗口中的无参数事件或方法引用，使用 &处理器名' },
+          { name: '提交信息', type: 'wideString', description: 'POST/PUT/PATCH 正文，自动 UTF-8 编码；省略时不发正文。' },
+          { name: '提交Cookies', type: 'wideString', description: '请求携带的 Cookie 文本，形如 name=value; name2=value2。' },
+          { name: '附加协议头', type: 'wideString', description: '一行一个协议头（如 User-Agent: xxx\\r\\nReferer: yyy）；传了 User-Agent 后不再自动补默认头。' },
+          { name: '禁止重定向', type: 'bool', description: '为真时禁止 WinHTTP 自动重定向，网关 302 直接以 302 状态码返回。' },
+          { name: '字节集提交', type: 'bytes', description: '以字节集作为请求正文提交（优先于 提交信息，用于二进制/预编码正文）。' },
+          { name: '代理地址', type: 'wideString', description: '格式如 8.8.8.8:88；与 代理标识 配合。' },
+          { name: '超时', type: 'int', description: '秒，默认 15，-1 为无限等待' },
+          { name: '代理用户名', type: 'wideString', description: '代理身份验证用户名。' },
+          { name: '代理密码', type: 'wideString', description: '代理身份验证密码。' },
+          { name: '代理标识', type: 'int', description: '默认 1，0 使用系统默认代理' },
+          { name: '是否自动合并更新Cookie', type: 'bool', description: '为真时自动合并响应中的 Cookie（仅影响本次请求内合并）。' },
+          { name: '是否补全必要协议头', type: 'bool', description: '为真时在未传 User-Agent 的情况下自动补默认 User-Agent。' },
+          { name: '是否处理协议头大小写', type: 'bool', description: '为真时统一协议头名称大小写。' }
         ],
         returnType: 'int',
         returnDescription: '成功启动时返回大于 0 的请求编号，用于读取本次请求的文本、状态码和错误信息；返回 0 表示网址或完成处理器无效，或者后台线程未能启动。此返回值不是 HTTP 状态码。',
-        example: '网页_异步访问("https://example.com", 0, &网页访问完成)'
+        example: '网页_异步访问("https://ipinfo.io/json", 0, &获取IP完成)'
       },
       {
         name: '网页_异步取返回文本',
