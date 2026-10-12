@@ -1,4 +1,4 @@
-import { LingBuilderModuleManifest, ModuleBindingValueType, ModuleCommandBindingParameter } from './types';
+import { LingBuilderModuleManifest, ModuleBindingValueType, ModuleCommandBindingParameter, ModuleConstantContribution } from './types';
 import { createStandardModule, StandardCommandSpec } from './standardLibraryModules';
 import { createModuleBindingSnippetArgument } from './bindingValueType';
 
@@ -33,12 +33,20 @@ function command(name: string, parameters: Parameter[], returnType: ModuleBindin
   };
 }
 
-const archive = createStandardModule({ id: 'lingbuilder.archive', name: 'ZIP压缩模块', category: '系统', description: '通过 Windows 自带 tar.exe 的受控参数封装创建、解压和列出 ZIP，不开放任意命令行。', tags: ['压缩', 'ZIP'], commands: [
+const archive = createStandardModule({ id: 'lingbuilder.archive', name: 'ZIP压缩模块', version: '1.1.0', category: '系统', description: '通过 Windows 自带 tar.exe 的受控参数封装创建、解压和列出 ZIP，不开放任意命令行；内存字节集形态的 DEFLATE/ZLIB/GZIP 压缩解压由随包公共域 miniz 3.0.2 静态内联实现（随包 Botan 未编译 zlib、Windows 无系统 zlib，故不新增任何 DLL 依赖），失败统一返回空字节集并用 压缩_取错误() 给出中文原因。', tags: ['压缩', 'ZIP', 'deflate', 'gzip'], commands: [
   command('压缩_ZIP创建', [{ name: '来源路径', type: 'wideString', description: '要打包的文件或目录路径；以它的父目录为工作目录、文件名作为条目写入 ZIP。路径不能含双引号、回车或换行。'}, { name: 'ZIP路径', type: 'wideString', description: `${zipPathArg}目标已存在时会被覆盖。`}], 'bool', '把文件或目录创建为 ZIP。'),
   command('压缩_ZIP解压', [{ name: 'ZIP路径', type: 'wideString', description: zipPathArg}, { name: '目标目录', type: 'wideString', description: '解压目标目录；目录不存在时会递归创建，路径不能含双引号、回车或换行。'}], 'bool', '解压 ZIP 到目标目录。'),
   command('压缩_ZIP列出', [{ name: 'ZIP路径', type: 'wideString', description: `${zipPathArg}返回的条目按行分隔，失败返回空文本。`}], 'wideString', '返回 ZIP 内文件列表。'),
-  command('压缩_取错误', [], 'wideString', '返回最近压缩错误。')
+  command('压缩_取错误', [], 'wideString', '返回最近压缩错误。'),
+  command('压缩_DEFLATE解压', [{ name: '数据', type: 'bytes', description: 'raw deflate 流（RFC1951，无 zlib/gzip 容器头）；空字节集或截断流返回空字节集，解压输出超过 67108864 字节（#压缩_解压上限字节）时中止并返回空字节集。'}], 'bytes', '把 raw deflate 字节流解压回原始字节集；失败返回空字节集，中文原因用 压缩_取错误() 查看。与 压缩_DEFLATE压缩 互为逆操作。', '局部 字节集 压缩流\n压缩流 = 压缩_DEFLATE压缩(字节集_从文本("LingBuilder"))\n调试输出(字节集_长度(压缩_DEFLATE解压(压缩流)))', { insertText: '压缩_DEFLATE解压($1)' }),
+  command('压缩_ZLIB解压', [{ name: '数据', type: 'bytes', description: 'zlib 容器流（RFC1950，CMF/FLG 头 + Adler32 校验，不支持 FDICT 预设字典）；头无效、截断或校验失败返回空字节集。'}], 'bytes', '解压 zlib 容器字节流为原始字节集（Adler32 自动校验）；失败返回空字节集，原因用 压缩_取错误() 查看。', '局部 字节集 明文\n明文 = 压缩_ZLIB解压(压缩包数据)\n调试输出(字节集_长度(明文))', { insertText: '压缩_ZLIB解压($1)' }),
+  command('压缩_GZIP解压', [{ name: '数据', type: 'bytes', description: 'gzip 容器流（RFC1952，10 字节头 + deflate 正文 + CRC32/ISIZE 尾；FEXTRA/FNAME/FCOMMENT/FHCRC 可选字段自动跳过）；魔数、校验或长度不符时返回空字节集。'}], 'bytes', '解压 gzip 容器字节流为原始字节集（CRC32 与 ISIZE 自动校验）；失败返回空字节集，原因用 压缩_取错误() 查看。与 压缩_GZIP压缩 互为逆操作。', '调试输出(字节集_长度(压缩_GZIP解压(压缩_GZIP压缩(字节集_从文本("压缩往返测试")))))', { insertText: '压缩_GZIP解压($1)' }),
+  command('压缩_DEFLATE压缩', [{ name: '数据', type: 'bytes', description: '要压缩的原始字节集；空字节集返回标准空 deflate 流（03 00），不是错误。'}], 'bytes', '把字节集压缩为 raw deflate 流（RFC1951，级别 6，无容器头）；失败返回空字节集，原因用 压缩_取错误() 查看。', '局部 字节集 压缩流\n压缩流 = 压缩_DEFLATE压缩(字节集_从文本("LingBuilder"))', { insertText: '压缩_DEFLATE压缩($1)' }),
+  command('压缩_GZIP压缩', [{ name: '数据', type: 'bytes', description: '要压缩的原始字节集；空字节集产出的仍是合法 gzip（空 deflate 流）。'}], 'bytes', '把字节集压缩为 gzip 容器（RFC1952，MTIME=0/OS=255 的确定性输出，便于逐字节对拍）；失败返回空字节集，原因用 压缩_取错误() 查看。', '局部 字节集 压缩包\n压缩包 = 压缩_GZIP压缩(字节集_从文本("LingBuilder 压缩演示"))', { insertText: '压缩_GZIP压缩($1)' })
 ] });
+archive.contributes.constants = [
+  { name: '压缩_解压上限字节', type: '整数型', value: 67108864, description: '内存解压（压缩_DEFLATE/ZLIB/GZIP解压）的固定输出上限；超过即中止并返回空字节集（zip-bomb 防护），诊断文本会原样报出该值。供 .lcpp 与外部 AI 预判输入规模，运行时上限随生成工程固定为同一数值。' }
+] satisfies ModuleConstantContribution[];
 
 const mail = createStandardModule({ id: 'lingbuilder.net.mail', name: 'SMTP邮件模块', category: '网络', description: '提供普通 SMTP 或局域网调试服务发送；当前版本不支持 TLS，遇到要求 STARTTLS 的服务会明确失败。', tags: ['邮件', 'SMTP'], commands: [
   command('SMTP_发送普通邮件', [{ name: '主机', type: 'wideString', description: 'SMTP 服务器主机名或 IP，同时尝试 IPv4 与 IPv6。'}, { name: '端口', type: 'int', description: 'SMTP 端口，1 到 65535；本模块不启用 TLS，服务端强制 STARTTLS 时会失败。'}, { name: '用户名', type: 'wideString', description: '登录账号；空文本表示跳过 AUTH LOGIN 匿名发送。'}, { name: '密码', type: 'wideString', description: '登录密码，随 AUTH LOGIN 以 Base64 明文传输，仅在可信内网或回环服务上使用。'}, { name: '发件人', type: 'wideString', description: 'MAIL FROM 使用的发件地址，不写尖括号。'}, { name: '收件人', type: 'wideString', description: 'RCPT TO 使用的单个收件地址；需要多个收件人时自行循环发送。'}, { name: '主题', type: 'wideString', description: '邮件主题，按 UTF-8 Base64 编码为编码字形式写入标题头。'}, { name: '正文', type: 'wideString', description: '纯文本正文，按 UTF-8 以 8bit 传输；每步服务响应等待超时固定 30 秒。'}], 'bool', '通过不加密 SMTP 发送 UTF-8 文本邮件。'),
