@@ -144,6 +144,8 @@ export default defineConfig({
             { text: '模块开发', link: '/guide/tutorials/module-dev' },
             { text: '外部 AI 连接 MCP', link: '/guide/tutorials/ai-bridge-mcp' },
             { text: 'LCPP 源码包分享', link: '/guide/tutorials/lcpp-source-package' },
+            { text: '安装包导出', link: '/guide/tutorials/installer-export' },
+            { text: '构建目录与产物名', link: '/guide/tutorials/build-directory' },
           ],
         },
       ],
