@@ -17,6 +17,8 @@ export interface UpdateDialogInfo {
   /** 云端发布时间（ISO 字符串）：更新日志与下载窗口展示发布日期。 */
   publishedAt?: string | null;
   channel?: string | null;
+  /** 上次更新尝试未生效时的主进程诊断说明（核心文件被 MCP 宿主占用等），直接展示给用户。 */
+  attemptFailureNotice?: string;
 }
 
 interface UpdateProgressSnapshot {
@@ -159,6 +161,12 @@ export default function UpdateDialog({ open, info, currentVersionLabel, isDarkMo
             {info.releaseNotes && <p className={`mt-2 max-h-28 overflow-y-auto whitespace-pre-wrap text-[11px] leading-5 ${muted}`}>{info.releaseNotes}</p>}
             {notice && <p className={`mt-2 text-[11px] ${muted}`} role="status">{notice}</p>}
             {actionError && <p className="mt-2 text-[11px] leading-5 text-rose-500" role="alert">{actionError}</p>}
+            {info.attemptFailureNotice && (
+              <div className="mt-2 flex items-start gap-2 rounded border border-rose-500/40 bg-rose-500/10 p-2.5 text-[11px] leading-5 text-rose-500" role="alert">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <span>{info.attemptFailureNotice}</span>
+              </div>
+            )}
             <div className="mt-4 flex flex-wrap justify-end gap-2">
               {inAppAvailable && <button type="button" onClick={() => void startDownload()} className={primaryButton}>{isPreview ? '立即体验' : '立即更新'}</button>}
               <button type="button" onClick={openOfficialSite} className={inAppAvailable ? secondaryButton : primaryButton}>前往官网下载</button>
@@ -211,6 +219,12 @@ export default function UpdateDialog({ open, info, currentVersionLabel, isDarkMo
                 ? '校验通过，安装向导即将打开，LingBuilder 会自动退出。'
                 : `更新包已下载并通过完整性校验。安装向导将引导你完成更新，LingBuilder 会自动退出。`}
             </p>
+            {info.attemptFailureNotice && (
+              <div className="mt-2 flex items-start gap-2 rounded border border-rose-500/40 bg-rose-500/10 p-2.5 text-[11px] leading-5 text-rose-500" role="alert">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <span>{info.attemptFailureNotice}</span>
+              </div>
+            )}
             {actionError && <p className="mt-2 text-[11px] leading-5 text-rose-500" role="alert">{actionError}</p>}
             <div className="mt-4 flex justify-end gap-2">
               <button type="button" onClick={() => void installUpdate()} className={primaryButton}>立即安装并重启</button>

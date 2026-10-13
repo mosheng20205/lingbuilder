@@ -422,6 +422,14 @@ export class UpdateDownloadService {
     return true;
   }
 
+  /**
+   * 启动时收养上次更新未生效而保留的安装包：重发 ready 状态供界面一键重装。
+   * 调用方必须先自行完成存在性与 SHA-256 校验；本方法只负责恢复服务状态。
+   */
+  adoptRetainedInstaller(installerPath: string, version: string): void {
+    this.emit({ state: 'ready', version, downloadedBytes: 0, totalBytes: null, bytesPerSecond: null, engine: null, message: '上次更新未完成，已保留的安装包仍可使用。', installerPath });
+  }
+
   async install(): Promise<{ ok: boolean; error?: string }> {
     const installerPath = this.progress.state === 'ready' ? this.progress.installerPath : undefined;
     if (!installerPath) return { ok: false, error: '还没有完成下载的更新包。' };
