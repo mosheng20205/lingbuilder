@@ -175,6 +175,12 @@ COMPONENT_CARDS_PLAN.md
 # 本机排查/演示工作区与临时产物（不入库）
 /.attack-tmp/
 /AI/
+# 探针产物与本机笔记/工具配置
+/tab-probe.png
+/软件官网.txt
+/system-net-report.txt
+/probe-final.cpp
+/.zcodeignore
 # 根目录下划线开头的一次性脚本/数据（录屏、排查、抓取中间产物）
 /_*
 # IDE 工作区解决方案登记文件（活跃状态，不入库）
