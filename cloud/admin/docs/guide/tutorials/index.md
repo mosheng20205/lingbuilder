@@ -24,6 +24,8 @@ title: 图文教程
 | 6 | [模块开发](/guide/tutorials/module-dev) | 创建模块 → 写中文命令 → 调试 → 打包 .lbmod → 分发安装，走完全环节 | 19 张 | [新建与打开模块](/guide/user/modules/create-module) |
 | 7 | [外部 AI 连接 MCP](/guide/tutorials/ai-bridge-mcp) | 把连接配置装进 Claude Code / Codex / Gemini CLI / 灵码，让 AI 在你的工作区里读码、改码、构建运行 | 10 张 | [MCP 工具协议](/guide/ai/mcp) |
 | 8 | [LCPP 源码包分享](/guide/tutorials/lcpp-source-package) | 一键把项目打包成 .lcpppkg 发给别人，对方导入后直接 F5 构建运行 | 10 张 | [构建与运行](/guide/user/build-and-run) |
+| 9 | [安装包导出](/guide/tutorials/installer-export) | 一键把构建产物打包成 NSIS 安装程序（setup.exe），可选图标、捆绑运行库与安装目录策略 | 8 张 | [构建与运行](/guide/user/build-and-run) |
+| 10 | [构建目录与产物名](/guide/tutorials/build-directory) | 右键「构建目录…」把产物 LingBuilderPreview.exe 改成自己的程序名，自定义构建输出与生成源码目录 | 10 张 | [构建与运行](/guide/user/build-and-run) |
 
 ## 教程之外
 
