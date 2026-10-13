@@ -181,6 +181,8 @@ COMPONENT_CARDS_PLAN.md
 /system-net-report.txt
 /probe-final.cpp
 /.zcodeignore
+# AI 规则手册：server.ts 启动注入用，仅本机维护不入库（新克隆需自备并经 LINGBUILDER_RULEBOOK_PATH 指向）
+/LingBuilder AI 规则手册.md
 # 根目录下划线开头的一次性脚本/数据（录屏、排查、抓取中间产物）
 /_*
 # IDE 工作区解决方案登记文件（活跃状态，不入库）
