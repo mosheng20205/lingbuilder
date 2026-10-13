@@ -151,6 +151,7 @@ contextBridge.exposeInMainWorld('lingBuilder', {
     cancel: () => ipcRenderer.invoke('app:update:cancel'),
     status: () => ipcRenderer.invoke('app:update:status'),
     install: () => ipcRenderer.invoke('app:update:install'),
+    verifyAttempt: () => ipcRenderer.invoke('app:update:verify-attempt'),
     onProgress: (listener: (progress: unknown) => void) => {
       const handler = (_event: unknown, progress: unknown) => listener(progress);
       ipcRenderer.on('app-update:progress', handler);

@@ -97,7 +97,15 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.equal(serverInfo?.version, resolveIdeVersion(), 'MCP serverInfo 必须动态回报 IDE 版本，不得停留在硬编码旧值');
     assert.notEqual(serverInfo?.version, '0.6.6', '历史上硬编码的 0.6.6 已废弃，出现它说明版本解析退化了');
     const tools = await client.listTools();
-    assert.equal(tools.tools.length, 23);
+    assert.equal(tools.tools.length, 24);
+    assert.ok(tools.tools.some(tool => tool.name === 'lingbuilder.installer.export'), '缺少安装包导出 MCP 工具（2026-10-12 起 24 个）');
+    const installerTool = tools.tools.find(tool => tool.name === 'lingbuilder.installer.export');
+    assert.ok((installerTool?.inputSchema as any)?.required?.includes('projectId'), 'installer.export 必须要求 projectId');
+    assert.match(String(installerTool?.description || ''), /DLL/u, 'installer.export 描述必须说明 DLL 项目拒绝');
+    const installerSchema = (installerTool?.inputSchema as any)?.properties || {};
+    assert.ok(installerSchema.bundleVcRedist, 'installer.export 二期必须暴露 bundleVcRedist（捆绑 VC++ 运行库链装）');
+    assert.ok(installerSchema.useProjectIcon, 'installer.export 二期必须暴露 useProjectIcon（安装器图标）');
+    assert.deepEqual(installerSchema.installMode?.enum, ['auto', 'perMachine', 'perUser'], 'installer.export installMode 必须是三态枚举');
     assert.ok(tools.tools.some(tool => tool.name === 'lingbuilder.file.read'));
     assert.ok(tools.tools.some(tool => tool.name === 'lingbuilder.project.create'));
     for (const moduleName of ['lingbuilder.module.scaffold', 'lingbuilder.module.writeFiles', 'lingbuilder.module.validate', 'lingbuilder.module.pack', 'lingbuilder.module.installPreview', 'lingbuilder.module.install']) {
@@ -244,6 +252,10 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.match(String(client.getInstructions() || ''), /channelIndex/u, 'instructions 必须告知 CEF3 cefQuery 已多通道且事件带 channelIndex');
     assert.match(String(client.getInstructions() || ''), /返回\(表达式\)/u, 'instructions 必须告知返回语句统一括号形态 返回(表达式)（外部 AI 生成 .lcpp 的写法口径）');
     assert.match(String(client.getInstructions() || ''), /projects\[\]/u, 'instructions 必须引导外部 AI 用 workspace.list 首项 projects[] 确定目标项目');
+    assert.match(String(client.getInstructions() || ''), /lingbuilder\.installer\.export/u, 'instructions 必须描述安装包导出工作流（先构建后导出）');
+    assert.match(String(client.getInstructions() || ''), /构建输出目录 installer/u, 'instructions 必须写明安装包产物位于构建输出目录 installer/ 下');
+    assert.match(String(client.getInstructions() || ''), /bundleVcRedist/u, 'instructions 必须说明捆绑 VC++ 运行库链装选项');
+    assert.match(String(client.getInstructions() || ''), /installMode/u, 'instructions 必须说明安装目录策略选项');
     assert.match(String(client.getInstructions() || ''), /禁止按目录名猜/u, 'instructions 必须禁止多项目工作区按目录名猜项目');
     assert.match(String(client.getInstructions() || ''), /projectHint/u, 'instructions 必须告知单项目工作区的 projectHint 消歧字段');
     assert.match(String(client.getInstructions() || ''), /solution\.json/u, 'instructions 必须给出 projects[] 缺失时的项目注册表读取路径');

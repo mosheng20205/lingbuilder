@@ -31,7 +31,16 @@ import {
   writeSharedCredentialBytes
 } from './cloudCredentialStore';
 import { checkLatestVersion, type VersionCheckResult } from './versionCheckService';
-import { UpdateDownloadService } from './updateDownloadService';
+import { UpdateDownloadService, verifyInstallerSha256, normalizeUpdaterSha256 } from './updateDownloadService';
+import {
+  clearUpdateAttemptMarker,
+  evaluateUpdateAttempt,
+  formatUpdateAttemptFailureMessage,
+  planUpdateAttemptStartup,
+  readUpdateAttemptMarker,
+  writeUpdateAttemptMarker,
+  type UpdateAttemptMarker
+} from './updateAttemptService';
 import { AiBridgeManagerService, type ManagedAiBridgePermission, type ManagedAiBridgeLifecycle } from './aiBridgeManagerService';
 import { normalizeAiBridgeStartSettings, readAiBridgeStartSettings, resolveAiBridgeStartSettingsPath, writeAiBridgeStartSettings } from './aiBridgeStartSettings';
 import { removeLegacyAgentRuntimeArtifacts } from './agentRuntimeLegacyCleanup';
@@ -1010,8 +1019,29 @@ function registerIpcHandlers(): void {
   ipcMain.handle('app:update:status', () => updateDownloadService.status());
   ipcMain.handle('app:update:install', async () => {
     const result = await updateDownloadService.install();
-    if (result.ok) void shutdownAndExit(0);
+    if (result.ok) {
+      // 安装器已拉起、IDE 即将退出：写入「安装尝试」标记，供下次启动比对版本判断更新是否真正生效
+      //（安装器对被锁核心文件可能假成功——外部 AI 客户端复活的 MCP 宿主会锁住 exe/app.asar）。
+      const progress = updateDownloadService.status();
+      if (progress.installerPath && progress.version) {
+        await writeUpdateAttemptMarker(app.getPath('userData'), {
+          version: progress.version,
+          installerPath: progress.installerPath,
+          sha256: normalizeUpdaterSha256(lastVersionCheck?.sha256) || '',
+          at: new Date().toISOString()
+        }).catch(() => undefined);
+      }
+      void shutdownAndExit(0);
+    }
     return result;
+  });
+  ipcMain.handle('app:update:verify-attempt', async () => {
+    const marker = await readUpdateAttemptMarker(app.getPath('userData')).catch(() => null);
+    const status = evaluateUpdateAttempt(app.getVersion(), marker);
+    if (!status.pending || status.tookEffect || !marker) return status;
+    const retained = Boolean(marker.installerPath)
+      && await fs.stat(marker.installerPath).then(stat => stat.isFile()).catch(() => false);
+    return { ...status, message: formatUpdateAttemptFailureMessage(marker, retained ? marker.installerPath : '') };
   });
   ipcMain.handle('payments:open-page', async (_event, url: string) => {
     try {
@@ -1809,7 +1839,35 @@ app.whenReady().then(async () => {
   diagnosticLog = new DiagnosticLogService(getDiagnosticLogDirectory());
   logDiagnostic('info', 'app', `LingBuilder ${app.getVersion()} 启动（${process.platform} ${process.arch}，${app.isPackaged ? '安装版' : '开发版'}）。`);
   attachAppDiagnosticListeners();
-  void updateDownloadService.cleanupAbandoned();
+  // 安装器「改名让位」修复可能留下被锁旧文件（.lb-stale）；此刻进程均已换新，best-effort 清理。
+  for (const staleRelative of ['resources/app.asar.lb-stale', 'LingBuilder.exe.lb-stale']) {
+    void fs.rm(path.join(path.dirname(process.execPath), staleRelative), { force: true }).catch(() => undefined);
+  }
+  // 更新安装尝试校验：上次点过「安装更新」但版本没变 ⇒ 安装未生效（核心文件被外部 AI 客户端
+  // 复活的 MCP 宿主占用）。此时保留已下载安装包并收养为「已就绪」，界面给出明确错误与一键
+  // 重试；而不是清掉 updates 目录让用户重新下载 200MB 进入死循环。
+  const startupUpdateAttemptMarker: UpdateAttemptMarker | null = await readUpdateAttemptMarker(app.getPath('userData')).catch(() => null);
+  const startupUpdateAttemptPlan = planUpdateAttemptStartup(app.getVersion(), startupUpdateAttemptMarker);
+  if (startupUpdateAttemptPlan === 'cleanup-only') {
+    void updateDownloadService.cleanupAbandoned();
+  } else if (startupUpdateAttemptPlan === 'clear-marker-and-cleanup') {
+    await clearUpdateAttemptMarker(app.getPath('userData'));
+    void updateDownloadService.cleanupAbandoned();
+  } else if (startupUpdateAttemptMarker) {
+    void (async () => {
+      const retainedPath = startupUpdateAttemptMarker.installerPath;
+      const retainedUsable = Boolean(retainedPath)
+        && await fs.stat(retainedPath).then(stat => stat.isFile()).catch(() => false)
+        && (!startupUpdateAttemptMarker.sha256 || await verifyInstallerSha256(retainedPath, startupUpdateAttemptMarker.sha256));
+      if (retainedUsable && retainedPath) {
+        updateDownloadService.adoptRetainedInstaller(retainedPath, startupUpdateAttemptMarker.version);
+      } else {
+        // 安装包已丢失或校验不过：清标记走正常清理，界面回落到普通更新流程。
+        await clearUpdateAttemptMarker(app.getPath('userData'));
+        void updateDownloadService.cleanupAbandoned();
+      }
+    })();
+  }
   const smokeDocumentsPath = process.argv.includes('--smoke-test')
     ? getArgumentValue(process.argv, '--smoke-documents-dir')
     : undefined;

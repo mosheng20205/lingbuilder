@@ -4,6 +4,7 @@
 !include "WinMessages.nsh"
 
 Var LingBuilderKillTries
+Var LingBuilderCoreRepairTries
 
 ; Electron 的主、渲染和 GPU 子进程都使用 LingBuilder.exe。nsProcess 的
 ; CloseProcess 会先关闭窗口、等待 3 秒，再结束仍在运行的同名进程。
@@ -118,10 +119,135 @@ Var LingBuilderKillTries
     Pop $1
   FunctionEnd
 
-  !macro customInit
-    ; 静默安装也默认启用 CLI；交互安装可在自定义页面取消。
-    StrCpy $LingBuilderAddCliToPath "1"
-  !macroend
+!macro customInit
+  ; 静默安装也默认启用 CLI；交互安装可在自定义页面取消。
+  StrCpy $LingBuilderAddCliToPath "1"
+!macroend
+
+; 取文件字节数（32 位上限内）：栈入参=文件路径，栈出参=十进制字节数，打不开返回空串。
+Function LbGetFileSizeBytes
+  Exch $1
+  Push $2
+  Push $3
+  ClearErrors
+  FileOpen $2 $1 r
+  ${If} ${Errors}
+    StrCpy $3 ""
+  ${Else}
+    FileSeek $2 0 END $3
+    FileClose $2
+  ${EndIf}
+  StrCpy $1 $3
+  Pop $3
+  Pop $2
+  Exch $1
+FunctionEnd
+
+; 比对已装 app.asar 与包内解出副本（$PLUGINSDIR\7z-out）的字节数，OUT 取 same/diff/unknown。
+; CopyFiles 保留打包期时间戳，mtime 不可用作新鲜度判据（与尾部 GetLingBuilderSelfCheck 同口径）。
+!macro LbCompareAsarWithPackage OUT
+  Push "$INSTDIR\resources\app.asar"
+  Call LbGetFileSizeBytes
+  Pop $9
+  Push "$PLUGINSDIR\7z-out\resources\app.asar"
+  Call LbGetFileSizeBytes
+  Pop $8
+  ${If} $9 == ""
+  ${OrIf} $8 == ""
+    StrCpy ${OUT} "unknown"
+  ${ElseIf} $9 == $8
+    StrCpy ${OUT} "same"
+  ${Else}
+    StrCpy ${OUT} "diff"
+  ${EndIf}
+!macroend
+
+; 解压完成、写注册表之前的核对与修复（customFiles_x64 由 electron-builder 在
+; custom_files_post_decompression 处调用，先于 registryAddInstallInfo）。
+; 兜底直解压路径（extractUsing7za 里的 Nsis7z::Extract 直解到安装目录）会忽略被占用
+; 文件的写入错误：外部 AI 客户端复活的 MCP 宿主恰好锁住 LingBuilder.exe/app.asar 时，
+; 会得到「注册表新版本 + 磁盘旧核心文件」的半更新假成功（2026-10-13 实锤，0.8.20→
+; 0.8.21 在线更新死循环）。这里核对，必要时杀进程补拷、把被锁文件改名让位（.lb-stale）
+; 后重写——Windows 允许对运行中的 exe 与被共享读持有的 asar 改名，无需与宿主复活赛跑；
+; 3 轮仍失败则回滚改名并中止安装（退出码 87），不写假注册表。
+!macro customFiles_x64
+  !ifdef ZIP_COMPRESSION
+    ; ZIP 压缩形态没有 app-64.7z 可作权威副本，跳过核对（本项目固定 7z，仅防御）。
+    Goto lbCoreFilesVerified
+  !endif
+  ; 清理上次安装改名让位的残留（持锁进程退出后即可删除；失败忽略，下次再试）。
+  Delete "$INSTDIR\resources\app.asar.lb-stale"
+  Delete "$INSTDIR\LingBuilder.exe.lb-stale"
+
+  !insertmacro LbCompareAsarWithPackage $0
+  ${If} $0 != "diff"
+    Goto lbCoreFilesVerified
+  ${EndIf}
+
+  DetailPrint "检测到核心程序文件未被本次安装覆盖（安装期间被外部进程占用），正在修复…"
+  StrCpy $LingBuilderCoreRepairTries 0
+
+  lbCoreRepairLoop:
+    IntOp $LingBuilderCoreRepairTries $LingBuilderCoreRepairTries + 1
+
+    ; 兜底路径会删掉 7z-out：先确保权威比对/拷贝源存在（Nsis7z::Extract 解到当前目录）。
+    IfFileExists "$PLUGINSDIR\7z-out\resources\app.asar" lbCoreRefReady 0
+      Push $OUTDIR
+      CreateDirectory "$PLUGINSDIR\7z-out"
+      SetOutPath "$PLUGINSDIR\7z-out"
+      Nsis7z::Extract "$PLUGINSDIR\app-64.${COMPRESSION_METHOD}"
+      Pop $1
+      Pop $2
+      SetOutPath $2
+    lbCoreRefReady:
+
+    ; 先杀复活的同名宿主（含无窗口 stdio 进程）再全量补拷。
+    !insertmacro StopLingBuilderProcesses
+    ClearErrors
+    CopyFiles /SILENT "$PLUGINSDIR\7z-out\*" "$INSTDIR"
+    ${IfNot} ${Errors}
+      Goto lbCoreRepairVerify
+    ${EndIf}
+    DetailPrint "直接补拷失败（文件仍被占用），改为改名让位后重写…"
+    Delete "$INSTDIR\LingBuilder.exe.lb-stale"
+    Rename "$INSTDIR\LingBuilder.exe" "$INSTDIR\LingBuilder.exe.lb-stale"
+    Delete "$INSTDIR\resources\app.asar.lb-stale"
+    Rename "$INSTDIR\resources\app.asar" "$INSTDIR\resources\app.asar.lb-stale"
+    ClearErrors
+    CopyFiles /SILENT "$PLUGINSDIR\7z-out\LingBuilder.exe" "$INSTDIR"
+    CopyFiles /SILENT "$PLUGINSDIR\7z-out\resources\app.asar" "$INSTDIR\resources"
+    CopyFiles /SILENT "$PLUGINSDIR\7z-out\*" "$INSTDIR"
+
+    lbCoreRepairVerify:
+    !insertmacro LbCompareAsarWithPackage $0
+    ${If} $0 == "same"
+      DetailPrint "核心程序文件修复完成，与安装包内容一致。"
+      Goto lbCoreFilesVerified
+    ${EndIf}
+    ${If} $LingBuilderCoreRepairTries < 3
+      Sleep 1000
+      Goto lbCoreRepairLoop
+    ${EndIf}
+
+    ; 3 轮仍失败：先回滚改名让位（保证中止后旧版本仍能启动），再中止安装。
+    ${If} ${FileExists} "$INSTDIR\LingBuilder.exe"
+    ${Else}
+      Rename "$INSTDIR\LingBuilder.exe.lb-stale" "$INSTDIR\LingBuilder.exe"
+    ${EndIf}
+    ${If} ${FileExists} "$INSTDIR\resources\app.asar"
+    ${Else}
+      Rename "$INSTDIR\resources\app.asar.lb-stale" "$INSTDIR\resources\app.asar"
+    ${EndIf}
+    IfSilent 0 lbCoreRepairFailBox
+      DetailPrint "安装中止：核心程序文件被占用且无法修复（外部 AI 客户端可能在自动重启 LingBuilder MCP 宿主）。请退出相关 AI 客户端后重新运行安装器。"
+      SetErrorLevel 87
+      Quit
+    lbCoreRepairFailBox:
+      MessageBox MB_ICONEXCLAMATION|MB_OK "安装已中止：核心程序文件（LingBuilder.exe / app.asar）在本次安装期间被其它进程占用，自动修复未能成功。$\n$\n常见原因：连接 LingBuilder 的外部 AI 客户端（Codex / Claude / ZCode 等）在自动重启其 MCP 宿主进程并锁住程序文件。$\n$\n请先退出这些 AI 客户端（或在任务管理器「详细信息」中结束所有 LingBuilder.exe），然后重新运行本安装器。"
+      SetErrorLevel 87
+      Quit
+  lbCoreFilesVerified:
+!macroend
 
   !macro customPageAfterChangeDir
     Page custom LingBuilderCliPathPageCreate LingBuilderCliPathPageLeave

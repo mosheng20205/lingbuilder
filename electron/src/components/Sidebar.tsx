@@ -33,6 +33,7 @@ import {
   CheckCircle,
   Monitor,
   Package,
+  Archive,
   GitBranch,
   Link,
   Hash,
@@ -227,6 +228,7 @@ interface SidebarProps {
   onCopyProjectFullPath?: (projectId: string) => boolean | Promise<boolean>;
   onAddProjectResource?: (projectId: string) => Promise<DesignerImageImportResult>;
   onExportLcppSourcePackage?: (projectId: string) => void | Promise<void>;
+  onExportInstaller?: (projectId: string) => void | Promise<void>;
   onCopyProjectResourcePath?: (relativePath: string) => Promise<boolean>;
   onDeleteProjectResource?: (projectId: string, relativePath: string, confirmed: boolean) => Promise<DesignerImageDeleteResult>;
   activeModuleHintId?: string;
@@ -284,6 +286,7 @@ export default function Sidebar({
   onCopyProjectFullPath,
   onAddProjectResource,
   onExportLcppSourcePackage,
+  onExportInstaller,
   onCopyProjectResourcePath,
   onDeleteProjectResource,
   activeModuleHintId,
@@ -1541,6 +1544,10 @@ export default function Sidebar({
             <div className={menuItemClass} onClick={() => void onExportLcppSourcePackage?.(project.id)}>
               <Package className="w-3.5 h-3.5 text-emerald-400" />
               <span>一键导出 LCPP 源码包…</span>
+            </div>
+            <div className={menuItemClass} onClick={() => void onExportInstaller?.(project.id)}>
+              <Archive className="w-3.5 h-3.5 text-amber-400" />
+              <span>导出安装包…</span>
             </div>
             <div className="h-[1px] bg-slate-700/20 dark:bg-slate-700/50 my-1" />
             <div className={menuItemClass} onClick={() => void onOpenProjectDirectory?.(project.id)}>

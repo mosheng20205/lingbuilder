@@ -80,6 +80,7 @@ import { createSolutionService, DEFAULT_PROJECT_ID, type LingBuilderSolutionProj
 import { findSolutionEntryPath } from '../solution/solutionEntryFile';
 import { resolveExecutableNameParts } from '../solution/externalProjectService';
 import { resolveProjectBuildDirectories } from '../tasks/buildPathService';
+import { exportInstallerFromManifest, readInstallerBuildManifest, resolveBuiltIconPath, resolveVcRedistInstaller, tailLogs, writeInstallerBuildManifest } from '../installer/installerExportService';
 import { describeBuildOutputDirectory, formatSuccessCompileChannel } from '../tasks/buildOutputLabel';
 import { createProjectCreationService, type ProjectCreationRequest, type ProjectCreationService } from '../solution/projectCreationService';
 import { SdkDependencyService } from '../sdkDependencies/sdkDependencyService';
@@ -96,6 +97,7 @@ import {
   AiBridgeEditApplyResult,
   AiBridgeEditProposeRequest,
   AiBridgeHealth,
+  AiBridgeInstallerExportRequest,
   AiBridgeLingCppDiagnosticsRequest,
   AiBridgeModuleInstallPreviewRequest,
   AiBridgeModuleInstallRequest,
@@ -2050,6 +2052,26 @@ export class AiBridgeService {
       return result;
     }
 
+    if (outputType === 'exe') {
+      // 安装包导出消费最近一次成功构建的清单（<构建目录>/installer/）；
+      // 写失败只影响「导出安装包」可用性，绝不阻断构建结果。
+      await writeInstallerBuildManifest(buildDir, {
+        schemaVersion: 1,
+        projectId: managedProjectId,
+        projectName: pathTemplateOverrides.projectName || managedProjectId,
+        outputFileName: executableNameParts.fileName,
+        buildDir,
+        binDir,
+        architecture: buildConfiguration.architecture === 'x64' ? 'x64' : 'x86',
+        buildMode: buildConfiguration.mode,
+        requireAdministrator,
+        requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt,
+        outputType: 'exe',
+        builtAt: new Date().toISOString(),
+        iconPath: resolveBuiltIconPath(buildDir, executableIcon.files)
+      }, logs);
+    }
+
     if (buildLease.isCancelled()) {
       return await this.createCancelledBuildResult(
         managedProjectId,
@@ -2143,6 +2165,86 @@ export class AiBridgeService {
       visualStudioProject: buildVisualStudioProject,
       exportVisualStudioProject: exportVisualStudioProjectResult,
       logs
+    };
+  }
+
+  /**
+   * 导出安装包（NSIS）：把项目构建产物打包为单个安装程序 exe。
+   * 权限与 build.run 同口径（execute 语义）；内部先执行一次「只构建不运行」，
+   * 保证安装包永远反映当前源码而不是陈旧的 bin 目录；DLL 项目中文拒绝。
+   */
+  async installerExport(request: AiBridgeInstallerExportRequest): Promise<{
+    ok: boolean;
+    error?: string;
+    stage?: string;
+    projectId?: string;
+    installerPath?: string;
+    installerFileName?: string;
+    /** bin 目录中的主程序文件名（安装后的主程序名）。 */
+    outputFileName?: string;
+    fileCount?: number;
+    installerSizeBytes?: number;
+    version?: string;
+    architecture?: string;
+    requiresVcRedist?: boolean;
+    builtAt?: string;
+    logs: string[];
+  }> {
+    const projectId = (request.projectId || '').trim();
+    if (!projectId) {
+      return { ok: false, error: '缺少 projectId。请传解决方案中已注册的项目 ID（lingbuilder.workspace.list 首项 projects[] 可查）。', logs: [] };
+    }
+    await this.requireExecuteWithAudit('installer.export', projectId, request.approved);
+    // 动态库没有可安装的主程序，安装包不适用。
+    try {
+      const solution = await this.solutionService.getSolution();
+      const record = solution.projects.find(item => item.id === projectId);
+      if (record && (record.type === 'windows-dll' || record.buildProperties?.outputType === 'dll')) {
+        return { ok: false, error: `项目「${record.name || projectId}」是动态库（DLL）项目，没有可安装的主程序，不支持导出安装包。`, projectId, logs: [] };
+      }
+    } catch {
+      // 解决方案尚未建立时按 exe 继续走构建（构建阶段会给出明确错误）。
+    }
+    // buildRun 返回分支较多（含不含 buildDir 的早退分支），安装包链路只消费这几个字段。
+    const build = await this.buildRun({ projectId, run: false, approved: request.approved }) as { ok?: boolean; buildDir?: string; stage?: string; logs?: string[] };
+    if (build.ok !== true || !build.buildDir) {
+      return {
+        ok: false,
+        stage: 'build',
+        projectId,
+        error: `构建未成功，无法导出安装包（构建阶段：${build.stage || '未知'}）。请根据日志修复后重试。`,
+        logs: tailLogs(build.logs || [], 40)
+      };
+    }
+    const manifest = await readInstallerBuildManifest(build.buildDir);
+    if (!manifest) {
+      return { ok: false, projectId, error: '构建成功但安装包清单缺失或已损坏；请重试一次（构建会重新生成清单）。', logs: [] };
+    }
+    const result = await exportInstallerFromManifest({
+      manifest,
+      version: request.version,
+      useProjectIcon: request.useProjectIcon,
+      bundleVcRedist: request.bundleVcRedist,
+      installMode: request.installMode,
+      resolveVcRedist: architecture => resolveVcRedistInstaller(architecture)
+    });
+    if (!result.ok) {
+      return { ok: false, projectId, error: result.error, logs: tailLogs(result.logs, 40) };
+    }
+    await this.permissions.audit({ operation: 'execute', action: 'installer.export', ok: true, target: result.installerPath, details: { fileCount: result.fileCount } });
+    return {
+      ok: true,
+      projectId,
+      installerPath: result.installerPath,
+      installerFileName: result.installerFileName,
+      outputFileName: manifest.outputFileName,
+      fileCount: result.fileCount,
+      installerSizeBytes: result.totalBytes,
+      version: result.version,
+      architecture: manifest.architecture,
+      requiresVcRedist: result.requiresVcRedist,
+      builtAt: manifest.builtAt,
+      logs: tailLogs(result.logs, 40)
     };
   }
 

@@ -241,6 +241,8 @@ declare global {
         cancel: () => Promise<{ ok: boolean }>;
         status: () => Promise<AppUpdateProgressSnapshot | null>;
         install: () => Promise<{ ok: boolean; error?: string }>;
+        /** 上次更新尝试的结果：pending 且 tookEffect=false 时 message 为可直接展示的中文说明。 */
+        verifyAttempt: () => Promise<{ pending: boolean; tookEffect?: boolean; version?: string; installerPath?: string; message?: string }>;
         onProgress: (listener: (progress: AppUpdateProgressSnapshot) => void) => () => void;
       };
       betaProgram?: {

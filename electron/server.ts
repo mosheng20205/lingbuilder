@@ -17,6 +17,7 @@ import { readProAccessStateFile } from "./src/services/modules/proAccessStateFil
 import { writeGeneratedProjectFiles } from "./src/services/windowDesigner/generatedProjectFileService";
 import { exportVisualStudioProject } from "./src/services/windowDesigner/visualStudioProjectExporter";
 import { createWindowsMsvcLinkLibraries, REQUIRE_ADMINISTRATOR_LINK_ARGS } from "./src/services/windowDesigner/windowsSystemLibraries";
+import { exportInstallerFromManifest, readInstallerBuildManifest, resolveBuiltIconPath, resolveVcRedistInstaller, writeInstallerBuildManifest } from "./src/services/installer/installerExportService";
 import { LingWindowProject } from "./src/services/windowDesigner/types";
 import { createProjectGlobalContext, isProjectGlobalsFilePath } from "./src/services/lingCpp/projectGlobalService";
 import { createProjectTypeContext, isProjectDataTypesFilePath } from "./src/services/lingCpp/projectDataTypeService";
@@ -2375,10 +2376,12 @@ app.post("/api/window-designer/build-run", async (req, res) => {
     let routeSourceRoot = "src";
     let routeRequireAdministrator = false;
     let routeSolutionEntryPath: string | undefined;
+    let routeProjectName = "";
     try {
       const solutionForOutputType = await getSolutionService().getSolution();
       const recordForOutputType = solutionForOutputType.projects.find(item => item.id === projectId);
       routeOutputType = recordForOutputType?.buildProperties?.outputType === "dll" ? "dll" : "exe";
+      routeProjectName = recordForOutputType?.name || "";
       routeConsoleMode = recordForOutputType?.type === "windows-console";
       routeExecutableName = recordForOutputType?.buildProperties?.executableName;
       routeSourceRoot = recordForOutputType?.sourceRoot || "src";
@@ -2432,7 +2435,7 @@ app.post("/api/window-designer/build-run", async (req, res) => {
     const assetProjectRef = getSolutionService().getProject(await getSolutionService().getSolution(), projectId);
     let codeGeneratorResult: ProjectCodeGeneratorResult;
     try {
-      await fs.rm(path.join(binDir, "LingBuilderPreview.exe"), { force: true });
+      await removeStaleBuildOutputs(binDir, routeOutputNameParts.fileName);
       codeGeneratorResult = await runProjectCodeGenerators({
         service: buildPipelineService,
         workspaceRoot: repoRoot,
@@ -2626,6 +2629,26 @@ app.post("/api/window-designer/build-run", async (req, res) => {
         compilerDiagnostics,
         logs
       });
+    }
+
+    if (routeOutputType === "exe") {
+      // 安装包导出消费最近一次成功构建的清单（<构建目录>/installer/）；
+      // 写失败只影响「导出安装包」可用性，绝不阻断构建结果。
+      await writeInstallerBuildManifest(buildDir, {
+        schemaVersion: 1,
+        projectId,
+        projectName: routeProjectName || projectId,
+        outputFileName: routeOutputNameParts.fileName,
+        buildDir,
+        binDir,
+        architecture: buildConfiguration.architecture === "x64" ? "x64" : "x86",
+        buildMode: buildConfiguration.mode,
+        requireAdministrator: routeRequireAdministrator,
+        requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt,
+        outputType: "exe",
+        builtAt: new Date().toISOString(),
+        iconPath: resolveBuiltIconPath(buildDir, executableIcon.files)
+      }, logs);
     }
 
     if (buildLease.isCancelled()) {
@@ -3004,6 +3027,7 @@ async function runControlledWindowDesignerBuild(options: {
   let outputType: "exe" | "dll" = "exe";
   let consoleMode = false;
   let outputExecutableName: string | undefined;
+  let projectNameForInstaller = "";
   let projectSourceRootForDll = "src";
   let requireAdministrator = false;
   let projectDllLibraries: import("./src/services/lingCpp/types").LingCppDllLibrary[] = [];
@@ -3016,6 +3040,7 @@ async function runControlledWindowDesignerBuild(options: {
     outputExecutableName = recordForOutputType?.buildProperties?.executableName;
     projectSourceRootForDll = recordForOutputType?.sourceRoot || "src";
     requireAdministrator = recordForOutputType?.buildProperties?.requireAdministrator === true;
+    projectNameForInstaller = recordForOutputType?.name || "";
     solutionEntryPathForLogs = await findSolutionEntryPath(getRepoWorkspaceRoot(), solutionForOutputType.name || "");
   } catch {
     // 解决方案尚未建立时按 EXE 模式构建，且不播报解决方案路径行。
@@ -3072,7 +3097,7 @@ async function runControlledWindowDesignerBuild(options: {
   const assetProjectRef = getSolutionService().getProject(await getSolutionService().getSolution(), projectId);
   let codeGeneratorResult: ProjectCodeGeneratorResult;
   try {
-    await fs.rm(exePath, { force: true });
+    await removeStaleBuildOutputs(binDir, outputFileNameParts.fileName);
     codeGeneratorResult = await runProjectCodeGenerators({
       service: buildPipelineService,
       workspaceRoot: repoRoot,
@@ -3200,7 +3225,10 @@ async function runControlledWindowDesignerBuild(options: {
     enabledModules,
     buildConfiguration,
     // UAC 提权级别只影响链接参数，不影响生成源码；必须进指纹，否则翻转后增量命中会跳过重链接。
-    requireAdministrator
+    requireAdministrator,
+    // 产物路径必须进指纹：改可执行文件名或构建目录模板后若增量命中会跳过编译，
+    // 新名字 exe 永远生成不出来（旧名字产物仍躺在 bin 里被误判为"输出未变化"）。
+    exePath
   });
   if (incremental && !run && await incrementalBuildService.isFresh(incrementalKey, incrementalFingerprint)) {
     return {
@@ -3306,6 +3334,25 @@ async function runControlledWindowDesignerBuild(options: {
     ]);
   }
 
+  if (outputType === "exe") {
+    // 安装包导出消费最近一次成功构建的清单（<构建目录>/installer/）；
+    // 「生成项目/生成解决方案」管线与 F5、build.run 三条构建入口同口径。
+    await writeInstallerBuildManifest(buildDir, {
+      schemaVersion: 1,
+      projectId,
+      projectName: projectNameForInstaller || projectId,
+      outputFileName: outputFileNameParts.fileName,
+      buildDir,
+      binDir,
+      architecture: buildConfiguration.architecture === "x64" ? "x64" : "x86",
+      buildMode: buildConfiguration.mode,
+      requireAdministrator,
+      requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt,
+      outputType: "exe",
+      builtAt: new Date().toISOString(),
+      iconPath: resolveBuiltIconPath(buildDir, executableIcon.files)
+    }, logs);
+  }
   if (outputType === "dll") {
     // 动态库没有运行入口：编译完成即产物。产物路径不再依赖 run 播报——
     // 「生成项目/生成动态库」（run:false）同样要能看到 dll 与导入库的完整路径。
@@ -3473,6 +3520,107 @@ type CompilerInfo = {
   setupBatch?: string;
 };
 
+
+// 同项目安装包导出互斥（makensis 与构建并发写同一构建目录会互相踩）。
+const installerExportInFlight = new Set<string>();
+
+app.get("/api/installer/preflight", async (req, res) => {
+  const projectId = String(req.query.projectId || "").trim();
+  if (!projectId) {
+    return res.status(400).json({ ok: false, error: "缺少 projectId。" });
+  }
+  try {
+    const buildConfiguration = await buildConfigurationService.read();
+    const buildPaths = await resolveServerProjectBuildPaths(projectId, buildConfiguration);
+    const manifest = await readInstallerBuildManifest(buildPaths.buildDir);
+    if (!manifest) {
+      return res.status(200).json({ ok: false, error: "尚未找到可打包的构建产物。请先构建项目（F5「生成并运行」或菜单「生成」），再导出安装包。" });
+    }
+    return res.status(200).json({
+      ok: true,
+      projectName: manifest.projectName,
+      outputFileName: manifest.outputFileName,
+      lastVersion: manifest.installerVersion || "1.0.0",
+      architecture: manifest.architecture,
+      buildMode: manifest.buildMode,
+      requireAdministrator: manifest.requireAdministrator,
+      requiresDynamicCrt: manifest.requiresDynamicCrt,
+      hasProjectIcon: Boolean(manifest.iconPath),
+      builtAt: manifest.builtAt
+    });
+  } catch (error) {
+    return res.status(200).json({ ok: false, error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.post("/api/installer/export", async (req, res) => {
+  const { projectId: rawProjectId, version, useProjectIcon, bundleVcRedist, installMode } = (req.body || {}) as {
+    projectId?: string;
+    version?: string;
+    useProjectIcon?: boolean;
+    bundleVcRedist?: boolean;
+    installMode?: "auto" | "perMachine" | "perUser";
+  };
+  const projectId = typeof rawProjectId === "string" ? rawProjectId.trim() : "";
+  if (!projectId) {
+    return res.status(400).json({ ok: false, error: "缺少 projectId。" });
+  }
+  if (installMode && installMode !== "auto" && installMode !== "perMachine" && installMode !== "perUser") {
+    return res.status(400).json({ ok: false, error: "installMode 只允许 auto / perMachine / perUser。" });
+  }
+  try {
+    const solutionForGate = await getSolutionService().getSolution();
+    const recordForGate = solutionForGate.projects.find(item => item.id === projectId);
+    if (recordForGate && (recordForGate.type === "windows-dll" || recordForGate.buildProperties?.outputType === "dll")) {
+      return res.status(200).json({ ok: false, error: `项目「${recordForGate.name || projectId}」是动态库（DLL）项目，没有可安装的主程序，不支持导出安装包。` });
+    }
+  } catch {
+    // 解决方案尚未建立时按 exe 继续（清单缺失会给出明确指引）。
+  }
+  if (installerExportInFlight.has(projectId)) {
+    return res.status(200).json({ ok: false, error: "该项目正在导出安装包，请等待当前导出完成。" });
+  }
+  installerExportInFlight.add(projectId);
+  try {
+    const buildConfiguration = await buildConfigurationService.read();
+    const buildPaths = await resolveServerProjectBuildPaths(projectId, buildConfiguration);
+    const manifest = await readInstallerBuildManifest(buildPaths.buildDir);
+    if (!manifest) {
+      return res.status(200).json({
+        ok: false,
+        error: "尚未找到可打包的构建产物。请先构建项目（F5「生成并运行」或菜单「生成」），再导出安装包。"
+      });
+    }
+    const result = await exportInstallerFromManifest({
+      manifest,
+      version: typeof version === "string" ? version : undefined,
+      useProjectIcon,
+      bundleVcRedist,
+      installMode,
+      resolveVcRedist: architecture => resolveVcRedistInstaller(architecture)
+    });
+    if (!result.ok) {
+      return res.status(200).json({ ok: false, error: result.error, logs: result.logs });
+    }
+    return res.status(200).json({
+      ok: true,
+      installerPath: result.installerPath,
+      installerFileName: result.installerFileName,
+      outputFileName: manifest.outputFileName,
+      fileCount: result.fileCount,
+      installerSizeBytes: result.totalBytes,
+      version: result.version,
+      architecture: manifest.architecture,
+      requiresVcRedist: result.requiresVcRedist,
+      builtAt: manifest.builtAt,
+      logs: result.logs
+    });
+  } catch (error) {
+    return res.status(200).json({ ok: false, error: error instanceof Error ? error.message : String(error) });
+  } finally {
+    installerExportInFlight.delete(projectId);
+  }
+});
 
 app.get("/api/window-designer/recovery", async (req, res) => {
   const projectId = String(req.query.projectId || "");
@@ -4300,6 +4448,19 @@ async function canUseMsvcSetupBatch(setupBatch: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * 编译前清理 bin 内旧产物：默认名（exe/dll 两种）与本次解析名都删。
+ * 改过「可执行文件名」后旧名字产物若残留，会被误认为最新构建输出；
+ * 与 MCP buildRun 的清理口径一致（aiBridgeService 编译前同删默认名与自定义名）。
+ */
+async function removeStaleBuildOutputs(binDir: string, resolvedFileName: string): Promise<void> {
+  await Promise.all([
+    fs.rm(path.join(binDir, "LingBuilderPreview.exe"), { force: true }),
+    fs.rm(path.join(binDir, "LingBuilderPreview.dll"), { force: true }),
+    fs.rm(path.join(binDir, resolvedFileName), { force: true })
+  ]);
 }
 
 async function compileWin32Preview(

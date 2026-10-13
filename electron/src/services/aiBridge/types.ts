@@ -248,6 +248,20 @@ export interface AiBridgeNativeRequest {
   approved?: boolean;
 }
 
+export interface AiBridgeInstallerExportRequest {
+  /** 解决方案中已注册的项目 ID（必填；workspace.list 首项 projects[] 可查）。 */
+  projectId?: string;
+  approved?: boolean;
+  /** 可选自定义版本号（1.0 / 1.0.0 / 1.0.0.1 均可，生成时规范为四段数字）。 */
+  version?: string;
+  /** 安装器是否使用项目构建图标（.ico，与主程序 exe 同源）；缺省 true。 */
+  useProjectIcon?: boolean;
+  /** 捆绑 VC++ 运行库离线安装器并在安装时按需链装（/MD 项目才有意义）；缺省 false。 */
+  bundleVcRedist?: boolean;
+  /** 安装目录策略：auto 跟随构建属性（缺省）/ perMachine 全部用户（需管理员）/ perUser 仅当前用户。 */
+  installMode?: 'auto' | 'perMachine' | 'perUser';
+}
+
 export type AiBridgeProjectCreateRequest = ProjectCreationRequest;
 
 export interface AiBridgeProjectCreateResponse {

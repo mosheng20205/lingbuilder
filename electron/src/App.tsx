@@ -67,6 +67,7 @@ import CommandPalette from './components/CommandPalette';
 import SettingsDialog from './components/SettingsDialog';
 import ProjectBuildPathsDialog, { type ProjectBuildPathsDialogValue } from './components/ProjectBuildPathsDialog';
 import ProjectBuildPropertiesDialog, { type ProjectBuildPropertiesDialogValue } from './components/ProjectBuildPropertiesDialog';
+import InstallerExportDialog, { type InstallerExportDialogValue, type InstallerExportPreflight } from './components/InstallerExportDialog';
 import EmbeddedResourcesDialog from './components/EmbeddedResourcesDialog';
 import WorkspaceSearchDialog from './components/WorkspaceSearchDialog';
 import EnvironmentRepairCenter from './components/EnvironmentRepairCenter';
@@ -320,6 +321,19 @@ const createUpdateDialogInfo = (result: UpdateCheckPayload, silent = false): Upd
 /** 把多行更新说明拆成非空行列表，供悬浮更新日志逐条渲染为条目。 */
 const splitUpdateNoteLines = (notes?: string | null): string[] =>
   (notes || '').split(/\r?\n/u).map(line => line.trim()).filter(Boolean);
+
+/** 上次更新尝试未生效时把主进程诊断说明（核心文件被 MCP 宿主占用等）合并进更新对话框信息。 */
+const mergeUpdateAttemptNotice = async (info: UpdateDialogInfo): Promise<UpdateDialogInfo> => {
+  const verifyAttempt = window.lingBuilder?.updates?.verifyAttempt;
+  if (!verifyAttempt) return info;
+  try {
+    const attempt = await verifyAttempt();
+    if (attempt?.pending && !attempt.tookEffect && attempt.message) {
+      return { ...info, attemptFailureNotice: attempt.message };
+    }
+  } catch { /* 校验通道异常时按普通更新流程展示，不阻断 */ }
+  return info;
+};
 
 const generateDefaultLingCppContentForWindow = (win: any) => {
   const className = win.className || '自定义窗体';
@@ -1314,7 +1328,10 @@ export default function App() {
         const skipped = result.hasUpdate && result.channel !== 'preview' && Boolean(result.latestVersion) && result.latestVersion === preference.skippedVersion;
         if (result.hasUpdate && announceOnDiscover && !skipped) {
           // 首次发现仍自动弹窗提醒一次；后续周期复查只刷新徽标，不反复打断用户。
-          setUpdateCheckState(prev => prev ?? createUpdateDialogInfo(result, true));
+          // 上次更新未生效时附带诊断说明与保留的安装包状态，替代无声的重新下载循环。
+          void mergeUpdateAttemptNotice(createUpdateDialogInfo(result, true)).then(info => {
+            setUpdateCheckState(prev => prev ?? info);
+          });
         }
       }).catch(() => undefined);
     };
@@ -1359,6 +1376,9 @@ export default function App() {
   } | null>(null);
   const [projectBuildPropertiesBusy, setProjectBuildPropertiesBusy] = useState(false);
   const [projectBuildPropertiesError, setProjectBuildPropertiesError] = useState<string>('');
+  const [installerExportState, setInstallerExportState] = useState<{ projectId: string; preflight: InstallerExportPreflight; initialValue: InstallerExportDialogValue } | null>(null);
+  const [installerExportBusy, setInstallerExportBusy] = useState(false);
+  const [installerExportError, setInstallerExportError] = useState<string>('');
   const [showEnvironmentRepairCenter, setShowEnvironmentRepairCenter] = useState(false);
   const [showCliGuide, setShowCliGuide] = useState(false);
   const [showCreateProjectDialog, setShowCreateProjectDialog] = useState(false);
@@ -4648,6 +4668,93 @@ void DisplayStatus() {
     return true;
   };
 
+  const handleExportInstaller = async (requestedProjectId?: string): Promise<boolean> => {
+    if (editorOperationRef.current || isBuilding) {
+      appendEditorTransactionLog('【安装包导出】当前有保存、生成或文件操作正在进行，请稍后再试。');
+      return false;
+    }
+    const projectId = requestedProjectId || activeProjectId || solution.startupProjectId || solution.projects[0]?.id;
+    const project = solution.projects.find(item => item.id === projectId);
+    if (!project || project.type !== 'visual-cpp') {
+      appendEditorTransactionLog('【安装包导出错误】请选择一个 LingBuilder 可视 C++ 项目。');
+      return false;
+    }
+    try {
+      const response = await fetch(`/api/installer/preflight?projectId=${encodeURIComponent(project.id)}`);
+      const preflightResult = await response.json() as { ok?: boolean; error?: string } & InstallerExportPreflight;
+      if (!preflightResult.ok) {
+        appendEditorTransactionLog(`【安装包导出】${preflightResult.error || '导出预检失败，请先构建项目。'}`);
+        return false;
+      }
+      setInstallerExportError('');
+      setInstallerExportState({
+        projectId: project.id,
+        preflight: {
+          projectName: preflightResult.projectName,
+          outputFileName: preflightResult.outputFileName,
+          lastVersion: preflightResult.lastVersion,
+          architecture: preflightResult.architecture,
+          buildMode: preflightResult.buildMode,
+          requireAdministrator: preflightResult.requireAdministrator,
+          requiresDynamicCrt: preflightResult.requiresDynamicCrt,
+          hasProjectIcon: preflightResult.hasProjectIcon,
+          builtAt: preflightResult.builtAt
+        },
+        initialValue: {
+          version: preflightResult.lastVersion || '1.0.0',
+          useProjectIcon: true,
+          bundleVcRedist: false,
+          installMode: 'auto'
+        }
+      });
+      return true;
+    } catch (error) {
+      appendEditorTransactionLog(`【安装包导出错误】${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    }
+  };
+
+  const handleConfirmInstallerExport = async (value: InstallerExportDialogValue): Promise<void> => {
+    const state = installerExportState;
+    if (!state) return;
+    setInstallerExportBusy(true);
+    setInstallerExportError('');
+    setShowBottomPanel(true);
+    setActiveTabInBottom('output');
+    setBuildLogs(previous => [...previous, `> [${new Date().toLocaleTimeString()}] 【安装包导出】正在打包项目「${state.preflight.projectName}」（版本 ${value.version}）…`]);
+    try {
+      const response = await fetch('/api/installer/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: state.projectId,
+          version: value.version,
+          useProjectIcon: value.useProjectIcon,
+          bundleVcRedist: value.bundleVcRedist,
+          installMode: value.installMode
+        })
+      });
+      const result = await response.json() as { ok?: boolean; error?: string; installerPath?: string; fileCount?: number; version?: string; requiresVcRedist?: boolean; builtAt?: string; logs?: string[] };
+      if (!result.ok) {
+        setInstallerExportError(result.error || '安装包导出失败。');
+        setBuildLogs(previous => [...previous, `> [${new Date().toLocaleTimeString()}] 【安装包导出错误】${result.error || '安装包导出失败。'}`,
+          ...(result.logs || []).map(line => `  ${line}`)]);
+        return;
+      }
+      setInstallerExportState(null);
+      setBuildLogs(previous => [...previous,
+        `> [${new Date().toLocaleTimeString()}] 【安装包导出】已生成 ${result.installerPath}`,
+        `  包含 ${result.fileCount || 0} 个文件，版本 ${result.version || ''}，基于构建 ${result.builtAt || ''}。`,
+        ...(result.requiresVcRedist ? ['  提醒：目标机器需要 VC++ 运行库（/MD 构建且未捆绑运行库）。'] : [])]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setInstallerExportError(message);
+      setBuildLogs(previous => [...previous, `> [${new Date().toLocaleTimeString()}] 【安装包导出错误】${message}`]);
+    } finally {
+      setInstallerExportBusy(false);
+    }
+  };
+
   const handleOpenLcppSourcePackage = async (): Promise<boolean> => {
     const sourcePackageApi = window.lingBuilder?.sourcePackages;
     if (!sourcePackageApi) {
@@ -4738,18 +4845,6 @@ void DisplayStatus() {
       ]);
     }
     return true;
-  };
-
-  const handleGenerateCpp = () => {
-    window.dispatchEvent(new CustomEvent('show-window-designer'));
-    setShowBottomPanel(true);
-    setActiveTabInBottom('output');
-    // 如实播报：真实生成只在「生成（F5）/生成解决方案」构建链路发生，这里只是打开设计器。
-    // 此前这里写死三行「解析 DSL→生成完毕」假日志，对无设计器项目是纯误导。
-    setBuildLogs(prev => [
-      ...prev,
-      `> [${new Date().toLocaleTimeString()}] 【生成】已打开窗口设计器。C++ 工程与编译产物在点「生成」（F5）或「生成解决方案」时自动生成，无需单独生成代码。`
-    ]);
   };
 
   const handleEnvCheck = async (): Promise<boolean> => {
@@ -5428,6 +5523,8 @@ void DisplayStatus() {
         // buildProperties 是整体替换：重述全部既有字段，避免「构建目录」保存一次抹掉它们。
         ...(existingProperties?.outputType ? { outputType: existingProperties.outputType } : {}),
         ...(existingProperties?.requireAdministrator !== undefined ? { requireAdministrator: existingProperties.requireAdministrator } : {}),
+        ...(existingProperties?.forbidInlineCpp !== undefined ? { forbidInlineCpp: existingProperties.forbidInlineCpp } : {}),
+        ...(existingProperties?.inlineCppAllowFiles ? { inlineCppAllowFiles: existingProperties.inlineCppAllowFiles } : {}),
         ...(value.projectBuildDirectory.trim() ? { buildDirectory: value.projectBuildDirectory.trim() } : {}),
         ...(value.projectGeneratedSourceDirectory.trim() ? { generatedSourceDirectory: value.projectGeneratedSourceDirectory.trim() } : {}),
         ...(value.projectExecutableName.trim() ? { executableName: value.projectExecutableName.trim() } : {})
@@ -5493,6 +5590,8 @@ void DisplayStatus() {
         ...(existing?.outputType ? { outputType: existing.outputType } : {}),
         ...(existing?.executableName ? { executableName: existing.executableName } : {}),
         ...(existing?.requireAdministrator !== undefined ? { requireAdministrator: existing.requireAdministrator } : {}),
+        ...(existing?.forbidInlineCpp !== undefined ? { forbidInlineCpp: existing.forbidInlineCpp } : {}),
+        ...(existing?.inlineCppAllowFiles ? { inlineCppAllowFiles: existing.inlineCppAllowFiles } : {}),
         ...(existing?.buildDirectory ? { buildDirectory: existing.buildDirectory } : {}),
         ...(existing?.generatedSourceDirectory ? { generatedSourceDirectory: existing.generatedSourceDirectory } : {})
       };
@@ -5742,6 +5841,29 @@ void DisplayStatus() {
     }
   }, [activeProjectId, appendEditorTransactionLog, handleSolutionBuildCommand, saveWorkspaceCore]);
 
+  // 编译当前项目（工具栏按钮与「项目」菜单共用）：build/rebuild 先保存再编，clean 只清产物不需保存。
+  const handleCurrentProjectBuildCommand = useCallback(async (command: 'build' | 'clean' | 'rebuild'): Promise<boolean> => {
+    if (editorOperationRef.current) {
+      appendEditorTransactionLog(`【编译】已有${getEditorOperationLabel(editorOperationRef.current)}任务正在进行，本次请求未重复执行。`);
+      return false;
+    }
+    if (command === 'clean') {
+      return await handleSolutionBuildCommand('clean', activeProjectId);
+    }
+    editorOperationRef.current = 'build';
+    setIsBuilding(true);
+    try {
+      if (!await saveWorkspaceCore('编译当前项目前保存', true)) {
+        appendEditorTransactionLog('【编译】源码保存未完成，已取消编译，磁盘不会使用旧草稿。');
+        return false;
+      }
+      return await handleSolutionBuildCommand(command, activeProjectId);
+    } finally {
+      if (editorOperationRef.current === 'build') editorOperationRef.current = null;
+      setIsBuilding(false);
+    }
+  }, [activeProjectId, appendEditorTransactionLog, handleSolutionBuildCommand, saveWorkspaceCore]);
+
   const handleStartNativeDebug = useCallback(async (): Promise<boolean> => {
     if (editorOperationRef.current) return false;
     editorOperationRef.current = 'build'; setIsBuilding(true);
@@ -5828,6 +5950,7 @@ void DisplayStatus() {
     openWorkspace: handleOpenWorkspace,
     openLcppSourcePackage: handleOpenLcppSourcePackage,
     exportLcppSourcePackage: (projectId?: unknown) => handleExportLcppSourcePackage(typeof projectId === 'string' ? projectId : undefined),
+    exportInstaller: (projectId?: unknown) => handleExportInstaller(typeof projectId === 'string' ? projectId : undefined),
     openProjectGlobalVariables: (projectId?: unknown) => handleOpenProjectGlobalVariables(typeof projectId === 'string' ? projectId : activeProjectIdRef.current),
     openProjectDataTypes: (projectId?: unknown) => handleOpenProjectDataTypes(typeof projectId === 'string' ? projectId : activeProjectIdRef.current),
     openProjectDllCommands: (projectId?: unknown) => handleOpenProjectDllCommands(typeof projectId === 'string' ? projectId : activeProjectIdRef.current),
@@ -5843,6 +5966,9 @@ void DisplayStatus() {
     solutionBuild: () => handleSolutionBuildCommand('build'),
     solutionRebuild: () => handleSolutionBuildCommand('rebuild'),
     solutionClean: () => handleSolutionBuildCommand('clean'),
+    solutionBuildProject: () => handleCurrentProjectBuildCommand('build'),
+    solutionRebuildProject: () => handleCurrentProjectBuildCommand('rebuild'),
+    solutionCleanProject: () => handleCurrentProjectBuildCommand('clean'),
     copySolutionFullPath: handleCopySolutionFullPath,
     copyProjectFullPath: (projectId?: unknown) => handleCopyProjectFullPath(typeof projectId === 'string' ? projectId : undefined),
     environmentCheck: handleEnvCheck,
@@ -5900,9 +6026,11 @@ void DisplayStatus() {
         if (!result.ok) { setUpdateCheckState({ status: 'error', error: result.error || '检查更新失败。' }); return true; }
         setUpdateBadgePayload(result.hasUpdate ? result : null);
         setShowUpdateBadgePanel(false);
-        setUpdateCheckState(result.hasUpdate
-          ? createUpdateDialogInfo(result)
-          : { status: 'latest', latestVersion: result.latestVersion });
+        if (result.hasUpdate) {
+          void mergeUpdateAttemptNotice(createUpdateDialogInfo(result)).then(info => setUpdateCheckState(info));
+        } else {
+          setUpdateCheckState({ status: 'latest', latestVersion: result.latestVersion });
+        }
       } catch (error) {
         setUpdateCheckState({ status: 'error', error: error instanceof Error ? error.message : String(error) });
       }
@@ -6256,6 +6384,17 @@ void DisplayStatus() {
         handler: (_context, projectId) => workbenchCommandHandlersRef.current.exportLcppSourcePackage(projectId)
       },
       {
+        id: 'workbench.action.project.exportInstaller',
+        title: '项目：导出安装包',
+        aliases: ['Export Installer', 'NSIS Setup'],
+        category: '文件',
+        description: '把最近一次构建产物打包为 NSIS 安装程序（setup.exe），供他人一键安装。',
+        when: 'workspace.open && !workbench.modalOpen',
+        enabled: context => !context['operation.busy'],
+        order: 12,
+        handler: (_context, projectId) => workbenchCommandHandlersRef.current.exportInstaller(projectId)
+      },
+      {
         id: 'workbench.action.files.closeSolution',
         title: '关闭当前解决方案',
         aliases: ['Close Solution', 'Close Workspace'],
@@ -6457,6 +6596,39 @@ void DisplayStatus() {
         enabled: context => !context['operation.busy'],
         order: 24,
         handler: () => workbenchCommandHandlersRef.current.solutionClean()
+      },
+      {
+        id: 'workbench.action.solution.buildProject',
+        title: '编译当前项目',
+        aliases: ['Build Project'],
+        category: '生成',
+        description: '只编译当前激活项目及其项目引用依赖，不影响解决方案中的其他项目；编译前自动保存，不运行。',
+        when: '!workbench.modalOpen',
+        enabled: context => !context['operation.busy'],
+        order: 25,
+        handler: () => workbenchCommandHandlersRef.current.solutionBuildProject()
+      },
+      {
+        id: 'workbench.action.solution.rebuildProject',
+        title: '重新生成当前项目',
+        aliases: ['Rebuild Project'],
+        category: '生成',
+        description: '先清理再编译当前激活项目及其项目引用依赖，不影响解决方案中的其他项目；编译前自动保存。',
+        when: '!workbench.modalOpen',
+        enabled: context => !context['operation.busy'],
+        order: 26,
+        handler: () => workbenchCommandHandlersRef.current.solutionRebuildProject()
+      },
+      {
+        id: 'workbench.action.solution.cleanProject',
+        title: '清理当前项目',
+        aliases: ['Clean Project'],
+        category: '生成',
+        description: '清理当前激活项目的编译产物，不影响解决方案中的其他项目。',
+        when: '!workbench.modalOpen',
+        enabled: context => !context['operation.busy'],
+        order: 27,
+        handler: () => workbenchCommandHandlersRef.current.solutionCleanProject()
       },
       {
         id: 'workbench.action.solution.copyFullPath',
@@ -7527,16 +7699,21 @@ void DisplayStatus() {
                     <span>清理解决方案</span>
                     <span className="opacity-50 text-[10px]">Clean</span>
                   </button>
+                  <div className={`h-px my-1 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+                  <button onClick={() => { void handleCurrentProjectBuildCommand('build'); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                    <span>编译当前项目</span>
+                  </button>
+                  <button onClick={() => { void handleCurrentProjectBuildCommand('rebuild'); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                    <span>重新生成当前项目</span>
+                  </button>
+                  <button onClick={() => { void handleCurrentProjectBuildCommand('clean'); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                    <span>清理当前项目</span>
+                  </button>
                   <button onClick={() => { void handleSetStartupProject(activeProjectId); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     <span>设为启动项目</span>
                     <span className="opacity-50 text-[10px]">{activeSolutionProject.name}</span>
                   </button>
                   <div className={`h-px my-1 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
-                  {!activeProjectIsDllOutput && (
-                    <button onClick={() => { handleGenerateCpp(); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
-                      <span>生成 C++ 宏定义类</span>
-                    </button>
-                  )}
                   <button onClick={() => { handleEnvCheck(); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     <span>项目环境开发自检</span>
                   </button>
@@ -7800,13 +7977,16 @@ void DisplayStatus() {
           }`}>
             {!activeProjectIsDllOutput && (
               <button
-                onClick={handleGenerateCpp}
-                className={`p-1 rounded cursor-pointer transition-all active:scale-95 ${
-                  isDarkMode ? 'text-slate-400 hover:text-white hover:bg-[#2d2d30]' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                }`}
-                title="生成 C++ (打开窗口设计器；C++ 工程与编译产物在「生成」（F5）时自动生成)"
+                id="btn-build-current-project"
+                onClick={() => { void handleCurrentProjectBuildCommand('build'); }}
+                disabled={isBuilding}
+                className={`flex items-center gap-1 px-1.5 py-1 rounded transition-all active:scale-95 whitespace-nowrap ${
+                  isDarkMode ? 'text-slate-200 hover:bg-[#2d2d30]' : 'text-slate-700 hover:bg-slate-100'
+                } ${isBuilding ? 'opacity-50 cursor-wait' : 'cursor-pointer'}`}
+                title="编译当前项目 (只编译当前激活项目及其引用依赖，不运行；编译并运行请点「运行」/F5)"
               >
-                <Cpu className="w-4 h-4 text-amber-500" />
+                <span className="text-[11px]">编译当前项目</span>
+                <Cpu className="w-4 h-4 shrink-0 text-amber-500" />
               </button>
             )}
             {activeProjectIsDllOutput && (
@@ -7814,44 +7994,39 @@ void DisplayStatus() {
                 id="btn-generate-dll"
                 onClick={() => { void handleGenerateDllOutput(); }}
                 disabled={isBuilding}
-                className={`p-1 rounded transition-all active:scale-95 ${
-                  isBuilding
-                    ? 'opacity-50 text-sky-500 cursor-wait'
-                    : isDarkMode
-                      ? 'text-sky-400 hover:text-sky-300 hover:bg-[#2d2d30]'
-                      : 'text-sky-600 hover:text-sky-700 hover:bg-slate-100'
-                } ${isBuilding ? '' : 'cursor-pointer'}`}
-                title="生成动态库 (编译当前项目产出 .dll 与导入库 .lib，不运行；快捷方式：生成菜单 → 生成解决方案)"
+                className={`flex items-center gap-1 px-1.5 py-1 rounded transition-all active:scale-95 whitespace-nowrap ${
+                  isDarkMode ? 'text-slate-200 hover:bg-[#2d2d30]' : 'text-slate-700 hover:bg-slate-100'
+                } ${isBuilding ? 'opacity-50 cursor-wait' : 'cursor-pointer'}`}
+                title="生成动态库 (编译当前 DLL 项目产出 .dll 与导入库 .lib，不运行；快捷方式：生成菜单 → 生成解决方案)"
               >
-                <Hammer className="w-4 h-4" />
+                <span className="text-[11px]">生成动态库</span>
+                <Hammer className={`w-4 h-4 shrink-0 ${isDarkMode ? 'text-sky-400' : 'text-sky-600'}`} />
               </button>
             )}
             <button
               id="btn-run-f5"
               onClick={handleRunBuild}
               disabled={isBuilding || activeProjectIsDllOutput}
-              className={`p-1 rounded transition-all active:scale-95 ${
-                isBuilding
-                  ? 'opacity-50 text-emerald-600 cursor-wait'
-                  : activeProjectIsDllOutput
-                    ? 'opacity-40 text-emerald-500 cursor-not-allowed'
-                    : 'text-emerald-500 hover:text-emerald-650 cursor-pointer'
-              }`}
+              className={`flex items-center gap-1 px-1.5 py-1 rounded transition-all active:scale-95 whitespace-nowrap ${
+                isDarkMode ? 'text-slate-200 hover:bg-[#2d2d30]' : 'text-slate-700 hover:bg-slate-100'
+              } ${isBuilding || activeProjectIsDllOutput ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
               title={activeProjectIsDllOutput
-                ? "运行 F5 已禁用：动态库（DLL）项目没有运行入口。请点击旁边的「生成」按钮（锤子图标）一键编译 DLL 产物"
+                ? "运行 F5 已禁用：动态库（DLL）项目没有运行入口。请点击旁边的「生成动态库」按钮（锤子图标）一键编译 DLL 产物"
                 : "运行 F5 (编译并运行当前项目，快捷键是 F5)"}
             >
-              <Play className="w-4 h-4 fill-emerald-500/10" />
+              <span className="text-[11px]">运行</span>
+              <Play className="w-4 h-4 shrink-0 fill-emerald-500/10 text-emerald-500" />
             </button>
             <button
               id="btn-stop-debugging"
               onClick={handleStopBuild}
-              className={`p-1 rounded cursor-pointer transition-all active:scale-95 text-red-500 ${
-                isDarkMode ? 'hover:text-red-300 hover:bg-[#2d2d30]' : 'hover:text-red-700 hover:bg-slate-100'
+              className={`flex items-center gap-1 px-1.5 py-1 rounded cursor-pointer transition-all active:scale-95 whitespace-nowrap ${
+                isDarkMode ? 'text-slate-200 hover:bg-[#2d2d30]' : 'text-slate-700 hover:bg-slate-100'
               }`}
               title="停止 (Shift+F5)&#10;取消在途生成请求并终止所有受控运行进程"
             >
-              <Square className="w-4 h-4 fill-red-500/10" />
+              <span className="text-[11px]">停止</span>
+              <Square className="w-4 h-4 shrink-0 fill-red-500/10 text-red-500" />
             </button>
             <button
               onClick={() => {
@@ -7859,23 +8034,25 @@ void DisplayStatus() {
                 void handleRunBuild();
               }}
               disabled={isBuilding || activeProjectIsDllOutput}
-              className={`p-1 rounded transition-all active:scale-95 ${
-                isDarkMode ? 'text-indigo-400 hover:text-indigo-300 hover:bg-[#2d2d30]' : 'text-indigo-600 hover:text-indigo-700 hover:bg-slate-100'
-              } ${activeProjectIsDllOutput ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
+              className={`flex items-center gap-1 px-1.5 py-1 rounded transition-all active:scale-95 whitespace-nowrap ${
+                isDarkMode ? 'text-slate-200 hover:bg-[#2d2d30]' : 'text-slate-700 hover:bg-slate-100'
+              } ${isBuilding || activeProjectIsDllOutput ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
               title={activeProjectIsDllOutput
-                ? "重新运行已禁用：动态库（DLL）项目没有运行入口。请使用「生成解决方案」编译 DLL 产物"
+                ? "重新运行已禁用：动态库（DLL）项目没有运行入口。请使用「生成动态库」按钮编译 DLL 产物"
                 : "重新运行 (停止/刷新后重新运行当前项目)"}
             >
-              <RefreshCw className="w-4 h-4" />
+              <span className="text-[11px]">重新运行</span>
+              <RefreshCw className={`w-4 h-4 shrink-0 ${isDarkMode ? 'text-indigo-400' : 'text-indigo-600'}`} />
             </button>
             <button
               onClick={handleEnvCheck}
-              className={`p-1 rounded cursor-pointer transition-all active:scale-95 ${
-                isDarkMode ? 'text-rose-400 hover:text-rose-300 hover:bg-[#2d2d30]' : 'text-rose-600 hover:text-rose-700 hover:bg-slate-100'
+              className={`flex items-center gap-1 px-1.5 py-1 rounded cursor-pointer transition-all active:scale-95 whitespace-nowrap ${
+                isDarkMode ? 'text-slate-200 hover:bg-[#2d2d30]' : 'text-slate-700 hover:bg-slate-100'
               }`}
               title="环境检查 (检测 Node.js、MSVC、Windows SDK、CMake、g++、clang++、WebView2 与 Windows 平台)"
             >
-              <ShieldCheck className="w-4 h-4" />
+              <span className="text-[11px]">环境检查</span>
+              <ShieldCheck className={`w-4 h-4 shrink-0 ${isDarkMode ? 'text-rose-400' : 'text-rose-600'}`} />
             </button>
           </div>
         </div>
@@ -8102,6 +8279,7 @@ void DisplayStatus() {
           onCopyProjectFullPath={projectId => executeWorkbenchCommand('workbench.action.project.copyFullPath', projectId)}
           onAddProjectResource={handleAddProjectResource}
           onExportLcppSourcePackage={projectId => { void executeWorkbenchCommand('workbench.action.project.exportLcppSourcePackage', projectId); }}
+          onExportInstaller={projectId => { void executeWorkbenchCommand('workbench.action.project.exportInstaller', projectId); }}
           onCopyProjectResourcePath={handleCopyProjectResourcePath}
           onDeleteProjectResource={handleDeleteProjectResource}
           fontSize={sidebarFontSize}
@@ -8505,6 +8683,20 @@ void DisplayStatus() {
         initialValue={projectBuildPropertiesState?.initialValue || { configuration: buildConfiguration.mode, architecture: buildConfiguration.architecture, additionalArgumentsText: '' }}
         onConfirm={handleSaveProjectBuildProperties}
         onClose={() => setProjectBuildPropertiesState(null)}
+      />
+
+      <InstallerExportDialog
+        open={Boolean(installerExportState)}
+        isDarkMode={isDarkMode}
+        busy={installerExportBusy}
+        error={installerExportError || undefined}
+        preflight={installerExportState?.preflight || {
+          projectName: '', outputFileName: '', lastVersion: '1.0.0', architecture: 'x64', buildMode: 'Debug',
+          requireAdministrator: false, requiresDynamicCrt: false, hasProjectIcon: false, builtAt: ''
+        }}
+        initialValue={installerExportState?.initialValue || { version: '1.0.0', useProjectIcon: true, bundleVcRedist: false, installMode: 'auto' }}
+        onConfirm={value => { void handleConfirmInstallerExport(value); }}
+        onClose={() => setInstallerExportState(null)}
       />
 
       <EmbeddedResourcesDialog
