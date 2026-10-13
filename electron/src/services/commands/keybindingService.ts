@@ -42,7 +42,7 @@ export class KeybindingService {
     const command = matches[0];
     if (isNativeEditableTarget(event.target)
       && isEditorHistoryCommand(command.id)
-      && !isWorkbenchEditorCommandTarget(event.target)) {
+      && (!isWorkbenchEditorCommandTarget(event.target) || hasNativeEditableHistory(command.id))) {
       return { handled: false, keybinding };
     }
     event.preventDefault();
@@ -80,6 +80,23 @@ function isWorkbenchEditorCommandTarget(value: unknown): boolean {
   if (typeof closest !== 'function') return false;
   try {
     return Boolean(closest.call(value, '[data-lingbuilder-editor-command-owner="true"]'));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 焦点元素上浏览器原生撤销/重做栈是否有货。新手代码 textarea 的逐键编辑
+ * 都在原生栈里，此时 Ctrl+Z 应交给浏览器原生撤销：粒度是单次击键、光标由
+ * 浏览器保持，撤销产生的 input 事件照常经 onChange 同步草稿与覆盖层。
+ * 工作台文件级撤销（冲洗草稿 + 整文件回退 + textarea 重挂清栈）只在原生
+ * 栈为空时兜底——典型场景是失焦提交触发过重挂、原生栈已被清空。
+ */
+function hasNativeEditableHistory(commandId: string): boolean {
+  if (typeof document === 'undefined') return false;
+  const query = commandId === 'workbench.action.editor.redo' ? 'redo' : 'undo';
+  try {
+    return document.queryCommandEnabled(query);
   } catch {
     return false;
   }

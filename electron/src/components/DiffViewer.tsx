@@ -1490,6 +1490,7 @@ function BeginnerInitialValueEditor({
       aria-labelledby="beginner-initial-value-title"
       tabIndex={-1}
       onKeyDown={event => {
+        if (event.nativeEvent.isComposing) return;
         if (event.key === 'Escape') {
           event.preventDefault();
           onClose();
@@ -4905,6 +4906,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       readOnly={!onUpdateSourceContent || !row.editable}
       onBlur={event => commitDirectStructureValue(row, field, event.currentTarget.value)}
       onKeyDown={event => {
+        if (event.nativeEvent.isComposing) return;
         if (event.key === 'Enter') event.currentTarget.blur();
         if (event.key === 'Escape') {
           event.currentTarget.value = value;
@@ -4997,6 +4999,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       disabled={!onUpdateSourceContent || !primaryLingCppClass}
       onChange={event => setNewEventDraft(current => ({ ...current, [field]: event.target.value }))}
       onKeyDown={event => {
+        if (event.nativeEvent.isComposing) return;
         if (event.key === 'Enter') {
           event.preventDefault();
           commitNewEventDraft({ [field]: event.currentTarget.value });
@@ -5058,6 +5061,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       disabled={!onUpdateSourceContent || !primaryMethodOwnerName}
       onChange={event => setNewFunctionDraft(current => ({ ...current, [field]: event.target.value }))}
       onKeyDown={event => {
+        if (event.nativeEvent.isComposing) return;
         if (event.key === 'Enter') {
           event.preventDefault();
           commitNewFunctionDraft({ [field]: event.currentTarget.value });
@@ -5840,16 +5844,19 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       }
     };
     /**
-     * 草稿的「结构指纹」：行数 + 每行缩进 + 控制流关键字。
-     * 只改字词（结构不变）时不需要重渲结构画布，因为流程图/分支折叠不会变；
-     * 改行数、缩进或 如果/循环/选择 之类关键字时才需要。
+     * 草稿的「结构 + 内容长度」指纹：行数 + 每行缩进 + 控制流关键字 + 行长度。
+     * 只把行数/缩进/流头算进指纹曾导致内容级编辑（改字词、Ctrl+Z 还原）被判
+     * 「结构未变」而不同步 state——语法覆盖层停留在旧内容，可见文字与透明
+     * textarea 错位，表现为「编辑/撤销后点不中行尾字符」。行长让内容级编辑
+     * 也必然在 400ms 空闲后刷新覆盖层；同行等长替换（改一个字换另一个字）
+     * 仍可能短暂颜色陈旧，属已知边界（不影响几何对位）。
      */
     const beginnerDraftStructureSignature = (value: string) => value
       .split('\n')
       .map(line => {
         const indent = line.match(/^\s*/u)?.[0].length ?? 0;
         const head = line.trim().match(/^[\u4e00-\u9fa5A-Za-z_]+/u)?.[0] ?? '';
-        return `${indent}:${BEGINNER_FLOW_KEYWORD_HEADS.has(head) ? head : '·'}`;
+        return `${indent}:${BEGINNER_FLOW_KEYWORD_HEADS.has(head) ? head : '·'}#${line.length}`;
       })
       .join('|');
     const scheduleBeginnerDraftSync = (delay = 400) => {
@@ -6347,8 +6354,12 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       );
       if (segmentContext) updateBeginnerCodeSegmentDraft(target, segmentContext, event.currentTarget.value, { defer: true });
       else updateBeginnerCodeDraft(target, event.currentTarget.value, { defer: true });
-      updateBeginnerCompletion(target, event.currentTarget, false, segmentContext);
-      updateBeginnerCommandHint(target, event.currentTarget);
+      // IME 组合中的中间 input 不弹补全/命令提示（token 还是拼音串，面板必错）；
+      // 组合提交后的最后一个 input 事件 isComposing=false，会在这里正常刷新。
+      if (!(event.nativeEvent as InputEvent).isComposing) {
+        updateBeginnerCompletion(target, event.currentTarget, false, segmentContext);
+        updateBeginnerCommandHint(target, event.currentTarget);
+      }
     };
     const handleBeginnerCodeBlur = (
       target: BeginnerCodeTarget,
@@ -6647,11 +6658,54 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         loop.inferredType
       );
     };
+    /**
+     * 以「用户编辑」的方式替换 textarea 区间：走 execCommand 编辑管线，
+     * 浏览器原生撤销栈会记录这一次编辑（Ctrl+Z 可撤销）。直写 input.value
+     * 会清空整个撤销栈，是新手模式「回车拆行/Tab 缩进/Ctrl+/ 注释之后
+     * Ctrl+Z 静默无效」的根因。execCommand 不可用时回退直写，功能不回退。
+     */
+    const applyBeginnerTextareaEdit = (
+      input: HTMLTextAreaElement,
+      nextValue: string
+    ): boolean => {
+      const oldValue = input.value;
+      if (oldValue === nextValue) return true;
+      let prefix = 0;
+      const maxPrefix = Math.min(oldValue.length, nextValue.length);
+      while (prefix < maxPrefix && oldValue[prefix] === nextValue[prefix]) prefix += 1;
+      let suffix = 0;
+      const maxSuffix = Math.min(oldValue.length - prefix, nextValue.length - prefix);
+      while (
+        suffix < maxSuffix
+        && oldValue[oldValue.length - 1 - suffix] === nextValue[nextValue.length - 1 - suffix]
+      ) suffix += 1;
+      const replaceStart = prefix;
+      const replaceEnd = oldValue.length - suffix;
+      const inserted = nextValue.slice(prefix, nextValue.length - suffix);
+      input.focus();
+      input.setSelectionRange(replaceStart, replaceEnd);
+      let applied = false;
+      try {
+        applied = inserted
+          ? document.execCommand('insertText', false, inserted)
+          : document.execCommand('delete');
+      } catch {
+        applied = false;
+      }
+      if (!applied) input.value = nextValue;
+      return applied;
+    };
+
     const handleBeginnerCodeKeyDown = (
       target: BeginnerCodeTarget,
       event: React.KeyboardEvent<HTMLTextAreaElement>,
       segmentContext?: BeginnerCodeSegmentContext
     ) => {
+      // IME 组合期间（拼音预输入、候选确认、候选导航）不跑任何分支：
+      // 这些 keydown 都带 isComposing，回车/方向键/Tab 一旦在这里被消费，
+      // 会 preventDefault 并改写 textarea，摧毁正在上屏的组合——表现为
+      // 中文输入时文字丢失、光标跳位。等组合提交后的 input 事件再正常处理。
+      if (event.nativeEvent.isComposing) return;
       const input = event.currentTarget;
       const targetKey = codeTargetKey(target);
       const segmentId = segmentContext?.segment.id || 'all';
@@ -6740,7 +6794,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         closeBeginnerCompletion(target);
         const result = toggleBeginnerLineComment(input.value, input.selectionStart, input.selectionEnd);
         if (result.value === input.value) return;
-        input.value = result.value;
+        applyBeginnerTextareaEdit(input, result.value);
         if (segmentContext) updateBeginnerCodeSegmentDraft(target, segmentContext, result.value, { defer: true });
         else updateBeginnerCodeDraft(target, result.value, { defer: true });
         window.requestAnimationFrame(() => {
@@ -6805,8 +6859,10 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         const end = hasSelection ? input.selectionEnd : start;
         const indent = getBeginnerNextLineIndentation(formatted.value, start);
         const nextValue = `${formatted.value.slice(0, start)}\n${indent}${formatted.value.slice(end)}`;
-        input.value = nextValue;
-        // 换行已直接写入 DOM；立即同步草稿会重挂 textarea，让下面的光标恢复落在旧节点上。
+        // 换行已通过 execCommand 写入 DOM（保撤销栈）；立即同步草稿会重挂 textarea，
+        // 让下面的光标恢复落在旧节点上，仍走 defer。
+        applyBeginnerTextareaEdit(input, nextValue);
+        closeBeginnerCompletion(target);
         if (segmentContext) updateBeginnerCodeSegmentDraft(target, segmentContext, nextValue, { defer: true });
         else updateBeginnerCodeDraft(target, nextValue, { defer: true });
         window.requestAnimationFrame(() => {
@@ -6830,7 +6886,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         const start = input.selectionStart;
         const end = input.selectionEnd;
         const nextValue = `${input.value.slice(0, start)}    ${input.value.slice(end)}`;
-        input.value = nextValue;
+        applyBeginnerTextareaEdit(input, nextValue);
+        closeBeginnerCompletion(target);
         if (segmentContext) updateBeginnerCodeSegmentDraft(target, segmentContext, nextValue, { defer: true });
         else updateBeginnerCodeDraft(target, nextValue, { defer: true });
         window.requestAnimationFrame(() => {
@@ -8051,6 +8108,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               commitFieldValue(event.currentTarget);
             }}
             onKeyDown={event => {
+              if (event.nativeEvent.isComposing) return;
               if (field === 'returnType' && typeCompletion) {
                 if (event.key === 'ArrowDown') {
                   event.preventDefault();
@@ -8172,6 +8230,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
             applyCodeTargetSignature(target, { note: nextValue });
           }}
           onKeyDown={event => {
+            if (event.nativeEvent.isComposing) return;
             if (event.key === 'Enter') event.currentTarget.blur();
             if (event.key === 'Escape') {
               event.currentTarget.value = value;
@@ -8277,6 +8336,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               commitCodeTargetParameter(target, index, field, nextValue);
             }}
             onKeyDown={event => {
+              if (event.nativeEvent.isComposing) return;
               if (field === 'type' && typeCompletion) {
                 if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
                   event.preventDefault();
@@ -8492,7 +8552,9 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       const lineHeight = Math.max(18, Math.round(editorFontSize * 1.65));
       const editorTextStyle = {
         fontSize: `${editorFontSize}px`,
-        lineHeight: `${lineHeight}px`
+        lineHeight: `${lineHeight}px`,
+        // 与语法覆盖层同 tabSize：textarea 缺省是 8，覆盖层是 4，含制表符的行会错位。
+        tabSize: 4
       };
       return (
         <div className="relative" data-beginner-editor-root onWheel={handleEditorFontWheel}>
@@ -9291,7 +9353,11 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           style={{
             ...BEGINNER_CODE_OVERLAY_TOKEN_STYLE,
             color: tokenColor,
-            ...(kind === 'control-reference' ? { fontWeight: 600 } : {}),
+            // 控件引用强调曾用 fontWeight 600：半粗体会改变 CJK/数字字形步进，
+            // 覆盖层从控件名起相对透明 textarea 右偏 ~1px（随字号与引用个数累积），
+            // 违反上方「不得改变字形度量」红线。textShadow 只参与绘制不进布局，
+            // 保留加粗观感且光标与可见文字严格对齐。
+            ...(kind === 'control-reference' ? { textShadow: '0 0 0.7px currentColor' } : {}),
             // 双击高亮只叠底色不改字形度量（outline 不参与布局），否则透明 textarea 的
             // 光标会与可见文字错位（见 BEGINNER_CODE_OVERLAY_TOKEN_STYLE 的注释）。
             // Ctrl 悬停的跳转下划线同理：text-decoration 只参与绘制，不动度量。
@@ -9821,6 +9887,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               commitDirectStructureValue(row, field, nextValue);
             }}
             onKeyDown={event => {
+              if (event.nativeEvent.isComposing) return;
               if (field === 'member-type' && typeCompletion) {
                 if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
                   event.preventDefault();
@@ -9884,6 +9951,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                 commitDirectStructureValue(row, 'member-initial', nextValue);
               }}
               onKeyDown={event => {
+                if (event.nativeEvent.isComposing) return;
                 if (event.key === 'Enter') {
                   event.preventDefault();
                   const nextValue = event.currentTarget.value.trim();
@@ -10195,6 +10263,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               if (field === 'note') updateLocalVariable(target, local, { note: nextValue });
             }}
             onKeyDown={event => {
+              if (event.nativeEvent.isComposing) return;
               if (field === 'type' && typeCompletion) {
                 if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
                   event.preventDefault();
@@ -10460,7 +10529,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       const flowGuideRows = getBeginnerIfFlowGuideRows(bodyLines);
       const lineHeight = Math.max(18, Math.round(editorFontSize * 1.65));
       const editorHeight = Math.max(lineHeight * Math.max(bodyLines.length, 1) + 24, lineHeight + 24);
-      const editorTextStyle = { fontSize: `${editorFontSize}px`, lineHeight: `${lineHeight}px`, height: `${editorHeight}px` };
+      // tabSize 与语法覆盖层对齐（textarea 缺省 8、覆盖层 4），含制表符的行不错位。
+      const editorTextStyle = { fontSize: `${editorFontSize}px`, lineHeight: `${lineHeight}px`, height: `${editorHeight}px`, tabSize: 4 };
       const segmentId = segmentContext?.segment.id || 'all';
       const commandExpansionKey = (index: number) => `${targetKey}:${segmentId}:${index}`;
       const commandExpansions = bodyLines.map((line, index) =>
@@ -10896,6 +10966,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                                    }}
                                    onBlur={event => commitCommandArgument(argumentIndex, event.currentTarget.value)}
                                    onKeyDown={event => {
+                                     if (event.nativeEvent.isComposing) return;
                                      event.stopPropagation();
                                      if (event.key === 'Enter') {
                                        event.preventDefault();
@@ -12927,6 +12998,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                             value={editingValue}
                             onChange={e => setEditingValue(e.target.value)}
                             onKeyDown={e => {
+                              if (e.nativeEvent.isComposing) return;
                               if (e.key === 'Enter') handleSaveEdit(mappedString.id);
                               if (e.key === 'Escape') setEditingStringId(null);
                             }}
