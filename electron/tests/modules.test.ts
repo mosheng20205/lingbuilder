@@ -533,12 +533,19 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       // 5 命令 5 参数（压缩_DEFLATE解压/压缩_ZLIB解压/压缩_GZIP解压/压缩_DEFLATE压缩/
       // 压缩_GZIP压缩，各 1 个 bytes 参数；运行时由随包 miniz 3.0.2 内联实现，模块另登记
       // 常量 #压缩_解压上限字节，无 controlRef）（实算摘要 6e97f44a/e8eb479e）。
+      // 基线 2026-10-14 再写回（ODBC 多行结果集批次）：lingbuilder.database.odbc 1.0.0→1.1.0 新增
+      // 7 命令 9 参数（ODBC_查询打开/ODBC_取下一行/ODBC_取列文本/ODBC_取列数/ODBC_取列名/
+      // ODBC_查询关闭/ODBC_转义文本，编号与列序号为 longLong/int，无 controlRef）；
+      // ODBC_查询首值 改 SQLGetData 分段读取，消灭 4KB 静默截断（实算摘要 3bee4bff/808dcef7）。
+      // 基线 2026-10-15 写回（SSE 单向推送批次）：lingbuilder.http.server 2.1.0→2.2.0 新增
+      // 7 命令 10 参数（HTTP_SSE_开始/推送/推送事件/推送心跳/结束/是否连接/取连接数，
+      // 请求与服务端句柄为名义类型，无 controlRef）（实算摘要 0a3297a5/7d39a0d8）。
       modules: 102,
-      commands: 4092,
-      parameters: 7185,
+      commands: 4106,
+      parameters: 7204,
       controlReferences: 1345,
-      commandDigest: '6e97f44a',
-      parameterDigest: 'e8eb479e'
+      commandDigest: '0a3297a5',
+      parameterDigest: '7d39a0d8'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -1036,12 +1043,18 @@ test('工作区已安装模块全部通过 controlRef 清单和示例门禁', as
       // 基线 2026-10-10 三写回（archive 内存压缩批次）：内置 +5 命令 +5 参数
       //（lingbuilder.archive 1.1.0 字节集压缩解压五命令，见上一用例）；本机磁盘仍为 11 份清单，
       // 磁盘侧 0 漂移（实算摘要 66e83039/ceabdc7c）。
+      // 基线 2026-10-14 写回（ODBC 多行结果集批次）：内置 +7 命令 +9 参数
+      //（lingbuilder.database.odbc 1.1.0 结果集族 + 转义文本，见上一用例）；
+      // 本机磁盘仍为 11 份清单，磁盘侧 0 漂移（实算摘要 631f2434/594d0495）。
+      // 基线 2026-10-15 写回（SSE 单向推送批次）：内置 +7 命令 +10 参数
+      //（lingbuilder.http.server 2.2.0 SSE 命令族，见上一用例）；本机磁盘仍为 11 份清单，
+      // 磁盘侧 0 漂移（实算摘要 52e69486/5be22410）。
       modules: 113,
-      commands: 8177,
-      parameters: 19449,
+      commands: 8191,
+      parameters: 19468,
       controlReferences: 5126,
-      commandDigest: '66e83039',
-      parameterDigest: 'ceabdc7c'
+      commandDigest: '52e69486',
+      parameterDigest: '5be22410'
   }, '内置、官方和当前工作区第三方模块的每个方法与参数都必须进入全量审计');
   // OpenCV 以内置清单为准：本机未装 SDK 时磁盘上的同名清单是只有骨架的占位包（0 命令、无 targets）。
   const manifest = BUILTIN_MODULES.find(module => module.id === OPENCV_MODULE_ID) || auditedManifests.get('lingbuilder.opencv.sdk');
@@ -4986,17 +4999,19 @@ test('built-in HTTP and WebSocket server modules contribute managed commands and
 
   assert.ok(!completions.some(item => item.label === 'HTTP_启动服务'));
   assert.ok(completions.some(item => item.label === 'HTTP_创建服务'));
+  assert.ok(completions.some(item => item.label === 'HTTP_SSE_开始'));
   assert.ok(completions.some(item => item.label === 'HTTP 受管 JSON 服务'));
+  assert.ok(completions.some(item => item.label === 'HTTP SSE 单向推送（服务端 → 客户端）'));
   assert.ok(completions.some(item => item.label === 'WSS_创建服务'));
   assert.ok(completions.some(item => item.label === 'WebSocket 受管消息服务'));
   assert.ok(!completions.some(item => item.label === 'WSS_启动服务'));
 
   const httpCommands = httpManifest.contributes?.commands || [];
   const httpBindings = httpManifest.bindings?.commands || [];
-  assert.equal(httpManifest.version, '2.1.0');
-  assert.equal(HTTP_SERVER_COMMAND_SPECS.length, 51);
-  assert.equal(httpCommands.length, 51);
-  assert.equal(httpBindings.length, 51);
+  assert.equal(httpManifest.version, '2.2.0');
+  assert.equal(HTTP_SERVER_COMMAND_SPECS.length, 58);
+  assert.equal(httpCommands.length, 58);
+  assert.equal(httpBindings.length, 58);
   assert.deepEqual(new Set(httpCommands.map(item => item.name)), new Set(httpBindings.map(item => item.command)));
   assert.deepEqual(httpManifest.contributes?.types?.map(item => item.name), ['HTTP服务端', 'HTTP请求']);
   assert.deepEqual(httpManifest.contributes?.docs, [{ title: 'HTTP 服务端模块使用说明', path: 'docs/modules/http-server/README.md' }]);
@@ -5011,6 +5026,17 @@ test('built-in HTTP and WebSocket server modules contribute managed commands and
   const rotationBinding = httpBindings.find(item => item.command === 'HTTP_设置连接轮转');
   assert.deepEqual(rotationBinding?.parameters?.map(item => item.type), ['HTTP服务端', 'int']);
   assert.equal(rotationBinding?.encoding, 'raw');
+  const sseCommands = ['HTTP_SSE_开始', 'HTTP_SSE_推送', 'HTTP_SSE_推送事件', 'HTTP_SSE_推送心跳', 'HTTP_SSE_结束', 'HTTP_SSE_是否连接', 'HTTP_SSE_取连接数'];
+  for (const command of sseCommands) {
+    const spec = HTTP_SERVER_COMMAND_SPECS.find(item => item.name === command);
+    assert.ok(spec, `缺少 SSE 命令规格：${command}`);
+    assert.ok(spec!.parameters.every(item => item.description.trim().length > 0), `${command} 参数说明不齐备`);
+    assert.equal(httpCommands.find(item => item.name === command)?.category, '推送', `${command} 必须归入推送分组`);
+  }
+  assert.deepEqual(httpBindings.find(item => item.command === 'HTTP_SSE_开始')?.parameters?.map(item => item.type), ['HTTP请求']);
+  assert.deepEqual(httpBindings.find(item => item.command === 'HTTP_SSE_推送事件')?.parameters?.map(item => item.type), ['HTTP请求', 'wideString', 'wideString']);
+  assert.equal(httpBindings.find(item => item.command === 'HTTP_SSE_取连接数')?.returnType, 'int');
+  assert.equal(httpBindings.find(item => item.command === 'HTTP_SSE_取连接数')?.encoding, 'raw');
   for (const command of ['HTTP_添加静态路由', 'HTTP_添加静态文件路由', 'HTTP_设置连接轮转']) {
     const spec = HTTP_SERVER_COMMAND_SPECS.find(item => item.name === command);
     assert.ok(spec, `缺少命令规格：${command}`);
@@ -5050,6 +5076,7 @@ test('built-in HTTP and WebSocket server modules contribute managed commands and
       '        HTTP_配置服务(HTTP服务, "127.0.0.1", 8080, 4, 256)',
       '        HTTP_设置请求限制(HTTP服务, 64, 16, 30000)',
       '        HTTP_添加路由(HTTP服务, "GET", "/api/health", &处理健康检查)',
+      '        HTTP_添加路由(HTTP服务, "GET", "/events", &处理订阅)',
       '        HTTP_添加静态路由(HTTP服务, "GET", "/api/data", "{\\"ok\\":1}", "application/json; charset=utf-8")',
       '        HTTP_添加静态文件路由(HTTP服务, "GET", "/page", "site/index.html", "page.html", "text/html; charset=utf-8")',
       '        HTTP_设置连接轮转(HTTP服务, 500)',
@@ -5071,6 +5098,12 @@ test('built-in HTTP and WebSocket server modules contribute managed commands and
       '        局部 HTTP请求 请求 = HTTP_取当前请求()',
       '        HTTP_设置响应头(请求, "Cache-Control", "no-store")',
       '        HTTP_发送JSON(请求, "{\\"ok\\":true}", 200)',
+      '    结束',
+      '    事件 处理订阅()',
+      '        局部 HTTP请求 订阅 = HTTP_取当前请求()',
+      '        HTTP_设置响应头(订阅, "Access-Control-Allow-Origin", "*")',
+      '        HTTP_SSE_开始(订阅)',
+      '        HTTP_SSE_推送事件(订阅, "hello", "连接成功")',
       '    结束',
       '    事件 处理未匹配请求()',
       '        HTTP_发送文本(HTTP_取当前请求(), "没有该接口", "text/plain; charset=utf-8", 404)',
@@ -5103,6 +5136,16 @@ test('built-in HTTP and WebSocket server modules contribute managed commands and
   assert.ok(mainCpp.includes('HTTP_添加静态文件路由(HTTP服务, L"GET", L"/page", L"site/index.html", L"page.html", L"text/html; charset=utf-8");'));
   assert.ok(mainCpp.includes('HTTP_设置连接轮转(HTTP服务, 500);'));
   assert.ok(mainCpp.includes('HTTP_发送JSON(请求, L"{\\"ok\\":true}", 200);'));
+  assert.ok(mainCpp.includes('bool HTTP_SSE_开始(long long request)'));
+  assert.ok(mainCpp.includes('bool HTTP_SSE_推送事件(long long request, const wchar_t* eventName, const wchar_t* data)'));
+  assert.ok(mainCpp.includes('bool HTTP_SSE_是否连接(long long request)'));
+  assert.ok(mainCpp.includes('int HTTP_SSE_取连接数(long long server)'));
+  assert.ok(mainCpp.includes('std::atomic<int> sseSessions{0};'));
+  assert.ok(mainCpp.includes('text/event-stream; charset=utf-8'));
+  assert.ok(mainCpp.includes('Cache-Control: no-cache'));
+  assert.ok(mainCpp.includes('HTTP_SSE_开始(订阅);'));
+  assert.ok(mainCpp.includes('HTTP_SSE_推送事件(订阅, L"hello", L"连接成功");'));
+  assert.ok(mainCpp.includes('HTTP_添加路由(HTTP服务, L"GET", L"/events", L"处理订阅");'));
   assert.ok(mainCpp.includes('WSS_配置服务(服务, L"127.0.0.1", 18080, 128);'));
   assert.ok(mainCpp.includes('WSS_绑定消息处理器(服务, L"收到消息");'));
   assert.ok(mainCpp.includes('std::wstring(LingCppWideArg(WSS_取当前消息类型()))==LingCppWideArg(L"文本")'));
@@ -5170,6 +5213,8 @@ test('built-in HTTP and WebSocket server modules contribute managed commands and
   const newEmojiCpp = newEmojiGenerated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.ok(newEmojiCpp.includes('static LingWebSocketServerRuntime g_wssRuntime'));
   assert.ok(newEmojiCpp.includes('static LingHttpServerRuntime g_httpServerRuntime'));
+  assert.ok(newEmojiCpp.includes('static bool HTTP_SSE_推送(long long request, const wchar_t* data)'));
+  assert.ok(newEmojiCpp.includes('static int HTTP_SSE_取连接数(long long server)'));
   assert.ok(newEmojiCpp.includes('LB_NE_CreateHttpServerEventWindow'));
   assert.ok(newEmojiCpp.includes('LB_NE_DispatchHttpServerRequest'));
   assert.ok(newEmojiCpp.includes('static long long HTTP服务{};'));
@@ -5446,6 +5491,59 @@ test('web HTTP async command translates handler references and emits a UI-thread
   assert.ok(cpp.includes('DispatchAsyncWebEvent'));
   assert.ok(cpp.includes('if (callback == L"获取IP完成") { 获取IP完成(); return; }'));
   assert.doesNotMatch(cpp, /&获取IP完成/);
+});
+
+test('database.odbc 1.1.0 多行结果集族：binding 七命令 + SQLGetData 分段读取运行时', () => {
+  const odbc = BUILTIN_MODULES.find(module => module.id === 'lingbuilder.database.odbc');
+  assert.ok(odbc, '内置 ODBC 数据库模块清单应存在');
+  const bindings = odbc!.bindings?.commands || [];
+  const expectedCommands: Array<[string, number, string]> = [
+    ['ODBC_查询打开', 1, 'longLong'],
+    ['ODBC_取下一行', 1, 'bool'],
+    ['ODBC_取列文本', 2, 'wideString'],
+    ['ODBC_取列数', 1, 'int'],
+    ['ODBC_取列名', 2, 'wideString'],
+    ['ODBC_查询关闭', 1, 'bool'],
+    ['ODBC_转义文本', 1, 'wideString']
+  ];
+  for (const [name, parameterCount, returnType] of expectedCommands) {
+    const binding = bindings.find(item => item.command === name);
+    assert.ok(binding, `ODBC 1.1.0 应登记 ${name}`);
+    assert.equal(binding!.parameters?.length, parameterCount, `${name} 参数数应为 ${parameterCount}`);
+    assert.equal(binding!.returnType, returnType, `${name} 返回类型应为 ${returnType}`);
+  }
+  const contributedCommands = odbc!.contributes?.commands || [];
+  const openCommand = contributedCommands.find(item => item.name === 'ODBC_查询打开');
+  assert.match(openCommand?.description || '', /结果集编号/u, '查询打开描述必须写明结果集编号语义');
+  const firstValueCommand = contributedCommands.find(item => item.name === 'ODBC_查询首值');
+  assert.match(firstValueCommand?.description || '', /没有固定长度上限/u, '查询首值描述必须写明分段读取无截断上限');
+
+  const module: InstalledModule = {
+    manifest: odbc!,
+    installPath: 'C:/modules/lingbuilder.database.odbc',
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const source = [
+    '类 MainWindow',
+    '    事件 _按钮1_被单击()',
+    '        局部 长整数型 结果集 = ODBC_查询打开("SELECT 名称 FROM 期号")',
+    '        判断循环首 (ODBC_取下一行(结果集))',
+    '            调试输出(ODBC_取列文本(结果集, 1))',
+    '        判断循环尾()',
+    '        ODBC_查询关闭(结果集)',
+    '        局部 文本型 安全输入 = ODBC_转义文本("it\'s")',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const generated = generateLingCppNativeWin32Project(sampleProject, { lingCppSourceCode: source, enabledModules: [module] });
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
+  for (const symbol of ['ODBC_查询打开', 'ODBC_取下一行', 'ODBC_取列文本', 'ODBC_查询关闭', 'ODBC_转义文本']) {
+    assert.ok(cpp.includes(symbol), `生成 C++ 应包含 ${symbol}`);
+  }
+  assert.ok(cpp.includes('LB_OdbcReadColumn'), '运行时应提供 SQLGetData 分段读取助手');
+  assert.ok(!cpp.includes('std::array<wchar_t, 4096>'), '不得再出现 4096 定长截断缓冲');
 });
 
 test('web.http 1.3.0 异步访问尾部可选参数按位透传到同步运行时调用', () => {

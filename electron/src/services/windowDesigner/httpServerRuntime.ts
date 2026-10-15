@@ -386,9 +386,77 @@ public:
     bool IsCompleted(long long requestId) const { auto request = FindRequest(requestId); if (!request) return true; std::lock_guard<std::mutex> lock(request->mutex); return request->completed; }
     bool Abort(long long requestId) {
         auto request = FindRequest(requestId); if (!request) return false;
-        std::lock_guard<std::mutex> lock(request->mutex); if (request->completed) return false;
-        request->aborted = true; request->completed = true; request->changed.notify_all(); return true;
+        { std::lock_guard<std::mutex> lock(request->mutex); if (request->completed) return false; request->aborted = true; request->completed = true; request->changed.notify_all(); }
+        FinalizeSseSession(request);
+        return true;
     }
+
+    // —— SSE（Server-Sent Events）单向推送：开始后连接脱离工作线程，会话由运行时接管，推送命令可从任意线程调用 ——
+    bool BeginSse(long long requestId) {
+        auto request = FindRequest(requestId);
+        if (!request) return Fail(L"HTTP 请求句柄无效或已过期。");
+        auto server = FindServer(request->serverId);
+        bool ok = false; std::wstring error;
+        {
+            std::lock_guard<std::mutex> sendLock(request->sendMutex);
+            std::lock_guard<std::mutex> lock(request->mutex);
+            if (request->completed) error = L"HTTP 请求已经响应或中止，不能再开始 SSE 推送。";
+            else if (request->streaming) error = L"该请求已处于 SSE 推送状态，不能重复开始。";
+            else if (request->socket == INVALID_SOCKET) error = L"SSE 只能在请求处理器内对当前请求开启。";
+            else {
+                const std::string headers = BuildSseHeaders(*request);
+                if (!SendAll(request->socket, headers.data(), headers.size())) error = L"SSE 响应头发送失败，客户端连接可能已断开。";
+                else {
+                    request->streaming = true;
+                    request->changed.notify_all();
+                    if (server) { server->activeConnections.fetch_add(1); server->sseSessions.fetch_add(1); }
+                    ok = true;
+                }
+            }
+        }
+        return ok ? true : Fail(error);
+    }
+    bool SsePush(long long requestId, const wchar_t* eventName, const wchar_t* data) {
+        auto request = FindRequest(requestId);
+        if (!request) return Fail(L"HTTP 请求句柄无效或已过期。");
+        return SseSend(request, BuildSseEvent(eventName ? eventName : L"", data ? data : L""));
+    }
+    bool SsePing(long long requestId) {
+        auto request = FindRequest(requestId);
+        if (!request) return Fail(L"HTTP 请求句柄无效或已过期。");
+        static const std::string ping = ": ping\n\n";
+        return SseSend(request, ping);
+    }
+    bool SseEnd(long long requestId) {
+        auto request = FindRequest(requestId);
+        if (!request) return Fail(L"HTTP 请求句柄无效或已过期。");
+        return FinalizeSseSession(request) ? true : Fail(L"该请求没有进行中的 SSE 推送会话。");
+    }
+    bool SseConnected(long long requestId) {
+        auto request = FindRequest(requestId); if (!request) return false;
+        bool alive = false;
+        {
+            std::lock_guard<std::mutex> sendLock(request->sendMutex);
+            std::lock_guard<std::mutex> lock(request->mutex);
+            if (!request->streaming || request->sseDead || request->socket == INVALID_SOCKET) return false;
+            u_long nonBlocking = 1;
+            if (ioctlsocket(request->socket, FIONBIO, &nonBlocking) == 0) {
+                char probe = 0;
+                int result = recv(request->socket, &probe, 1, MSG_PEEK);
+                // 错误码必须在 recv 之后立刻捕获：恢复阻塞模式的 ioctlsocket 是一次成功的
+                // Winsock 调用，会把本线程的 last error 冲掉，之后 WSAGetLastError 恒为 0。
+                int probeError = result == SOCKET_ERROR ? WSAGetLastError() : 0;
+                u_long blocking = 0;
+                ioctlsocket(request->socket, FIONBIO, &blocking);
+                // WSAEWOULDBLOCK=对端没有关闭只是暂时无数据；收到 0（对端关闭）或其他错误视为离线；
+                // 收到正数说明对端发来了数据（SSE 客户端一般不发），仍视为在线。
+                alive = result == SOCKET_ERROR ? probeError == WSAEWOULDBLOCK : result > 0;
+            } else alive = true;
+        }
+        if (!alive) FinalizeSseSession(request);
+        return alive;
+    }
+    int SseSessions(long long id) const { auto server = FindServer(id); return server ? server->sseSessions.load() : 0; }
 
     bool SetLegacyServer(long long id) { auto server = FindServer(id); if (!server) return false; { std::lock_guard<std::mutex> lock(server->mutex); server->legacy = true; } legacyServerId_ = id; return true; }
     long long LegacyServer() const { return legacyServerId_; }
@@ -416,6 +484,8 @@ private:
     struct Request {
         long long id = 0, serverId = 0; std::wstring handler, method, target, path, query, protocol, clientAddress, raw; int clientPort = 0;
         std::map<std::wstring, std::wstring> headers; std::string body; bool keepAlive = false, completed = false, aborted = false, dispatching = false;
+        // SSE 流式会话：streaming=true 表示响应头已冲出、连接已从工作线程分离；socket 仅在 sendMutex 保护下访问。
+        bool streaming = false, sseDead = false; SOCKET socket = INVALID_SOCKET; std::mutex sendMutex;
         Response response; mutable std::mutex mutex; std::condition_variable changed;
     };
     struct StaticResponse { int status = 200; std::string body; std::wstring filePath, contentType = L"text/plain; charset=utf-8", downloadName; };
@@ -424,7 +494,7 @@ private:
     struct Server {
         long long id = 0; std::wstring address = L"127.0.0.1", defaultHandler, lastError; int configuredPort = 0, actualPort = 0, workerCount = 4, queueLimit = 256, timeoutMs = 30000;
         size_t maxHeaderBytes = 64 * 1024, maxBodyBytes = 16 * 1024 * 1024; bool allowExternal = false, legacy = false;
-        std::vector<Route> routes; std::atomic<bool> running{false}, stopping{false}; std::atomic<int> activeConnections{0}; std::atomic<long long> totalRequests{0}; std::atomic<long long> rotationLimit{100};
+        std::vector<Route> routes; std::atomic<bool> running{false}, stopping{false}; std::atomic<int> activeConnections{0}; std::atomic<long long> totalRequests{0}; std::atomic<long long> rotationLimit{100}; std::atomic<int> sseSessions{0};
         SOCKET listenSocket = INVALID_SOCKET; std::thread acceptThread; std::vector<std::thread> workers; std::deque<Connection> queue; std::set<SOCKET> activeSockets;
         std::deque<long long> legacyRequests; mutable std::mutex mutex, lifecycleMutex; std::condition_variable queueChanged, legacyChanged;
     };
@@ -435,6 +505,72 @@ private:
     long long FailId(const std::wstring& message) const { Fail(message); return 0; }
     bool FailLocked(const std::wstring& message) const { lastError_ = message; return false; }
     static bool ServerFail(const std::shared_ptr<Server>& server, const std::wstring& message) { server->lastError = message; return false; }
+
+    // —— SSE 会话内部管理 ——
+    static void CloseSseSocketLocked(const std::shared_ptr<Request>& request) {
+        if (request->socket != INVALID_SOCKET) { shutdown(request->socket, SD_BOTH); closesocket(request->socket); request->socket = INVALID_SOCKET; }
+    }
+    // 关闭 SSE 会话并从注册表移除（非流式请求为无害空操作）；调用方不得在持有 request->sendMutex / mutex_ 时进入本函数。
+    bool FinalizeSseSession(const std::shared_ptr<Request>& request) {
+        bool wasStreaming = false;
+        {
+            std::lock_guard<std::mutex> sendLock(request->sendMutex);
+            std::lock_guard<std::mutex> lock(request->mutex);
+            if (!request->streaming) return false;
+            wasStreaming = true;
+            CloseSseSocketLocked(request);
+            request->streaming = false; request->sseDead = true; request->completed = true;
+            request->changed.notify_all();
+        }
+        auto server = FindServer(request->serverId);
+        if (server) { server->activeConnections.fetch_sub(1); server->sseSessions.fetch_sub(1); }
+        { std::lock_guard<std::mutex> lock(mutex_); requests_.erase(request->id); }
+        return wasStreaming;
+    }
+    bool SseSend(const std::shared_ptr<Request>& request, const std::string& payload) {
+        bool dead = false, sendFailed = false;
+        {
+            std::lock_guard<std::mutex> sendLock(request->sendMutex);
+            std::lock_guard<std::mutex> lock(request->mutex);
+            if (!request->streaming || request->sseDead) dead = true;
+            else if (request->socket == INVALID_SOCKET) sendFailed = true;
+            else if (!SendAll(request->socket, payload.data(), payload.size())) sendFailed = true;
+        }
+        if (sendFailed) FinalizeSseSession(request);
+        if (dead) return Fail(L"SSE 会话尚未开始或已结束，不能推送。");
+        if (sendFailed) return Fail(L"SSE 推送失败，客户端连接已断开。");
+        return true;
+    }
+    static std::string BuildSseHeaders(const Request& request) {
+        std::ostringstream header;
+        header << (request.protocol == L"HTTP/1.0" ? "HTTP/1.0 " : "HTTP/1.1 ") << "200 OK\r\n";
+        for (const auto& item : request.response.headers) {
+            // SSE 的 Content-Type 必须是 text/event-stream，用户通过 HTTP_设置响应头 写入的同名头在此统一覆盖。
+            if (Lower(item.name) == L"content-type") continue;
+            header << LB_WideToUtf8(item.name.c_str()) << ": " << LB_WideToUtf8(item.value.c_str()) << "\r\n";
+        }
+        header << "Content-Type: text/event-stream; charset=utf-8\r\nCache-Control: no-cache\r\nConnection: close\r\nX-Accel-Buffering: no\r\n\r\n";
+        return header.str();
+    }
+    // 组装单条 SSE 事件：事件名一行（剔除 CR/LF），数据按行拆分为多条 data: 字段，空行结束事件。
+    static std::string BuildSseEvent(const std::wstring& eventName, const std::wstring& data) {
+        std::string output;
+        std::wstring name = eventName;
+        name.erase(std::remove_if(name.begin(), name.end(), [](wchar_t ch) { return ch == L'\r' || ch == L'\n'; }), name.end());
+        if (!name.empty()) output += "event: " + LB_WideToUtf8(name.c_str()) + "\n";
+        std::vector<std::wstring> lines;
+        size_t start = 0;
+        while (start <= data.size()) {
+            size_t pos = data.find_first_of(L"\r\n", start);
+            if (pos == std::wstring::npos) { lines.push_back(data.substr(start)); break; }
+            lines.push_back(data.substr(start, pos - start));
+            start = data[pos] == L'\r' && pos + 1 < data.size() && data[pos + 1] == L'\n' ? pos + 2 : pos + 1;
+        }
+        if (lines.size() > 1 && lines.back().empty()) lines.pop_back();
+        for (const auto& line : lines) output += "data: " + LB_WideToUtf8(line.c_str()) + "\n";
+        output += "\n";
+        return output;
+    }
 
     SOCKET CreateListenSocket(const std::shared_ptr<Server>& server) {
         std::wstring configuredAddress; int configuredPort = 0, queueLimit = 0; bool allowExternal = false;
@@ -501,20 +637,22 @@ private:
                 connection = server->queue.front(); server->queue.pop_front(); server->activeSockets.insert(connection.socket);
             }
             server->activeConnections.fetch_add(1);
-            try { HandleConnection(server, connection); }
+            bool detached = false;
+            try { detached = HandleConnection(server, connection); }
             catch (...) { std::lock_guard<std::mutex> lock(server->mutex); server->lastError = L"HTTP 工作线程处理连接时发生未预期错误。"; }
             server->activeConnections.fetch_sub(1);
             { std::lock_guard<std::mutex> lock(server->mutex); server->activeSockets.erase(connection.socket); }
-            CloseSocket(connection.socket);
+            // SSE 会话分离后连接所有权移交运行时（请求句柄继续可推送），工作线程不得关闭该套接字。
+            if (!detached) CloseSocket(connection.socket);
         }
     }
 
-    void HandleConnection(const std::shared_ptr<Server>& server, Connection& connection) {
+    bool HandleConnection(const std::shared_ptr<Server>& server, Connection& connection) {
         int timeout = server->timeoutMs; setsockopt(connection.socket, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeout), sizeof(timeout)); setsockopt(connection.socket, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&timeout), sizeof(timeout));
         std::string pending;
         for (long long requestIndex = 0; server->running.load(); ++requestIndex) {
             const bool allowKeepAlive = requestIndex + 1 < server->rotationLimit.load();
-            auto request = std::make_shared<Request>(); request->id = nextRequestId_.fetch_add(1); request->serverId = server->id; request->clientAddress = connection.address; request->clientPort = connection.port;
+            auto request = std::make_shared<Request>(); request->id = nextRequestId_.fetch_add(1); request->serverId = server->id; request->clientAddress = connection.address; request->clientPort = connection.port; request->socket = connection.socket;
             int parseStatus = ParseRequest(connection.socket, pending, server, *request);
             if (parseStatus == 0) break;
             if (parseStatus != 200) { SendSimpleError(connection.socket, parseStatus, Reason(parseStatus)); break; }
@@ -537,16 +675,19 @@ private:
             if (!delivered) Complete(request->id, "Not Found", L"text/plain; charset=utf-8", request->handler.empty() ? 404 : 503);
             {
                 std::unique_lock<std::mutex> lock(request->mutex);
-                if (!request->changed.wait_for(lock, std::chrono::milliseconds(server->timeoutMs), [&]() { return (request->completed && !request->dispatching) || server->stopping.load(); })) {
+                if (!request->changed.wait_for(lock, std::chrono::milliseconds(server->timeoutMs), [&]() { return (request->completed && !request->dispatching) || request->streaming || server->stopping.load(); })) {
                     request->response.status = 504; request->response.body = "Gateway Timeout"; request->response.contentType = L"text/plain; charset=utf-8"; request->completed = true;
                 }
                 while (request->dispatching && !server->stopping.load()) request->changed.wait(lock);
+                // SSE：HTTP_SSE_开始 已冲出响应头，连接所有权移交会话；请求句柄保留在注册表中供推送命令使用。
+                if (request->streaming) return true;
                 if (server->stopping.load() && !request->completed) { request->aborted = true; request->completed = true; }
             }
             bool keepAlive = SendResponse(connection.socket, *request, allowKeepAlive);
             { std::lock_guard<std::mutex> lock(mutex_); requests_.erase(request->id); }
             if (!keepAlive) break;
         }
+        return false;
     }
 
     int ParseRequest(SOCKET socketValue, std::string& pending, const std::shared_ptr<Server>& server, Request& request) {
@@ -719,7 +860,12 @@ private:
         std::vector<std::shared_ptr<Request>> pendingRequests;
         { std::lock_guard<std::mutex> lock(mutex_); for (const auto& pair : requests_) if (pair.second->serverId == server->id) pendingRequests.push_back(pair.second); }
         for (const auto& request : pendingRequests) { std::lock_guard<std::mutex> lock(request->mutex); request->aborted = true; request->completed = true; request->changed.notify_all(); }
-        JoinThreads(server); server->stopping.store(false); return true;
+        JoinThreads(server);
+        // 工作线程全部退出后，关闭该服务端残存的 SSE 流式会话（连接所有权在会话手中，上面 activeSockets 的 shutdown 管不到）。
+        std::vector<std::shared_ptr<Request>> streamingSessions;
+        { std::lock_guard<std::mutex> lock(mutex_); for (const auto& pair : requests_) if (pair.second->serverId == server->id && pair.second->streaming) streamingSessions.push_back(pair.second); }
+        for (const auto& request : streamingSessions) FinalizeSseSession(request);
+        server->stopping.store(false); return true;
     }
     static void JoinThreads(const std::shared_ptr<Server>& server) { if (server->acceptThread.joinable()) server->acceptThread.join(); for (auto& worker : server->workers) if (worker.joinable()) worker.join(); server->workers.clear(); }
     static void CloseSocket(SOCKET& value) { SOCKET current = value; value = INVALID_SOCKET; if (current != INVALID_SOCKET) { shutdown(current, SD_BOTH); closesocket(current); } }
@@ -839,4 +985,11 @@ const HTTP_SERVER_WINDOW_METHODS = String.raw`
     int HTTP_等待请求到调试输出() { const wchar_t* request = HTTP_等待请求(); if (!request || !request[0]) return 0; 调试输出(request); return 1; }
     int HTTP_回复文本(const wchar_t* text) { return httpServerRuntime_.LegacyReply(text); }
     void HTTP_关闭服务() { httpServerRuntime_.LegacyClose(); }
+    bool HTTP_SSE_开始(long long request) { return httpServerRuntime_.BeginSse(request); }
+    bool HTTP_SSE_推送(long long request, const wchar_t* data) { return httpServerRuntime_.SsePush(request, nullptr, data); }
+    bool HTTP_SSE_推送事件(long long request, const wchar_t* eventName, const wchar_t* data) { return httpServerRuntime_.SsePush(request, eventName, data); }
+    bool HTTP_SSE_推送心跳(long long request) { return httpServerRuntime_.SsePing(request); }
+    bool HTTP_SSE_结束(long long request) { return httpServerRuntime_.SseEnd(request); }
+    bool HTTP_SSE_是否连接(long long request) { return httpServerRuntime_.SseConnected(request); }
+    int HTTP_SSE_取连接数(long long server) { return httpServerRuntime_.SseSessions(server); }
 `;

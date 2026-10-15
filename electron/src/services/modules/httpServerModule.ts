@@ -14,7 +14,7 @@ interface HttpServerCommandSpec {
   parameters: ModuleCommandBindingParameter[];
   returnType: ModuleCommandValueType;
   returnLabel: string;
-  category: '服务' | '路由' | '请求' | '响应' | '状态' | '兼容';
+  category: '服务' | '路由' | '请求' | '响应' | '推送' | '状态' | '兼容';
   insertText?: string;
   example?: string;
   visibility?: 'default' | 'advanced' | 'internal';
@@ -38,6 +38,7 @@ const responseStatus = '响应状态码，100 到 599。';
 const responseHeaderName = '响应头名称，必须是合法 token；Content-Length、Connection、Transfer-Encoding 由运行时统一管理，不能手工设置。';
 const responseHeaderValue = '响应头内容，不得包含 CR 或 LF 字符。';
 const octetStreamType = '响应 Content-Type；空文本时使用 application/octet-stream。';
+const sseRequest = 'HTTP_SSE_开始 成功返回的请求句柄；会话被 HTTP_SSE_结束 关闭或客户端断开后句柄失效。';
 
 const specs: HttpServerCommandSpec[] = [
   {
@@ -235,6 +236,41 @@ const specs: HttpServerCommandSpec[] = [
     parameters: [parameter('请求', 'HTTP请求', requestHandle)], returnType: 'bool', returnLabel: '逻辑型', category: '响应'
   },
   {
+    name: 'HTTP_SSE_开始', signature: 'HTTP_SSE_开始(请求)', description: '把当前请求升级为 SSE（Server-Sent Events）单向推送通道：立即发送 200 与 text/event-stream 响应头并保持连接，请求处理器返回后连接不断开；之后用 HTTP_SSE_推送/推送事件 随时向该客户端单向下发数据，HTTP_SSE_结束 或客户端断开时关闭。必须在发送任何普通响应之前调用；同一请求只能开始一次；开始前用 HTTP_设置响应头 追加的头（如跨域 Allow-Origin）会随响应发出，Content-Type 由运行时强制为 text/event-stream。',
+    parameters: [parameter('请求', 'HTTP请求', `${requestHandle}必须是尚未发送响应的当前请求。`)],
+    returnType: 'bool', returnLabel: '逻辑型', category: '推送', insertText: 'HTTP_SSE_开始($1)'
+  },
+  {
+    name: 'HTTP_SSE_推送', signature: 'HTTP_SSE_推送(请求, 数据)', description: '向已开始 SSE 的客户端推送一条匿名事件（客户端 message 事件或默认监听接收）；数据按 UTF-8 发送，包含换行时自动拆分为多条 data: 行；客户端已断开时返回假，可用 HTTP_SSE_是否连接 提前探测。',
+    parameters: [parameter('请求', 'HTTP请求', sseRequest), parameter('数据', 'wideString', '事件数据文本，按 UTF-8 编码；可包含换行，运行时按 SSE 规范拆分为多条 data: 行。')],
+    returnType: 'bool', returnLabel: '逻辑型', category: '推送', insertText: 'HTTP_SSE_推送($1, "$2")'
+  },
+  {
+    name: 'HTTP_SSE_推送事件', signature: 'HTTP_SSE_推送事件(请求, 事件名, 数据)', description: '向已开始 SSE 的客户端推送一条具名事件（写入 event: 字段），浏览器端用 EventSource 的 addEventListener(事件名) 定点接收；事件名中的换行会被剔除，数据规则与 HTTP_SSE_推送 相同。',
+    parameters: [parameter('请求', 'HTTP请求', sseRequest), parameter('事件名', 'wideString', 'SSE event 字段名，如 "tick"、"notice"；空文本等同匿名事件；换行字符会被剔除。'), parameter('数据', 'wideString', '事件数据文本，按 UTF-8 编码；可包含换行，运行时按 SSE 规范拆分为多条 data: 行。')],
+    returnType: 'bool', returnLabel: '逻辑型', category: '推送', insertText: 'HTTP_SSE_推送事件($1, "tick", "$3")'
+  },
+  {
+    name: 'HTTP_SSE_推送心跳', signature: 'HTTP_SSE_推送心跳(请求)', description: '向已开始 SSE 的客户端发送一条注释行（: ping），不产生任何客户端事件；用于保活：长时间无数据的连接可能被浏览器、代理或中间设备超时断开，建议每 15～30 秒推送一次心跳。',
+    parameters: [parameter('请求', 'HTTP请求', sseRequest)],
+    returnType: 'bool', returnLabel: '逻辑型', category: '推送'
+  },
+  {
+    name: 'HTTP_SSE_结束', signature: 'HTTP_SSE_结束(请求)', description: '主动关闭该 SSE 连接并结束会话；浏览器端 EventSource 会按自身重连策略自动重连（重新触发请求处理器）。重复结束返回假。',
+    parameters: [parameter('请求', 'HTTP请求', sseRequest)],
+    returnType: 'bool', returnLabel: '逻辑型', category: '推送'
+  },
+  {
+    name: 'HTTP_SSE_是否连接', signature: 'HTTP_SSE_是否连接(请求)', description: '探测 SSE 会话是否仍然在线（对端未关闭连接）；检测到客户端断开时会自动结算并关闭该会话，此后该请求句柄失效。适用于推送前检查，避免向已断开的连接写入。',
+    parameters: [parameter('请求', 'HTTP请求', sseRequest)],
+    returnType: 'bool', returnLabel: '逻辑型', category: '推送'
+  },
+  {
+    name: 'HTTP_SSE_取连接数', signature: 'HTTP_SSE_取连接数(服务端)', description: '返回该服务端当前存活的 SSE 推送会话数量；配合把请求句柄存入项目变量/数组，可实现「连接时登记、断开时清理」的广播模型。',
+    parameters: [parameter('服务端', 'HTTP服务端', serverHandle)],
+    returnType: 'int', returnLabel: '整数型', category: '推送'
+  },
+  {
     name: 'HTTP_启动服务', signature: 'HTTP_启动服务(端口)', description: '旧版单服务兼容入口；在 127.0.0.1 启动后台服务，建议新代码使用受管服务 API。',
     parameters: [parameter('端口', 'int', '在 127.0.0.1 上监听的端口，0 到 65535。')], returnType: 'int', returnLabel: '整数型', category: '兼容', visibility: 'advanced'
   },
@@ -287,11 +323,11 @@ export const HTTP_SERVER_MODULE: LingBuilderModuleManifest = {
   schemaVersion: 2,
   id: 'lingbuilder.http.server',
   name: 'HTTP 服务端模块',
-  version: '2.1.0',
+  version: '2.2.0',
   category: '网络',
-  description: '提供受管 HTTP/1.1 服务端、后台多连接处理、路由（含工作线程直回的静态路由）、完整请求读取、可配置响应、资源限制、连接轮转和运行状态。',
+  description: '提供受管 HTTP/1.1 服务端、后台多连接处理、路由（含工作线程直回的静态路由）、完整请求读取、可配置响应、SSE 单向推送（服务端 → 客户端持续下发事件流）、资源限制、连接轮转和运行状态。',
   author: 'LingBuilder',
-  tags: ['内置', '网络', 'HTTP', '服务端', 'HTTP/1.1', '路由', '静态路由', '受管并发'],
+  tags: ['内置', '网络', 'HTTP', '服务端', 'HTTP/1.1', '路由', '静态路由', 'SSE', '单向推送', '受管并发'],
   contributes: {
     commands: specs.map(contribution),
     types: [
@@ -313,6 +349,11 @@ export const HTTP_SERVER_MODULE: LingBuilderModuleManifest = {
         label: 'HTTP 静态路由高吞吐服务',
         insertText: 'HTTP服务端 服务 = HTTP_创建服务()\nHTTP_配置服务(服务, "127.0.0.1", 8080, 8, 256)\nHTTP_设置连接轮转(服务, 1000)\nHTTP_添加静态路由(服务, "GET", "/api/data", "{\\"ok\\":true}", "application/json; charset=utf-8")\nHTTP_添加静态文件路由(服务, "GET", "/page", "C:\\\\site\\\\index.html", "", "text/html; charset=utf-8")\nHTTP_添加路由(服务, "GET", "/api/time", &处理时间)\nHTTP_启动(服务)',
         description: '固定内容走静态路由由工作线程直回（不占 UI 线程），仅按请求计算的内容用动态处理器。'
+      },
+      {
+        label: 'HTTP SSE 单向推送（服务端 → 客户端）',
+        insertText: 'HTTP服务端 服务 = HTTP_创建服务()\nHTTP_配置服务(服务, "127.0.0.1", 8080, 4, 256)\nHTTP_添加路由(服务, "GET", "/events", &处理订阅)\nHTTP_启动(服务)\n\n空 处理订阅()\n    HTTP请求 请求 = HTTP_取当前请求()\n    HTTP_设置响应头(请求, "Access-Control-Allow-Origin", "*")\n    HTTP_SSE_开始(请求)\n    HTTP_SSE_推送事件(请求, "hello", "连接成功")',
+        description: '浏览器 EventSource 订阅 /events 后连接保持；把请求句柄存入变量或数组，之后在时钟、按钮或任意线程里随时 HTTP_SSE_推送/推送事件 下发，HTTP_SSE_结束 关闭。'
       }
     ],
     docs: [{ title: 'HTTP 服务端模块使用说明', path: 'docs/modules/http-server/README.md' }]
