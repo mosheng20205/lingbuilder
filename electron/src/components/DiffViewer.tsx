@@ -128,6 +128,7 @@ import {
   resolveBeginnerTypeAlias
 } from '../services/lingCpp/beginnerTypeCompletion';
 import { createBeginnerConstantCompletion, createBeginnerVariableCompletion } from '../services/lingCpp/beginnerVariableCompletion';
+import { formatBuiltinConstantDisplayValue, getBuiltinLingCppConstants } from '../services/lingCpp/builtinConstants';
 import { buildChineseCompletionSearchAliases } from '../services/lingCpp/completionSearchAliases';
 import { LingCppNativePreviewFile, LingWindowProject, NativeCppImportResult } from '../services/windowDesigner/types';
 import { EditorExperienceMode } from '../services/lingCpp/beginnerService';
@@ -753,27 +754,29 @@ const getBeginnerTypeCompletionLayout = (
   };
 };
 
-const BEGINNER_CONTROL_BOUNDARY_COMPLETIONS: BeginnerCodeCompletion[] = [
-  ['分支', '分支 (值)', '选择结构的匹配分支'],
-  ['默认', '默认', '选择结构的默认分支'],
-  ['选择结束', '选择结束', '结束多路选择结构'],
-  ['循环结束', '循环结束', '结束无限循环结构'],
-  ['判断循环尾', '判断循环尾 ()', '结束前置条件循环'],
-  ['循环判断尾', '循环判断尾 (条件)', '结束后置条件循环并判断是否继续'],
-  ['计次循环尾', '计次循环尾 ()', '结束计次循环'],
-  ['变量循环尾', '变量循环尾 ()', '结束变量循环'],
-  ['枚举循环尾', '枚举循环尾 ()', '结束枚举循环'],
-  ['到循环尾', '到循环尾', '继续下一次循环的兼容命令'],
-  ['捕获', '捕获 (错误信息)', '捕获尝试块中的异常'],
-  ['最终', '最终', '无论结果如何都执行的清理分支'],
-  ['尝试结束', '尝试结束', '结束异常处理结构']
-].map(([label, insertText, detail]) => ({
-  label,
-  insertText,
-  detail,
-  aliases: [label],
-  kind: '流程' as const
-}));
+const BEGINNER_CONTROL_BOUNDARY_COMPLETION_ROWS: Array<[string, string, string, string[]]> = [
+  ['分支', '分支 (值)', '选择结构的匹配分支', ['fz', 'fenzhi', 'case', 'branch']],
+  ['默认', '默认', '选择结构的默认分支', ['mr', 'moren', 'default']],
+  ['选择结束', '选择结束', '结束多路选择结构', ['xzjs', 'endswitch']],
+  ['循环结束', '循环结束', '结束无限循环结构', ['xhjs', 'endloop']],
+  ['判断循环尾', '判断循环尾 ()', '结束前置条件循环', ['pdxhw', 'endwhile']],
+  ['循环判断尾', '循环判断尾 (条件)', '结束后置条件循环并判断是否继续', ['xhpdw', 'enddo']],
+  ['计次循环尾', '计次循环尾 ()', '结束计次循环', ['jcxhw', 'endfor']],
+  ['变量循环尾', '变量循环尾 ()', '结束变量循环', ['blxhw', 'endrange']],
+  ['枚举循环尾', '枚举循环尾 ()', '结束枚举循环', ['mjxhw', 'endforeach']],
+  ['到循环尾', '到循环尾', '继续下一次循环的兼容命令', ['dxhw', 'continue']],
+  ['捕获', '捕获 (错误信息)', '捕获尝试块中的异常', ['bh', 'buhuo', 'catch']],
+  ['最终', '最终', '无论结果如何都执行的清理分支', ['zz', 'zuizhong', 'finally']],
+  ['尝试结束', '尝试结束', '结束异常处理结构', ['csjs', 'endtry']]
+];
+const BEGINNER_CONTROL_BOUNDARY_COMPLETIONS: BeginnerCodeCompletion[] = BEGINNER_CONTROL_BOUNDARY_COMPLETION_ROWS
+  .map(([label, insertText, detail, extraAliases]) => ({
+    label,
+    insertText,
+    detail,
+    aliases: [label, ...extraAliases],
+    kind: '流程' as const
+  }));
 
 const BEGINNER_CODE_COMPLETIONS: BeginnerCodeCompletion[] = [
   ...BEGINNER_BUILTIN_VALUE_COMPLETIONS,
@@ -1852,6 +1855,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
    */
   const beginnerCompletionStateRef = useRef<BeginnerCompletionState | null>(null);
   const beginnerAutoLocalTypeStateRef = useRef<BeginnerAutoLocalTypeState | null>(null);
+  // 自动局部提交失败后的下一次回车跳过一次自动检测（防止失败→重开面板→吞键循环）。
+  const beginnerAutoLocalSkipOnceRef = useRef(false);
   const setBeginnerCompletionState = useCallback<React.Dispatch<React.SetStateAction<BeginnerCompletionState | null>>>(next => {
     const resolved = typeof next === 'function'
       ? (next as (current: BeginnerCompletionState | null) => BeginnerCompletionState | null)(beginnerCompletionStateRef.current)
@@ -5730,6 +5735,14 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
             items: Array.from(
               new Map([
                 ...builtinCompletions,
+                // 内置常量（如 #换行符）放最前：Map 同键后写胜出，项目常量 > 模块常量 > 内置常量。
+                ...getBuiltinLingCppConstants().map(constant => createBeginnerConstantCompletion({
+                  name: constant.name,
+                  type: constant.type,
+                  origin: '内置常量',
+                  value: formatBuiltinConstantDisplayValue(constant),
+                  aliases: [constant.description]
+                })),
                 ...beginnerModuleCodeCompletions,
                 ...beginnerDesignerControlCompletions,
                 ...getModuleConstants(moduleContext?.enabledModules || [])
@@ -5791,7 +5804,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                 .values()
             ).map(withBeginnerCompletionSearchValues),
             perTargetItems: new Map<string, BeginnerCodeCompletion[]>(),
-            // 常量值提示目录：项目常量在前（同名遮蔽模块常量，与解析口径一致）。
+            // 常量值提示目录：项目常量在前（同名遮蔽模块常量），内置常量在末尾（被前两者遮蔽）。
             // 悬停气泡与底部提示共用，随上面的指纹一起失效重建。
             constantInfos: [
               ...(projectGlobals?.constants || []).map(constant => ({
@@ -5809,7 +5822,14 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                   origin: '模块常量' as const,
                   moduleName: constant.moduleName,
                   description: constant.description
-                }))
+                })),
+              ...getBuiltinLingCppConstants().map(constant => ({
+                name: constant.name,
+                type: constant.type,
+                value: formatBuiltinConstantDisplayValue(constant),
+                origin: '内置常量' as const,
+                description: constant.description
+              }))
             ]
           };
           beginnerCompletionCatalogCacheRef.current = catalog;
@@ -6113,14 +6133,16 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       if (existing) return existing;
       const originText = constant.origin === '模块常量'
         ? `来自模块「${constant.moduleName || ''}」的公开常量${constant.description ? `：${constant.description}` : ''}，值只在模块清单里维护`
-        : '项目常量，声明在 项目全局变量.lcpp 的常量表';
+        : constant.origin === '内置常量'
+          ? `语言内置常量，开箱可用、无需声明${constant.description ? `：${constant.description}` : ''}`
+          : '项目常量，声明在 项目全局变量.lcpp 的常量表';
       const content: CommandHintContent = {
         command: `#${constant.name}`,
         signature: `常量 ${constant.type} ${constant.name} = ${constant.value}`,
         returnType: constant.type,
-        summary: constant.origin === '模块常量'
-          ? `${originText}。常量只读，引用写作 #${constant.name}。`
-          : `${originText}。常量只读，引用写作 #${constant.name}；Ctrl+单击可转到声明。`,
+        summary: constant.origin === '项目常量'
+          ? `${originText}。常量只读，引用写作 #${constant.name}；Ctrl+单击可转到声明。`
+          : `${originText}。常量只读，引用写作 #${constant.name}。`,
         parameters: [],
         example: `#${constant.name}`
       };
@@ -6493,9 +6515,11 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       const flushed = applyPendingBeginnerCodeDrafts(
         latestSourceCodeRef.current,
         beginnerCodeDraftsRef.current,
-        beginnerLocalStatementAnchorsRef.current
+        beginnerLocalStatementAnchorsRef.current,
+        { allowErrors: true }
       );
       if (!flushed.success) {
+        setBeginnerAutoLocalTypeState(null);
         setStructureEditError(flushed.diagnostics[0] || '自动声明局部变量前提交正文失败。');
         return false;
       }
@@ -6506,6 +6530,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         method.name === target.method.name && method.kind === target.method.kind
       );
       if (!parsedMethod) {
+        setBeginnerAutoLocalTypeState(null);
         setStructureEditError(`无法定位子程序 ${target.method.name}，局部变量未自动声明。`);
         return false;
       }
@@ -6533,6 +6558,9 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         }
       });
       if (!inserted.success) {
+        // 面板状态必须一起收起：否则类型面板继续吃掉后续每一次回车，
+        // 新手在写完整个流程块之前回车永远无响应（卡死键盘）。
+        setBeginnerAutoLocalTypeState(null);
         setStructureEditError(inserted.error || inserted.diagnostics[0]?.message || '局部变量自动声明失败。');
         return false;
       }
@@ -6601,6 +6629,10 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       input: HTMLTextAreaElement,
       segmentContext?: BeginnerCodeSegmentContext
     ) => {
+      if (beginnerAutoLocalSkipOnceRef.current) {
+        beginnerAutoLocalSkipOnceRef.current = false;
+        return false;
+      }
       if (!segmentContext || input.selectionStart !== input.selectionEnd) return false;
       const cursor = input.selectionEnd;
       const lineStart = input.value.lastIndexOf('\n', Math.max(0, cursor - 1)) + 1;
@@ -6737,14 +6769,22 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         if ((event.key === 'Enter' || event.key === 'Tab') && segmentContext) {
           event.preventDefault();
           const type = activeAutoLocalType.items[activeAutoLocalType.selectedIndex] || activeAutoLocalType.items[0];
-          if (type) commitBeginnerAutoLocal(
-            target,
-            input,
-            segmentContext,
-            activeAutoLocalType.variableName,
-            type
-          );
-          return;
+          if (type) {
+            const committed = commitBeginnerAutoLocal(
+              target,
+              input,
+              segmentContext,
+              activeAutoLocalType.variableName,
+              type
+            );
+            // 提交成功或面板仍开着（切换选项）都到此为止；提交失败且面板已收起时
+            // 不吞键——让回车继续走下面的普通换行分支，新手不至于卡死键盘。
+            // 跳过一次自动局部检测：变量还没登记成功，普通分支若再开面板会循环吞键。
+            if (committed || beginnerAutoLocalTypeStateRef.current) return;
+            beginnerAutoLocalSkipOnceRef.current = true;
+          } else {
+            return;
+          }
         }
         if (event.key === 'Escape') {
           event.preventDefault();

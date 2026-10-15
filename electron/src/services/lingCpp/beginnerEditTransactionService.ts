@@ -35,7 +35,8 @@ function methodBodyText(method: LingCppMethod): string {
 export function applyPendingBeginnerCodeDrafts(
   sourceCode: string,
   drafts: BeginnerCodeDrafts,
-  localStatementAnchors: Record<string, Record<string, number>> = {}
+  localStatementAnchors: Record<string, Record<string, number>> = {},
+  options?: { allowErrors?: boolean }
 ): FlushPendingEditsResult {
   const draftEntries = Object.entries(drafts);
   if (draftEntries.length === 0) {
@@ -96,7 +97,7 @@ export function applyPendingBeginnerCodeDrafts(
       methodName: draft.target.method.name,
       bodyLines: normalizedBody ? normalizedBody.split(/\r?\n/u) : [],
       localStatementAnchors: localStatementAnchors[draft.key]
-    });
+    }, options);
     if (!result.success) {
       return {
         success: false,

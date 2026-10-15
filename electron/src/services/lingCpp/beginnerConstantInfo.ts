@@ -7,7 +7,7 @@ export interface BeginnerConstantInfo {
   type: string;
   /** 声明中的初始值（文本型保留引号原样，逻辑型已归一为 真/假），只用于展示。 */
   value: string;
-  origin: '项目常量' | '模块常量';
+  origin: '项目常量' | '模块常量' | '内置常量';
   moduleName?: string;
   description?: string;
 }
@@ -16,7 +16,7 @@ export interface BeginnerConstantInfo {
  * 只认显式的 `#常量名` 引用形态（标识符紧前面必须是 #）：裸标识符可能是同名局部变量，
  * 语义不是常量，不得显示常量值。其余边界与项目常量跳转同口径：
  * 字符串/注释/多行文本块/成员访问/调用位置不命中。
- * constants 按「遮蔽优先级」排序（项目常量在前遮蔽模块常量），同名取靠前者。 */
+ * constants 按「遮蔽优先级」排序（项目常量在前、内置常量在末尾，同名取靠前者）。 */
 export function getBeginnerConstantInfoAtCursor(
   source: string,
   cursor: number,

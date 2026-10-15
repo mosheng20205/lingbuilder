@@ -28,6 +28,7 @@ import {
   getLingCppCompletionItems,
   getLingCppCompletionContextKind,
   getLingCppCompletions,
+  getLingCppConstantReferenceAtPosition,
   getLingCppDesignerControlCompletions,
   getLingCppDesignerBindings,
   getLingCppEventBlockHighlights,
@@ -792,6 +793,84 @@ test('LingCpp project constants parse, validate, complete, rename and remain rea
   assert.ok(getProjectGlobalDiagnostics('常量 文本型 空值 = ', symbolPath).some(diagnostic => diagnostic.message.includes('必须填写常量值')));
 });
 
+test('内置常量 #换行符 开箱可用：补全、悬停、引用诊断与项目常量遮蔽', () => {
+  const sourcePath = 'src/MainWindow.lcpp';
+  const emptySource = [
+    '类 MainWindow : 公开 窗体',
+    '    事件 创建完毕()',
+    '        调试输出("第一行" + #换行符 + "第二行")',
+    '        调试输出(#不存在的常量)',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const context = buildLingCppLanguageContext(emptySource, undefined, undefined, sourcePath);
+
+  // # 触发补全：内置常量在列，来源标注「内置常量」。
+  const triggerSource = ['类 MainWindow : 公开 窗体', '    事件 创建完毕()', '        调试输出(#)', '    结束', '结束类'].join('\n');
+  const items = getLingCppCompletionItems(
+    { source: triggerSource, line: 3, column: '        调试输出(#)'.indexOf('#') + 2, triggerText: '' },
+    buildLingCppLanguageContext(triggerSource, undefined, undefined, sourcePath)
+  );
+  const builtinItem = items.find(item => item.label === '#换行符');
+  assert.ok(builtinItem, '# 触发的补全必须包含内置常量 #换行符');
+  assert.match(builtinItem.detail, /内置常量/u);
+  assert.ok(items.every(item => item.label.startsWith('#')), '常量补全列表只允许出现常量项');
+
+  // 引用诊断：内置常量合法、未知常量照旧报错。
+  const diagnostics = getLingCppSemanticDiagnostics(emptySource, undefined, sourcePath);
+  assert.equal(diagnostics.filter(diagnostic => diagnostic.level === 'error' && diagnostic.message.includes('#换行符')).length, 0);
+  assert.ok(diagnostics.some(diagnostic => diagnostic.message.includes('常量 #不存在的常量 不存在')));
+
+  // 悬停：给出内置常量的类型与转义展示值。
+  const hoverLine = emptySource.split(/\r?\n/u)[2] || '';
+  const hover = getLingCppConstantReferenceAtPosition(
+    emptySource,
+    3,
+    hoverLine.indexOf('#换行符') + 1,
+    context
+  );
+  assert.ok(hover, '#换行符 引用必须命中悬停');
+  assert.match(hover.contents, /内置常量/u);
+  assert.match(hover.contents, /\\r\\n/u);
+
+  // 项目常量同名遮蔽内置常量：补全只保留项目常量形态。
+  const shadowSource = '常量 文本型 换行符 = "自定义"';
+  const shadowGlobals = createProjectGlobalContext('src/项目全局变量.lcpp', shadowSource);
+  const shadowItems = getLingCppConstantCompletionViaPublicApi('        调试输出(#)', shadowGlobals);
+  const shadowMatches = shadowItems.filter(item => item.label === '#换行符');
+  assert.equal(shadowMatches.length, 1);
+  assert.match(shadowMatches[0]?.detail || '', /项目常量/u);
+});
+
+/** 走公开补全入口取 # 触发的常量清单（内置常量经 getLingCppCompletionItems 下发）。 */
+function getLingCppConstantCompletionViaPublicApi(triggerLine: string, projectGlobals: ReturnType<typeof createProjectGlobalContext>) {
+  const source = ['类 MainWindow : 公开 窗体', '    事件 创建完毕()', triggerLine, '    结束', '结束类'].join('\n');
+  return getLingCppCompletionItems(
+    { source, line: 3, column: triggerLine.indexOf('#') + 2, triggerText: '' },
+    buildLingCppLanguageContext(source, undefined, undefined, 'src/MainWindow.lcpp', projectGlobals)
+  );
+}
+
+test('生成端物化内置常量声明：未用常量表的项目也能编译 #换行符', () => {
+  const sourcePath = 'src/MainWindow.lcpp';
+  const source = [
+    '类 游戏主窗体 : 公开 窗体',
+    '    事件 创建完毕()',
+    '        调试输出("第一行" + #换行符 + "第二行")',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    activeWindowId: 'window-1',
+    lingCppSourceCode: source,
+    lingCppSourceFilePath: sourcePath,
+    lingCppSources: [{ filePath: sourcePath, sourceCode: source }]
+  });
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
+  assert.match(cpp, /inline const std::wstring 换行符 = L"\\r\\n";/u);
+  assert.match(cpp, /L"第一行"\s*\+\s*换行符/u);
+});
+
 test('新手项目变量与常量编辑器提供双页签、引用入口和窄屏滚动容器', () => {
   const editorSource = readFileSync(resolve(import.meta.dirname, '../src/components/ProjectGlobalVariableEditor.tsx'), 'utf8');
   assert.match(editorSource, /项目变量与常量/u);
@@ -1294,6 +1373,35 @@ test('未启用模块的同名命令不应产生模块未引用误报', () => {
   assert.equal(moduleWarnings([enabledModule], [enabledModule, disabledModule]).length, 0);
   assert.equal(moduleWarnings([], [disabledModule]).length, 1);
   assert.match(moduleWarnings([], [disabledModule])[0]?.message || '', /尚未引用该模块/u);
+});
+
+test('模块未引用诊断豁免 @ 内嵌 C++ 行（2026-10-14：CEF3 find 别名不得撞 STL 成员调用）', () => {
+  const cef3Manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.cef3.browser');
+  assert.ok(cef3Manifest, 'CEF3 浏览器模块必须内置可用');
+  const disabledCef3: InstalledModule = {
+    isInstalled: true,
+    isEnabledForProject: false,
+    installPath: 'builtin',
+    isBuiltin: true,
+    diagnostics: [],
+    manifest: cef3Manifest!
+  };
+  const source = [
+    '类 MainWindow : 公开 窗体',
+    '    事件 _按钮1_被单击()',
+    '        局部 文本型 全部数据 = "a;b"',
+    '        局部 整数型 游标 = 0',
+    '        @ size_t 位置 = 全部数据.find(L\';\', 游标);',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const moduleWarnings = (src: string) =>
+    getLingCppProblems(src, undefined, 'src/MainWindow.lcpp', { enabledModules: [], availableModules: [disabledCef3] })
+      .filter(problem => problem.id.startsWith('lingcpp-module-disabled'));
+
+  assert.equal(moduleWarnings(source).length, 0, '@ 行是原生 C++，.find( 不得按 CEF3 find 命令误报');
+  const dslCall = source.replace('@ size_t 位置 = 全部数据.find(L\';\', 游标);', 'CEF3_页内查找(当前窗口, "x")');
+  assert.equal(moduleWarnings(dslCall).length, 1, 'DSL 行上真正调用未启用模块命令仍须警告');
 });
 
 test('新手模式问题文案保留真实诊断消息', () => {
@@ -3886,6 +3994,28 @@ test('beginner editor tables support dragging and resetting column widths', () =
   assert.doesNotMatch(globalsSource, /min-w-\[96px\]/u);
 });
 
+test('generateLingCppNativeWin32Project keeps message-box result when assigned to a variable', () => {
+  const source = [
+    '类 MainWindow : 公开 窗体',
+    '    事件 _MainWindow_关闭前()',
+    '        局部 整数型 选择',
+    '        选择 = 信息框("还没保存的改动会丢失，确定退出吗？", 52, "退出确认")',
+    '        如果 (选择 = 6)',
+    '            调试输出("用户确认退出")',
+    '        否则',
+    '            窗口_取消关闭()',
+    '        如果结束',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    activeWindowId: 'window-1',
+    lingCppSourceCode: source
+  });
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
+  assert.ok(mainCpp.includes('选择 = 信息框(L"还没保存的改动会丢失，确定退出吗？", MB_YESNO | MB_ICONWARNING, L"退出确认");'));
+});
+
 test('generateLingCppNativeWin32Project emits OOP Win32 class code and event wiring', () => {
   const generated = generateLingCppNativeWin32Project(sampleProject, {
     activeWindowId: 'window-1',
@@ -4594,6 +4724,155 @@ test('beginner flow formatting indents nested loops below conditions', () => {
     '    计次循环尾 ()',
     '如果真结束'
   ]);
+});
+
+test('beginner flow formatting aligns sibling select branches on one column', () => {
+  // 手动在分支体后回车敲入的第二个分支会继承上一行的深层缩进（回车缩进只加不减），
+  // 提交格式化必须把它吸附回兄弟分支同列，保证所有分支在一条垂直线上。
+  const formatted = formatBeginnerFlowIndentation([
+    '选择 (命令索引)',
+    '    分支 (1)',
+    '        调试输出("一")',
+    '        分支 (2)',
+    '        调试输出("二")',
+    '    默认',
+    '选择结束'
+  ]);
+
+  assert.deepEqual(formatted, [
+    '选择 (命令索引)',
+    '    分支 (1)',
+    '        调试输出("一")',
+    '    分支 (2)',
+    '        调试输出("二")',
+    '    默认',
+    '选择结束'
+  ]);
+
+  const withBaseIndent = formatBeginnerFlowIndentation([
+    '        选择 (命令索引)',
+    '            分支 (1)',
+    '                调试输出("一")',
+    '                分支 (2)',
+    '            默认',
+    '        选择结束'
+  ]);
+
+  assert.deepEqual(withBaseIndent, [
+    '        选择 (命令索引)',
+    '            分支 (1)',
+    '                调试输出("一")',
+    '            分支 (2)',
+    '            默认',
+    '        选择结束'
+  ]);
+});
+
+test('beginner flow formatting aligns elseif/else/catch/finally with their structure', () => {
+  // 如果/尝试族的并列分支（否则/否则如果/捕获/最终）与结构首行同列（模板惯例），
+  // 只有选择族的 分支/默认 在首行列+4；缩进过深的分支行吸附回正确列。
+  const formatted = formatBeginnerFlowIndentation([
+    '如果 (x)',
+    '        否则如果 (y)',
+    '    否则',
+    '如果结束',
+    '尝试',
+    '            调试输出("正文")',
+    '        捕获 (错误信息)',
+    '        最终',
+    '尝试结束'
+  ]);
+
+  assert.deepEqual(formatted, [
+    '如果 (x)',
+    '否则如果 (y)',
+    '否则',
+    '如果结束',
+    '尝试',
+    '            调试输出("正文")',
+    '捕获 (错误信息)',
+    '最终',
+    '尝试结束'
+  ]);
+});
+
+test('beginner flow formatting keeps canonical nested structures untouched', () => {
+  const canonical = [
+    '如果 (x)',
+    '    选择 (a)',
+    '        分支 (1)',
+    '            选择 (b)',
+    '                分支 (2)',
+    '            选择结束',
+    '        分支 (3)',
+    '        默认',
+    '    选择结束',
+    '如果结束'
+  ];
+
+  assert.deepEqual(formatBeginnerFlowIndentation(canonical), canonical);
+});
+
+test('add-local tolerates pre-existing incomplete-structure errors while typing', () => {
+  // 新手边写边声明：自动声明循环变量发生在流程块写到一半时（计次循环首 还没写
+  // 计次循环尾），此刻文件天然带 error 级诊断；只要编辑没有「新引入」错误就必须放行，
+  // 否则类型面板确认失败后不清状态，后续回车全部被面板吞掉（卡死键盘）。
+  const source = [
+    '类 MainWindow',
+    '    事件 按钮1_被单击()',
+    '        计次循环首 (3, 次)',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const result = applyLingCppAstEdit(source, {
+    kind: 'add-local',
+    className: 'MainWindow',
+    methodName: '按钮1_被单击',
+    insertBeforeLine: 3,
+    local: { name: '次', type: '整数型' }
+  });
+  assert.equal(result.success, true);
+  assert.ok(/局部 整数型 次/.test(result.sourceCode));
+
+  // 编辑「新引入」错误仍然拒绝：干净源码里插入未写完的结构
+  const clean = [
+    '类 MainWindow',
+    '    事件 按钮1_被单击()',
+    '        调试输出 ("就绪")',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const rejected = applyLingCppAstEdit(clean, {
+    kind: 'insert-method-block',
+    className: 'MainWindow',
+    access: '私有',
+    blockLines: ['如果 (条件)', '    调试输出 ("未写完")']
+  });
+  assert.equal(rejected.success, false);
+});
+
+test('pending draft flush allowsErrors accepts mid-typing incomplete structures', () => {
+  const source = [
+    '类 MainWindow',
+    '    事件 按钮1_被单击()',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const draftKey = 'MainWindow:event:按钮1_被单击';
+
+  // 默认严格：草稿里的未写完结构（新引入错误）拒绝提交
+  const strict = applyPendingBeginnerCodeDrafts(source, { [draftKey]: '计次循环首 (3, 次)' });
+  assert.equal(strict.success, false);
+
+  // 自动局部链路：allowErrors 放行，循环变量声明才能在结构写完前落进源码
+  const tolerant = applyPendingBeginnerCodeDrafts(
+    source,
+    { [draftKey]: '计次循环首 (3, 次)' },
+    {},
+    { allowErrors: true }
+  );
+  assert.equal(tolerant.success, true);
+  assert.ok(tolerant.sourceCode.includes('计次循环首 (3, 次)'));
 });
 
 test('beginner Enter indentation follows the current nested control-flow depth', () => {

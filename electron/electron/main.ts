@@ -683,6 +683,26 @@ async function restartAiBridgeAfterPermitRenewal(): Promise<void> {
 const rendererCrashTimestamps: number[] = [];
 let rendererConsoleErrorTimestamps: number[] = [];
 
+// 渲染层诊断（心跳 + 内存轨迹）：渲染进程崩溃后其内部状态全部丢失，
+// 主进程留存最后心跳与近期内存采样，崩溃日志才能指认「崩在哪个页面、堆有多大」。
+const RENDERER_MEMORY_WARN_MB = 2500;
+let lastRendererStatus: { at: number; message: string } | null = null;
+const recentTabMemoryMb: number[] = [];
+let lastHighMemoryWarnAt = 0;
+
+function describeRendererStatus(): string {
+  if (!lastRendererStatus) return '（渲染层尚未上报状态）';
+  const ageSeconds = Math.max(0, Math.round((Date.now() - lastRendererStatus.at) / 1000));
+  return `最后渲染层状态（${ageSeconds} 秒前）：${lastRendererStatus.message}`;
+}
+
+const rendererCrashExitCodeHints: Record<number, string> = {
+  [-1073741795]: '非法指令（Chromium 自毁指令，最常见于 V8 JS 堆内存耗尽）',
+  [-1073741819]: '内存访问违例',
+  [-1073741571]: '栈溢出',
+  [-1073740791]: '栈缓冲区溢出保护（fail-fast）'
+};
+
 function attachDiagnosticHandlers(window: BrowserWindow): void {
   const contents = window.webContents;
   contents.on('render-process-gone', (_event, details) => {
@@ -690,7 +710,9 @@ function attachDiagnosticHandlers(window: BrowserWindow): void {
     while (rendererCrashTimestamps.length && now - rendererCrashTimestamps[0] > 60_000) rendererCrashTimestamps.shift();
     rendererCrashTimestamps.push(now);
     const repeated = rendererCrashTimestamps.length >= 3;
-    logDiagnostic('error', 'renderer', `渲染进程意外退出：原因 ${details.reason}，退出码 ${details.exitCode}${repeated ? '（60 秒内第 3 次，已停止自动重载）' : ''}。`);
+    const exitCodeHint = rendererCrashExitCodeHints[details.exitCode];
+    const memoryTrail = recentTabMemoryMb.length ? `；崩溃前内存轨迹：${recentTabMemoryMb.join('→')}MB` : '';
+    logDiagnostic('error', 'renderer', `渲染进程意外退出：原因 ${details.reason}，退出码 ${details.exitCode}${exitCodeHint ? `（${exitCodeHint}）` : ''}${repeated ? '（60 秒内第 3 次，已停止自动重载）' : ''}。${memoryTrail ? `${memoryTrail}。` : ''}${describeRendererStatus()}。`);
     if (!repeated && !window.isDestroyed()) {
       void dialog.showMessageBox(window, {
         type: 'warning',
@@ -1118,7 +1140,12 @@ function registerIpcHandlers(): void {
     const level = entry.level === 'error' || entry.level === 'warn' ? entry.level : 'info';
     const category = String(entry.category || 'renderer').slice(0, 40);
     const message = String(entry.message || '').slice(0, 1000);
-    if (message) logDiagnostic(level, category, message);
+    if (!message) return;
+    // 渲染层每分钟心跳：落日志的同时存底，供崩溃日志与内存告警引用（见 describeRendererStatus）。
+    if (category === 'renderer-status') {
+      lastRendererStatus = { at: Date.now(), message };
+    }
+    logDiagnostic(level, category, message);
   });
   ipcMain.handle('shell:reveal-workspace-path', async (_event, targetPath: string) => {
     try {
@@ -1754,8 +1781,21 @@ function attachAppDiagnosticListeners(): void {
   setInterval(() => {
     if (!mainWindow || mainWindow.isDestroyed() || !diagnosticLog) return;
     try {
-      const parts = app.getAppMetrics().slice(0, 10).map(metric => `${metric.type}=${Math.round(metric.memory.workingSetSize / 1024)}MB`);
+      const metrics = app.getAppMetrics().slice(0, 10);
+      const parts = metrics.map(metric => `${metric.type}=${Math.round(metric.memory.workingSetSize / 1024)}MB`);
       diagnosticLog.info('memory', `进程内存：${parts.join(' ')}`);
+      // Tab（渲染进程）内存轨迹 + 高水位告警：持续膨胀到 V8 堆上限会崩溃
+      // （2026-10-15 客户案例：130MB/min 涨到 4.4GB 后每 33 分钟崩一次）。
+      const tabMetrics = metrics.filter(metric => metric.type === 'Tab');
+      if (tabMetrics.length) {
+        const tabMb = Math.max(...tabMetrics.map(metric => Math.round(metric.memory.workingSetSize / 1024)));
+        recentTabMemoryMb.push(tabMb);
+        while (recentTabMemoryMb.length > 10) recentTabMemoryMb.shift();
+        if (tabMb >= RENDERER_MEMORY_WARN_MB && Date.now() - lastHighMemoryWarnAt >= 10 * 60_000) {
+          lastHighMemoryWarnAt = Date.now();
+          diagnosticLog.warn('memory', `渲染进程内存偏高（${tabMb}MB ≥ ${RENDERER_MEMORY_WARN_MB}MB），持续增长将导致页面崩溃重载。${describeRendererStatus()}`);
+        }
+      }
     } catch {
       // 采样失败静默跳过。
     }

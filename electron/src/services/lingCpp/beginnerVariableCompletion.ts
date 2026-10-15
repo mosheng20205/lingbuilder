@@ -23,7 +23,7 @@ export interface BeginnerVariableCompletionItem {
 export interface BeginnerConstantCompletionInput {
   name: string;
   type?: string;
-  origin: '项目常量' | '模块常量';
+  origin: '项目常量' | '模块常量' | '内置常量';
   value?: string;
   moduleName?: string;
   aliases?: string[];

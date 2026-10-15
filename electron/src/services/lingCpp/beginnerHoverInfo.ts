@@ -273,7 +273,8 @@ export function isSameBeginnerHoverInfo(a: BeginnerHoverInfo, b: BeginnerHoverIn
 }
 
 function buildConstantHoverInfo(constant: BeginnerConstantInfo): BeginnerHoverInfo {
-  const isProjectConstant = constant.origin !== '模块常量';
+  const isProjectConstant = constant.origin === '项目常量';
+  const isBuiltinConstant = constant.origin === '内置常量';
   return {
     kind: 'constant',
     name: `#${constant.name}`,
@@ -281,7 +282,9 @@ function buildConstantHoverInfo(constant: BeginnerConstantInfo): BeginnerHoverIn
     detail: `值 ${constant.value}`,
     origin: isProjectConstant
       ? '项目常量 · 项目全局变量.lcpp · 只读'
-      : `模块「${constant.moduleName || ''}」公开常量 · 只读`,
+      : isBuiltinConstant
+        ? '语言内置常量 · 开箱可用 · 只读'
+        : `模块「${constant.moduleName || ''}」公开常量 · 只读`,
     jumpLabel: isProjectConstant ? 'Ctrl+单击 转到声明' : undefined
   };
 }

@@ -172,10 +172,17 @@ export function getBeginnerIfFlowGuideRows(lines: string[]): BeginnerFlowGuideRo
  * Formats a method body relative to its declaration indentation. Control-flow
  * markers are sufficient to derive nesting, so a partially typed beginner
  * block still remains readable before the user manually adjusts every line.
+ *
+ * 并列结构行强制对齐：新敲的分支行会继承上一行循环/分支体的深层缩进（回车缩进
+ * 只加不减）。规范列按结构族区分（与官方补全模板一致）：选择族 分支/默认 吸附到
+ * 结构首行列+4；如果/尝试族 否则/否则如果/捕获/最终 与首行同列。结束行吸附回首行
+ * 列，保证同一结构的并列分支在同一条垂直线上。其余行保持「只加不减」，嵌套结构
+ * 的既有缩进不改写。
  */
 export function formatBeginnerFlowIndentation(lines: string[]): string[] {
   let depth = 0;
   const { consumed } = scanTextBlockLines(lines);
+  const openBlockColumns: Array<{ family: LingCppControlFlowFamily; startColumn: number }> = [];
 
   return lines.map((line, index) => {
     // 文本块内容行原样保留（raw 语义），不重写缩进、不 trim。
@@ -187,17 +194,32 @@ export function formatBeginnerFlowIndentation(lines: string[]): string[] {
       ? Math.max(0, depth - 1)
       : depth;
     const requiredIndent = lineDepth * 4;
-    const indent = sourceIndent.length >= requiredIndent
-      ? sourceIndent
-      : `${sourceIndent}${' '.repeat(requiredIndent - sourceIndent.length)}`;
+    const openBlock = openBlockColumns.at(-1);
+    const familyMatches = Boolean(control?.family && openBlock?.family === control.family);
+    // 分支行的规范列按结构族区分（与官方补全模板一致）：
+    // 选择族 分支/默认 在结构首行列+4；如果/尝试族 否则/否则如果/捕获/最终 与首行同列。
+    const branchColumnOffset = control?.family === 'select' ? 4 : 0;
+    const indent = control?.role === 'branch' && familyMatches
+      ? ' '.repeat(openBlock!.startColumn + branchColumnOffset)
+      : control?.role === 'end' && familyMatches
+        ? ' '.repeat(openBlock!.startColumn)
+        : sourceIndent.length >= requiredIndent
+          ? sourceIndent
+          : `${sourceIndent}${' '.repeat(requiredIndent - sourceIndent.length)}`;
 
     // Keep a writable blank row aligned with its surrounding block. Without
     // this, a multiline completion leaves its body line at column zero until
     // the user presses Enter again.
     if (!text) return indent;
 
-    if (control?.role === 'end') depth = Math.max(0, depth - 1);
-    if (control?.role === 'start') depth += 1;
+    if (control?.role === 'end') {
+      depth = Math.max(0, depth - 1);
+      if (familyMatches) openBlockColumns.pop();
+    }
+    if (control?.role === 'start' && control.family) {
+      depth += 1;
+      openBlockColumns.push({ family: control.family, startColumn: indent.length });
+    }
 
     return `${indent}${text}`;
   });

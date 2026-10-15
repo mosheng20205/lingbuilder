@@ -18,7 +18,11 @@ import {
 
 const DEFAULT_FILE_PATH = 'memory.lcpp';
 
-export function applyLingCppAstEdit(source: string, edit: LingCppAstEdit): LingCppAstEditResult {
+export function applyLingCppAstEdit(
+  source: string,
+  edit: LingCppAstEdit,
+  options?: { allowErrors?: boolean }
+): LingCppAstEditResult {
   const newline = source.includes('\r\n') ? '\r\n' : '\n';
   const originalSource = source;
   const parsed = parseLingCpp(source);
@@ -29,8 +33,23 @@ export function applyLingCppAstEdit(source: string, edit: LingCppAstEdit): LingC
     const updatedSource = updatedLines.join(newline);
     const nextParse = parseLingCpp(updatedSource);
     const blockingDiagnostics = nextParse.diagnostics.filter(diagnostic => diagnostic.level === 'error');
-    if (blockingDiagnostics.length > 0) {
-      return failedResult(originalSource, blockingDiagnostics, blockingDiagnostics[0]?.message || '结构编辑后源码存在错误。');
+    // 新手边写边声明：自动声明局部变量发生在流程块写到一半时（计次循环首 还没写
+    // 计次循环尾），此刻文件天然带 error 级诊断。默认只拒绝「本次编辑新引入」的
+    // 错误（按消息多重集对比，行号会随插行平移不能作键）；allowErrors 供自动局部
+    // 提交草稿链使用——新手正文体提交本就允许带着未写完的结构落盘。
+    if (options?.allowErrors !== true) {
+      const previousErrorMessages = parsed.diagnostics
+        .filter(diagnostic => diagnostic.level === 'error')
+        .map(diagnostic => diagnostic.message);
+      const newBlockingDiagnostics = blockingDiagnostics.filter(diagnostic => {
+        const index = previousErrorMessages.indexOf(diagnostic.message);
+        if (index < 0) return true;
+        previousErrorMessages.splice(index, 1);
+        return false;
+      });
+      if (newBlockingDiagnostics.length > 0) {
+        return failedResult(originalSource, newBlockingDiagnostics, newBlockingDiagnostics[0]?.message || '结构编辑后源码存在错误。');
+      }
     }
 
     return {
