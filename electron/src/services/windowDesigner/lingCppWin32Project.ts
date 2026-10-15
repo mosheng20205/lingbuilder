@@ -45,6 +45,7 @@ import { getEnabledModuleConstantDiagnostics, getModuleConstants, type LingCppMo
 import { parseLingCppControlFlowLine } from '../lingCpp/controlFlow';
 import { parseLingCppTextBlockStatement, scanLingCppTextBlockRanges, collectLingCppTextBlockOpaqueLines } from '../lingCpp/textBlock';
 import { getLingCppParameterElementType, isLingCppArrayParameterType } from '../lingCpp/parameterTypeService';
+import { getBuiltinLingCppConstants } from '../lingCpp/builtinConstants';
 import { createProjectGlobalContext, getProjectGlobalDiagnostics, isProjectGlobalsFilePath } from '../lingCpp/projectGlobalService';
 import { createProjectTypeContext, getProjectDataTypeDiagnostics, isProjectDataTypesFilePath, sortProjectDataTypes } from '../lingCpp/projectDataTypeService';
 import { getLingCppSemanticDiagnostics } from '../lingCpp/languageService';
@@ -31795,13 +31796,28 @@ function formatModuleConstantDeclaration(constant: LingCppModuleConstant, enable
 
 function generateProjectGlobalsDefinition(program: LingCppProgram, enabledModules: InstalledModule[]): string {
   // 模块常量与项目常量同处一个命名空间：同名时项目常量遮蔽模块常量，只物化一份。
+  // 内置常量（如 #换行符）再低一级：被项目常量与模块常量同名遮蔽，不重复物化。
   const projectConstantKeys = new Set(program.constants.map(constant => normalizeIdentifier(constant.name)));
-  const moduleConstantDeclarations = getModuleConstants(enabledModules)
+  const moduleConstants = getModuleConstants(enabledModules);
+  const moduleConstantKeys = new Set(moduleConstants.map(constant => normalizeIdentifier(constant.name)));
+  const moduleConstantDeclarations = moduleConstants
     .filter(constant => !projectConstantKeys.has(normalizeIdentifier(constant.name)))
     .map(constant => `    ${formatModuleConstantDeclaration(constant, enabledModules)}`);
-  if (program.constants.length === 0 && program.globals.length === 0 && moduleConstantDeclarations.length === 0) return '';
+  const builtinConstantDeclarations = getBuiltinLingCppConstants()
+    .filter(constant => !projectConstantKeys.has(normalizeIdentifier(constant.name)) && !moduleConstantKeys.has(normalizeIdentifier(constant.name)))
+    .map(constant => `    ${formatModuleConstantDeclaration({
+      name: constant.name,
+      type: constant.type,
+      value: constant.value,
+      description: constant.description,
+      level: 'basic',
+      moduleId: 'lingbuilder.builtin',
+      moduleName: '语言内置'
+    }, enabledModules)}`);
+  if (program.constants.length === 0 && program.globals.length === 0 && moduleConstantDeclarations.length === 0 && builtinConstantDeclarations.length === 0) return '';
   const declarations = [
     ...moduleConstantDeclarations,
+    ...builtinConstantDeclarations,
     ...program.constants.map(constant => {
       const cppType = toCppType(constant.type, 'variable', enabledModules, program.dataTypes);
       const prefix = cppType === 'std::wstring' ? 'inline const ' : 'inline constexpr ';
@@ -32168,6 +32184,11 @@ function translateStatement(
   const messageBox = parseMessageBox(statement);
   if (/^如果(?:真)?(?:\s|[（(])/.test(statement) && messageBox && /[=＝]{1,2}\s*6/.test(statement)) {
     return `if (信息框(${toCppWideStringLiteral(messageBox.text)}, ${messageBox.flags}, ${toCppWideStringLiteral(messageBox.title)}) == IDYES) { 结束(); return; }`;
+  }
+  // 变量 = 信息框(...)：捕获用户选择（如「关闭前」事件里 是=6/否=7），不能退化成裸调用丢返回值。
+  const messageBoxAssign = messageBox ? statement.match(/^([\p{L}_][\p{L}\p{N}_]*)\s*[=＝]\s*信息框/u) : undefined;
+  if (messageBox && messageBoxAssign) {
+    return `${messageBoxAssign[1]} = 信息框(${toCppWideStringLiteral(messageBox.text)}, ${messageBox.flags}, ${toCppWideStringLiteral(messageBox.title)});`;
   }
   if (messageBox) {
     return `信息框(${toCppWideStringLiteral(messageBox.text)}, ${messageBox.flags}, ${toCppWideStringLiteral(messageBox.title)});`;

@@ -426,3 +426,34 @@ App 监听（展开 AI 助手侧栏并存 `pendingAgentRequest`）→ `AiAssista
 一条通道且由工作台展开侧栏、模块面板不再自带生成状态；`tests/aiModuleGenerationFlow.test.ts` 钉住
 共享流不再携带模型通道且服务端不再暴露 `/api/modules/ai-generate`。账号入口齐备性仍由
 `tests/cloudAccountEntry.test.tsx` 把守。
+
+## Bridge 写入印章与设计器外部重载免确认（2026-10-14，issue #IKLE7E）
+
+**问题**：外部 AI 经 `edit.apply` 更新 `window-designer.json` 后，IDE 弹「设计器文件已被
+外部修改」模态框等人；用户没盯着 IDE 就一直卡住。两层根因：
+
+1. **假脏**：App.tsx 外部重载路径把「磁盘原始 JSON」当干净基线，随后
+   `saveWindowDesignerState` 内部 `normalizeWindowDesignerState`（迁移/补默认值/键序重建）
+   派发事件，脏判定 `JSON.stringify(画布) !== 基线` 必然为真——重载完立刻假变脏，AI 下一次
+   写入就弹框；点「重新载入」也再次假脏，形成死循环。项目加载路径一直用 normalize 返回值做
+   基线，是对的；两条路径口径不一致。
+2. **无来源豁免**：渲染层唯一认「自己人」的机制是 in-flight 保存快照内容回声
+   （`workspaceSaveEchoService`），Bridge CLI 独立进程的写盘永远算「外部修改」。
+
+**修复**（apply 契约零改动，AI 工作流不可感知）：
+
+- `src/services/files/bridgeWriteStampService.ts`（新）：`edit.apply` 成功后把每个写入文件
+  的「磁盘回读字节 → `createProjectFileVersion` 哈希 + 时间戳」记入
+  `<工作区>/.lingbuilder/bridge-write-stamps.json`（TTL 15 分钟、封顶 200 条、原子写、
+  best-effort 绝不影响 apply 结果）。`.lingbuilder/` 已在 IDE 托管目录豁免清单，不进 F5 载荷。
+- server `/api/window-designer/files` 响应附带 `bridgeOrigins`（版本哈希 == 印章哈希才命中；
+  用户事后手改过则哈希不匹配，不豁免，冲突保护不放松）。
+- 渲染层：设计器外部变更命中 `bridgeOrigins` 时跳过确认框自动载入；本地真脏先 POST
+  `/api/window-designer/recovery` 留存恢复快照再重载 + 事务日志记录。未命中印章的真正外部
+  修改仍走原确认框。重载基线改为 normalize 后的项目（与加载路径同口径），假脏根治。
+
+**验证锚点**：`tests/bridgeWriteStamps.test.ts`（记录/命中/TTL/封顶/损坏容忍）、
+`tests/aiBridge.test.ts`「apply 成功后写入来源印章」（印章哈希与磁盘字节精确匹配）、
+`tests/windowDesigner.test.ts`「normalize 后再 save 内容不再变化」（基线稳定性不变量）。
+**红线**：改外部重载基线口径时不得回退成「磁盘原始 JSON」；改 applyEdit 时不得把印章写入
+挪进回滚 try 块（失败会误触回滚）；印章只服务 IDE 免确认体验，不是 AI 可依赖的契约。

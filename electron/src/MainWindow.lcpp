@@ -8,6 +8,7 @@
 
     构造()
         调试输出("GameClient主窗口初始化完毕，Win32 渲染正常。")
+        wb_
     结束
 
     事件 _MainWindow_创建完毕()

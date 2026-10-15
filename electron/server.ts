@@ -140,6 +140,7 @@ import {
   readProjectFileVersionsFromDisk
 } from "./src/services/files/projectFilePersistenceService";
 import { HotExitRecoveryService } from "./src/services/files/hotExitRecoveryService";
+import { collectBridgeWriteOrigins } from "./src/services/files/bridgeWriteStampService";
 import {
   TextFileFormatError,
   type ProjectFileReadProblem,
@@ -1742,6 +1743,22 @@ app.get("/api/window-designer/assets", async (req, res) => {
     res.json({ ok: true, resources });
   } catch (error: any) {
     res.status(400).json({ ok: false, error: error?.message || "项目图片资源读取失败。" });
+  }
+});
+
+// 打开 assets 目录前先确保目录存在（从未导入过图片的项目目录可能还没建）。
+app.post("/api/window-designer/assets/ensure-directory", async (req, res) => {
+  const { projectId } = req.body as { projectId?: string };
+  if (!isNonEmptyString(projectId)) {
+    return res.status(400).json({ ok: false, error: "缺少 projectId。" });
+  }
+  try {
+    const solutionService = getSolutionService();
+    const projectRef = solutionService.getProject(await solutionService.getSolution(), projectId.trim());
+    const assetRoot = await designerAssetService.ensureProjectAssetDirectory(projectRef);
+    res.json({ ok: true, assetRoot });
+  } catch (error: any) {
+    res.status(400).json({ ok: false, error: error?.message || "项目 assets 目录创建失败。" });
   }
 });
 
@@ -3722,6 +3739,9 @@ app.get("/api/window-designer/files", async (req, res) => {
         if (error?.code !== "ENOENT") throw error;
       }
     }
+    // AI Bridge 写入印章（issue #IKLE7E）：命中「版本哈希 == Bridge 印章哈希」的文件标记来源，
+    // 渲染层据此免确认自动载入设计器布局；印章缺失/过期/哈希不匹配时不下发，保持原确认流程。
+    const bridgeOrigins = await collectBridgeWriteOrigins(getRepoWorkspaceRoot(), fileVersions);
     res.json({
       ok: true,
       files,
@@ -3729,7 +3749,8 @@ app.get("/api/window-designer/files", async (req, res) => {
       fileVersions,
       ...(readProblems.length ? { problems: readProblems } : {}),
       ...(designerRelativePath ? { designerPath: designerRelativePath } : {}),
-      ...(designerProject ? { designerProject } : {})
+      ...(designerProject ? { designerProject } : {}),
+      ...(Object.keys(bridgeOrigins).length ? { bridgeOrigins } : {})
     });
   } catch (err: any) {
     const status = err instanceof TextFileFormatError ? 400 : 500;
@@ -4326,6 +4347,9 @@ async function sourceControlAction(res: express.Response, action: () => Promise<
   catch (error: any) { res.status(400).json({ ok: false, error: error?.message || "Git 操作失败。" }); }
 }
 
+// debug-logs 变化时单次响应的最大读取窗口；超过即只回传日志尾部。
+const DEBUG_LOG_RESPONSE_WINDOW_BYTES = 262144;
+
 app.get("/api/window-designer/debug-logs", async (req, res) => {
   const projectId = req.query.projectId as string || "window-preview";
   const clear = req.query.clear === "true";
@@ -4347,14 +4371,48 @@ app.get("/api/window-designer/debug-logs", async (req, res) => {
     try {
       await fs.writeFile(logFile, "", "utf8");
     } catch {}
-    return res.json({ logs: [] });
+    return res.json({ logs: [], size: 0, mtimeMs: 0 });
   }
 
+  // 渲染层每秒轮询本接口：带 lastSize/lastMtime 时先 stat 短路，日志没变化就不读文件、不重发。
+  // 大 run.log 每秒全量重发会把渲染层喂出每分钟数百 MB 的解析垃圾
+  // （2026-10-15 客户渲染进程以约 130MB/min 膨胀到 V8 堆上限崩溃的主因）。
+  // 变化时若日志超过窗口上限，只回传尾部窗口——调试输出面板只关心最近内容。
+  const lastSize = Number.parseInt(String(req.query.lastSize ?? ""), 10);
+  const lastMtime = Number.parseFloat(String(req.query.lastMtime ?? ""));
+  let stat: { size: number; mtimeMs: number } | null = null;
   try {
-    const data = await fs.readFile(logFile, "utf8");
-    res.json({ logs: data.split("\n") });
+    const rawStat = await fs.stat(logFile);
+    stat = { size: rawStat.size, mtimeMs: rawStat.mtimeMs };
   } catch {
-    res.json({ logs: [] });
+    stat = null;
+  }
+  if (!stat) return res.json({ logs: [], size: 0, mtimeMs: 0 });
+  // mtime 用严格相等：NTFS 时间戳粒度 100ns、mtimeMs 经 JSON 往返是精确 double，
+  // 放宽容差会把「写入紧跟在上一轮读取之后」的真实变化漏判成无变化（实测 2ms 容差即踩中）。
+  const unchanged = Number.isInteger(lastSize) && lastSize >= 0 && Number.isFinite(lastMtime)
+    && lastSize === stat.size && lastMtime === stat.mtimeMs;
+  if (unchanged) {
+    return res.json({ unchanged: true, size: stat.size, mtimeMs: stat.mtimeMs });
+  }
+  try {
+    if (stat.size > DEBUG_LOG_RESPONSE_WINDOW_BYTES) {
+      const handle = await fs.open(logFile, "r");
+      try {
+        const buffer = Buffer.alloc(DEBUG_LOG_RESPONSE_WINDOW_BYTES);
+        const { bytesRead } = await handle.read(buffer, 0, DEBUG_LOG_RESPONSE_WINDOW_BYTES, stat.size - DEBUG_LOG_RESPONSE_WINDOW_BYTES);
+        let windowText = buffer.subarray(0, bytesRead).toString("utf8");
+        const firstNewline = windowText.indexOf("\n");
+        if (firstNewline > 0) windowText = windowText.slice(firstNewline + 1);
+        return res.json({ logs: windowText.split("\n"), truncated: true, size: stat.size, mtimeMs: stat.mtimeMs });
+      } finally {
+        await handle.close();
+      }
+    }
+    const data = await fs.readFile(logFile, "utf8");
+    res.json({ logs: data.split("\n"), size: Buffer.byteLength(data, "utf8"), mtimeMs: stat.mtimeMs });
+  } catch {
+    res.json({ logs: [], size: 0, mtimeMs: 0 });
   }
 });
 

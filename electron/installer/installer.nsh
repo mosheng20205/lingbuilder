@@ -4,7 +4,6 @@
 !include "WinMessages.nsh"
 
 Var LingBuilderKillTries
-Var LingBuilderCoreRepairTries
 
 ; Electron 的主、渲染和 GPU 子进程都使用 LingBuilder.exe。nsProcess 的
 ; CloseProcess 会先关闭窗口、等待 3 秒，再结束仍在运行的同名进程。
@@ -86,6 +85,11 @@ Var LingBuilderCoreRepairTries
 !ifndef BUILD_UNINSTALLER
   Var LingBuilderCliPathCheckbox
   Var LingBuilderAddCliToPath
+
+  ; 仅安装器使用（customFiles_x64）：必须与下面的使用同处 BUILD_UNINSTALLER 守卫内，
+  ; 否则卸载器构建（定义 BUILD_UNINSTALLER、不定义 customFiles_x64）会报
+  ; NSIS 6001「变量未引用」，在 electron-builder 默认 -WX 下升级为构建失败（0.8.22 打包实锤）。
+  Var LingBuilderCoreRepairTries
 
   ; 尾部自检结论：ok / fail / skip（skip=无法比对，例如走了兜底直解压路径）
   Var LingBuilderSelfCheck

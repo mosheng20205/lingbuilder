@@ -1,5 +1,20 @@
 # LingBuilder 后期优化事项
 
+- 已修复（2026-10-14）：**「设计器文件已被外部修改」误弹死循环 + AI Bridge 写设计器免确认（issue #IKLE7E）**。
+  外部 AI 经 edit.apply 更新 window-designer.json 后 IDE 弹模态框等人，没盯着就卡住。两层根因：① 渲染层外部重载路径
+  拿「磁盘原始 JSON」当设计器干净基线，saveWindowDesignerState 内部 normalizeWindowDesignerState（迁移/补默认值/键序
+  重建）后字符串比较必然不等——重载完立刻假变脏，AI 下一次写入就弹框，点「重新载入」也再次假脏（与项目加载路径用
+  normalize 返回值做基线的正确口径不一致）；② Bridge CLI 独立进程写盘，渲染层只认自己保存路径的内容回声，授权写入
+  一律被当外部修改。修复：新增 bridgeWriteStampService（apply 成功后把写入文件磁盘回读哈希记入
+  .lingbuilder/bridge-write-stamps.json，TTL 15 分钟/封顶 200/原子写/best-effort 绝不影响 apply 与回滚；.lingbuilder
+  在 IDE 托管豁免清单）；server /api/window-designer/files 响应附 bridgeOrigins（版本哈希==印章哈希才命中，事后手改
+  不豁免）；渲染层命中印章跳过确认框自动载入（本地真脏先 POST 恢复快照留底+事务日志），未命中仍走原确认框；外部重载
+  基线改 normalize 后项目。回归：tests/bridgeWriteStamps.test.ts（已进 test:lingcpp）+ aiBridge 印章集成用例 +
+  windowDesigner 基线稳定性用例；dist/cli.cjs 重建后 stdio 握手 PASS（24 工具）。细则见 docs/AI编辑链统一架构.md
+  「Bridge 写入印章」节。**遗留：源码文件的外部修改确认框（App.tsx applyExternalSourceFile，真脏时同样会等人）暂未接
+  bridgeOrigins 豁免——源文件无「假脏」问题（重载即干净），仅真并发编辑才会弹，如需同款豁免可直接复用印章数据。**
+
+
 - 已完成（2026-10-12）：**新手模式光标错乱排查与四项修复（IME 守卫 / 控件引用字重 / 撤销栈 / DOM 镜像测宽）**。
   外部反馈「点击其它代码位置或删除部分代码后光标位置错乱」，独立工作区 + CDP 真实鼠标键盘事件逐项实测：
   点击对位（±0.5 字符）、退格/删 emoji（代理对整删）、跨块点击（blur→commit→重挂后回点）、双击选词、
@@ -654,6 +669,7 @@
 - 输出结构化日志，包括阶段、耗时、生成目录、编译器、错误位置和中文解释。
 - 已完成（2026-10-01）：构建/运行日志全面精简。清理阶段每项目两行目录合并为「已清理 N 个项目的构建目录…」单行汇总，EBUSY/EPERM/ENOTEMPTY 翻译成中文占用提示并给出修法（`solutionService.cleanProjects`）；解决方案批量构建单阶段单项目不再输出「构建计划/开始构建阶段」，多项目单阶段压成一行「并行生成：A、B」，删除逐项目「正在生成项目 X (id)...」与任务通道「正在生成项目。/任务完成。」播报，收尾行带用时；每项目 9 行路径块压缩为 3 行（生成目录锚点+编译器/构建配置括注、可复制 Visual Studio 工程、产物输出目录），唯一实现 `buildOutputLabel.formatBuildPathSummaryLines`，F5 路由、`runControlledWindowDesignerBuild`、AI Bridge `build.run` 三处共用；编译成功路径经 `buildOutputLabel.formatSuccessCompileChannel` 过滤 `stdout:\nmain.cpp` 式纯回显（含警告/错误关键字的中英文输出保留），资源编译日志移到「编译成功。」之前；失败路径日志与响应结构化字段不受影响。AI Bridge `build.run` 日志同步去掉「C++ 源码目录/可复制生成目录/构建目录内 sln/中间文件目录」派生行。
 - 已完成（2026-10-01 第二批）：构建成功摘要补齐关键路径。`formatBuildPathSummaryLines` 新增可选 `solutionPath`，首行播报「解决方案：<工作区 .lbsln 完整路径>」（经 `solutionEntryFile.findSolutionEntryPath` 解析，解决方案尚未建立时省略该行），三个消费点同步；编译成功后的产物文件路径不再依赖 run 播报——DLL 项目无条件输出「DLL 产物：<.dll 完整路径>」「导入库：<.lib 完整路径>」，exe/控制台项目对称输出「程序产物：<exe 完整路径>」（此前「DLL 产物/导入库」被 `run && outputType==='dll'` 门住，「生成动态库」按钮 run=false 永远看不到产物路径）。同批根治纯逻辑 DLL 拆分形态编译失败：`lingCppWin32Project.ts` 的 `LINGBUILDER_PURE_LOGIC_DLL` 第二对守卫闭合原先内嵌在 `rtSegCefClient` 段尾，而该段只在单文件形态拼接，拆分形态下闭守卫随段消失，runtime.h 带未闭合 `#ifndef` 必现 C1004「发现意外的文件尾」；现闭守卫移到两条装配路径显式拼接（单文件在 CEF3 客户端段后、拆分在 runtime.h 的 windowBaseText 后），黄金基线 `golden:write` 重新生成（diff 仅新增该 `#endif`，其余 8 夹具字节不变）。工具栏「生成 C++」按钮（App.tsx `handleGenerateCpp`）原先写死三行「解析 DSL→生成完毕」假日志且无任何服务端调用，DLL 项目亦显示，纯误导；现 DLL 项目隐藏该按钮与「生成 C++ 宏定义类」菜单项，其余项目改为如实单行提示（真实生成只在 F5/生成解决方案链路发生）。
+- 已完成（2026-10-15）：调试输出轮询防膨胀 + 崩溃远程定位日志。`/api/window-designer/debug-logs` 原先每秒全量读 run.log 并整体重发（App.tsx `pollLogs` 每秒 fetch 全量 + 逐行 trim/diff），大 run.log（AI Bridge 会话构建运行的程序持续输出时可达 MB 级）把渲染层喂出约 130MB/min 的解析垃圾，客户实测膨胀到 V8 堆上限（Tab≈4.4GB）后每约 33 分钟崩溃重载一次（退出码 -1073741795 = 0xC000001D，V8 OOM 自毁指令）。修复：服务端带 `lastSize/lastMtime` 时先 `stat` 短路（无变化零读取零重发，mtime 严格相等——放宽容差会把紧跟上一轮读取的写入漏判成无变化，实测 2ms 即踩中），变化时超过 `DEBUG_LOG_RESPONSE_WINDOW_BYTES`(256KB) 只回传尾部窗口（`truncated:true`，调试输出面板只关心最近内容）；渲染层按 size+mtime 游标轮询、`debugLogs` 封顶 5000 行。同批渲染层诊断闭环：App.tsx 每分钟经 `diagnostic:report`（category `renderer-status`）上报「视图/文件/新手或专业模式/底部面板/文件数/JS堆/DOM 节点数」，主进程存底供崩溃日志引用；`[memory]` 采样留存 Tab 最近 10 次轨迹并在 ≥2500MB 时告警（10 分钟限频）；`render-process-gone` 日志附退出码中文解读（0xC000001D/C0000005/C00000FD/C0000409）、崩溃前内存轨迹与最后渲染层状态——远程用户再崩，日志直接指认页面与根因。`buildLogs`（编辑事务/构建日志）统一裁尾封顶 4000 行；终端缓冲已有 `MAX_BUFFER` 不变。遗留后期项：内存高水位时主动非模态提示用户一键重载（当前只写诊断告警日志）。
 - 已完成（B04）：MSVC/GCC/Clang 与链接器输出已结构化解析；生成 C++ 位置按 source map 映射回 `.lcpp`，问题面板可显示错误码、行列并跳转，无法映射时保留原始生成文件位置。
 - 已修复：错误列表跳转同时覆盖专业 Monaco 与中文结构编辑器；点击映射到 `.lcpp` 的构建诊断会打开对应文件，并在新手模式滚动到结构化源码行，路径分隔符差异不会再导致跳转失效。
 - 已修复：设计器已绑定但源码尚缺失的事件不再错误归位到 `.lcpp` 类声明行，也不再用原始文本行号冒充新手结构编辑器的可视行号；问题面板明确标注“待生成事件（类末尾）”，避免给尚不存在的事件显示虚假源码位置。
@@ -2084,6 +2100,7 @@ ew_emoji` 控件绘制层修复后重出 DLL 双架构产物并重装模块、�
 - **`forbidInlineCpp` 门禁不拦 propose/apply**：与实参类型门禁同一取舍（提案阶段允许草稿，生成期把关）；如需提案期预警，可在 propose 响应里带 inlineCpp 用量摘要（未做）。
 - **`lingcpp-inline-cpp-replaceable` 的编辑器体验**：warning 级波浪线可能对大量 `@` 行文件偏吵（逐 API 一条、每条最多列 5 行）；如用户反馈吵，可加「项目级静默」开关（复用 forbidInlineCpp 的 buildProperties 通道），不建议降级为 info。
 - **`设置鼠标位置` 的坐标口径**：屏幕物理像素点（SetCursorPos 语义）；高 DPI 下如需逻辑坐标换算，等 DPI 感知体系统一后再补（现与 `取鼠标水平位置/垂直位置` 同口径，二者互逆）。
+- **`@ #include` 的通用旁路与文件级注入（2026-10-14 补遗，灵码 MCP 实测反馈）**：现行口径=`@` 行禁止 `#include`（展开在函数体内报 C2598），SDK 头文件走「DLL命令声明」的 `头文件 = 头文件名.h` 行（生成器放文件顶层），知识表已收录 `std::cout→调试输出`、`@ #include→头文件 =` 两条替代建议（`lingcpp-inline-cpp-replaceable` 警告自动带出）。候选增强（未做）：① 解决方案 `buildProperties` 增加「附加头文件/附加编译选项」（如 `extraIncludes`/`extraCompileOptions`，供 OpenMP 这类还要 `/openmp` 的库一次配齐，VS 导出/F5/CLI 三链同消费）；② 项目级「文件顶层 @ 区」（声明块语法的文件级 C++ 注入）；两者都要与「零内嵌 C++」平台方向权衡，做之前先看「DLL命令声明 头文件 =」旁路是否已覆盖需求。
 
 ## 生成器瘦身与 DLL 极致体积（2026-09-28 落地 + 后续项）
 

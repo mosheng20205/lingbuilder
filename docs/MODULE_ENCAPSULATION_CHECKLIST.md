@@ -2,7 +2,7 @@
 
 更新时间：2026-09-29
 
-本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **102 个内置模块、4092 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
+本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **102 个内置模块、4106 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
 
 - `schemaVersion: 2`。
 - `contributes.commands` 与 `bindings.commands` 一一对应。
@@ -97,7 +97,7 @@ SMTP 模块当前只支持普通 SMTP/局域网调试服务，不支持 STARTTLS
 | 已封装 | `lingbuilder.crypto.symmetric` | 对称加密模块 | 30 |
 | 已封装 | `lingbuilder.crypto.asymmetric` | 非对称加密模块 | 27 |
 | 已封装 | `lingbuilder.crypto.windows` | Windows 数据保护模块 | 6 |
-| 已封装 | `lingbuilder.database.odbc` | ODBC 数据库模块 | 8 |
+| 已封装 | `lingbuilder.database.odbc` | ODBC 数据库模块 1.1.0（新增 结果集打开/取下一行/取列文本/取列数/取列名/查询关闭 六命令与 ODBC_转义文本；查询首值/取列文本 走 SQLGetData 分段读取，无 4KB 截断上限） | 15 |
 | 已完整封装（动态运行库） | `lingbuilder.database.sqlite` | SQLite 数据库模块 2.3 | 73 |
 | 已完整封装（动态运行库） | `lingbuilder.database.mysql` | MySQL 数据库模块 1.0 | 43 |
 | 已完整封装（动态运行库） | `lingbuilder.data.excel` | Excel 表格模块 1.0 | 45 |
@@ -172,7 +172,7 @@ OpenCV 模块保留基础 GDI+ 图像模块并作为新增高级能力。公开�
  已有 | `lingbuilder.threading` | 多线程模块 | 66 |
  已有 | `lingbuilder.cron` | 定时任务模块 | 29 |
 | 已完整封装 | `lingbuilder.websocket.client` | WebSocket 客户端模块 2.0（WinHTTP 受管多连接、wss/TLS 与自动重连） | 51 |
-| 已完整封装 | `lingbuilder.http.server` | HTTP 服务端模块 2.1（受管多连接 HTTP/1.1、动态/静态路由、连接轮转与完整请求/响应） | 51 |
+| 已完整封装 | `lingbuilder.http.server` | HTTP 服务端模块 2.2（受管多连接 HTTP/1.1、动态/静态路由、SSE 单向推送、连接轮转与完整请求/响应） | 58 |
 | 已完整封装 | `lingbuilder.websocket.server` | WebSocket 服务端模块 2.0（RFC 6455 受管多客户端） | 50 |
 | 已完整封装 | `lingbuilder.sunnynet` | 网络中间件模块 1.0（SunnyNet 抓包改写：HTTP/HTTPS/WS/TCP/UDP、根证书解密、全量请求/响应头枚举与请求/响应体字节集、进程代理/SOCKS 按进程/上游代理（全局与按请求、socks5 可带账密）/系统代理；驱动常驻免重启） | 73 |
 

@@ -216,3 +216,6 @@ COMPONENT_CARDS_PLAN.md
 # CLI 受控构建/请求诊断临时文件（不入库）
 /electron/tm-*.json
 /electron/cm-*.json
+# LCPP 源码包导出验证产物与一次性导出脚本（不入库）
+/electron/lingbuilder-project.lcpppkg
+/electron/scripts/tmp-export-lcpppkg.ts

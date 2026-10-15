@@ -9,8 +9,8 @@ LingBuilder 是面向中文用户的中文 C++ / `.lcpp` 集成开发环境：�
 - **中文编程体验**：`.lcpp` 中文语法、中文命令 / 补全 / 诊断；新手模式与专业 Monaco 编辑器双形态。
 - **确定性生成真实 C++**：窗口设计器模型 + `.lcpp` 源码确定性翻译为可编译的 C++/Win32 与 Visual Studio 工程；IDE 内运行结果与导出工程行为一致。
 - **窗口设计器**：拖拽布局、属性/事件面板、`Ctrl+点击` 控件跳转、类型化 `controlRef` 控件引用语义。
-- **模块生态**：`.lbmod` v2 模块标准（清单 / binding / 文档 / 市场索引），内置 Win32 控件、网络（HTTP/WebSocket/CDP）、多线程等官方模块；**AI 生成模块**（把需求交给面板内嵌的本机 Agent 按模块封装链创作，或让外部 AI 经 AI Bridge MCP 工具（scaffold / writeFiles / validate / pack / installPreview / install）端到端封装）。
-- **AI 辅助**：AI 面板只有一个引擎——**本机 Agent**（内嵌 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)，可配 DeepSeek 官方 Key 或自定义 OpenAI 兼容网关）；代码生成、错误解释与修复建议、模块封装都由它承接；本地 AI Bridge 另通过 MCP 接入 Codex CLI、Claude Code、Gemini CLI。
+- **模块生态**：`.lbmod` v2 模块标准（清单 / binding / 文档 / 市场索引），内置 Win32 控件、网络（HTTP/WebSocket/CDP）、多线程等官方模块；**AI 生成模块**由外部 AI 完成：把模块规范复制给任意外部 AI，或让外部 AI 经 AI Bridge MCP 的模块封装链（scaffold / writeFiles / validate / pack / installPreview / install）端到端封装，再把结果粘贴回本页导入校验。
+- **AI 辅助**：由**外部 AI 客户端经本地 AI Bridge（MCP）接入**——Bridge 以 MCP 标准把工作区能力开放出去，提供 24 个中文工具（读文件 / 搜代码 / 提改代码提案 / 新建项目 / 构建运行 / 做模块 / 导出安装包），已验证可接 Claude Code、Codex CLI、Gemini CLI、Cursor 等。Bridge 只监听 `127.0.0.1`、带 Bearer Token 鉴权、随 IDE 自动启动；写操作默认「预览确认」，AI 改文件必须先出提案。IDE 内不再内置对话式 Agent 引擎。
 - **专业工作台**：活动栏 / 多编辑器组 / 面板 / 状态栏、命令面板、快捷键体系、Git 源代码管理、调试适配器（DAP）、PTY 终端。
 - **云端能力（可选自建）**：账号体系、AI 点数计费、模型路由、系统 AI Gateway 与运营管理后台。
 
@@ -106,12 +106,12 @@ npm run package:win
 
 ## 🤖 云端系统 AI 与点数
 
-IDE 的 AI 面板自 2026-09-22 起只保留**本机 Agent**一个引擎（见下方专节）。下列云端能力本身保留，但不再在面板里提供切换入口：
+IDE 的 AI 面板已不再内置对话式引擎（原先的「本机 Agent / 内嵌 DeepSeek Harness」已整体退场，见下方专节）。下列云端能力本身保留，但不在面板里提供切换入口：
 
 - 系统 AI：登录 LingBuilder 账号，使用管理员发布的逻辑模型和 AI 点数，细节见下文；现由本地服务、CLI 与云端消费。
-- 自定义 API（BYOK）：用户自己的 API Key、Base URL 和模型，作为本地服务端点保留；面板内的对应能力由本机 Agent 的「自定义 API（OpenAI 兼容网关）」模型通道接替。
+- 自定义 API（BYOK）：用户自己的 API Key、Base URL 和模型，作为本地服务端点保留，由 CLI 与 AI Bridge 消费；面板内不提供模型通道配置入口。
 
-云端账号、点数、充值与收费模块权益入口保留在标题栏、设置「账号」、欢迎页与帮助菜单；AI 面板自身不再承载账号 UI（本机 Agent 用不到账号系统，也不消耗云端点数）。
+云端账号、点数、充值与收费模块权益入口保留在标题栏、设置「账号」、欢迎页与帮助菜单；外部 AI 经 AI Bridge 接入时不消耗 LingBuilder 云端点数，模型费用由你在所接客户端侧承担。
 
 系统 AI 默认零保留：源码和提示词只在请求内存中处理，不进入数据库、用量表或日志。云端只记录模型别名、Token、点数、成本、状态和错误码。
 
@@ -119,16 +119,17 @@ OpenAI-compatible 思考模型会分别解析推理增量和最终回答；聊�
 
 结构化输出场景（如历史上的云端模块一键生成）可在请求中携带 `thinking: 'disabled'`：网关会对上游供应商显式关闭思考过程，避免推理文本挤占输出预算；配合按模型配置的输出预算（模型级 `maxOutputTokens` 已开至 DeepSeek 上限 393216 tokens）保证完整模块不被截断。聊天回复因 `length` 被截断时会收到中文截断提示；正文与思考均为空时收到明确的中文错误而不是空白回复。点数预冻结按有界输出估算（16,384）计算，结算按供应商实际用量补收或退还。
 
-### 本机 Agent：内嵌 DeepSeek Harness 运行时
+### 外部 AI 接入：AI Bridge MCP
 
-AI 面板的「本机 Agent」引擎把开源的 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（下称 dsh）作为规划与工具循环宿主，LingBuilder 负责其余一切：工作区、诊断、提案、确认、写盘与构建。
+IDE 不再内置对话式 Agent 引擎；AI 辅助一律由**外部 AI 客户端经本地 AI Bridge（MCP）**完成。LingBuilder 负责其余一切：工作区、诊断、提案、确认、写盘与构建。
 
-- **能力边界**：dsh 子进程只能看到 LingBuilder 的 AI Bridge MCP 工具，且使用 `--mcp-toolset agent` 工具集——用户项目侧的 `edit.apply / build.run / native.preview / native.export / project.create` 对它不可见，项目源码与设计器模型的改动一律以 `edit.propose` 提案回到面板，由用户点「应用提案」后由 IDE 代执行；dsh 自带的本地文件与 shell 工具行整行禁用。模块封装链（scaffold → writeFiles → validate → pack → installPreview → install）例外可用，因为它只写 `.lingbuilder/module-build` 与 `.lingbuilder/module-packages` 两个暂存目录，安装仍受预览 ID 与权益门禁约束。
-- **模型通道在面板里配**：支持 DeepSeek 官方 API Key，也支持自定义 OpenAI 兼容网关（Base URL + API Key + 模型名，可一键拉取模型列表与测试连通）。端点与模型名写进 dsh 的 profile overlay，密钥只经加密存储与子进程环境变量注入，绝不写入 overlay 文件、日志或项目。
-- **随包携带**：安装包默认带上 dsh 所需的真实 Node 与 dsh 发行包（`resources/node`、`resources/dsh`），并裁剪与内嵌场景无关的体积包；准备失败只降级为中文诊断，不影响 IDE 其余功能。
-- **计费**：本引擎不消耗 LingBuilder 云端点数，模型费用由你在 dsh/网关侧的账号承担。
-
-> **致谢**：本机 Agent 引擎完全构建在 DeepSeek 开源的 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 之上——插件化的工具面、profile 机制与 SDK 线协议让这个引擎能在 LingBuilder 里以受控方式落地。感谢 DeepSeek 团队将其开源。
+- **接入形态**：Bridge 随 IDE 自动启动，默认同时开放 REST API 与共享 Streamable HTTP MCP，强制只监听回环地址（`127.0.0.1`），外部 AI 通过 Bearer Token 接入。入口在菜单「帮助 → AI Bridge 连接中心」，那里提供 Bridge 状态、权限与生命周期设置、共享 MCP/HTTP 地址、客户端与工具调用活动，并检测 Codex CLI、Claude Code、Gemini CLI。
+- **24 个中文工具**：`workspace.list`、`file.read`、`file.search`、`edit.propose`、`edit.apply`、`project.create`、`project.create.undo`、`project.templates`、`build.run`、`build.stop`、`run.wait`、`run.log`、`lingcpp.diagnostics`、`modules.list`、`module.info`、`module.scaffold`、`module.writeFiles`、`module.validate`、`module.pack`、`module.installPreview`、`module.install`、`native.preview`、`native.export`、`installer.export`。
+- **写操作有门禁**：默认「预览确认」权限模式下，外部 AI 改你的文件必须先出 `edit.propose` 提案，经确认后才由 IDE 落盘；构建与运行同样受控，所有操作进审计日志。
+- **AI 生成模块**：模块开发页的「AI 生成模块」提供两条路——把模块规范复制给任意外部 AI，或让外部 AI 经模块封装链（`module.scaffold` → `writeFiles` → `validate` → `pack` → `installPreview` → `install`）直接生成，再把结果粘贴回本页导入校验。该链只写 `.lingbuilder/module-build` 与 `.lingbuilder/module-packages` 两个暂存目录，安装仍受预览 ID 与权益门禁约束。
+- **本机授权共享**：连接中心的「允许外部 AI 客户端使用本机授权」开关，决定外部 AI 拉起的 Bridge 宿主能否向本机 LingBuilder 换取模块授权与浏览器凭据；只监听回环、凭据不落盘不进日志、IDE 退出即撤销。关闭时外部 AI 只能使用免费模块。
+- **计费**：本接入不消耗 LingBuilder 云端点数，模型费用由你在所接客户端侧承担。
+- **图文教程**：`docs/教程/外部AI连接MCP图文教程/README.md`（真机截图，含 Claude Code / Codex CLI / Gemini CLI / Cursor 的现成配置）。
 
 ## ⌨️ CLI
 
