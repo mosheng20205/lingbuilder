@@ -156,9 +156,10 @@ test('批⑦：进程内存_写字节集 与 设置鼠标位置 已登记且带�
     lingCppSourceCode: ['类 MainWindow', '    事件 _MainWindow_创建完毕()', '        调试输出(设置鼠标位置(取鼠标水平位置(), 取鼠标垂直位置()))', '    结束', '结束类'].join('\n'),
     enabledModules: [{ manifest: win32Basic, installPath: `builtin://lingbuilder.win32.basic`, isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] } as never]
   });
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
-  assert.ok(mainCpp.includes('bool 设置鼠标位置(int x, int y) const'), '常规 Win32 后端应生成 设置鼠标位置 成员定义');
-  assert.ok(mainCpp.includes('SetCursorPos(x, y) != 0'), '应生成 SetCursorPos 调用');
+  // 2026-09-30 生成器拆分后运行时基座进 lingbuilder_runtime.h，用户代码在 main.cpp——断言合并两文件。
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
+  assert.ok(cpp.includes('bool 设置鼠标位置(int x, int y) const'), '常规 Win32 后端应生成 设置鼠标位置 成员定义');
+  assert.ok(cpp.includes('SetCursorPos(x, y) != 0'), '应生成 SetCursorPos 调用');
 });
 
 test('collectInlineCppLines：文本块内的 @ 不计数', () => {
@@ -223,6 +224,28 @@ test('无 @ 行时不产生替代警告', () => {
   const source = ['类 窗口1', '    事件 按钮1_点击()', '        调试输出("你好")', '    结束', '结束类'].join('\n');
   const diagnostics = getLingCppSemanticDiagnostics(source, undefined, 'src/演示/主窗口.lcpp');
   assert.equal(diagnostics.filter(item => item.id.startsWith('lingcpp-inline-cpp-replaceable-')).length, 0);
+});
+
+test('std::cout 与 @ #include 行给出替代指引（2026-10-14 灵码反馈批次）', () => {
+  const source = [
+    '类 窗口1',
+    '    事件 按钮1_点击()',
+    '        @ std::cout << "测试" << std::endl;',
+    '        @ #include <omp.h>',
+    '        @ #include <cassert> // 允许: 纯宏头文件在函数体内合法',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const diagnostics = getLingCppSemanticDiagnostics(source, undefined, 'src/演示/主窗口.lcpp');
+  const warnings = diagnostics.filter(item => item.id.startsWith('lingcpp-inline-cpp-replaceable-'));
+  const coutWarning = warnings.find(item => item.message.includes('std::cout'));
+  assert.ok(coutWarning, 'std::cout 行应给替代指引');
+  assert.ok(coutWarning.message.includes('调试输出'), 'std::cout 指引必须指向 调试输出');
+  const includeWarning = warnings.find(item => item.message.includes('#include'));
+  assert.ok(includeWarning, '#include 行应给指引');
+  assert.ok(includeWarning.message.includes('C2598'), '#include 指引必须说明函数体内不能写 #include');
+  assert.ok(includeWarning.message.includes('头文件'), '#include 指引必须给出 DLL命令声明 头文件旁路');
+  assert.ok(!warnings.some(item => item.message.includes('cassert')), '豁免行不应提示');
 });
 
 test('用量统计与构建日志汇总行', () => {
@@ -294,7 +317,9 @@ test('替代知识表中的模块与命令必须真实存在', () => {
 test('批⑤：对照表文档由知识表确定性生成（含表头、行数与位运算口径）', () => {
   const markdown = buildInlineCppApiMapMarkdown();
   assert.ok(markdown.includes('# 内嵌 C++（@ 行）→ 中文命令替代对照表'));
-  assert.ok(markdown.includes('知识表共 22 条'));
+  assert.ok(markdown.includes(`知识表共 ${INLINE_CPP_REPLACEMENT_HINTS.length} 条`), '对照表条数必须与知识表一致');
+  assert.ok(markdown.includes('std::cout / printf（控制台调试输出）'), '对照表应包含 调试输出 替代 std::cout 条目');
+  assert.ok(markdown.includes('@ 行写 #include 头文件'), '对照表应包含 @ 行禁写 #include 条目');
   for (const hint of INLINE_CPP_REPLACEMENT_HINTS) {
     assert.ok(markdown.includes(hint.api), `对照表应包含 ${hint.api}`);
   }

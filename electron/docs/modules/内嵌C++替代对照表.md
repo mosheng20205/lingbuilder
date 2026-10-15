@@ -6,7 +6,7 @@
 LingBuilder 的目标是把项目里的 @ 内嵌 C++ 降到 0。写 @ 行前先查本表：
 命中「推荐命令」的，请直接改用中文命令重写；确实没有等价命令的，可在该 @ 行行尾追加 `// 允许: 原因` 显式豁免（项目开启 `forbidInlineCpp` 门禁时豁免行放行）。
 
-知识表共 22 条，覆盖模块：`lingbuilder.advanced.process-memory`、`lingbuilder.win32.basic`、`lingbuilder.std.datetime`、`lingbuilder.std.encoding`、`lingbuilder.crypto.hash`、`lingbuilder.std.bytes`、`lingbuilder.win32.window-utils`、`lingbuilder.process`、`lingbuilder.system.shell`、`lingbuilder.config.registry`、`lingbuilder.std.math`。
+知识表共 24 条，覆盖模块：`lingbuilder.advanced.process-memory`、`lingbuilder.win32.basic`、`lingbuilder.std.datetime`、`lingbuilder.std.encoding`、`lingbuilder.crypto.hash`、`lingbuilder.std.bytes`、`lingbuilder.win32.window-utils`、`lingbuilder.process`、`lingbuilder.system.shell`、`lingbuilder.config.registry`、`lingbuilder.std.math`。
 
 | Win32 API / C 函数 / 写法 | 推荐中文命令 | 所在模块 | 说明 |
 | --- | --- | --- | --- |
@@ -32,6 +32,8 @@ LingBuilder 的目标是把项目里的 @ 内嵌 C++ 降到 0。写 @ 行前先�
 | 位运算（右移常量） | `位_右移(甲, 位数)（逻辑右移补 0）`、`位_算术右移(甲, 位数)`、`位_与/位_或/位_异或(甲, 乙)`、`位_循环左移32(甲, 位数)` | `lingbuilder.std.math` | 全部按 64 位补码位模式处理，移位位数对 64 取模。 |
 | 位运算（左移常量） | `位_左移(甲, 位数)`、`位_与/位_或/位_异或(甲, 乙)`、`位_循环左移32(甲, 位数)` | `lingbuilder.std.math` | 全部按 64 位补码位模式处理；zigzag = 位_异或(位_左移(n, 1), 位_算术右移(n, 63))。 |
 | GetLastError | （无直接等价命令） | — | 无全局等价命令：用对应模块的 取最后错误/取错误码 命令（如 进程内存_取错误、文件_取错误、PB_取最后错误）。 请改用对应模块的「取最后错误/取错误码」类命令 |
+| std::cout / printf（控制台调试输出） | `调试输出(值1, 值2, ...)（基础命令，@ 行里可直接调用）` | — | 窗口项目是 GUI 子系统、没有控制台 stdout，引入 iostream 也看不到输出；调试文本一律用 调试输出（走系统调试通道与进程标准输出，IDE 构建/运行日志可见），不要为调试输出引入 iostream。 |
+| @ 行写 #include 头文件 | （无直接等价命令） | — | @ 行展开在函数体内，不能写 #include（多数头文件报 C2598 链接规范或命名空间作用域编译错误）。需要 SDK 头文件时在「DLL命令声明」文件写「头文件 = 头文件名.h」引入（生成器会放到文件顶层），再在 @ 行直接调用声明过的函数；已有中文命令能覆盖的需求不要引头文件。 请改用对应模块的「取最后错误/取错误码」类命令 |
 
 ## 位运算与签名算法专用口径（std.math v1.2.0）
 

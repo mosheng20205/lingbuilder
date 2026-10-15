@@ -29,7 +29,7 @@ const argbValueArg = '一个 ARGB 颜色值，高位到低位依次为 Alpha、�
 const pixelXArg = '像素列坐标，从 0 起；超出图片宽度时按说明返回 -1 或假。';
 const pixelYArg = '像素行坐标，从 0 起；超出图片高度时按说明返回 -1 或假。';
 const odbcConnectArg = 'ODBC 连接字符串，例如 Driver={...};Server=...;Database=...;Uid=...;Pwd=...;；连接不弹驱动配置对话框，缺失字段直接失败。';
-const odbcSqlArg = '要执行的 SQL 文本，一次一条语句；没有参数绑定入口，取值需自行拼接并确保来源可信。';
+const odbcSqlArg = '要执行的 SQL 文本，一次一条语句；没有参数绑定入口，文本值先用 ODBC_转义文本 转义再拼接，来源不可信的输入禁止直接拼进 SQL。';
 const wavPathArg = 'WAV 文件路径；文件不存在或格式不被 PlaySound 支持时返回假。';
 const plainPasswordArg = '待验证的密码，按 UTF-8 编码参与运算；空文本同样会执行一次完整哈希比对。';
 const savedHashArg = '对应哈希算法生成的自描述 PHC 文本，内含算法、参数和随机盐；格式不符时返回假并记录中文错误。';
@@ -253,17 +253,42 @@ const crypto = createStandardModule({
   ]
 });
 
+const odbcQueryIdArg = 'ODBC_查询打开 返回的结果集编号；编号不存在或已关闭时按各命令说明返回失败值，原因用 ODBC_取错误 读取。';
+const odbcColumnIndexArg = '列序号，从 1 起，须不超过结果集列数（ODBC_取列数 可查）。';
 const odbc = createStandardModule({
-  id: 'lingbuilder.database.odbc', name: 'ODBC数据库模块', category: '数据库', description: '提供单连接 ODBC 打开、执行、查询首值、事务和错误状态。', tags: ['数据库', 'ODBC'],
+  id: 'lingbuilder.database.odbc', name: 'ODBC数据库模块', version: '1.1.0', category: '数据库', description: '提供单连接 ODBC 打开、执行、查询首值、多行结果集遍历、SQL 文本转义、事务和错误状态。', tags: ['数据库', 'ODBC'],
+  snippets: [
+    {
+      label: 'ODBC 多行结果集遍历',
+      description: '打开查询后逐行读取、用完必须关闭的骨架；打开失败读 ODBC_取错误。',
+      insertText: [
+        '局部 长整数型 结果集 = ODBC_查询打开("$1")',
+        '如果 (结果集 == 0)',
+        '    调试输出(ODBC_取错误())',
+        '如果结束',
+        '判断循环首 (ODBC_取下一行(结果集))',
+        '    调试输出(ODBC_取列文本(结果集, 1))',
+        '判断循环尾()',
+        'ODBC_查询关闭(结果集)'
+      ].join('\n')
+    }
+  ],
   commands: [
-    command('ODBC_连接', [{ name: '连接字符串', type: 'wideString', description: `${odbcConnectArg}重复连接会先断开上一连接。`}], 'bool', '使用 ODBC 连接字符串打开数据库。'),
+    command('ODBC_连接', [{ name: '连接字符串', type: 'wideString', description: `${odbcConnectArg}重复连接会先断开上一连接，同时作废全部已打开的结果集编号。`}], 'bool', '使用 ODBC 连接字符串打开数据库。'),
     command('ODBC_执行', [{ name: 'SQL语句', type: 'wideString', description: odbcSqlArg}], 'int', '执行 SQL 并返回受影响行数，失败返回 -1。'),
-    command('ODBC_查询首值', [{ name: 'SQL语句', type: 'wideString', description: odbcSqlArg}], 'wideString', '执行查询并返回首行首列文本。'),
+    command('ODBC_转义文本', [{ name: '文本', type: 'wideString', description: '要拼进 SQL 字符串字面量的原始文本。'}], 'wideString', '把文本中的半角单引号成对翻倍，用于把用户输入安全拼进 SQL 字符串字面量；数值等非文本值直接拼接即可，不需要转义。'),
+    command('ODBC_查询首值', [{ name: 'SQL语句', type: 'wideString', description: odbcSqlArg}], 'wideString', '执行查询并返回首行首列文本；超长值自动分段读取，没有固定长度上限。失败或查询无结果行时返回空文本，失败原因用 ODBC_取错误 读取。'),
+    command('ODBC_查询打开', [{ name: 'SQL语句', type: 'wideString', description: odbcSqlArg}], 'longLong', '执行查询并返回结果集编号（从 1 起，0 表示失败，失败原因用 ODBC_取错误 读取）。配合 ODBC_取下一行/ODBC_取列文本 逐行读取，用完必须 ODBC_查询关闭；重新 ODBC_连接 或 ODBC_关闭 会作废全部已打开编号。'),
+    command('ODBC_取下一行', [{ name: '结果集编号', type: 'longLong', description: odbcQueryIdArg}], 'bool', '把结果集游标推进到下一行；有下一行返回真，正常读完返回假（此时 ODBC_取错误 为空），失败也返回假（ODBC_取错误 给中文原因）。'),
+    command('ODBC_取列文本', [{ name: '结果集编号', type: 'longLong', description: odbcQueryIdArg}, { name: '列序号', type: 'int', description: odbcColumnIndexArg}], 'wideString', '读取当前行指定列的文本值；NULL 与失败都返回空文本，失败用 ODBC_取错误 区分；超长列自动分段读取，没有固定长度上限。'),
+    command('ODBC_取列数', [{ name: '结果集编号', type: 'longLong', description: odbcQueryIdArg}], 'int', '返回当前结果集的列数，编号无效返回 0。'),
+    command('ODBC_取列名', [{ name: '结果集编号', type: 'longLong', description: odbcQueryIdArg}, { name: '列序号', type: 'int', description: odbcColumnIndexArg}], 'wideString', '返回当前结果集指定列的列名，编号无效或列不存在返回空文本。'),
+    command('ODBC_查询关闭', [{ name: '结果集编号', type: 'longLong', description: odbcQueryIdArg}], 'bool', '关闭 ODBC_查询打开 返回的结果集并释放资源；编号无效返回假。'),
     command('ODBC_设置自动提交', [{ name: '启用', type: 'bool', description: '传真恢复默认逐语句提交，传假进入显式事务模式，之后的 提交 或 回滚 才生效。'}], 'bool', '启用或禁用自动提交。'),
     command('ODBC_提交', [], 'bool', '提交当前事务。'),
     command('ODBC_回滚', [], 'bool', '回滚当前事务。'),
     command('ODBC_取错误', [], 'wideString', '返回最近 ODBC 错误。'),
-    command('ODBC_关闭', [], 'void', '关闭 ODBC 连接和环境。')
+    command('ODBC_关闭', [], 'void', '关闭 ODBC 连接和环境，同时作废全部已打开的结果集编号。')
   ]
 });
 

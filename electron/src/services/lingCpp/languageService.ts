@@ -1,4 +1,5 @@
 import { isLingCppCommentLine, LING_CPP_KEYWORDS, LING_CPP_LOGICAL_OPERATOR_NAMES, LING_CPP_TYPES, normalizeIdentifier, parseLingCpp } from './parser';
+import { formatBuiltinConstantDisplayValue, getBuiltinLingCppConstants, LING_CPP_BUILTIN_CONSTANTS } from './builtinConstants';
 import { isProAccessActive, PRO_COMMAND_DIAGNOSTIC_ID_PREFIX, type ProCommandAuthorizationState } from './proCommandAccess';
 import { collectLingCppStringLiteralRegions } from './stringLiteralRegions';
 import { collectLingCppTextBlockOpaqueLines, scanLingCppTextBlockRanges } from './textBlock';
@@ -828,7 +829,8 @@ function getConstantReferenceDiagnostics(
   const opaqueLines = collectLingCppTextBlockOpaqueLines(scanLingCppTextBlockRanges(lines), lines.length);
   const knownNames = new Set<string>([
     ...projectConstants.map(constant => normalizeIdentifier(constant.name)),
-    ...getModuleConstants(moduleContext?.enabledModules || []).map(constant => normalizeIdentifier(constant.name))
+    ...getModuleConstants(moduleContext?.enabledModules || []).map(constant => normalizeIdentifier(constant.name)),
+    ...LING_CPP_BUILTIN_CONSTANTS.map(constant => normalizeIdentifier(constant.name))
   ]);
   const diagnostics: LingCppDiagnostic[] = [];
   lines.forEach((lineText, index) => {
@@ -896,7 +898,24 @@ export function getLingCppConstantCompletionItems(
       source: 'symbol',
       sortRank: 0
     }));
-  return [...projectItems, ...moduleItems];
+  // 内置常量排在最后且被项目/模块常量同名遮蔽：用户自定义永远优先。
+  const reservedNames = new Set<string>([
+    ...(languageContext.projectGlobals?.constants || languageContext.program.constants).map(constant => normalizeIdentifier(constant.name)),
+    ...getModuleConstants(languageContext.moduleContext?.enabledModules || []).map(constant => normalizeIdentifier(constant.name))
+  ]);
+  const builtinItems = getBuiltinLingCppConstants(reservedNames)
+    .map(constant => createLingCppCatalogItem({
+      label: `#${constant.name}`,
+      kind: 'type',
+      insertText: insertFor(constant.name),
+      detail: `内置常量 · ${constant.type}`,
+      documentation: `内置常量：#${constant.name}\n类型：${constant.type}\n值：${formatBuiltinConstantDisplayValue(constant)}\n说明：${constant.description}`,
+      aliases: [constant.name, '常量', '内置'],
+      category: 'symbol',
+      source: 'symbol',
+      sortRank: 0
+    }));
+  return [...projectItems, ...moduleItems, ...builtinItems];
 }
 
 /** 光标是否落在某个 #常量名 引用上（含 # 前缀），返回悬停信息。 */
@@ -941,6 +960,19 @@ export function getLingCppConstantReferenceAtPosition(
           `模块常量 · 类型：${moduleConstant.type} · 值：${formatLingCppConstantValue(moduleConstant.value)}`,
           `来源模块：${moduleConstant.moduleName}（${moduleConstant.moduleId}）`,
           moduleConstant.description
+        ].join('\n\n')
+      };
+    }
+    const builtinConstant = getBuiltinLingCppConstants().find(constant => normalizeIdentifier(constant.name) === normalized);
+    if (builtinConstant) {
+      return {
+        line: lineNumber,
+        column: columnNumber,
+        range: { startLine: lineNumber, startColumn: start + 1, endLine: lineNumber, endColumn: end + 1 },
+        contents: [
+          `**#${builtinConstant.name}**`,
+          `内置常量 · 类型：${builtinConstant.type} · 值：${formatBuiltinConstantDisplayValue(builtinConstant)}`,
+          builtinConstant.description
         ].join('\n\n')
       };
     }
@@ -3340,14 +3372,17 @@ function getModuleUsageDiagnostics(source: string, moduleContext?: LingCppModule
   const diagnostics: LingCppDiagnostic[] = [];
   const lines = splitLines(source);
   const opaqueLines = collectLingCppTextBlockOpaqueLines(scanLingCppTextBlockRanges(lines), lines.length);
+  // @ 内嵌 C++ 行是逐字透传的原始 C++（`全部数据.find(` 是 STL 成员调用不是中文命令），
+  // 与功能库扫描同一豁免原则：命令名识别只看 .lcpp DSL 行，不看 @ 行。
+  const inlineCppLines = new Set(collectInlineCppLines(source).map(line => line.line));
 
   moduleContext.availableModules
     .filter(module => !enabledIds.has(module.manifest.id))
     .forEach(module => {
       (module.manifest.contributes?.commands || []).forEach(command => {
         const invokedName = [command.name, ...(command.aliases || [])]
-          .find(name => lines.some((line, index) => !opaqueLines.has(index + 1) && containsCommandInvocation(line, name)));
-        const lineIndex = invokedName ? lines.findIndex((line, index) => !opaqueLines.has(index + 1) && containsCommandInvocation(line, invokedName)) : -1;
+          .find(name => lines.some((line, index) => !opaqueLines.has(index + 1) && !inlineCppLines.has(index + 1) && containsCommandInvocation(line, name)));
+        const lineIndex = invokedName ? lines.findIndex((line, index) => !opaqueLines.has(index + 1) && !inlineCppLines.has(index + 1) && containsCommandInvocation(line, invokedName)) : -1;
         if (lineIndex < 0) return;
         if (invokedName && enabledCommandNames.has(normalizeIdentifier(invokedName))) return;
         diagnostics.push({
@@ -3450,9 +3485,11 @@ function getThreadingDiagnostics(
   const diagnostics: LingCppDiagnostic[] = [];
   const sourceLines = splitLines(source);
   const opaqueLines = collectLingCppTextBlockOpaqueLines(scanLingCppTextBlockRanges(sourceLines), sourceLines.length);
+  // @ 内嵌 C++ 行是原始 C++，与功能库扫描同一豁免原则：旧命令识别只看 .lcpp DSL 行。
+  const inlineCppLines = new Set(collectInlineCppLines(source).map(line => line.line));
 
   THREADING_LEGACY_COMMANDS.forEach(command => sourceLines.forEach((line, index) => {
-    if (opaqueLines.has(index + 1)) return; // 多行文本块内容不透明：块内文本不算旧命令调用
+    if (opaqueLines.has(index + 1) || inlineCppLines.has(index + 1)) return; // 多行文本块内容与 @ 内嵌 C++ 都不算旧命令调用
     if (!containsCommandInvocation(line, command)) return;
     diagnostics.push(createDiagnostic(
       'error', index + 1, line,
