@@ -23,6 +23,8 @@ import {
 } from '../src/services/server/serverRuntime';
 import { WorkspacePathPolicy } from '../src/services/workspace/workspacePathPolicy';
 import { decodeTextFile, encodeTextFile } from '../src/services/files/textFileService';
+import { collectBridgeWriteOrigins, readBridgeWriteStampEntries } from '../src/services/files/bridgeWriteStampService';
+import { createProjectFileVersion } from '../src/services/files/projectFilePersistenceService';
 import type { LingWindowProject } from '../src/services/windowDesigner/types';
 import { normalizeWindowDesignerState } from '../src/services/windowDesigner/windowDesignerService';
 
@@ -97,7 +99,7 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.equal(serverInfo?.version, resolveIdeVersion(), 'MCP serverInfo 必须动态回报 IDE 版本，不得停留在硬编码旧值');
     assert.notEqual(serverInfo?.version, '0.6.6', '历史上硬编码的 0.6.6 已废弃，出现它说明版本解析退化了');
     const tools = await client.listTools();
-    assert.equal(tools.tools.length, 24);
+    assert.equal(tools.tools.length, 25);
     assert.ok(tools.tools.some(tool => tool.name === 'lingbuilder.installer.export'), '缺少安装包导出 MCP 工具（2026-10-12 起 24 个）');
     const installerTool = tools.tools.find(tool => tool.name === 'lingbuilder.installer.export');
     assert.ok((installerTool?.inputSchema as any)?.required?.includes('projectId'), 'installer.export 必须要求 projectId');
@@ -124,6 +126,14 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.ok((projectCreateTool?.inputSchema as any)?.properties?.templateId?.enum?.includes('new-emoji-fbro-browser-shell'));
     assert.ok((projectCreateTool?.inputSchema as any)?.properties?.templateId?.enum?.includes('sqlite-crud-window'));
     assert.deepEqual((projectCreateTool?.inputSchema as any)?.properties?.outputType?.enum, ['exe', 'dll'], 'project.create 必须暴露 outputType（外部 AI 创建 DLL 输出项目的唯一入口）');
+    // 项目图片资源导入工具（2026-10-15，issue#IKM2YV 后开放给外部 AI）。
+    const importImageTool = tools.tools.find(tool => tool.name === 'lingbuilder.project.importImage');
+    assert.ok(importImageTool, '缺少 lingbuilder.project.importImage 工具（2026-10-15 起 25 个）');
+    const importImageRequired = (importImageTool?.inputSchema as any)?.required || [];
+    assert.ok(importImageRequired.includes('projectId') && importImageRequired.includes('sourcePath'), 'project.importImage 必须要求 projectId 与 sourcePath');
+    assert.ok((importImageTool?.inputSchema as any)?.properties?.approved !== undefined, 'project.importImage 必须暴露 approved 权限门禁参数');
+    assert.match(String(importImageTool?.description || ''), /approved=true/u, 'project.importImage 描述必须说明 preview 模式需确认');
+    assert.match(String(importImageTool?.description || ''), /PNG\/JPEG\/BMP\/GIF\/TIFF\/ICO/u, 'project.importImage 描述必须写明支持的图片格式');
     assert.ok(tools.tools.some(tool => tool.name === 'lingbuilder.module.info'), '缺少 lingbuilder.module.info 工具');
     assert.ok(tools.tools.some(tool => tool.name === 'lingbuilder.build.stop'), '缺少 lingbuilder.build.stop 工具');
     assert.ok(tools.tools.some(tool => tool.name === 'lingbuilder.run.wait'), '缺少 lingbuilder.run.wait 工具');
@@ -163,6 +173,21 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.match(String(client.getInstructions() || ''), /module\.scaffold/u, 'instructions 必须告知外部 AI 模块创作入口与六步链');
     assert.match(String(client.getInstructions() || ''), /module-build/u, 'instructions 必须说明欢迎页新建/打开的模块以开发源形式位于 module-build');
     assert.match(String(client.getInstructions() || ''), /无需重新打包安装/u, 'instructions 必须说明开发源模块改动即时生效、不要建议重复安装');
+    assert.match(String(client.getInstructions() || ''), /流程控制语法/u, 'instructions 必须给出 .lcpp 流程控制语法速览条目');
+    assert.match(String(client.getInstructions() || ''), /如果真\(条件\)…如果真结束/u, 'instructions 必须写明如果真不带否则的单条件分支形态');
+    assert.match(String(client.getInstructions() || ''), /计次循环首\(次数\[, 计次变量\]\)…计次循环尾\(\)（从 1 计数）/u, 'instructions 必须写明计次循环从 1 计数与可选计次变量');
+    assert.match(String(client.getInstructions() || ''), /跳出循环（break）、继续循环（continue，老写法 到循环尾 等价）/u, 'instructions 必须写明跳出/继续循环及到循环尾等价写法');
+    assert.match(String(client.getInstructions() || ''), /尝试…捕获\(错误信息\)…最终…尝试结束/u, 'instructions 必须写明尝试捕获最终完整形态');
+    assert.match(String(client.getInstructions() || ''), /禁止用 @ 内联 C\+\+ 的 if\/for\/while\/try/u, 'instructions 必须禁止用内联 C++ 原生流程语句规避中文流程语句');
+    assert.match(String(client.getInstructions() || ''), /《LingBuilder AI 规则手册\.md》/u, 'instructions 必须引导外部 AI 用 file.read 读工作区根规则手册');
+    assert.match(String(client.getInstructions() || ''), /3\.1 控制流参数与闭合规则/u, 'instructions 必须点名规则手册的控制流细则章节');
+    assert.match(String(client.getInstructions() || ''), /手写\/修改窗口布局的坐标红线/u, 'instructions 必须给出设计器布局坐标红线条目（2026-10-15 定案）');
+    assert.match(String(client.getInstructions() || ''), /客户区高度算成 window\.height − 标题栏高/u, 'instructions 必须写明客户区高度按标题栏扣减（普通 28/窄 20/无边框 0）');
+    assert.match(String(client.getInstructions() || ''), /y \+ 控件高度 ≤ 窗口声明高度 − 标题栏高/u, 'instructions 必须给出控件 y 越界判别式');
+    assert.match(String(client.getInstructions() || ''), /手写 y=536 的控件必被裁掉/u, 'instructions 必须保留 560/532/536 实例锚点');
+    assert.match(String(client.getInstructions() || ''), /不会自动停靠窗口底部/u, 'instructions 必须钉住 StatusBar 不自动停靠、贴底要自己算 y 的红线');
+    assert.match(String(client.getInstructions() || ''), /lingbuilder\.project\.importImage/u, 'instructions 必须给出项目图片资源导入工具口径（2026-10-15）');
+    assert.match(String(client.getInstructions() || ''), /重名自动追加 -2 后缀/u, 'instructions 必须写明图片重名的去冲突后缀行为');
     assert.match(String(client.getInstructions() || ''), /EdgeView_创建无头实例/u, 'instructions 必须告知 EdgeView 隐窗伪无头形态与截图边界');
     assert.match(String(client.getInstructions() || ''), /CDP_启动浏览器/u, 'instructions 必须告知 CDP 真无头形态与回收/错误读取口径');
     assert.match(String(client.getInstructions() || ''), /CDP_开始串流/u, 'instructions 必须告知 CDP 画面串流命令与帧落盘口径');
@@ -236,6 +261,15 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.match(String(client.getInstructions() || ''), /压缩_取错误/u, 'instructions 必须钉住压缩失败走 压缩_取错误 的统一口径');
     assert.match(String(client.getInstructions() || ''), /67108864/u, 'instructions 必须写明解压输出上限（zip-bomb 防护）');
     assert.match(String(client.getInstructions() || ''), /miniz 3\.0\.2/u, 'instructions 必须写明随包 miniz 3.0.2 的实现来源');
+    assert.match(String(client.getInstructions() || ''), /ODBC_查询打开/u, 'instructions 必须给出 ODBC 多行结果集打开命令');
+    assert.match(String(client.getInstructions() || ''), /ODBC_取下一行/u, 'instructions 必须给出 ODBC 结果集逐行推进命令');
+    assert.match(String(client.getInstructions() || ''), /ODBC_取列文本/u, 'instructions 必须给出 ODBC 按列读文本命令');
+    assert.match(String(client.getInstructions() || ''), /ODBC_查询关闭/u, 'instructions 必须钉住结果集用完必须关闭的红线');
+    assert.match(String(client.getInstructions() || ''), /ODBC_转义文本/u, 'instructions 必须给出拼 SQL 前的单引号转义命令');
+    assert.match(String(client.getInstructions() || ''), /没有 4KB 上限/u, 'instructions 必须写明超长列分段读取无截断上限');
+    assert.match(String(client.getInstructions() || ''), /调试输出\(值1, 值2, \.\.\.\)/u, 'instructions 必须给出调试输出命令替代 std::cout 的口径');
+    assert.match(String(client.getInstructions() || ''), /@ 行里禁止写 #include/u, 'instructions 必须钉住 @ 行不能写 #include 的红线');
+    assert.match(String(client.getInstructions() || ''), /头文件 = 头文件名\.h/u, 'instructions 必须给出经 DLL命令声明引入 SDK 头文件的做法');
     assert.match(String(client.getInstructions() || ''), /软取消/u, 'instructions 必须写明 TLS 指纹路径的软取消语义');
     assert.match(String(client.getInstructions() || ''), /socks5:\/\//u, 'instructions 必须写明指纹路径固定代理支持 socks5:// 与凭据命令');
     assert.match(String(client.getInstructions() || ''), /进程内存_写字节集/u, 'instructions 必须给出批量写进程内存命令');
@@ -272,6 +306,8 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.match(String(client.getInstructions() || ''), /cron_定时_邮件配置/u, 'instructions 必须告知 MAILTO 依赖真实 SMTP 配置');
     assert.match(String(tools.tools.find(tool => tool.name === 'lingbuilder.module.info')?.description || ''), /公开常量/u, 'module.info 工具描述必须声明返回模块公开常量 constants[]');
     assert.match(String(client.getInstructions() || ''), /HTTP_添加静态路由/u, 'instructions 必须引导外部 AI 服务端项目优先静态路由');
+    assert.match(String(client.getInstructions() || ''), /HTTP_SSE_推送事件\(请求, 事件名, 数据\)/u, 'instructions 必须给出 SSE 单向推送命令族口径');
+    assert.match(String(client.getInstructions() || ''), /SSE 与普通响应互斥/u, 'instructions 必须钉住 SSE 与普通响应互斥红线');
     assert.match(String(client.getInstructions() || ''), /HTTP_设置连接轮转/u, 'instructions 必须告知外部 AI 连接轮转可配（高负载放宽强制关闭阈值）');
     assert.match(String(client.getInstructions() || ''), /HTTP客户端_请求置Cookie/u, 'instructions 必须告知外部 AI http-client 2.1 的 Cookie 注入口（区别于自动罐开关）');
     assert.match(String(client.getInstructions() || ''), /workspace\.list 的返回首项/u, 'instructions 必须教外部 AI 先自省工作区（P2 工作区错位自查）');
@@ -365,6 +401,15 @@ test('AI Bridge 模块工具在只读/预览未批准模式下拒绝写入', asy
   try {
     await assert.rejects(() => readonlyService.scaffoldModule({ id: 'bridge.perm.module' }), /只读模式/u);
     await assert.rejects(() => previewService.scaffoldModule({ id: 'bridge.perm.module' }), /预览确认模式/u);
+    // 项目图片资源导入是写操作：readonly 全拒、preview 必须显式确认（2026-10-15）。
+    await assert.rejects(
+      () => readonlyService.importProjectImage({ projectId: 'demo-project', sourcePath: 'C:/tmp/logo.png' }),
+      /只读模式/u
+    );
+    await assert.rejects(
+      () => previewService.importProjectImage({ projectId: 'demo-project', sourcePath: 'C:/tmp/logo.png' }),
+      /预览确认模式/u
+    );
     await assert.rejects(
       () => previewService.writeModuleFiles({ files: [{ path: 'lingbuilder.module.json', content: '{}' }] }),
       /预览确认模式/u
@@ -480,6 +525,73 @@ test('AI Bridge 模块工具支持生成→写入→校验→打包→预览→�
     assert.match(auditLog, /"action":"module\.writeFiles"/u);
     assert.match(auditLog, /"action":"module\.pack"/u);
     assert.match(auditLog, /"action":"module\.install"/u);
+  } finally {
+    await service.shutdown();
+  }
+});
+
+test('AI Bridge 项目图片资源导入工具把图片复制进 assets 并带权限与审计（2026-10-15）', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview', 'asset-token'));
+  try {
+    await registerSolutionProject(workspaceRoot, { id: 'asset-project', name: '图片资源测试项目' });
+    // 1x1 合法 PNG 作为导入源（放在工作区外的临时目录，覆盖「本机绝对路径」形态）。
+    const sourceDir = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-import-src-'));
+    const sourcePath = path.join(sourceDir, '图标.png');
+    await fs.writeFile(sourcePath, Buffer.from(
+      '89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c626001000000ffff0300000502579b2f0000000049454e44ae426082',
+      'hex'
+    ));
+
+    const imported = await service.importProjectImage({ projectId: 'asset-project', sourcePath, approved: true });
+    assert.equal(imported.ok, true);
+    assert.equal(imported.projectId, 'asset-project');
+    assert.equal(imported.assetRoot, 'assets/asset-project');
+    assert.equal(imported.relativePath, 'assets/asset-project/图标.png');
+    assert.equal(await exists(path.join(workspaceRoot, 'assets', 'asset-project', '图标.png')), true);
+
+    // 同内容同名文件复用：不重复复制、相对路径不变。
+    const reused = await service.importProjectImage({ projectId: 'asset-project', sourcePath, approved: true });
+    assert.equal(reused.relativePath, imported.relativePath);
+    assert.equal(reused.size, imported.size);
+
+    // 同名不同内容自动加 -2 后缀，不静默覆盖。
+    const otherDir = path.join(sourceDir, 'other');
+    await fs.mkdir(otherDir, { recursive: true });
+    const otherPath = path.join(otherDir, '图标.png');
+    await fs.writeFile(otherPath, Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000206a86e145', 'hex'));
+    const renamed = await service.importProjectImage({ projectId: 'asset-project', sourcePath: otherPath, approved: true });
+    assert.equal(renamed.relativePath, 'assets/asset-project/图标-2.png');
+
+    // 工作区相对路径形态：把源放进工作区内再以相对路径导入。
+    const workspaceRelativeDir = path.join(workspaceRoot, '素材');
+    await fs.mkdir(workspaceRelativeDir, { recursive: true });
+    const workspaceSource = path.join(workspaceRelativeDir, '横幅.png');
+    await fs.writeFile(workspaceSource, Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c626001000000ffff0300000502579b2f0000000049454e44ae426082', 'hex'));
+    const relativeImported = await service.importProjectImage({ projectId: 'asset-project', sourcePath: '素材/横幅.png', approved: true });
+    assert.equal(relativeImported.relativePath, 'assets/asset-project/横幅.png');
+
+    // 中文报错：缺 projectId / 缺 sourcePath / 源不存在 / 项目未注册 / 非图片扩展名。
+    await assert.rejects(() => service.importProjectImage({ sourcePath, approved: true }), /缺少 projectId/u);
+    await assert.rejects(() => service.importProjectImage({ projectId: 'asset-project', approved: true }), /缺少 sourcePath/u);
+    await assert.rejects(
+      () => service.importProjectImage({ projectId: 'asset-project', sourcePath: path.join(sourceDir, '不存在.png'), approved: true }),
+      /图片源文件不存在/u
+    );
+    await assert.rejects(
+      () => service.importProjectImage({ projectId: 'ghost-project', sourcePath, approved: true }),
+      /未找到项目/u
+    );
+    const textPath = path.join(sourceDir, '说明.txt');
+    await fs.writeFile(textPath, '不是图片', 'utf8');
+    await assert.rejects(
+      () => service.importProjectImage({ projectId: 'asset-project', sourcePath: textPath, approved: true }),
+      /仅支持 PNG/u
+    );
+
+    const auditLog = await fs.readFile(path.join(workspaceRoot, '.lingbuilder', 'ai-bridge-log.jsonl'), 'utf8');
+    assert.match(auditLog, /"action":"project\.importImage"/u);
+    assert.match(auditLog, /assets\/asset-project\/图标\.png/u);
   } finally {
     await service.shutdown();
   }
@@ -1811,6 +1923,55 @@ test('AI Bridge applies panel proposals whose canvas is ahead of disk and reject
   const applied2 = await service.applyEdit({ proposalId: secondProposal.proposal.id, approved: true, designerProject: canvasModel });
   assert.equal(applied2.ok, true);
   assert.equal(JSON.parse(await fs.readFile(path.join(workspaceRoot, designerPath), 'utf8')).windows[0].controls[0].properties.value, 90);
+  await service.shutdown();
+});
+
+test('AI Bridge apply 成功后写入来源印章，渲染层据此豁免外部修改确认框（issue #IKLE7E）', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const sourcePath = 'src/demo/Main.lcpp';
+  const designerPath = '.lingbuilder/projects/demo/window-designer.json';
+  const sourceCode = '类 Main\n结束类\n';
+  const designerProject: LingWindowProject = {
+    schemaVersion: 2 as const,
+    id: 'demo',
+    name: '印章项目',
+    resources: [],
+    windows: [{ id: 'main', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口', width: 420, height: 280, background: '#ffffff', description: '', controls: [] }]
+  };
+  await fs.mkdir(path.dirname(path.join(workspaceRoot, sourcePath)), { recursive: true });
+  await fs.mkdir(path.dirname(path.join(workspaceRoot, designerPath)), { recursive: true });
+  await fs.writeFile(path.join(workspaceRoot, sourcePath), sourceCode, 'utf8');
+  await fs.writeFile(path.join(workspaceRoot, designerPath), JSON.stringify(designerProject, null, 2) + '\n', 'utf8');
+  await registerSolutionProject(workspaceRoot, { id: 'demo', name: '印章项目' });
+
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  const nextDesignerProject = JSON.parse(JSON.stringify(designerProject)) as LingWindowProject;
+  nextDesignerProject.windows[0].title = 'AI 改过的标题';
+  const proposal = await service.proposeEdit({
+    filePath: sourcePath,
+    projectId: 'demo',
+    instruction: '改窗口标题并同步源码注释',
+    designerProject,
+    updatedDesignerProject: nextDesignerProject,
+    workspaceFiles: [{ filePath: sourcePath, sourceCode }],
+    files: [{ filePath: sourcePath, updatedSource: `${sourceCode}// 已同步\n` }]
+  });
+  const applied = await service.applyEdit({ proposalId: proposal.proposal.id, approved: true });
+  assert.equal(applied.ok, true);
+
+  // 印章按写盘后的实际字节计算版本哈希，必须与服务端 readProjectFileVersionsFromDisk 同口径精确匹配。
+  const stampEntries = await readBridgeWriteStampEntries(workspaceRoot);
+  const designerStamp = stampEntries.find(entry => entry.path === designerPath);
+  const sourceStamp = stampEntries.find(entry => entry.path === sourcePath);
+  assert.ok(designerStamp, '设计器文件缺少写入印章');
+  assert.ok(sourceStamp, '源码文件缺少写入印章');
+  assert.equal(designerStamp.operation, 'edit.apply');
+  assert.equal(designerStamp.version, createProjectFileVersion(await fs.readFile(path.join(workspaceRoot, designerPath))));
+  assert.equal(sourceStamp.version, createProjectFileVersion(await fs.readFile(path.join(workspaceRoot, sourcePath))));
+  const origins = await collectBridgeWriteOrigins(workspaceRoot, {
+    [designerPath]: createProjectFileVersion(await fs.readFile(path.join(workspaceRoot, designerPath)))
+  });
+  assert.equal(origins[designerPath] !== undefined, true);
   await service.shutdown();
 });
 

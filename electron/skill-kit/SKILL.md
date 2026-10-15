@@ -108,7 +108,7 @@ default_tools_approval_mode = "writes"
 
 ## 第 2 步：确认连通，并先确认工作区
 
-重连或重启你的 MCP 会话后列工具，应当恰好看到 23 个 `lingbuilder.*` 工具，其中必有：
+重连或重启你的 MCP 会话后列工具，应当恰好看到 25 个 `lingbuilder.*` 工具，其中必有：
 `lingbuilder.project.templates`、`lingbuilder.project.create`、`lingbuilder.edit.propose`、
 `lingbuilder.edit.apply`、`lingbuilder.lingcpp.diagnostics`、`lingbuilder.build.run`、
 `lingbuilder.run.wait`、`lingbuilder.run.log`、`lingbuilder.build.stop`、`lingbuilder.module.info`。

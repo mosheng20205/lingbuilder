@@ -10,6 +10,8 @@ import { collectControlReferenceAdmissionProblems, formatControlReferenceAdmissi
 import { collectArgumentTypeAdmissionProblems, formatArgumentTypeAdmissionBlock } from '../lingCpp/argumentTypeAdmission';
 import { collectProCommandAdmissionProblems, formatProCommandAdmissionBlock } from '../lingCpp/proCommandAdmission';
 import { readProAccessStateFile } from '../modules/proAccessStateFile';
+import { recordBridgeWriteStamps } from '../files/bridgeWriteStampService';
+import { createProjectFileVersion } from '../files/projectFilePersistenceService';
 import { buildInlineCppUsageSummaryLine, collectInlineCppLines, summarizeInlineCppUsage } from '../lingCpp/inlineCppKnowledge';
 import { collectInlineCppAdmissionProblems, formatInlineCppAdmissionBlock } from '../lingCpp/inlineCppAdmission';
 import { createProjectGlobalContext, isProjectGlobalsFilePath } from '../lingCpp/projectGlobalService';
@@ -634,6 +636,7 @@ export class AiBridgeService {
     }
 
     rejectWorkspaceEdit(request.proposalId);
+    await this.recordBridgeWriteStampsForPersisted(persistedFiles);
     return {
       ok: true,
       appliedFiles: persistedFiles.map(file => ({ filePath: file.filePath, bytes: Buffer.byteLength(file.sourceCode, 'utf8') })),
@@ -644,6 +647,23 @@ export class AiBridgeService {
           ? '窗口设计器布局已同步更新（本次源码未改动）。'
           : 'AI 提案未产生任何文件改动。',
     };
+  }
+
+  /**
+   * apply 成功后写「Bridge 写入印章」（best-effort，绝不影响 apply 结果）：
+   * 版本哈希按写盘后的实际磁盘字节计算，与服务端 readProjectFileVersionsFromDisk 同源，
+   * 经编码转换（BOM/EOL）后仍能精确匹配，渲染层据此把这次写盘豁免「外部修改」确认框。
+   */
+  private async recordBridgeWriteStampsForPersisted(persistedFiles: Array<{ filePath: string; absolutePath: string }>): Promise<void> {
+    const entries: Array<{ path: string; version: string }> = [];
+    for (const file of persistedFiles) {
+      try {
+        entries.push({ path: file.filePath, version: createProjectFileVersion(await fs.readFile(file.absolutePath)) });
+      } catch {
+        // 单文件回读失败只损失该文件的印章，不影响其余文件与其他逻辑。
+      }
+    }
+    await recordBridgeWriteStamps(this.workspaceRoot, entries, 'edit.apply');
   }
 
   async listModules(projectId = 'lingbuilder-ui-project') {
@@ -1077,6 +1097,46 @@ export class AiBridgeService {
       return result;
     } catch (error) {
       await this.auditFailure('write', 'project.create.undo', receiptId, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 把本机/工作区图片复制进项目 assets 资源目录（MCP lingbuilder.project.importImage，2026-10-15）。
+   * 写权限门禁与 IDE「添加资源…」同一套；响应的 relativePath 即设计器控件图片属性引用的 assets 相对路径。
+   */
+  async importProjectImage(request: { projectId?: unknown; sourcePath?: unknown; approved?: boolean }) {
+    const projectId = typeof request.projectId === 'string' ? request.projectId.trim() : '';
+    if (!projectId) throw new Error('缺少 projectId。请传解决方案中已注册的项目 ID（lingbuilder.workspace.list 首项 projects[] 可查）。');
+    const sourcePath = typeof request.sourcePath === 'string' ? request.sourcePath.trim() : '';
+    if (!sourcePath) throw new Error('缺少 sourcePath：请传图片文件路径（本机绝对路径，或当前工作区内的相对路径）。');
+    await this.requireWriteWithAudit('project.importImage', sourcePath, request.approved);
+    const isAbsoluteSource = /^[a-zA-Z]:[\\/]/u.test(sourcePath) || sourcePath.startsWith('\\\\') || sourcePath.startsWith('/');
+    const resolvedSource = isAbsoluteSource ? sourcePath : path.join(this.workspaceRoot, sourcePath);
+    const sourceStat = await fs.stat(resolvedSource).catch(() => null);
+    if (!sourceStat) throw new Error(`图片源文件不存在：${resolvedSource}`);
+    if (!sourceStat.isFile()) throw new Error('图片源路径不是普通文件。');
+    try {
+      const solution = await this.solutionService.getSolution();
+      const projectRef = this.solutionService.getProject(solution, projectId);
+      const imported = await this.designerAssetService.importImage(projectRef, resolvedSource);
+      await this.permissions.audit({
+        operation: 'write',
+        action: 'project.importImage',
+        ok: true,
+        target: imported.relativePath,
+        details: { projectId, sourcePath: resolvedSource, size: imported.size }
+      });
+      return {
+        ok: true as const,
+        projectId,
+        assetRoot: this.designerAssetService.getProjectAssetRoot(projectRef),
+        relativePath: imported.relativePath,
+        fileName: imported.fileName,
+        size: imported.size
+      };
+    } catch (error) {
+      await this.auditFailure('write', 'project.importImage', sourcePath, error);
       throw error;
     }
   }

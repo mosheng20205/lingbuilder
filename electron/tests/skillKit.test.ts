@@ -82,7 +82,7 @@ test('SKILL.md 覆盖接入验收与 .lcpp 红线关键事实', async () => {
     'ELECTRON_RUN_AS_NODE',
     '--mcp',
     '--stdio-only',
-    '23 个',
+    '25 个',
     'updatedDesignerProject',
     '裸控件名',
     '&处理器名',
