@@ -10,6 +10,23 @@ title: 图文教程
 
 > 偏好看视频？前往[视频教程](/guide/videos/)，每集 1 分钟上下，与这里的图文教程主题互相衔接。
 
+## 零基础入门系列（推荐从这里开始）
+
+为完全没接触过编程的读者准备的入门课：从安装开始，一路做出自己的第一个 exe，直到能独立做出登录界面。每集只讲一件事，全部真机截图。
+
+| 集 | 教程 | 你将学会 | 状态 |
+| --- | --- | --- | --- |
+| 01 | [安装与第一次运行](/guide/tutorials/beginner-01-install) | 下载安装、认识工作台、确认 C++ 构建环境就绪 | 已上线 |
+| 02 | [第一个窗口](/guide/tutorials/beginner-02-first-window) | 新建项目、拖控件改属性，编译出第一个自己的 exe | 已上线 |
+| 03 | [第一行中文代码](/guide/tutorials/beginner-03-first-code) | 事件绑定、拼音补全、信息框与调试输出 | 已上线 |
+| 04 | [如果流程与按钮进阶](/guide/tutorials/beginner-04-if-flow) | 程序集变量、如果/否则，做一个点击计数器 | 已上线 |
+| 05 | [编辑框与文本型变量](/guide/tutorials/beginner-05-textbox) | 输入框读文字，标签实时更新问候语 | 已上线 |
+| 06 | [实战：登录界面](/guide/tutorials/beginner-06-login) | 综合前五集：账号密码输入、四层如果判断、登录状态反馈 | 已上线 |
+| 07 | [多窗口：登录之后](/guide/tutorials/beginner-07-multi-window) | 新建第二个窗口、打开窗口跳转、结束() 退出 | 已上线 |
+| 08 | [时钟与动态更新](/guide/tutorials/beginner-08-clock) | 时钟组件、非可视组件概念、周期事件 | 已上线 |
+
+更多集数制作中，见[系列总览](/guide/tutorials/beginner)。
+
 ## 按学习路径排序
 
 建议按下面的顺序学：先把数据装进变量，再把相关数据打包成类型，然后学会复用逻辑，最后打通系统能力、单文件分发和模块生态。
@@ -26,6 +43,7 @@ title: 图文教程
 | 8 | [LCPP 源码包分享](/guide/tutorials/lcpp-source-package) | 一键把项目打包成 .lcpppkg 发给别人，对方导入后直接 F5 构建运行 | 10 张 | [构建与运行](/guide/user/build-and-run) |
 | 9 | [安装包导出](/guide/tutorials/installer-export) | 一键把构建产物打包成 NSIS 安装程序（setup.exe），可选图标、捆绑运行库与安装目录策略 | 8 张 | [构建与运行](/guide/user/build-and-run) |
 | 10 | [构建目录与产物名](/guide/tutorials/build-directory) | 右键「构建目录…」把产物 LingBuilderPreview.exe 改成自己的程序名，自定义构建输出与生成源码目录 | 10 张 | [构建与运行](/guide/user/build-and-run) |
+| 11 | [流程控制](/guide/tutorials/flow-control) | 新手模式全部流程语句：如果/选择/六种循环/异常处理，拼音补全输入、并列分支自动对齐、循环变量自动登记 | 19 张 | [LingCpp 快速上手](/guide/user/lingcpp-quickstart) |
 
 ## 教程之外
 
