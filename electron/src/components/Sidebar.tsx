@@ -227,6 +227,7 @@ interface SidebarProps {
   onCopySolutionFullPath?: () => boolean | Promise<boolean>;
   onCopyProjectFullPath?: (projectId: string) => boolean | Promise<boolean>;
   onAddProjectResource?: (projectId: string) => Promise<DesignerImageImportResult>;
+  onOpenProjectAssetsDirectory?: (projectId: string) => void | Promise<void>;
   onExportLcppSourcePackage?: (projectId: string) => void | Promise<void>;
   onExportInstaller?: (projectId: string) => void | Promise<void>;
   onCopyProjectResourcePath?: (relativePath: string) => Promise<boolean>;
@@ -285,6 +286,7 @@ export default function Sidebar({
   onCopySolutionFullPath,
   onCopyProjectFullPath,
   onAddProjectResource,
+  onOpenProjectAssetsDirectory,
   onExportLcppSourcePackage,
   onExportInstaller,
   onCopyProjectResourcePath,
@@ -308,6 +310,7 @@ export default function Sidebar({
   const [moduleContextMenu, setModuleContextMenu] = useState<ModuleContextMenu | null>(null);
   const [solutionContextMenu, setSolutionContextMenu] = useState<SolutionContextMenu | null>(null);
   const [resourceContextMenu, setResourceContextMenu] = useState<ResourceContextMenu | null>(null);
+  const [assetGroupContextMenu, setAssetGroupContextMenu] = useState<{ x: number; y: number; project: SolutionProject } | null>(null);
   const [embeddedResourceContextMenu, setEmbeddedResourceContextMenu] = useState<EmbeddedResourceContextMenu | null>(null);
   const [resourcePreview, setResourcePreview] = useState<ResourcePreview | null>(null);
   const [resourceDeleteTarget, setResourceDeleteTarget] = useState<{ project: SolutionProject; resource: DesignerImageResource } | null>(null);
@@ -323,6 +326,7 @@ export default function Sidebar({
       setModuleContextMenu(null);
       setSolutionContextMenu(null);
       setResourceContextMenu(null);
+      setAssetGroupContextMenu(null);
       setEmbeddedResourceContextMenu(null);
       setFunctionLibraryContextMenu(null);
     };
@@ -357,6 +361,7 @@ export default function Sidebar({
       setSolutionContextMenu(null);
       setModuleContextMenu(null);
       setResourceContextMenu(null);
+      setAssetGroupContextMenu(null);
       setEmbeddedResourceContextMenu(null);
       setFunctionLibraryContextMenu(null);
     };
@@ -995,6 +1000,7 @@ export default function Sidebar({
     setProjectResourceStatus({});
     setExpandedResourceProjectIds({});
     setResourceContextMenu(null);
+    setAssetGroupContextMenu(null);
     setResourcePreview(null);
     setResourceDeleteTarget(null);
     setResourceDeleteReferences([]);
@@ -1717,6 +1723,53 @@ export default function Sidebar({
     );
   };
 
+  // 「图片资源 (assets)」组行右键菜单：添加资源 / 刷新 / 打开 assets 目录（issue#IKM2YV：
+  // 空态提示只说「右键项目」，但用户自然在组行上右键，这里提供就地入口）。
+  const renderAssetGroupContextMenu = () => {
+    if (!assetGroupContextMenu) return null;
+    const project = assetGroupContextMenu.project;
+    return (
+      <div
+        style={{ top: `${assetGroupContextMenu.y}px`, left: `${assetGroupContextMenu.x}px` }}
+        className={`fixed z-[9999] min-w-[190px] py-1 rounded shadow-lg border text-xs select-none font-sans ${
+          isDarkMode
+            ? 'bg-[#252526] border-[#454545] text-slate-200'
+            : 'bg-white border-slate-250 text-slate-800'
+        }`}
+        onClick={() => setAssetGroupContextMenu(null)}
+      >
+        <div
+          className={`px-3 py-1.5 cursor-pointer transition-colors flex items-center gap-2 hover:bg-blue-500 hover:text-white ${
+            resourceImportingProjectId === project.id ? 'opacity-50 pointer-events-none' : ''
+          }`}
+          onClick={() => void handleAddProjectResource(project)}
+        >
+          {resourceImportingProjectId === project.id
+            ? <RefreshCw className="w-3.5 h-3.5 animate-spin text-sky-400" />
+            : <Plus className="w-3.5 h-3.5 text-sky-400" />}
+          <span>{resourceImportingProjectId === project.id ? '正在添加资源…' : '添加资源…'}</span>
+        </div>
+        <div
+          className="px-3 py-1.5 cursor-pointer transition-colors flex items-center gap-2 hover:bg-blue-500 hover:text-white"
+          onClick={() => {
+            setExpandedResourceProjectIds(previous => ({ ...previous, [project.id]: true }));
+            void refreshProjectImageResources(project.id);
+          }}
+        >
+          <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
+          <span>刷新</span>
+        </div>
+        <div
+          className="px-3 py-1.5 cursor-pointer transition-colors flex items-center gap-2 hover:bg-blue-500 hover:text-white"
+          onClick={() => void onOpenProjectAssetsDirectory?.(project.id)}
+        >
+          <FolderOpen className="w-3.5 h-3.5 text-sky-400" />
+          <span>打开 assets 目录</span>
+        </div>
+      </div>
+    );
+  };
+
   const renderModuleContextMenu = () => {
     if (!moduleContextMenu) return null;
     const module = moduleContextMenu.module;
@@ -2408,10 +2461,20 @@ export default function Sidebar({
                               void refreshProjectImageResources(project.id);
                             }
                           }}
+                          onContextMenu={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            setContextMenu(null);
+                            setWindowContextMenu(null);
+                            setModuleContextMenu(null);
+                            setSolutionContextMenu(null);
+                            setResourceContextMenu(null);
+                            setAssetGroupContextMenu({ x: event.clientX, y: event.clientY, project });
+                          }}
                           className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer text-[length:var(--lb-sidebar-font-size,13px)] font-sans transition-colors ${
                             isDarkMode ? 'hover:bg-[#2A2D2E]/50 text-slate-300' : 'hover:bg-slate-100 text-slate-700'
                           }`}
-                          title="查看项目 assets 目录中的全部图片资源"
+                          title={`查看项目 assets 目录中的全部图片资源\n右键可添加图片资源、刷新或打开 assets 目录`}
                         >
                           {isResourceGroupOpen ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
                           <Folder className="w-4 h-4 text-cyan-500 fill-cyan-500/10" />
@@ -2438,9 +2501,28 @@ export default function Sidebar({
                                 读取失败，点击重试
                               </button>
                             ) : imageResources.length === 0 ? (
-                              <div className="pl-6 text-slate-500 text-[10px] py-1.5 font-sans">
-                                {normalizedFileSearch ? '未找到匹配图片' : '暂无图片，可右键项目添加资源'}
-                              </div>
+                              normalizedFileSearch ? (
+                                <div className="pl-6 text-slate-500 text-[10px] py-1.5 font-sans">
+                                  未找到匹配图片
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  disabled={resourceImportingProjectId === project.id}
+                                  onClick={() => void handleAddProjectResource(project)}
+                                  className={`w-[calc(100%-4px)] ml-1 my-1 flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-sans text-left cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                                    isDarkMode
+                                      ? 'text-cyan-300 hover:text-cyan-100 hover:bg-cyan-500/10 border border-cyan-500/20'
+                                      : 'text-cyan-700 hover:text-cyan-900 hover:bg-cyan-50 border border-cyan-200'
+                                  }`}
+                                  title="选择本机图片并复制到项目 assets 资源目录"
+                                >
+                                  {resourceImportingProjectId === project.id
+                                    ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                    : <Plus className="w-3.5 h-3.5" />}
+                                  <span className="truncate">{resourceImportingProjectId === project.id ? '正在添加图片…' : '添加图片'}</span>
+                                </button>
+                              )
                             ) : (
                               imageResources.map(resource => (
                                 <div
@@ -2918,6 +3000,7 @@ export default function Sidebar({
       {renderSolutionContextMenu()}
       {renderFunctionLibraryContextMenu()}
       {renderResourceContextMenu()}
+      {renderAssetGroupContextMenu()}
       {renderEmbeddedResourceContextMenu()}
       {renderModuleContextMenu()}
       {resourcePreview && (

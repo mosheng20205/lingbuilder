@@ -167,6 +167,7 @@ import { describeWindowSourceClobber } from './services/windowDesigner/windowSou
 import {
   getLingWindowSourceFileName,
   getLingWindowSourceFilePath,
+  normalizeWindowDesignerState,
   readWindowDesignerState,
   saveWindowDesignerState,
   PersistedWindowDesignerState,
@@ -449,6 +450,10 @@ const getInitialEditorExperienceMode = (): EditorExperienceMode => {
     return 'beginner';
   }
 };
+
+// 日志类状态封顶：只进不出的数组在长会话里会把渲染进程推向 V8 堆上限（2026-10-15 客户崩溃）。
+const MAX_BUILD_LOG_LINES = 4000;
+const MAX_DEBUG_LOG_LINES = 5000;
 
 /** Windows 路径不区分大小写；统一正斜杠比较，判断绝对路径是否位于工作区内。 */
 const isPathInsideWorkspace = (absolutePath: string, workspacePath: string): boolean => {
@@ -2177,6 +2182,11 @@ export default function App() {
     '欢迎使用 LingBuilder C++ 中文集成开发环境 (IDE)。',
     '已就绪。点击上方“编译 F5”或左侧“运行”开始真实生成、编译并运行当前项目。',
   ]);
+  // 日志数组只进不出（构建输出、保存、AI 编辑事务等十几处追加），统一裁尾封顶，
+  // 防止长会话内存缓慢膨胀（2026-10-15 渲染进程膨胀崩溃的防御措施之一）。
+  useEffect(() => {
+    setBuildLogs(previous => previous.length > MAX_BUILD_LOG_LINES ? previous.slice(-MAX_BUILD_LOG_LINES) : previous);
+  }, [buildLogs]);
   const [taskSnapshots, setTaskSnapshots] = useState<TaskSnapshot[]>([]);
   const [clangdStatus, setClangdStatus] = useState<ClangdStatus>({ state: 'stopped', message: 'clangd 尚未启动。', restartCount: 0 });
   const [buildConfiguration, setBuildConfiguration] = useState<BuildConfiguration>({ schemaVersion: 1, mode: 'Debug', architecture: 'Win32' });
@@ -3838,7 +3848,13 @@ void DisplayStatus() {
                 updateTrackedFileVersion(changedPath, nextVersion);
                 continue;
               }
-              if (designerDirtyRef.current) {
+              // AI Bridge 写盘（印章命中）不再弹确认框：这次修改本就是用户授权 AI 应用的提案
+              // （issue #IKLE7E「不能 MCP 自己确定么」）。本地若有未保存布局，先存恢复快照再让磁盘版本生效；
+              // 印章未命中（真正的外部修改）时维持原确认流程，冲突保护不放松。
+              const bridgeOriginAt = typeof payload.bridgeOrigins?.[changedPath] === 'number'
+                ? payload.bridgeOrigins[changedPath] as number
+                : undefined;
+              if (designerDirtyRef.current && bridgeOriginAt === undefined) {
                 const reload = await requestWorkbenchConfirm({
                   title: '设计器文件已被外部修改',
                   description: `窗口设计器文件“${changedPath}”已被外部修改。\n\n“确定”重新载入磁盘布局；“取消”保留本地布局并在保存时执行版本冲突保护。`,
@@ -3847,19 +3863,41 @@ void DisplayStatus() {
                 });
                 if (!reload) continue;
               }
-              designerSavedSnapshotRef.current = JSON.stringify(payload.designerProject);
-              designerDirtyRef.current = false;
-              setDesignerDirty(false);
-              updateTrackedFileVersion(changedPath, nextVersion);
+              if (designerDirtyRef.current && bridgeOriginAt !== undefined) {
+                appendEditorTransactionLog(
+                  `【AI 更新设计器】本地有未保存布局，已先存入恢复快照，再载入 AI Bridge 写入的磁盘版本（${new Date(bridgeOriginAt).toLocaleTimeString()}）。`
+                );
+                void fetch('/api/window-designer/recovery', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    projectId: activeProjectId,
+                    files: Object.fromEntries(filesRef.current.map(file => [file.path, getCurrentFileContent(file)])),
+                    fileFormats: Object.fromEntries(filesRef.current.map(file => [file.path, getTextFileFormat(file)])),
+                    baseVersions: projectFileVersionsRef.current,
+                    openTabs: openTabsRef.current,
+                    activeFilePath: activeFileRef.current?.path,
+                    designerProject: readWindowDesignerState(activeProjectId).project
+                  })
+                });
+              }
               const currentState = readWindowDesignerState(activeProjectId);
               const preferredWindowId = payload.designerProject.windows?.some((win: { id: string }) => win.id === currentState.activeWindowId)
                 ? currentState.activeWindowId
                 : payload.designerProject.windows?.[0]?.id || 'main-window';
-              saveWindowDesignerState({
+              // 干净基线必须取「规范化之后」的项目，与项目加载路径（saveWindowDesignerState 返回值）同口径：
+              // 若直接存磁盘原始 JSON，规范化（迁移/补默认值/键序重建）后的画布会立刻假变脏，
+              // AI 下一次写入就弹「已被外部修改」确认框——报告人「一直卡在这」的根因。
+              const reloadedDesignerState = normalizeWindowDesignerState({
                 project: payload.designerProject,
                 activeWindowId: preferredWindowId,
                 selectedControlId: null
               });
+              designerSavedSnapshotRef.current = JSON.stringify(reloadedDesignerState.project);
+              designerDirtyRef.current = false;
+              setDesignerDirty(false);
+              updateTrackedFileVersion(changedPath, nextVersion);
+              saveWindowDesignerState(reloadedDesignerState);
               continue;
             }
 
@@ -3904,21 +3942,38 @@ void DisplayStatus() {
     let polling = false;
     let disposed = false;
     const loadGeneration = projectFileLoadGenerationRef.current;
+    // 轮询游标（size + mtime）：日志无变化时服务端 stat 短路，不再整体重发 run.log——
+    // 大日志每秒重发的解析垃圾曾把渲染进程推到 V8 堆上限崩溃（2026-10-15 客户案例）。
+    let logCursorProjectId: string | null = null;
+    let lastLogSize = -1;
+    let lastLogMtime = 0;
     const pollLogs = async () => {
       if (disposed || polling || !projectFilesReady || loadedProjectId !== activeProjectId) return;
       if (nativeDebugSession && !['terminated', 'error'].includes(nativeDebugSession.state)) return;
       polling = true;
       try {
         const projectId = activeProjectId;
-        const res = await fetch(`/api/window-designer/debug-logs?projectId=${projectId}`);
+        if (logCursorProjectId !== projectId) {
+          logCursorProjectId = projectId;
+          lastLogSize = -1;
+          lastLogMtime = 0;
+        }
+        const cursorQuery = lastLogSize >= 0
+          ? `&lastSize=${lastLogSize}&lastMtime=${lastLogMtime}`
+          : '';
+        const res = await fetch(`/api/window-designer/debug-logs?projectId=${projectId}${cursorQuery}`);
         if (!res.ok) return;
         const data = await res.json();
         if (activeProjectIdRef.current !== projectId
           || projectFileLoadGenerationRef.current !== loadGeneration) return;
+        if (data?.unchanged) return;
         if (data && Array.isArray(data.logs)) {
-          const formatted = data.logs
+          lastLogSize = Number(data.size) || 0;
+          lastLogMtime = Number(data.mtimeMs) || 0;
+          const formatted = (data.logs as string[])
             .map(line => line.trim())
-            .filter(Boolean);
+            .filter(Boolean)
+            .slice(-MAX_DEBUG_LOG_LINES);
           setDebugLogs(previous => (
             previous.length === formatted.length
             && previous.every((line, index) => line === formatted[index])
@@ -3939,6 +3994,58 @@ void DisplayStatus() {
       clearInterval(intervalId);
     };
   }, [activeProjectId, loadedProjectId, nativeDebugSession?.state, projectFileReloadToken, projectFilesReady]);
+
+  // 渲染层诊断心跳：每分钟把「停在哪、什么模式、JS 堆多大、DOM 多少节点」报到主进程诊断日志。
+  // 渲染进程一旦崩溃，主进程崩溃日志会附上这条最后状态——远程用户的崩溃日志从此能直接指认问题页面
+  // （2026-10-15 客户渲染进程膨胀崩溃无法定位页面的教训）。
+  const rendererStatusSnapshotRef = useRef({
+    showWelcomePage,
+    editorExperienceMode,
+    showBottomPanel,
+    activeTabInBottom,
+    fileCount: files.length,
+  });
+  rendererStatusSnapshotRef.current = {
+    showWelcomePage,
+    editorExperienceMode,
+    showBottomPanel,
+    activeTabInBottom,
+    fileCount: files.length,
+  };
+  useEffect(() => {
+    if (!window.lingBuilder?.logs?.report) return;
+    let disposed = false;
+    const reportRendererStatus = () => {
+      if (disposed) return;
+      try {
+        const snapshot = rendererStatusSnapshotRef.current;
+        const memory = (performance as any).memory;
+        const heapMb = memory?.usedJSHeapSize ? Math.round(memory.usedJSHeapSize / 1048576) : 0;
+        const domNodes = document.getElementsByTagName('*').length;
+        const activePath = activeFileRef.current?.path || '';
+        const view = snapshot.showWelcomePage
+          ? '欢迎页'
+          : activePath
+            ? `编辑器（${activePath}）`
+            : '工作台（无活动文件）';
+        const mode = snapshot.editorExperienceMode === 'beginner' ? '新手' : snapshot.editorExperienceMode === 'native' ? '原生' : '专业';
+        const panel = snapshot.showBottomPanel ? `底部面板=${snapshot.activeTabInBottom}` : '底部面板=收起';
+        window.lingBuilder.logs.report({
+          level: 'info',
+          category: 'renderer-status',
+          message: `视图=${view}；模式=${mode}；${panel}；文件数=${snapshot.fileCount}；JS堆=${heapMb}MB；DOM节点=${domNodes}`
+        });
+      } catch {
+        // 状态采集失败静默跳过，不影响正常使用。
+      }
+    };
+    reportRendererStatus();
+    const statusTimer = setInterval(reportRendererStatus, 60_000);
+    return () => {
+      disposed = true;
+      clearInterval(statusTimer);
+    };
+  }, []);
 
   useEffect(() => {
     const toggle = (event: Event) => {
@@ -5678,6 +5785,31 @@ void DisplayStatus() {
     const error = await shellApi.openWorkspacePath(getSolutionProjectDirectory(project));
     if (error) appendEditorTransactionLog(`【打开目录错误】${error}`);
   }, [solution.projects]);
+
+  // 打开项目 assets 目录：目录可能还没建（从未导入过图片），先经服务端确保存在再交给资源管理器。
+  const handleOpenProjectAssetsDirectory = useCallback(async (projectId: string) => {
+    const shellApi = window.lingBuilder?.shell;
+    if (!shellApi?.openWorkspacePath) {
+      appendEditorTransactionLog('【打开目录错误】当前运行环境不支持打开项目目录。');
+      return;
+    }
+    try {
+      const response = await fetch('/api/window-designer/assets/ensure-directory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId })
+      });
+      const result = await response.json() as { ok?: boolean; assetRoot?: string; error?: string };
+      if (!response.ok || !result.ok || !result.assetRoot) {
+        appendEditorTransactionLog(`【打开目录错误】${result.error || '读取项目 assets 目录失败。'}`);
+        return;
+      }
+      const error = await shellApi.openWorkspacePath(result.assetRoot);
+      if (error) appendEditorTransactionLog(`【打开目录错误】${error}`);
+    } catch (error) {
+      appendEditorTransactionLog(`【打开目录错误】${error instanceof Error ? error.message : '打开 assets 目录失败。'}`);
+    }
+  }, []);
 
   const handleCopySolutionFullPath = useCallback(async (): Promise<boolean> => {
     const copyFullPath = window.lingBuilder?.shell?.copyFullPath;
@@ -8278,6 +8410,7 @@ void DisplayStatus() {
           onCopySolutionFullPath={() => executeWorkbenchCommand('workbench.action.solution.copyFullPath')}
           onCopyProjectFullPath={projectId => executeWorkbenchCommand('workbench.action.project.copyFullPath', projectId)}
           onAddProjectResource={handleAddProjectResource}
+          onOpenProjectAssetsDirectory={handleOpenProjectAssetsDirectory}
           onExportLcppSourcePackage={projectId => { void executeWorkbenchCommand('workbench.action.project.exportLcppSourcePackage', projectId); }}
           onExportInstaller={projectId => { void executeWorkbenchCommand('workbench.action.project.exportInstaller', projectId); }}
           onCopyProjectResourcePath={handleCopyProjectResourcePath}

@@ -6342,3 +6342,38 @@ test('项目 DLL 命令声明的虚拟模块在未知命令门禁前并入，声
   const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
   assert.match(cpp, /加法计算\(123, 456\)/u);
 });
+
+test('外部重载干净基线口径：normalize 后再 save 内容不再变化（AI 写设计器免确认的前提，issue #IKLE7E）', () => {
+  // 外部 AI 写盘的设计器 JSON 常缺默认外观/规范标志位；外部重载路径若直接拿磁盘原始 JSON
+  // 当干净基线，normalize（迁移/补默认值/键序重建）后的画布会立刻「假变脏」，
+  // AI 下一次写入就弹「设计器文件已被外部修改」确认框。基线必须取 normalize 后的项目。
+  const rawProject = {
+    schemaVersion: 2,
+    id: 'demo',
+    name: '外部AI项目',
+    windows: [{
+      id: 'main-window',
+      fileName: 'MainWindow.xml',
+      className: 'MainWindow',
+      title: '主窗口',
+      width: 420,
+      height: 280,
+      background: '#ffffff',
+      description: '',
+      controls: [{ id: 'btn', type: 'Button', name: '按钮1', content: '点我', x: 10, y: 20, width: 100, height: 30 }]
+    }]
+  };
+  const reloaded = normalizeWindowDesignerState({
+    project: rawProject as never,
+    activeWindowId: 'main-window',
+    selectedControlId: null
+  });
+  const resaved = saveWindowDesignerState(reloaded, { notify: false });
+  assert.equal(
+    JSON.stringify(resaved.project),
+    JSON.stringify(reloaded.project),
+    'normalize 后再 save 仍改变项目内容：以该结果做干净基线会立刻假变脏'
+  );
+  // 钉住根因：磁盘原始 JSON 与规范化结果确实不同（旧口径必然误判脏）。
+  assert.notEqual(JSON.stringify(reloaded.project), JSON.stringify(rawProject));
+});

@@ -57,6 +57,13 @@ export class DesignerAssetService {
     return project.isDefault ? 'assets' : path.posix.join('assets', safeSegment(project.id));
   }
 
+  /** 确保 assets 目录存在（「打开 assets 目录」前调用，避免资源管理器打开不存在的目录失败）。 */
+  async ensureProjectAssetDirectory(project: LingBuilderSolutionProject): Promise<string> {
+    const assetRoot = this.getProjectAssetRoot(project);
+    await fs.mkdir(this.resolveWorkspacePath(assetRoot), { recursive: true });
+    return assetRoot;
+  }
+
   async importImage(project: LingBuilderSolutionProject, sourcePath: string): Promise<ImportedDesignerImage> {
     const source = await fs.realpath(String(sourcePath || ''));
     const sourceStat = await fs.stat(source);
