@@ -18,6 +18,15 @@ export interface LocalAuthorizationResult {
   message: string;
 }
 
+export interface LocalModuleAuthorizationResult {
+  ok: boolean;
+  /** 换发成功后的最新模块授权状态（base64url），可直接交给门禁 sync。 */
+  value: string;
+  message: string;
+  /** false=IDE 侧本机授权代理不可达（未运行或已关闭），换发请求根本没有发生。 */
+  reachable: boolean;
+}
+
 export interface LocalAuthorizationDiscovery {
   version: number;
   port: number;
@@ -27,6 +36,8 @@ export interface LocalAuthorizationDiscovery {
 }
 
 const REQUEST_TIMEOUT_MS = 1500;
+const AUTHORIZATION_PROXY_UNREACHABLE_MESSAGE =
+  '未找到正在运行的 LingBuilder 本机授权代理（LingBuilder 未启动，或已在「AI Bridge 连接中心」关闭外部 AI 授权）。请保持 LingBuilder 运行并登录账号后重试。';
 
 export function resolveLocalAuthorizationCandidates(env: NodeJS.ProcessEnv = process.env): string[] {
   const fileName = 'ai-bridge-local-auth.json';
@@ -76,17 +87,27 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
-export function requestLocalAuthorization(kind: LocalAuthorizationKind): Promise<LocalAuthorizationResult> {
+interface LocalAuthorityExchangePayload {
+  ok?: boolean;
+  moduleAccessState?: string;
+  fbroVipKey?: string;
+  authorizeErrors?: { moduleId: string; message: string }[];
+}
+
+interface LocalAuthorityExchangeResult {
+  reachable: boolean;
+  status: number;
+  payload: LocalAuthorityExchangePayload | null;
+  errorMessage: string;
+}
+
+function postLocalAuthorityExchange(body: { kind: LocalAuthorizationKind; authorizeModuleIds?: string[] }): Promise<LocalAuthorityExchangeResult> {
   const discovery = readLocalAuthorizationDiscovery();
   if (!discovery) {
-    return Promise.resolve({
-      ok: false,
-      value: '',
-      message: '未找到正在运行的 LingBuilder 本机授权代理（IDE 未启动，或未在「AI Bridge 连接中心」开启外部 AI 授权）。'
-    });
+    return Promise.resolve({ reachable: false, status: 0, payload: null, errorMessage: AUTHORIZATION_PROXY_UNREACHABLE_MESSAGE });
   }
-  return new Promise<LocalAuthorizationResult>(resolve => {
-    const body = JSON.stringify({ kind });
+  return new Promise<LocalAuthorityExchangeResult>(resolve => {
+    const serialized = JSON.stringify(body);
     const request = http.request({
       host: '127.0.0.1',
       port: discovery.port,
@@ -95,7 +116,7 @@ export function requestLocalAuthorization(kind: LocalAuthorizationKind): Promise
       timeout: REQUEST_TIMEOUT_MS,
       headers: {
         'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(body),
+        'Content-Length': Buffer.byteLength(serialized),
         Authorization: `Bearer ${discovery.token}`
       }
     }, response => {
@@ -104,20 +125,48 @@ export function requestLocalAuthorization(kind: LocalAuthorizationKind): Promise
       response.on('end', () => {
         const status = response.statusCode || 0;
         if (status < 200 || status >= 300) {
-          resolve({ ok: false, value: '', message: `本机授权代理返回 HTTP ${status}。` });
+          resolve({ reachable: true, status, payload: null, errorMessage: `本机授权代理返回 HTTP ${status}。` });
           return;
         }
         try {
-          const payload = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { ok?: boolean; moduleAccessState?: string; fbroVipKey?: string };
-          const value = String(kind === 'fbro-vip' ? payload.fbroVipKey || '' : payload.moduleAccessState || '');
-          resolve(payload.ok && value ? { ok: true, value, message: '' } : { ok: false, value: '', message: '本机授权代理没有返回可用凭据。' });
+          resolve({ reachable: true, status, payload: JSON.parse(Buffer.concat(chunks).toString('utf8')) as LocalAuthorityExchangePayload, errorMessage: '' });
         } catch {
-          resolve({ ok: false, value: '', message: '本机授权代理响应不是合法 JSON。' });
+          resolve({ reachable: true, status, payload: null, errorMessage: '本机授权代理响应不是合法 JSON。' });
         }
       });
     });
     request.on('timeout', () => { request.destroy(new Error('本机授权换取超时。')); });
-    request.on('error', error => resolve({ ok: false, value: '', message: `本机授权换取失败：${error.message}` }));
-    request.end(body);
+    request.on('error', error => resolve({ reachable: false, status: 0, payload: null, errorMessage: `本机授权换取失败：${error.message}` }));
+    request.end(serialized);
+  });
+}
+
+export function requestLocalAuthorization(kind: LocalAuthorizationKind): Promise<LocalAuthorizationResult> {
+  return postLocalAuthorityExchange({ kind }).then(result => {
+    if (!result.reachable) return { ok: false, value: '', message: result.errorMessage };
+    if (result.status < 200 || result.status >= 300) return { ok: false, value: '', message: result.errorMessage };
+    const payload = result.payload;
+    if (!payload) return { ok: false, value: '', message: result.errorMessage };
+    const value = String(kind === 'fbro-vip' ? payload.fbroVipKey || '' : payload.moduleAccessState || '');
+    return payload.ok && value ? { ok: true, value, message: '' } : { ok: false, value: '', message: '本机授权代理没有返回可用凭据。' };
+  });
+}
+
+/**
+ * 按需换发：请 IDE 主进程用登录态向云端换发单个收费模块的 Permit，并回传换发后的最新授权状态。
+ * reachable=true 且 ok=false 时 message 是 IDE 给出的权威中文原因（未登录 / 无权益 / 云端失败）。
+ */
+export function requestModuleAuthorizationExchange(moduleId: string): Promise<LocalModuleAuthorizationResult> {
+  return postLocalAuthorityExchange({ kind: 'module-access', authorizeModuleIds: [moduleId] }).then(result => {
+    if (!result.reachable) return { ok: false, value: '', message: result.errorMessage, reachable: false };
+    if (result.status < 200 || result.status >= 300) return { ok: false, value: '', message: result.errorMessage, reachable: true };
+    const payload = result.payload;
+    if (!payload) return { ok: false, value: '', message: result.errorMessage, reachable: true };
+    // 请求里带了 moduleId，authorizeErrors 里有它的失败原因时优先透出（state 里可能仍带着其他模块的成功结果）。
+    const authorizeErrors = payload.authorizeErrors || [];
+    const failure = authorizeErrors.find(item => item.moduleId === moduleId) || (authorizeErrors.length > 0 ? authorizeErrors[0] : undefined);
+    if (failure) return { ok: false, value: '', message: failure.message, reachable: true };
+    if (payload.ok && payload.moduleAccessState) return { ok: true, value: payload.moduleAccessState, message: '', reachable: true };
+    return { ok: false, value: '', message: '本机授权代理没有返回可用凭据。', reachable: true };
   });
 }

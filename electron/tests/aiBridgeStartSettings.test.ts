@@ -39,14 +39,21 @@ test('AI Bridge start settings persist across reloads with safeStorage-encrypted
     port: 17860, permission: 'yolo', lifecycle: 'workspace', token: 'my-custom-token-0123456789abcdef', externalModuleAccess: true, yoloConfirmed: true
   });
 
-  // 老版本设置文件没有 externalModuleAccess / yoloConfirmed 字段：必须按关闭/未确认处理，而不是 undefined 或抛错。
+  // 老版本设置文件没有 externalModuleAccess / yoloConfirmed 字段：外部 AI 授权按默认开启处理，
+  // yoloConfirmed 按未确认处理——字段缺失必须落到确定布尔，而不是 undefined 或抛错。
   const legacy = JSON.parse(raw) as Record<string, unknown>;
   delete legacy.externalModuleAccess;
   delete legacy.yoloConfirmed;
   await fs.writeFile(filePath, JSON.stringify(legacy), 'utf8');
   const migrated = await readAiBridgeStartSettings(filePath, safeStorage);
-  assert.equal(migrated?.externalModuleAccess, false);
+  assert.equal(migrated?.externalModuleAccess, true, '外部 AI 授权 2026-10-18 起默认开启：字段缺失按开启');
   assert.equal(migrated?.yoloConfirmed, false);
+
+  // 显式关闭必须保留：用户在连接中心关掉开关后不得被默认值翻回开启。
+  legacy.externalModuleAccess = false;
+  await fs.writeFile(filePath, JSON.stringify(legacy), 'utf8');
+  const optedOut = await readAiBridgeStartSettings(filePath, safeStorage);
+  assert.equal(optedOut?.externalModuleAccess, false);
 });
 
 test('AI Bridge start settings fall back to plain storage and reject invalid values', async t => {

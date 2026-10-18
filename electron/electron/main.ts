@@ -232,7 +232,8 @@ async function autoStartAiBridgeOnLaunch(): Promise<void> {
         permission: settings?.permission ?? 'preview',
         lifecycle: 'workspace',
         token,
-        externalModuleAccess: settings?.externalModuleAccess === true,
+        // 外部 AI 授权默认开启：设置文件缺失/字段缺失都按开启落盘，只有显式 false 才保持关闭。
+        externalModuleAccess: settings?.externalModuleAccess !== false,
         yoloConfirmed: settings?.yoloConfirmed === true
       }, safeStorage);
     }
@@ -283,12 +284,30 @@ async function writeFbroVipCredential(value: string): Promise<void> { if (!safeS
 async function resolveFbroVipCredential(): Promise<{ value: string; source: 'secure-storage' | 'environment' | 'none' }> { const stored = await readFbroVipCredential(); if (stored) return { value: stored, source: 'secure-storage' }; if (startupFbroVipKey) return { value: startupFbroVipKey, source: 'environment' }; return { value: '', source: 'none' }; }
 function publishFbroVipCredential(value: string): void { rendererServer?.postMessage({ type: 'lingbuilder:fbro-vip-key', value }); aiBridgeManager?.setFbroVipKey(value); }
 /**
- * 本机授权代理：仅在用户于「AI Bridge 连接中心」显式开启后监听回环端口，
- * 供外部 AI 客户端自动拉起的 stdio 宿主换取模块 Permit 与浏览器凭据。
+ * 收费模块按需换发唯一出口：云端换 Permit → 落本机缓存 → 尽力同步渲染层模块授权。
+ * cloud-modules:authorize（IDE 模块面板启用门禁）与本机授权代理的 authorizeModuleIds 共用，
+ * 禁止再各写一套换发链；渲染层同步失败不回滚缓存（Bridge 门禁只依赖缓存）。
+ */
+async function authorizePaidModuleAndCache(moduleId: string): Promise<{ ok: boolean; authorization?: unknown; rendererResponse?: unknown; message?: string }> {
+  try {
+    const authorization = await cloudAccountService.modulePermit(String(moduleId || ''));
+    const cached = (await readModulePermitCache()).filter(item => item?.permit?.payload?.moduleId !== moduleId);
+    cached.push(authorization);
+    await writeModulePermitCache(cached);
+    const rendererResponse = await requestRendererApi('/api/module-access/sync', { method: 'POST', body: JSON.stringify(authorization) }).catch(() => null);
+    return { ok: true, authorization, rendererResponse };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, message: /[\u3400-\u9fff]/u.test(message) ? message : '模块授权检查失败，请确认网络可用后重试。' };
+  }
+}
+/**
+ * 本机授权代理：随 IDE 启动默认开启（可在「AI Bridge 连接中心」显式关闭）后监听回环端口，
+ * 供外部 AI 客户端自动拉起的 stdio 宿主换取/按需换发模块 Permit 与浏览器凭据。
  */
 async function syncLocalAuthorizationService(): Promise<LocalAuthorizationSnapshot | null> {
   const settings = await readAiBridgeStartSettings(resolveAiBridgeStartSettingsPath(app.getPath('userData')), safeStorage);
-  if (settings?.externalModuleAccess !== true) {
+  if (settings?.externalModuleAccess === false) {
     if (localAuthorization) {
       await localAuthorization.stop();
       localAuthorization = null;
@@ -301,6 +320,10 @@ async function syncLocalAuthorizationService(): Promise<LocalAuthorizationSnapsh
       enabled: true,
       readModulePermitCache,
       resolveFbroVipKey: async () => (await resolveFbroVipCredential()).value,
+      authorizeModule: async moduleId => {
+        const result = await authorizePaidModuleAndCache(moduleId);
+        return result.ok ? { ok: true } : { ok: false, message: result.message || '模块授权换发失败，请稍后重试。' };
+      },
       log: message => logDiagnostic('info', 'ai-bridge', message)
     });
   }
@@ -643,7 +666,7 @@ async function requestRendererApi(apiPath: string, init: RequestInit): Promise<u
   return result;
 }
 
-/** 模块授权运行期续期的用户可见出口：只有状态从「不可用」翻转为「可用」才发输出面板提示并重启 AI Bridge，其余静默。 */
+/** 模块授权运行期续期的用户可见出口：只有状态从「不可用」翻转为「可用」才发输出面板提示，其余静默。 */
 async function handlePermitMaintenanceSweep(result: ModulePermitMaintenanceSweepResult): Promise<void> {
   const restored = result.renewed.filter(item => item.restored);
   for (const item of restored) {
@@ -651,32 +674,7 @@ async function handlePermitMaintenanceSweep(result: ModulePermitMaintenanceSweep
     console.info(`[module-access] ${message}`);
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('module-access:notice', message);
   }
-  if (restored.length === 0) return;
-  if (aiBridgeManager?.snapshot().state === 'running') await restartAiBridgeAfterPermitRenewal();
-}
-
-/** 与 cloud-modules:authorize 既有语义同源：Bridge 只在 spawn 时拿 Permit 快照，授权刷新后必须重启才能生效。 */
-async function restartAiBridgeAfterPermitRenewal(): Promise<void> {
-  const snapshot = aiBridgeManager.snapshot();
-  try {
-    await aiBridgeManager.stop('模块授权已自动续期，正在重启 AI Bridge 同步授权');
-    let token: string | undefined;
-    try {
-      token = (await readAiBridgeStartSettings(resolveAiBridgeStartSettingsPath(app.getPath('userData')), safeStorage))?.token || undefined;
-    } catch {
-      token = undefined;
-    }
-    await aiBridgeManager.start({
-      workspaceRoot: snapshot.workspaceRoot,
-      port: snapshot.port,
-      permission: snapshot.permission,
-      lifecycle: snapshot.lifecycle,
-      token,
-      moduleAccessState: Buffer.from(JSON.stringify(await readModulePermitCache()), 'utf8').toString('base64url')
-    });
-  } catch (error) {
-    console.warn(`[module-access] 模块授权续期后重启 AI Bridge 失败：${error instanceof Error ? error.message : String(error)}`);
-  }
+  // 续期不再重启 AI Bridge：运行中的宿主由门禁三级恢复（重读状态/按需换发）热更新，外部 AI 会话不中断。
 }
 
 /** 渲染进程崩溃重载防循环：60 秒窗口内连续崩溃达到 3 次后停止自动重载，只留日志。 */
@@ -1259,8 +1257,8 @@ function registerIpcHandlers(): void {
         permission,
         lifecycle,
         token: token || '',
-        // 外部 AI 授权开关独立于启动动作，必须原样保留，否则一次启动就把用户设置抹平。
-        externalModuleAccess: persisted?.externalModuleAccess === true,
+        // 外部 AI 授权开关独立于启动动作，必须原样保留，否则一次启动就把用户设置抹平；字段缺失按默认开启。
+        externalModuleAccess: persisted?.externalModuleAccess !== false,
         // yolo 确认随设置持久化：自动启动没有会话内确认框，靠这个标记决定是否按 yolo 拉起。
         yoloConfirmed: permission === 'yolo' ? value.approvedYolo === true : false
       }, safeStorage);
@@ -1649,18 +1647,12 @@ function registerIpcHandlers(): void {
   ipcMain.handle('cloud-modules:create-order', (_event, value: any) => cloudAccountService.createModuleOrder(String(value?.offerId || ''), value?.provider === 'alipay' ? 'alipay' : 'wechat', String(value?.idempotencyKey || '')));
   ipcMain.handle('cloud-modules:download', (_event, value: any) => cloudAccountService.downloadModuleArtifact(String(value?.moduleId || ''), ['win32', 'x64'].includes(value?.arch) ? value.arch : 'any', activeWorkspace));
   ipcMain.handle('cloud-modules:authorize', async (_event, moduleId: string) => {
-    try {
-      const authorization = await cloudAccountService.modulePermit(String(moduleId || ''));
-      const response = await requestRendererApi('/api/module-access/sync', { method: 'POST', body: JSON.stringify(authorization) }) as any;
-      if (!response?.ok) return { ok: false, error: String(response?.error || '本地模块授权同步失败，请重新启动 IDE 后重试。') };
-      const cached = (await readModulePermitCache()).filter(item => item?.permit?.payload?.moduleId !== moduleId);
-      cached.push(authorization); await writeModulePermitCache(cached);
-      if (aiBridgeManager?.snapshot().state === 'running') await aiBridgeManager.stop('模块授权已刷新，请重新启动 AI Bridge');
-      return response;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return { ok: false, error: /[\u3400-\u9fff]/u.test(message) ? message : '模块授权检查失败，请确认云端服务已启动并重新登录后再试。' };
-    }
+    const result = await authorizePaidModuleAndCache(String(moduleId || ''));
+    if (!result.ok) return { ok: false, error: result.message || '模块授权换发失败，请稍后重试。' };
+    const response = (result.rendererResponse ?? null) as { ok?: boolean; error?: string } | null;
+    if (!response?.ok) return { ok: false, error: String(response?.error || '本地模块授权同步失败，请重新启动 IDE 后重试。') };
+    // 授权刷新不再停 Bridge：运行中的宿主由门禁三级恢复（重读状态/按需换发）热更新，外部 AI 会话不中断。
+    return response;
   });
   ipcMain.handle('cloud-modules:network-restored', async () => {
     // 渲染层网络恢复在线（window online 事件）时立即巡检一轮；未登录/无到期时服务自行跳过。

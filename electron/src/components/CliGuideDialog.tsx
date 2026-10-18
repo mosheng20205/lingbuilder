@@ -107,7 +107,7 @@ export default function CliGuideDialog({ open, isDarkMode, onClose }: CliGuideDi
   const [permission, setPermission] = useState<BridgePermission>('preview');
   const [customToken, setCustomToken] = useState('');
   const [approvedYolo, setApprovedYolo] = useState(false);
-  const [externalModuleAccess, setExternalModuleAccess] = useState(false);
+  const [externalModuleAccess, setExternalModuleAccess] = useState(true);
   const [localAuth, setLocalAuth] = useState<LocalAuthSnapshot | null>(null);
   const [skillKit, setSkillKit] = useState<SkillKitStatus | null>(null);
   const [skillKitBusy, setSkillKitBusy] = useState(false);
@@ -188,7 +188,8 @@ export default function CliGuideDialog({ open, isDarkMode, onClose }: CliGuideDi
         setLocalAuth(result?.localAuthorization ?? null);
         const saved = result?.settings;
         if (!saved) return;
-        setExternalModuleAccess(saved.externalModuleAccess === true);
+        // 外部 AI 授权默认开启：设置文件字段缺失（老版本从未保存过）也按开启回填。
+        setExternalModuleAccess(saved.externalModuleAccess !== false);
         setSavedToken(saved.token || '');
         setApprovedYolo(saved.yoloConfirmed === true);
         // 运行中的 Bridge 以快照为准；仅停止态回填上次保存的端口/权限/Token。
@@ -198,7 +199,7 @@ export default function CliGuideDialog({ open, isDarkMode, onClose }: CliGuideDi
         setCustomToken(saved.token || '');
         lastSavedSettingsRef.current = {
           port: saved.port, permission: saved.permission, token: saved.token || '',
-          externalModuleAccess: saved.externalModuleAccess === true, yoloConfirmed: saved.yoloConfirmed === true
+          externalModuleAccess: saved.externalModuleAccess !== false, yoloConfirmed: saved.yoloConfirmed === true
         };
       }).catch(() => { settingsReadyRef.current = true; });
     }
@@ -510,8 +511,8 @@ export default function CliGuideDialog({ open, isDarkMode, onClose }: CliGuideDi
                     <input type="checkbox" checked={externalModuleAccess} disabled={running || transitioning} onChange={event => setExternalModuleAccess(event.target.checked)} className="mt-1 accent-cyan-500" />
                     <span>
                       <span className="font-semibold">允许外部 AI 客户端使用本机授权</span>
-                      <span className={`mt-1 block ${muted}`}>开启后，外部 AI 客户端拉起的 AI Bridge 宿主可向本机 LingBuilder 换取模块授权与浏览器凭据；只监听回环、凭据不落盘不进日志，IDE 退出即撤销。关闭时外部 AI 只能使用免费模块。</span>
-                      <span className="mt-1 block font-mono text-[10px] text-cyan-500">{externalModuleAccess ? (localAuth?.running ? `代理监听 127.0.0.1:${localAuth.port}，已完成 ${localAuth.exchanges} 次换取。` : '保存后自动启动代理（运行中的 Bridge 需先停止）。') : (running || transitioning ? '需先停止 AI Bridge 才能修改本开关。' : '未开启。')}</span>
+                      <span className={`mt-1 block ${muted}`}>默认开启：外部 AI 客户端拉起的 AI Bridge 宿主可向本机 LingBuilder 换取或按需换发模块授权与浏览器凭据——只要本机登录了账号（购买/Pro/限免由云端判定），外部 AI 即可直接使用收费模块。只监听回环、凭据不落盘不进日志，IDE 退出即撤销；关闭后外部 AI 只能使用免费模块。</span>
+                      <span className="mt-1 block font-mono text-[10px] text-cyan-500">{externalModuleAccess ? (localAuth?.running ? `代理监听 127.0.0.1:${localAuth.port}，已完成 ${localAuth.exchanges} 次换取。` : '保存后自动启动代理（运行中的 Bridge 需先停止）。') : (running || transitioning ? '需先停止 AI Bridge 才能修改本开关。' : '已关闭：外部 AI 无法取得收费模块授权。')}</span>
                     </span>
                   </label>
                 </fieldset>}

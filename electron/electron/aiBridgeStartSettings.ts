@@ -9,7 +9,7 @@ export interface AiBridgeStartSettings {
   lifecycle: ManagedAiBridgeLifecycle;
   /** 自定义 Token；空串表示未设置（首次启动自动生成并持久化，保证外部客户端配置一次长期有效）。 */
   token: string;
-  /** 是否允许本机外部 AI 客户端的 stdio 宿主向 IDE 换取模块授权与浏览器凭据；默认关闭。 */
+  /** 是否允许本机外部 AI 客户端的宿主向 IDE 换取/按需换发模块授权与浏览器凭据；默认开启（读取时字段缺失按开启，显式 false 才关闭）。 */
   externalModuleAccess: boolean;
   /**
    * yolo 权限的用户确认是否随设置持久化。AI Bridge 随 IDE 自动启动后没有会话内确认框，
@@ -87,7 +87,9 @@ export async function readAiBridgeStartSettings(
       port: parsed.port,
       permission: parsed.permission,
       lifecycle: parsed.lifecycle,
-      externalModuleAccess: parsed.externalModuleAccess === true,
+      // 读取口径：字段缺失（老设置文件/从未保存过）按默认开启，只有显式 false 才关闭；
+      // normalize 是写盘校验入口，收到的一律是显式布尔，不承担默认值语义。
+      externalModuleAccess: parsed.externalModuleAccess !== false,
       yoloConfirmed: parsed.yoloConfirmed === true,
       token
     });
