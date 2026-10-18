@@ -11470,6 +11470,23 @@ static HINSTANCE g_instance = nullptr;
 // 两者并存不产生二义。
 static const wchar_t* LingCppWideArg(const wchar_t* value) { return value ? value : L""; }
 static const wchar_t* LingCppWideArg(const std::wstring& value) { return value.c_str(); }
+
+// 运行期颜色参数解析：仅接受 “#RRGGBB” / “RRGGBB” 六位十六进制（与设计器属性同构），空文本由调用方按“保持原值”处理。
+static bool ParseRuntimeColor(const wchar_t* text, COLORREF& color) {
+    if (!text) return false;
+    const wchar_t* start = (*text == L'#') ? text + 1 : text;
+    const size_t length = std::wcslen(start);
+    if (length != 6) return false;
+    for (size_t index = 0; index < 6; ++index) if (!iswxdigit(start[index])) return false;
+    wchar_t channel[3] = {};
+    const auto parse = [&](size_t offset) -> int {
+        channel[0] = start[offset];
+        channel[1] = start[offset + 1];
+        return static_cast<int>(std::wcstoul(channel, nullptr, 16));
+    };
+    color = RGB(parse(0), parse(2), parse(4));
+    return true;
+}
 ${pureLogicDll ? '#ifndef LINGBUILDER_PURE_LOGIC_DLL' : ''}
 
 static Gdiplus::Color ToGdiPlusColor(COLORREF color) {
@@ -11894,6 +11911,33 @@ ${DATA_GRID_NATIVE_GLOBALS}
     // 原生 STATIC/BUTTON 自绘结果永远不能成为可见外观。
     bool hasOverrideText = false;
     std::wstring overrideText;
+    // 运行期覆盖设计器固化规格：控件_设置数值范围/设置提示文字/设置表项高度 写入，
+    // 控件_设置数值、多行占位提示绘制与列表滚动换算消费（hasOverrideText 同款模式）。
+    bool hasValueRangeOverride = false;
+    int valueRangeMinimum = 0;
+    int valueRangeMaximum = 0;
+    bool hasPlaceholderOverride = false;
+    std::wstring placeholderOverride;
+    bool hasItemHeightOverride = false;
+    int itemHeightOverride = 0;
+    // 第二批（自绘层）运行期覆盖：选中色/标记色/边框/标题对齐/填充方式/文本对齐与图片源路径。
+    bool hasSelectionColorOverride = false;
+    COLORREF selectionStartOverride = 0;
+    COLORREF selectionEndOverride = 0;
+    COLORREF selectionBorderOverride = 0;
+    bool hasMarkColorOverride = false;
+    COLORREF markColorOverride = 0;
+    COLORREF markTickOverride = 0;
+    bool hasBorderOverride = false;
+    int borderWidthOverride = 0;
+    COLORREF borderColorOverride = 0;
+    bool hasTitleAlignOverride = false;
+    int titleAlignOverride = 0;
+    bool hasStretchOverride = false;
+    int stretchOverride = 0;
+    std::wstring imageSourcePath;
+    bool hasTextAlignOverride = false;
+    int textAlignOverride = 0;
 };
 
 struct RuntimeTabPage {
@@ -12939,6 +12983,13 @@ static DWORD CALLBACK StreamRichEditData(DWORD_PTR cookie, LPBYTE buffer, LONG c
     size_t amount = std::min(remaining, static_cast<size_t>(count));
     if (amount > 0) std::memcpy(buffer, state->bytes.data() + state->offset, amount);
     state->offset += amount; *written = static_cast<LONG>(amount); return 0;
+}
+// 富文本框_取RTF文本 的 EM_STREAMOUT 收集回调：把 RichEdit 分块输出的 RTF 字节累加进 std::string。
+static DWORD CALLBACK CollectRichEditData(DWORD_PTR cookie, LPBYTE buffer, LONG count, LONG* written) {
+    auto* output = reinterpret_cast<std::string*>(cookie);
+    if (!output || !buffer || !written) return 1;
+    if (count > 0) output->append(reinterpret_cast<const char*>(buffer), static_cast<size_t>(count));
+    *written = count; return 0;
 }
 
 static std::vector<BYTE> BuildPropertySheetTemplate() {
@@ -23526,7 +23577,7 @@ protected:
         const ControlSpec* control = FindControl(dialog.dropTargetControlId);
         RuntimeControl* runtime = FindRuntimeControl(dialog.dropTargetControlId);
         if (!control || !runtime || !runtime->hwnd || !IsType(*control, L"Image")) return;
-        HBITMAP bitmap = LoadWicBitmap(files.front().c_str(), ScaleForDpi(control->width, dpi_), ScaleForDpi(control->height, dpi_), control->option1);
+        HBITMAP bitmap = LoadWicBitmap(files.front().c_str(), ScaleForDpi(control->width, dpi_), ScaleForDpi(control->height, dpi_), ResolveStretchOption(*control, *runtime));
         if (!bitmap) return;
         HGDIOBJ previous = reinterpret_cast<HGDIOBJ>(SendMessageW(runtime->hwnd, STM_SETIMAGE, IMAGE_BITMAP, reinterpret_cast<LPARAM>(bitmap)));
         if (previous && previous != bitmap) DeleteObject(previous);
@@ -24852,7 +24903,7 @@ ${comWindowMethods}
                 for (HBITMAP frame : frames) if (frame) DeleteObject(frame);
                 return false;
             }
-            HBITMAP frame = RenderGdiPlusImage(runtime.animatedImage, width, height, control.option1, control.background);
+            HBITMAP frame = RenderGdiPlusImage(runtime.animatedImage, width, height, ResolveStretchOption(control, runtime), control.background);
             if (!frame) {
                 for (HBITMAP item : frames) if (item) DeleteObject(item);
                 return false;
@@ -25091,15 +25142,17 @@ ${comWindowMethods}
             if (previous) DeleteObject(previous);
             runtime->resource = nullptr;
             runtime->iconResource = false;
+            runtime->imageSourcePath.clear();
             InvalidateRect(runtime->hwnd, nullptr, TRUE);
             return true;
         }
-        HBITMAP bitmap = LoadWicBitmap(imagePath.c_str(), ScaleForDpi(control->width, dpi_), ScaleForDpi(control->height, dpi_), control->option1);
+        HBITMAP bitmap = LoadWicBitmap(imagePath.c_str(), ScaleForDpi(control->width, dpi_), ScaleForDpi(control->height, dpi_), ResolveStretchOption(*control, *runtime));
         if (!bitmap) return false;
         HGDIOBJ previous = reinterpret_cast<HGDIOBJ>(SendMessageW(runtime->hwnd, STM_SETIMAGE, IMAGE_BITMAP, reinterpret_cast<LPARAM>(bitmap)));
         if (previous && previous != bitmap) DeleteObject(previous);
         runtime->resource = bitmap;
         runtime->iconResource = false;
+        runtime->imageSourcePath = imagePath;
         InvalidateRect(runtime->hwnd, nullptr, TRUE);
         return true;
     }
@@ -25152,7 +25205,9 @@ ${comWindowMethods}
     bool 控件_取勾选(const wchar_t* controlName) { RuntimeControl* runtime = FindRuntimeControlByName(controlName); return runtime && SendMessageW(runtime->hwnd, BM_GETCHECK, 0, 0) != BST_UNCHECKED; }
     bool 控件_设置数值(const wchar_t* controlName, int value) {
         RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control) return false;
-        value = std::max(control->minimum, std::min(control->maximum, value));
+        const int rangeMinimum = runtime->hasValueRangeOverride ? runtime->valueRangeMinimum : control->minimum;
+        const int rangeMaximum = runtime->hasValueRangeOverride ? runtime->valueRangeMaximum : control->maximum;
+        value = std::max(rangeMinimum, std::min(rangeMaximum, value));
         if (IsType(*control, L"ProgressBar")) SendMessageW(runtime->hwnd, PBM_SETPOS, value, 0);
         else if (IsType(*control, L"TrackBar")) SendMessageW(runtime->hwnd, TBM_SETPOS, TRUE, value);
         else if (IsType(*control, L"UpDown")) SendMessageW(runtime->hwnd, UDM_SETPOS32, 0, value);
@@ -25215,6 +25270,380 @@ ${comWindowMethods}
             TabCtrl_DeleteAllItems(runtime->hwnd);
         }
         else return false; return true;
+    }
+    bool 控件_设置只读(const wchar_t* controlName, bool readOnly) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control) return false;
+        if (!IsType(*control, L"TextBox") && !IsType(*control, L"RichEdit")) return false;
+        return SendMessageW(runtime->hwnd, EM_SETREADONLY, readOnly ? TRUE : FALSE, 0) != 0;
+    }
+    bool 控件_设置密码输入(const wchar_t* controlName, bool password) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control) return false;
+        if (!IsType(*control, L"TextBox")) return false;
+        SendMessageW(runtime->hwnd, EM_SETPASSWORDCHAR, password ? static_cast<WPARAM>(L'*') : 0, 0);
+        InvalidateRect(runtime->hwnd, nullptr, TRUE);
+        return true;
+    }
+    bool 控件_设置提示文字(const wchar_t* controlName, const wchar_t* placeholder) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control) return false;
+        if (!IsType(*control, L"TextBox")) return false;
+        if (control->flags & CF_MULTILINE) {
+            // 多行 EDIT 不支持 EM_SETCUEBANNER：占位提示写入运行期覆盖，随空态自绘出现/消失。
+            runtime->placeholderOverride = placeholder ? placeholder : L"";
+            runtime->hasPlaceholderOverride = true;
+            InvalidateRect(runtime->hwnd, nullptr, TRUE);
+            return true;
+        }
+        return SendMessageW(runtime->hwnd, EM_SETCUEBANNER, FALSE, reinterpret_cast<LPARAM>(placeholder ? placeholder : L"")) != 0;
+    }
+    bool 控件_设置提示文字(const wchar_t* controlName, const std::wstring& placeholder) {
+        return 控件_设置提示文字(controlName, placeholder.c_str());
+    }
+    bool 控件_设置数值范围(const wchar_t* controlName, int minimum, int maximum) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control) return false;
+        const bool supported = IsType(*control, L"ProgressBar") || IsType(*control, L"TrackBar")
+            || IsType(*control, L"UpDown") || IsType(*control, L"ScrollBar") || IsType(*control, L"FlatScrollBar");
+        if (!supported) return false;
+        if (minimum > maximum) { const int swapped = minimum; minimum = maximum; maximum = swapped; }
+        runtime->hasValueRangeOverride = true;
+        runtime->valueRangeMinimum = minimum;
+        runtime->valueRangeMaximum = maximum;
+        if (IsType(*control, L"ProgressBar")) {
+            SendMessageW(runtime->hwnd, PBM_SETRANGE32, static_cast<WPARAM>(minimum), static_cast<LPARAM>(maximum));
+            const int current = static_cast<int>(SendMessageW(runtime->hwnd, PBM_GETPOS, 0, 0));
+            SendMessageW(runtime->hwnd, PBM_SETPOS, static_cast<WPARAM>(std::max(minimum, std::min(maximum, current))), 0);
+            return true;
+        }
+        if (IsType(*control, L"TrackBar")) {
+            SendMessageW(runtime->hwnd, TBM_SETRANGEMIN, TRUE, static_cast<LPARAM>(minimum));
+            SendMessageW(runtime->hwnd, TBM_SETRANGEMAX, TRUE, static_cast<LPARAM>(maximum));
+            const int current = static_cast<int>(SendMessageW(runtime->hwnd, TBM_GETPOS, 0, 0));
+            SendMessageW(runtime->hwnd, TBM_SETPOS, TRUE, static_cast<LPARAM>(std::max(minimum, std::min(maximum, current))));
+            return true;
+        }
+        if (IsType(*control, L"UpDown")) {
+            SendMessageW(runtime->hwnd, UDM_SETRANGE32, static_cast<WPARAM>(minimum), static_cast<LPARAM>(maximum));
+            const int current = static_cast<int>(SendMessageW(runtime->hwnd, UDM_GETPOS32, 0, 0));
+            SendMessageW(runtime->hwnd, UDM_SETPOS32, 0, static_cast<LPARAM>(std::max(minimum, std::min(maximum, current))));
+            return true;
+        }
+        if (IsType(*control, L"ScrollBar")) {
+            SCROLLINFO info = { sizeof(SCROLLINFO) };
+            info.fMask = SIF_RANGE | SIF_POS;
+            GetScrollInfo(runtime->hwnd, SB_CTL, &info);
+            info.nMin = minimum; info.nMax = maximum;
+            info.nPos = std::max(minimum, std::min(maximum, static_cast<int>(info.nPos)));
+            SetScrollInfo(runtime->hwnd, SB_CTL, &info, TRUE);
+            return true;
+        }
+        const int bar = (control->flags & CF_HORIZONTAL) ? SB_HORZ : SB_VERT;
+        SCROLLINFO info = { sizeof(SCROLLINFO) };
+        info.fMask = SIF_RANGE | SIF_POS;
+        FlatSB_GetScrollInfo(runtime->hwnd, bar, &info);
+        info.nMin = minimum; info.nMax = maximum;
+        info.nPos = std::max(minimum, std::min(maximum, static_cast<int>(info.nPos)));
+        FlatSB_SetScrollInfo(runtime->hwnd, bar, &info, TRUE);
+        return true;
+    }
+    bool 控件_设置不确定进度(const wchar_t* controlName, bool marquee) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control) return false;
+        if (!IsType(*control, L"ProgressBar")) return false;
+        SendMessageW(runtime->hwnd, PBM_SETMARQUEE, marquee ? TRUE : FALSE, 30);
+        return true;
+    }
+    int 控件_插入项目(const wchar_t* controlName, int index, const wchar_t* text) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control) return -1;
+        if (IsType(*control, L"ListBox")) return static_cast<int>(SendMessageW(runtime->hwnd, LB_INSERTSTRING, static_cast<WPARAM>(index), reinterpret_cast<LPARAM>(text)));
+        if (IsType(*control, L"ComboBox")) return static_cast<int>(SendMessageW(runtime->hwnd, CB_INSERTSTRING, static_cast<WPARAM>(index), reinterpret_cast<LPARAM>(text)));
+        if (IsType(*control, L"ComboBoxEx")) { COMBOBOXEXITEMW item = {}; item.mask = CBEIF_TEXT; item.iItem = index; item.pszText = const_cast<wchar_t*>(text ? text : L""); return static_cast<int>(SendMessageW(runtime->hwnd, CBEM_INSERTITEMW, 0, reinterpret_cast<LPARAM>(&item))); }
+        return -1;
+    }
+    int 控件_插入项目(const wchar_t* controlName, int index, const std::wstring& text) {
+        return 控件_插入项目(controlName, index, text.c_str());
+    }
+    bool 控件_删除项目(const wchar_t* controlName, int index) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || index < 0) return false;
+        LRESULT result = LB_ERR;
+        if (IsType(*control, L"ListBox")) result = SendMessageW(runtime->hwnd, LB_DELETESTRING, static_cast<WPARAM>(index), 0);
+        else if (IsType(*control, L"ComboBox") || IsType(*control, L"ComboBoxEx")) result = SendMessageW(runtime->hwnd, CB_DELETESTRING, static_cast<WPARAM>(index), 0);
+        else return false;
+        if (result == LB_ERR) return false;
+        InvalidateRect(runtime->hwnd, nullptr, FALSE);
+        if (runtime->frameHwnd) InvalidateRect(runtime->frameHwnd, nullptr, FALSE);
+        return true;
+    }
+    bool 控件_修改项目(const wchar_t* controlName, int index, const wchar_t* text) {
+        // Win32 列表项目没有原生的“改文本”消息：记住既有选中项，删旧插新后按位移恢复。
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || index < 0) return false;
+        const bool isListBox = IsType(*control, L"ListBox");
+        if (!isListBox && !IsType(*control, L"ComboBox")) return false;
+        const UINT messageDelete = isListBox ? LB_DELETESTRING : CB_DELETESTRING;
+        const UINT messageInsert = isListBox ? LB_INSERTSTRING : CB_INSERTSTRING;
+        const UINT messageCount = isListBox ? LB_GETCOUNT : CB_GETCOUNT;
+        const UINT messageGetSel = isListBox ? LB_GETCURSEL : CB_GETCURSEL;
+        const UINT messageSetSel = isListBox ? LB_SETCURSEL : CB_SETCURSEL;
+        const int count = static_cast<int>(SendMessageW(runtime->hwnd, messageCount, 0, 0));
+        if (index >= count) return false;
+        const int selected = static_cast<int>(SendMessageW(runtime->hwnd, messageGetSel, 0, 0));
+        if (SendMessageW(runtime->hwnd, messageDelete, static_cast<WPARAM>(index), 0) == LB_ERR) return false;
+        const int inserted = static_cast<int>(SendMessageW(runtime->hwnd, messageInsert, static_cast<WPARAM>(index), reinterpret_cast<LPARAM>(text)));
+        if (inserted == LB_ERR) return false;
+        if (selected == index) SendMessageW(runtime->hwnd, messageSetSel, static_cast<WPARAM>(inserted), 0);
+        else if (selected > index) SendMessageW(runtime->hwnd, messageSetSel, static_cast<WPARAM>(selected - 1), 0);
+        InvalidateRect(runtime->hwnd, nullptr, FALSE);
+        if (runtime->frameHwnd) InvalidateRect(runtime->frameHwnd, nullptr, FALSE);
+        return true;
+    }
+    bool 控件_修改项目(const wchar_t* controlName, int index, const std::wstring& text) {
+        return 控件_修改项目(controlName, index, text.c_str());
+    }
+    std::wstring 控件_取项目文本(const wchar_t* controlName, int index) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || index < 0) return L"";
+        const bool isListBox = IsType(*control, L"ListBox");
+        const bool isComboBox = IsType(*control, L"ComboBox") || IsType(*control, L"ComboBoxEx");
+        if (!isListBox && !isComboBox) return L"";
+        const UINT messageLength = isListBox ? LB_GETTEXTLEN : CB_GETLBTEXTLEN;
+        const UINT messageText = isListBox ? LB_GETTEXT : CB_GETLBTEXT;
+        const int length = static_cast<int>(SendMessageW(runtime->hwnd, messageLength, static_cast<WPARAM>(index), 0));
+        if (length < 0 || length > 32767) return L"";
+        std::wstring value(static_cast<size_t>(length) + 1, L'\\0');
+        if (SendMessageW(runtime->hwnd, messageText, static_cast<WPARAM>(index), reinterpret_cast<LPARAM>(value.data())) == LB_ERR) return L"";
+        value.resize(static_cast<size_t>(length));
+        return value;
+    }
+    int 控件_取项目数量(const wchar_t* controlName) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control) return 0;
+        if (IsType(*control, L"ListBox")) return static_cast<int>(SendMessageW(runtime->hwnd, LB_GETCOUNT, 0, 0));
+        if (IsType(*control, L"ComboBox") || IsType(*control, L"ComboBoxEx")) return static_cast<int>(SendMessageW(runtime->hwnd, CB_GETCOUNT, 0, 0));
+        return 0;
+    }
+    bool 控件_设置表项高度(const wchar_t* controlName, int itemHeight) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || itemHeight < 1) return false;
+        const bool isListBox = IsType(*control, L"ListBox");
+        const bool isComboBox = IsType(*control, L"ComboBox");
+        if (!isListBox && !isComboBox) return false;
+        runtime->hasItemHeightOverride = true;
+        runtime->itemHeightOverride = itemHeight;
+        if (isListBox) SendMessageW(runtime->hwnd, LB_SETITEMHEIGHT, 0, ScaleForDpi(itemHeight + control->listItemSpacing, dpi_));
+        else SendMessageW(runtime->hwnd, CB_SETITEMHEIGHT, 0, ScaleForDpi(itemHeight, dpi_));
+        InvalidateRect(runtime->hwnd, nullptr, TRUE);
+        if (runtime->frameHwnd) InvalidateRect(runtime->frameHwnd, nullptr, TRUE);
+        return true;
+    }
+    bool 控件_设置选中颜色(const wchar_t* controlName, const wchar_t* startColor, const wchar_t* endColor, const wchar_t* borderColor) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control) return false;
+        if (!IsType(*control, L"ListBox") && !IsType(*control, L"ComboBox")) return false;
+        COLORREF start = runtime->hasSelectionColorOverride ? runtime->selectionStartOverride : control->listSelectionStart;
+        COLORREF end = runtime->hasSelectionColorOverride ? runtime->selectionEndOverride : control->listSelectionEnd;
+        COLORREF border = runtime->hasSelectionColorOverride ? runtime->selectionBorderOverride : control->listSelectionBorder;
+        if (startColor && startColor[0] && !ParseRuntimeColor(startColor, start)) return false;
+        if (endColor && endColor[0] && !ParseRuntimeColor(endColor, end)) return false;
+        if (borderColor && borderColor[0] && !ParseRuntimeColor(borderColor, border)) return false;
+        runtime->hasSelectionColorOverride = true;
+        runtime->selectionStartOverride = start;
+        runtime->selectionEndOverride = end;
+        runtime->selectionBorderOverride = border;
+        InvalidateRect(runtime->hwnd, nullptr, TRUE);
+        if (runtime->frameHwnd) InvalidateRect(runtime->frameHwnd, nullptr, TRUE);
+        return true;
+    }
+    bool 控件_设置选中颜色(const wchar_t* controlName, const std::wstring& startColor, const std::wstring& endColor, const std::wstring& borderColor) {
+        return 控件_设置选中颜色(controlName, startColor.c_str(), endColor.c_str(), borderColor.c_str());
+    }
+    bool 控件_设置选中标记颜色(const wchar_t* controlName, const wchar_t* selectedColor, const wchar_t* markColor) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control) return false;
+        if (!IsType(*control, L"CheckBox") && !IsType(*control, L"RadioButton")) return false;
+        COLORREF color = runtime->hasMarkColorOverride ? runtime->markColorOverride : control->selectedColor;
+        COLORREF mark = runtime->hasMarkColorOverride ? runtime->markTickOverride : control->selectedMarkColor;
+        if (selectedColor && selectedColor[0] && !ParseRuntimeColor(selectedColor, color)) return false;
+        if (markColor && markColor[0] && !ParseRuntimeColor(markColor, mark)) return false;
+        runtime->hasMarkColorOverride = true;
+        runtime->markColorOverride = color;
+        runtime->markTickOverride = mark;
+        InvalidateRect(runtime->hwnd, nullptr, TRUE);
+        if (runtime->frameHwnd) InvalidateRect(runtime->frameHwnd, nullptr, TRUE);
+        return true;
+    }
+    bool 控件_设置选中标记颜色(const wchar_t* controlName, const std::wstring& selectedColor, const std::wstring& markColor) {
+        return 控件_设置选中标记颜色(controlName, selectedColor.c_str(), markColor.c_str());
+    }
+    bool 控件_设置边框(const wchar_t* controlName, bool visible, int borderWidth, const wchar_t* borderColor) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control) return false;
+        const bool supported = IsType(*control, L"ListBox") || IsType(*control, L"GroupBox") || IsType(*control, L"ComboBox");
+        if (!supported) return false;
+        COLORREF color = runtime->hasBorderOverride ? runtime->borderColorOverride : control->listBorderColor;
+        if (borderColor && borderColor[0] && !ParseRuntimeColor(borderColor, color)) return false;
+        runtime->hasBorderOverride = true;
+        runtime->borderWidthOverride = visible ? std::max(0, borderWidth) : 0;
+        runtime->borderColorOverride = color;
+        InvalidateRect(runtime->hwnd, nullptr, TRUE);
+        if (runtime->frameHwnd) InvalidateRect(runtime->frameHwnd, nullptr, TRUE);
+        return true;
+    }
+    bool 控件_设置边框(const wchar_t* controlName, bool visible, int borderWidth, const std::wstring& borderColor) {
+        return 控件_设置边框(controlName, visible, borderWidth, borderColor.c_str());
+    }
+    bool 控件_设置标题对齐(const wchar_t* controlName, int alignment) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control) return false;
+        if (!IsType(*control, L"GroupBox") || alignment < 0 || alignment > 2) return false;
+        runtime->hasTitleAlignOverride = true;
+        runtime->titleAlignOverride = alignment;
+        InvalidateRect(runtime->hwnd, nullptr, TRUE);
+        return true;
+    }
+    bool 控件_设置文本对齐(const wchar_t* controlName, int alignment) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control) return false;
+        if (alignment < 0 || alignment > 2) return false;
+        // 仅自绘通道支持：编辑框/标签的对齐是创建期窗口样式，运行期改写不受 Win32 保证。
+        if (!IsType(*control, L"ListBox") && !IsType(*control, L"ComboBox")) return false;
+        runtime->hasTextAlignOverride = true;
+        runtime->textAlignOverride = alignment;
+        InvalidateRect(runtime->hwnd, nullptr, TRUE);
+        if (runtime->frameHwnd) InvalidateRect(runtime->frameHwnd, nullptr, TRUE);
+        return true;
+    }
+    bool 控件_设置填充方式(const wchar_t* controlName, int mode) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control) return false;
+        if (mode < 0 || mode > 3) return false;
+        if (IsType(*control, L"Image")) {
+            runtime->hasStretchOverride = true;
+            runtime->stretchOverride = mode;
+            if (!runtime->imageSourcePath.empty()) {
+                HBITMAP bitmap = LoadWicBitmap(runtime->imageSourcePath.c_str(), ScaleForDpi(control->width, dpi_), ScaleForDpi(control->height, dpi_), ResolveStretchOption(*control, *runtime));
+                if (bitmap) {
+                    HGDIOBJ previous = reinterpret_cast<HGDIOBJ>(SendMessageW(runtime->hwnd, STM_SETIMAGE, IMAGE_BITMAP, reinterpret_cast<LPARAM>(bitmap)));
+                    if (previous && previous != bitmap) DeleteObject(previous);
+                    runtime->resource = bitmap;
+                }
+            }
+            InvalidateRect(runtime->hwnd, nullptr, TRUE);
+            return true;
+        }
+        if (IsType(*control, L"AnimatedImage")) {
+            runtime->hasStretchOverride = true;
+            runtime->stretchOverride = mode;
+            // 帧位图按旧填充方式缓存：清空后随绘制用新方式重建。
+            ReleaseAnimatedFrames(*runtime);
+            InvalidateRect(runtime->hwnd, nullptr, TRUE);
+            return true;
+        }
+        return false;
+    }
+    bool 控件_播放(const wchar_t* controlName) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || !IsType(*control, L"AnimatedImage")) return false;
+        if (!runtime->animatedImage || runtime->animatedFrameCount <= 1) return false;
+        if (runtime->animatedTimer) return true;
+        runtime->animatedTimer = 0x4C470000u + static_cast<UINT_PTR>(control->id);
+        const UINT delay = runtime->animatedFrameDelays.empty() ? 100u
+            : runtime->animatedFrameDelays[runtime->animatedFrame % runtime->animatedFrameDelays.size()];
+        SetTimer(hwnd_, runtime->animatedTimer, delay, nullptr);
+        return true;
+    }
+    bool 控件_暂停(const wchar_t* controlName) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || !IsType(*control, L"AnimatedImage")) return false;
+        if (!runtime->animatedTimer) return true;
+        KillTimer(hwnd_, runtime->animatedTimer);
+        runtime->animatedTimer = 0;
+        return true;
+    }
+    bool 控件_设置循环播放(const wchar_t* controlName, bool loop) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || !IsType(*control, L"AnimatedImage")) return false;
+        runtime->animatedLoop = loop;
+        return true;
+    }
+    bool 滑块_置刻度间隔(const wchar_t* controlName, int tickFrequency) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || !IsType(*control, L"TrackBar")) return false;
+        SendMessageW(runtime->hwnd, TBM_SETTICFREQ, static_cast<WPARAM>(std::max(1, tickFrequency)), 0);
+        return true;
+    }
+    int 滑块_取刻度间隔(const wchar_t* controlName) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || !IsType(*control, L"TrackBar")) return 0;
+        // Win32 没有 TBM_GETTICFREQ 读取消息；滑块刻度间隔由设计器属性与 置刻度间隔 维护，读取不提供。
+        return control->selectedIndex > 0 ? control->selectedIndex : 0;
+    }
+    bool 日期时间选择器_置日期(const wchar_t* controlName, const wchar_t* dateText) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || !IsType(*control, L"DateTimePicker")) return false;
+        SYSTEMTIME date = {};
+        if (!ParseDateTimeValue(dateText, control->option1, date)) return false;
+        return SendMessageW(runtime->hwnd, DTM_SETSYSTEMTIME, GDT_VALID, reinterpret_cast<LPARAM>(&date)) != 0;
+    }
+    bool 日期时间选择器_置日期(const wchar_t* controlName, const std::wstring& dateText) {
+        return 日期时间选择器_置日期(controlName, dateText.c_str());
+    }
+    std::wstring 日期时间选择器_取日期(const wchar_t* controlName) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || !IsType(*control, L"DateTimePicker")) return L"";
+        SYSTEMTIME date = {};
+        if (SendMessageW(runtime->hwnd, DTM_GETSYSTEMTIME, 0, reinterpret_cast<LPARAM>(&date)) != GDT_VALID) return L"";
+        wchar_t text[32] = {};
+        swprintf_s(text, L"%04u-%02u-%02u %02u:%02u:%02u", date.wYear, date.wMonth, date.wDay, date.wHour, date.wMinute, date.wSecond);
+        return text;
+    }
+    bool 日期时间选择器_置显示格式(const wchar_t* controlName, const wchar_t* formatText) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || !IsType(*control, L"DateTimePicker")) return false;
+        SendMessageW(runtime->hwnd, DTM_SETFORMATW, 0, (formatText && formatText[0]) ? reinterpret_cast<LPARAM>(formatText) : static_cast<LPARAM>(0));
+        return true;
+    }
+    bool 日期时间选择器_置显示格式(const wchar_t* controlName, const std::wstring& formatText) {
+        return 日期时间选择器_置显示格式(controlName, formatText.c_str());
+    }
+    bool 月历_置日期(const wchar_t* controlName, const wchar_t* dateText) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || !IsType(*control, L"MonthCalendar")) return false;
+        SYSTEMTIME date = {};
+        if (!ParseDateTimeValue(dateText, L"", date)) return false;
+        if (control->flags & CF_MULTI_SELECT) {
+            SYSTEMTIME range[2] = { date, date };
+            return SendMessageW(runtime->hwnd, MCM_SETSELRANGE, 0, reinterpret_cast<LPARAM>(range)) != 0;
+        }
+        return SendMessageW(runtime->hwnd, MCM_SETCURSEL, 0, reinterpret_cast<LPARAM>(&date)) != 0;
+    }
+    bool 月历_置日期(const wchar_t* controlName, const std::wstring& dateText) {
+        return 月历_置日期(controlName, dateText.c_str());
+    }
+    std::wstring 月历_取日期(const wchar_t* controlName) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || !IsType(*control, L"MonthCalendar")) return L"";
+        SYSTEMTIME date = {};
+        if (control->flags & CF_MULTI_SELECT) {
+            SYSTEMTIME range[2] = {};
+            if (!SendMessageW(runtime->hwnd, MCM_GETSELRANGE, 0, reinterpret_cast<LPARAM>(range))) return L"";
+            date = range[0];
+        } else {
+            if (!SendMessageW(runtime->hwnd, MCM_GETCURSEL, 0, reinterpret_cast<LPARAM>(&date))) return L"";
+        }
+        wchar_t text[16] = {};
+        swprintf_s(text, L"%04u-%02u-%02u", date.wYear, date.wMonth, date.wDay);
+        return text;
+    }
+    bool 月历_置选中范围(const wchar_t* controlName, const wchar_t* startDate, const wchar_t* endDate) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || !IsType(*control, L"MonthCalendar")) return false;
+        SYSTEMTIME start = {}, end = {};
+        if (!ParseDateTimeValue(startDate, L"", start) || !ParseDateTimeValue(endDate, L"", end)) return false;
+        FILETIME startFileTime = {}, endFileTime = {};
+        SystemTimeToFileTime(&start, &startFileTime);
+        SystemTimeToFileTime(&end, &endFileTime);
+        if (CompareFileTime(&startFileTime, &endFileTime) > 0) { const SYSTEMTIME swapped = start; start = end; end = swapped; }
+        SYSTEMTIME range[2] = { start, end };
+        return SendMessageW(runtime->hwnd, MCM_SETSELRANGE, 0, reinterpret_cast<LPARAM>(range)) != 0;
+    }
+    bool 月历_置选中范围(const wchar_t* controlName, const std::wstring& startDate, const std::wstring& endDate) {
+        return 月历_置选中范围(controlName, startDate.c_str(), endDate.c_str());
+    }
+    bool 富文本框_置RTF文本(const wchar_t* controlName, const wchar_t* rtfText) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || !IsType(*control, L"RichEdit")) return false;
+        if (!rtfText || !rtfText[0]) { SetWindowTextW(runtime->hwnd, L""); return true; }
+        RichEditStreamState state;
+        state.bytes = LingCppWideToUtf8(rtfText);
+        EDITSTREAM stream = {}; stream.dwCookie = reinterpret_cast<DWORD_PTR>(&state); stream.pfnCallback = StreamRichEditData;
+        SendMessageW(runtime->hwnd, EM_STREAMIN, SF_RTF, reinterpret_cast<LPARAM>(&stream));
+        return true;
+    }
+    bool 富文本框_置RTF文本(const wchar_t* controlName, const std::wstring& rtfText) {
+        return 富文本框_置RTF文本(controlName, rtfText.c_str());
+    }
+    std::wstring 富文本框_取RTF文本(const wchar_t* controlName) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || !IsType(*control, L"RichEdit")) return L"";
+        std::string output;
+        EDITSTREAM stream = {}; stream.dwCookie = reinterpret_cast<DWORD_PTR>(&output); stream.pfnCallback = CollectRichEditData;
+        SendMessageW(runtime->hwnd, EM_STREAMOUT, SF_RTF, reinterpret_cast<LPARAM>(&stream));
+        return LingCppUtf8ToWide(output.c_str());
     }
 ${DATA_GRID_NATIVE_METHODS}
 
@@ -26334,12 +26763,14 @@ private:
         GetClientRect(hwnd, &clientRect);
         HFONT oldFont = runtime.font ? reinterpret_cast<HFONT>(SelectObject(hdc, runtime.font)) : nullptr;
         SetBkMode(hdc, TRANSPARENT);
+        const wchar_t* placeholderText = runtime.hasPlaceholderOverride ? runtime.placeholderOverride.c_str() : control.data;
+        if (!placeholderText || !placeholderText[0]) { if (!targetDc) ReleaseDC(hwnd, hdc); return; }
         SetTextColor(hdc, BlendColor(control.foreground, control.background, 55));
         RECT textRect = clientRect;
         textRect.left += ScaleForDpi(10, dpi_);
         textRect.top += ScaleForDpi(8, dpi_);
         textRect.right -= ScaleForDpi(10, dpi_);
-        DrawTextW(hdc, control.data, -1, &textRect, DT_LEFT | DT_TOP | DT_NOPREFIX | DT_END_ELLIPSIS);
+        DrawTextW(hdc, placeholderText, -1, &textRect, DT_LEFT | DT_TOP | DT_NOPREFIX | DT_END_ELLIPSIS);
         if (oldFont) SelectObject(hdc, oldFont);
         if (!targetDc) ReleaseDC(hwnd, hdc);
     }
@@ -26496,8 +26927,8 @@ private:
             RECT box = { item->rcItem.left, boxTop, item->rcItem.left + boxSize, boxTop + boxSize };
             // 控件本体使用窗口/控件背景，不能与勾选标记共用深色前景。
             // 否则未选中的单选框会看起来像实心圆，复选框勾选标记也会被底色吞掉。
-            COLORREF selectedColor = enabled ? control->selectedColor : BlendColor(control->selectedColor, surrounding, 55);
-            COLORREF selectedMarkColor = enabled ? control->selectedMarkColor : BlendColor(control->selectedMarkColor, surrounding, 55);
+            COLORREF selectedColor = enabled ? ResolveSelectedColor(*control, *runtime) : BlendColor(ResolveSelectedColor(*control, *runtime), surrounding, 55);
+            COLORREF selectedMarkColor = enabled ? ResolveSelectedMarkColor(*control, *runtime) : BlendColor(ResolveSelectedMarkColor(*control, *runtime), surrounding, 55);
             int checkState = static_cast<int>(SendMessageW(item->hwndItem, BM_GETCHECK, 0, 0));
             HBRUSH boxBrush = CreateSolidBrush(checkState != BST_UNCHECKED ? selectedColor : rowBackground);
             COLORREF boxBorder = enabled
@@ -26614,15 +27045,15 @@ private:
                 );
                 Gdiplus::GraphicsPath path;
                 AddRoundedRectanglePath(path, bounds, static_cast<float>(ScaleForDpi(control->listSelectionCornerRadius, dpi_)));
-                COLORREF start = enabled ? control->listSelectionStart : BlendColor(control->listSelectionStart, control->background, 55);
-                COLORREF end = enabled ? control->listSelectionEnd : BlendColor(control->listSelectionEnd, control->background, 55);
+                COLORREF start = enabled ? ResolveSelectionStart(*control, *runtime) : BlendColor(ResolveSelectionStart(*control, *runtime), control->background, 55);
+                COLORREF end = enabled ? ResolveSelectionEnd(*control, *runtime) : BlendColor(ResolveSelectionEnd(*control, *runtime), control->background, 55);
                 Gdiplus::PointF gradientStart(bounds.X, bounds.Y);
                 Gdiplus::PointF gradientEnd(bounds.GetRight(), bounds.Y);
                 Gdiplus::LinearGradientBrush selectionBrush(gradientStart, gradientEnd, ToGdiPlusColor(start), ToGdiPlusColor(end));
                 graphics.FillPath(&selectionBrush, &path);
                 COLORREF selectionBorder = enabled
-                    ? control->listSelectionBorder
-                    : BlendColor(control->listSelectionBorder, control->background, 55);
+                    ? ResolveSelectionBorder(*control, *runtime)
+                    : BlendColor(ResolveSelectionBorder(*control, *runtime), control->background, 55);
                 Gdiplus::Pen borderPen(ToGdiPlusColor(selectionBorder), static_cast<float>(std::max(1, ScaleForDpi(1, dpi_))));
                 graphics.DrawPath(&borderPen, &path);
             }
@@ -26639,8 +27070,7 @@ private:
                 RECT textRect = item->rcItem;
                 textRect.left += ScaleForDpi(10, dpi_);
                 textRect.right -= ScaleForDpi(8, dpi_);
-                UINT textFormat = (control->flags & CF_ALIGN_CENTER) ? DT_CENTER
-                    : (control->flags & CF_ALIGN_RIGHT) ? DT_RIGHT : DT_LEFT;
+                UINT textFormat = ResolveDrawTextAlign(*control, *runtime);
                 DrawTextW(item->hDC, text.data(), -1, &textRect, textFormat | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
                 if (oldFont) SelectObject(item->hDC, oldFont);
             }
@@ -26732,14 +27162,14 @@ private:
         int outerPadding = ScaleForDpi(8, dpi_);
         int titleHeight = std::max(ScaleForDpi(control.fontSize, dpi_), static_cast<int>(titleRect.bottom - titleRect.top));
         int frameTop = std::max(1, titleHeight / 2);
-        int borderWidth = std::clamp(ScaleForDpi(control.listBorderWidth, dpi_), 0,
+        int borderWidth = std::clamp(ScaleForDpi(ResolveBorderWidth(control, runtime), dpi_), 0,
             std::max(0, std::min(static_cast<int>(clientRect.right - clientRect.left), static_cast<int>(clientRect.bottom - clientRect.top)) / 2));
         if (borderWidth > 0) {
             RECT frameRect = clientRect;
             frameRect.top += frameTop;
             frameRect.right = std::max(frameRect.left, frameRect.right - 1);
             frameRect.bottom = std::max(frameRect.top, frameRect.bottom - 1);
-            HPEN borderPen = CreatePen(PS_SOLID, borderWidth, control.listBorderColor);
+            HPEN borderPen = CreatePen(PS_SOLID, borderWidth, ResolveBorderColor(control, runtime));
             HGDIOBJ oldPen = SelectObject(hdc, borderPen);
             HGDIOBJ oldBrush = SelectObject(hdc, GetStockObject(NULL_BRUSH));
             Rectangle(hdc, frameRect.left, frameRect.top, frameRect.right, frameRect.bottom);
@@ -26751,8 +27181,11 @@ private:
         int clientWidth = std::max(0, static_cast<int>(clientRect.right - clientRect.left));
         int titleWidth = std::min(clientWidth, static_cast<int>(titleRect.right - titleRect.left) + horizontalPadding * 2);
         int titleLeft = outerPadding;
-        if (TextEquals(control.option1, L"center")) titleLeft = std::max(0, (clientWidth - titleWidth) / 2);
-        else if (TextEquals(control.option1, L"right")) titleLeft = std::max(0, clientWidth - titleWidth - outerPadding);
+        const wchar_t* titleAlign = runtime.hasTitleAlignOverride
+            ? (runtime.titleAlignOverride == 1 ? L"center" : runtime.titleAlignOverride == 2 ? L"right" : L"left")
+            : control.option1;
+        if (TextEquals(titleAlign, L"center")) titleLeft = std::max(0, (clientWidth - titleWidth) / 2);
+        else if (TextEquals(titleAlign, L"right")) titleLeft = std::max(0, clientWidth - titleWidth - outerPadding);
         titleRect.left = titleLeft;
         titleRect.top = 0;
         titleRect.right = std::min(static_cast<int>(clientRect.right), titleLeft + titleWidth);
@@ -26841,8 +27274,8 @@ private:
                 Gdiplus::PointF gradientEnd(bounds.GetRight(), bounds.Y);
                 Gdiplus::LinearGradientBrush selectionBrush(
                     gradientStart, gradientEnd,
-                    ToGdiPlusColor(enabled ? control->listSelectionStart : BlendColor(control->listSelectionStart, control->background, 55)),
-                    ToGdiPlusColor(enabled ? control->listSelectionEnd : BlendColor(control->listSelectionEnd, control->background, 55))
+                    ToGdiPlusColor(enabled ? ResolveSelectionStart(*control, *runtime) : BlendColor(ResolveSelectionStart(*control, *runtime), control->background, 55)),
+                    ToGdiPlusColor(enabled ? ResolveSelectionEnd(*control, *runtime) : BlendColor(ResolveSelectionEnd(*control, *runtime), control->background, 55))
                 );
                 graphics.FillRectangle(&selectionBrush, bounds);
             }
@@ -26862,7 +27295,7 @@ private:
                 RECT textRect = item->rcItem;
                 textRect.left += ScaleForDpi(collapsedSelection ? 8 : 10, dpi_);
                 textRect.right -= ScaleForDpi(6, dpi_);
-                DrawTextW(item->hDC, text.data(), -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+                DrawTextW(item->hDC, text.data(), -1, &textRect, ResolveDrawTextAlign(*control, *runtime) | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
                 if (oldFont) SelectObject(item->hDC, oldFont);
             }
         }
@@ -26973,6 +27406,7 @@ private:
 
     void PaintCollapsedComboBox(HWND hwnd, HDC hdc, const ControlSpec& control) {
         if (!hdc) return;
+        RuntimeControl* runtime = FindRuntimeControl(control.id);
         RECT clientRect = {};
         GetClientRect(hwnd, &clientRect);
         RECT collapsedRect = clientRect;
@@ -26992,7 +27426,10 @@ private:
         bool enabled = IsWindowEnabled(hwnd) != FALSE;
         COLORREF background = enabled ? control.background : BlendColor(control.background, surrounding, 45);
         COLORREF foreground = enabled ? control.foreground : BlendColor(control.foreground, background, 55);
-        COLORREF border = enabled ? control.listBorderColor : BlendColor(control.listBorderColor, background, 55);
+        const bool borderVisible = ResolveBorderWidth(control, *runtime) > 0;
+        COLORREF border = borderVisible
+            ? (enabled ? ResolveBorderColor(control, *runtime) : BlendColor(ResolveBorderColor(control, *runtime), background, 55))
+            : background;
         int clientWidth = static_cast<int>(collapsedRect.right - collapsedRect.left);
         int clientHeight = static_cast<int>(collapsedRect.bottom - collapsedRect.top);
         int radius = std::clamp(ScaleForDpi(control.listSelectionCornerRadius, dpi_), 0,
@@ -27024,11 +27461,10 @@ private:
                 selectedText.assign(text.data());
             }
         }
-        RuntimeControl* runtime = FindRuntimeControl(control.id);
         HFONT oldFont = runtime && runtime->font ? reinterpret_cast<HFONT>(SelectObject(hdc, runtime->font)) : nullptr;
         SetBkMode(hdc, TRANSPARENT);
         SetTextColor(hdc, foreground);
-        DrawTextW(hdc, selectedText.c_str(), -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+        DrawTextW(hdc, selectedText.c_str(), -1, &textRect, (runtime ? ResolveDrawTextAlign(control, *runtime) : DT_LEFT) | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
         if (oldFont) SelectObject(hdc, oldFont);
 
         int centerX = collapsedRect.right - buttonWidth / 2;
@@ -27518,6 +27954,60 @@ private:
         return DefSubclassProc(hwnd, message, wParam, lParam);
     }
 
+    int ResolveListItemHeight(const ControlSpec& control, const RuntimeControl& runtime) const {
+        return runtime.hasItemHeightOverride ? std::max(1, runtime.itemHeightOverride) : control.listItemHeight;
+    }
+
+    int ResolveBorderWidth(const ControlSpec& control, const RuntimeControl& runtime) const {
+        return runtime.hasBorderOverride ? std::max(0, runtime.borderWidthOverride) : control.listBorderWidth;
+    }
+
+    COLORREF ResolveBorderColor(const ControlSpec& control, const RuntimeControl& runtime) const {
+        return runtime.hasBorderOverride ? runtime.borderColorOverride : control.listBorderColor;
+    }
+
+    // 图片/动态图像的填充方式槽（option1）运行期覆盖：none/fill/uniform/uniformToFill。
+    static const wchar_t* ResolveStretchOption(const ControlSpec& control, const RuntimeControl& runtime) {
+        if (!runtime.hasStretchOverride) return control.option1;
+        switch (runtime.stretchOverride) {
+        case 1: return L"fill";
+        case 2: return L"uniform";
+        case 3: return L"uniformToFill";
+        default: return L"none";
+        }
+    }
+
+    // 自绘通道文本对齐：优先运行期覆盖（0=左 1=中 2=右），否则回退创建期 CF_ALIGN 标志。
+    UINT ResolveDrawTextAlign(const ControlSpec& control, const RuntimeControl& runtime) const {
+        if (runtime.hasTextAlignOverride) {
+            if (runtime.textAlignOverride == 1) return DT_CENTER;
+            if (runtime.textAlignOverride == 2) return DT_RIGHT;
+            return DT_LEFT;
+        }
+        return (control.flags & CF_ALIGN_CENTER) ? DT_CENTER
+            : (control.flags & CF_ALIGN_RIGHT) ? DT_RIGHT : DT_LEFT;
+    }
+
+    COLORREF ResolveSelectionStart(const ControlSpec& control, const RuntimeControl& runtime) const {
+        return runtime.hasSelectionColorOverride ? runtime.selectionStartOverride : control.listSelectionStart;
+    }
+
+    COLORREF ResolveSelectionEnd(const ControlSpec& control, const RuntimeControl& runtime) const {
+        return runtime.hasSelectionColorOverride ? runtime.selectionEndOverride : control.listSelectionEnd;
+    }
+
+    COLORREF ResolveSelectionBorder(const ControlSpec& control, const RuntimeControl& runtime) const {
+        return runtime.hasSelectionColorOverride ? runtime.selectionBorderOverride : control.listSelectionBorder;
+    }
+
+    COLORREF ResolveSelectedColor(const ControlSpec& control, const RuntimeControl& runtime) const {
+        return runtime.hasMarkColorOverride ? runtime.markColorOverride : control.selectedColor;
+    }
+
+    COLORREF ResolveSelectedMarkColor(const ControlSpec& control, const RuntimeControl& runtime) const {
+        return runtime.hasMarkColorOverride ? runtime.markTickOverride : control.selectedMarkColor;
+    }
+
     int GetListBoxPageSize(const ControlSpec& control, const RuntimeControl& runtime) const {
         if (!runtime.frameHwnd) return 1;
         RECT rect = {}; GetClientRect(runtime.frameHwnd, &rect);
@@ -27527,7 +28017,7 @@ private:
         int contentPadding = std::clamp(ScaleForDpi(control.listContentPadding, dpi_), 0, std::min(frameWidth, frameHeight) / 2);
         int contentInset = std::clamp(borderWidth + contentPadding, 0, std::min(frameWidth, frameHeight) / 2);
         int contentHeight = std::max(1, frameHeight - contentInset * 2);
-        int itemHeight = std::max(1, ScaleForDpi(control.listItemHeight, dpi_));
+        int itemHeight = std::max(1, ScaleForDpi(ResolveListItemHeight(control, runtime), dpi_));
         int itemSpacing = std::max(0, ScaleForDpi(control.listItemSpacing, dpi_));
         return std::max(1, contentHeight / std::max(1, itemHeight + itemSpacing));
     }
@@ -27668,9 +28158,9 @@ private:
             }
             if (drawDc) {
                 RECT rect = {}; GetClientRect(hwnd, &rect);
-                int borderWidth = std::clamp(ScaleForDpi(control->listBorderWidth, self->dpi_), 0,
+                int borderWidth = std::clamp(ScaleForDpi(self->ResolveBorderWidth(*control, *runtime), self->dpi_), 0,
                     std::min(static_cast<int>(rect.right - rect.left), static_cast<int>(rect.bottom - rect.top)) / 2);
-                HBRUSH borderBrush = CreateSolidBrush(control->listBorderColor);
+                HBRUSH borderBrush = CreateSolidBrush(self->ResolveBorderColor(*control, *runtime));
                 FillRect(drawDc, &rect, borderBrush);
                 DeleteObject(borderBrush);
                 if (borderWidth == 0 && runtime->brush) FillRect(drawDc, &rect, runtime->brush);
@@ -27864,9 +28354,9 @@ private:
             }
             if (drawDc) {
                 RECT rect = {}; GetClientRect(hwnd, &rect);
-                int borderWidth = std::clamp(ScaleForDpi(control->listBorderWidth, self->dpi_), 0,
+                int borderWidth = std::clamp(ScaleForDpi(self->ResolveBorderWidth(*control, *runtime), self->dpi_), 0,
                     std::min(static_cast<int>(rect.right - rect.left), static_cast<int>(rect.bottom - rect.top)) / 2);
-                HBRUSH borderBrush = CreateSolidBrush(control->listBorderColor);
+                HBRUSH borderBrush = CreateSolidBrush(self->ResolveBorderColor(*control, *runtime));
                 FillRect(drawDc, &rect, borderBrush);
                 DeleteObject(borderBrush);
                 if (borderWidth == 0) {
@@ -28085,9 +28575,9 @@ private:
             if (drawDc) {
                 RECT rect = {};
                 GetClientRect(hwnd, &rect);
-                int borderWidth = std::clamp(ScaleForDpi(control->listBorderWidth, self->dpi_), 0,
+                int borderWidth = std::clamp(ScaleForDpi(self->ResolveBorderWidth(*control, *runtime), self->dpi_), 0,
                     std::min(static_cast<int>(rect.right - rect.left), static_cast<int>(rect.bottom - rect.top)) / 2);
-                HBRUSH borderBrush = CreateSolidBrush(control->listBorderColor);
+                HBRUSH borderBrush = CreateSolidBrush(self->ResolveBorderColor(*control, *runtime));
                 FillRect(drawDc, &rect, borderWidth > 0 ? borderBrush : (runtime->brush ? runtime->brush : self->windowBrush_));
                 DeleteObject(borderBrush);
                 if (borderWidth > 0) {
@@ -28169,7 +28659,8 @@ private:
                 if (self->HandleDataGridMessage(*runtime, *control, hwnd, message, wParam, lParam, dataGridResult)) return dataGridResult;
             }
             if (IsType(*control, L"TextBox") && (control->flags & CF_MULTILINE)
-                && control->data && control->data[0]
+                && ((runtime->hasPlaceholderOverride && !runtime->placeholderOverride.empty())
+                    || (control->data && control->data[0]))
                 && (message == WM_PAINT || message == WM_PRINTCLIENT)) {
                 // 多行 EDIT 不支持 EM_SETCUEBANNER（单行走 cue banner 通道）：占位提示在控件
                 // 为空时自绘成灰字，写入或清空文本后随重绘自动出现/消失（控件_设置文本不污染）。
@@ -29099,11 +29590,14 @@ private:
             RuntimeControl* runtime = FindRuntimeControl(control.id);
             if (runtime) InitializeAnimatedImage(control, *runtime);
         } else if (IsType(control, L"Image") && control.data && control.data[0]) {
-            HBITMAP bitmap = LoadWicBitmap(control.data, ScaleForDpi(control.width, dpi_), ScaleForDpi(control.height, dpi_), control.option1);
+            HBITMAP bitmap = LoadWicBitmap(control.data, ScaleForDpi(control.width, dpi_), ScaleForDpi(control.height, dpi_), ResolveStretchOption(control, runtimeControls_.back()));
             if (bitmap) {
                 SendMessageW(child, STM_SETIMAGE, IMAGE_BITMAP, reinterpret_cast<LPARAM>(bitmap));
                 RuntimeControl* runtime = FindRuntimeControl(control.id);
-                if (runtime) runtime->resource = bitmap;
+                if (runtime) {
+                    runtime->resource = bitmap;
+                    runtime->imageSourcePath = control.data;
+                }
             }
         } else if (IsType(control, L"Label") && control.data && control.data[0] && TextEquals(control.option1, L"bitmap")) {
             HBITMAP bitmap = LoadWicBitmap(control.data, ScaleForDpi(control.width, dpi_), ScaleForDpi(control.height, dpi_), L"uniform");

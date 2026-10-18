@@ -757,7 +757,7 @@ test('IP 地址框在设计器和原生运行时应用颜色、垂直对齐与�
   assert.match(cpp, /TextEquals\(control.option1, L"bottom"\)/u);
   assert.match(cpp, /void LayoutIPAddressControl\(const ControlSpec& control, RuntimeControl& runtime\)/u);
   assert.match(cpp, /static LRESULT CALLBACK IPAddressFrameSubclassProc/u);
-  assert.match(cpp, /CreateSolidBrush\(control->listBorderColor\)/u);
+  assert.match(cpp, /CreateSolidBrush\(self->ResolveBorderColor\(\*control, \*runtime\)\)/u);
   assert.match(cpp, /InflateRect\(&contentRect, -borderWidth, -borderWidth\)/u);
   assert.match(cpp, /IsType\(control, L"IPAddress"\) \? IPAddressFrameSubclassProc/u);
   assert.match(cpp, /LayoutIPAddressControl\(control, runtime\)/u);
@@ -1439,9 +1439,10 @@ test('Win32 分组框沿用文字颜色并支持标题对齐和边框外观', ()
   assert.match(cpp, /L"GroupBox"[^\n]+L"right"/u);
   assert.match(cpp, /void PaintGroupBox\(HWND hwnd, HDC hdc, const ControlSpec& control, RuntimeControl& runtime\)/u);
   assert.match(cpp, /SetTextColor\(hdc, IsWindowEnabled\(hwnd\) \? control\.foreground/u);
-  assert.match(cpp, /CreatePen\(PS_SOLID, borderWidth, control\.listBorderColor\)/u);
-  assert.match(cpp, /TextEquals\(control\.option1, L"center"\)/u);
-  assert.match(cpp, /TextEquals\(control\.option1, L"right"\)/u);
+  assert.match(cpp, /CreatePen\(PS_SOLID, borderWidth, ResolveBorderColor\(control, runtime\)\)/u);
+  assert.match(cpp, /const wchar_t\* titleAlign = runtime\.hasTitleAlignOverride/u);
+  assert.match(cpp, /TextEquals\(titleAlign, L"center"\)/u);
+  assert.match(cpp, /TextEquals\(titleAlign, L"right"\)/u);
   assert.match(cpp, /if \(IsType\(\*control, L"GroupBox"\)\)/u);
   assert.match(cpp, /IsType\(control, L"GroupBox"\)[\s\S]+className = L"STATIC";[\s\S]+style \|= SS_NOTIFY \| WS_CLIPCHILDREN \| WS_CLIPSIBLINGS;[\s\S]+exStyle \|= WS_EX_CONTROLPARENT;/u);
   assert.doesNotMatch(cpp, /style \|= BS_GROUPBOX/u);
