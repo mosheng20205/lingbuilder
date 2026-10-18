@@ -128,8 +128,16 @@ function CommandDetail({ command }: { command: WebsiteCommand }) {
   </article>;
 }
 
+/** 发布时间统一按北京时间格式化为 YYYY-MM-DD，避免访客本机时区不同造成日期偏移；无日期返回空串。 */
+function formatReleaseDate(value: string | undefined): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+}
+
 function DownloadsPage({ content, error }: PageProps) {
-  return <><PageHero kicker="WINDOWS DOWNLOADS" title="选择可用镜像，下载同一个版本" description="版本、提取码和镜像状态由官方后台统一维护。" icon={Download}/><section className="website-section"><div className="website-shell resource-stack">{error && <LoadNotice text={error}/>} {!content && !error && <LoadNotice text="正在加载下载版本…"/>}{content?.downloads.map(release => <article className="download-release" key={release.id}><header><div><span>{release.channel === 'stable' ? '稳定版' : '预览版'} · {release.platform} {release.architecture}</span><h2>{release.title}</h2><p>{release.summary}</p></div><strong>v{release.version}</strong></header><div className="release-info"><p><b>环境要求</b>{release.minimumRequirements || '请查看版本说明'}</p><p><b>更新说明</b>{release.releaseNotes || '暂无更新说明'}</p>{release.sha256 && <p><b>SHA-256</b><code>{release.sha256}</code></p>}</div><div className="mirror-grid">{release.mirrors.map(mirror => <a key={mirror.id} href={mirror.url} target="_blank" rel="noreferrer"><Download/><span><strong>{mirror.label}</strong><small>{mirror.accessCode ? `提取码：${mirror.accessCode}` : '无需提取码'}</small></span><ExternalLink/></a>)}</div></article>)}</div></section></>;
+  return <><PageHero kicker="WINDOWS DOWNLOADS" title="选择可用镜像，下载同一个版本" description="版本、提取码和镜像状态由官方后台统一维护。" icon={Download}/><section className="website-section"><div className="website-shell resource-stack">{error && <LoadNotice text={error}/>} {!content && !error && <LoadNotice text="正在加载下载版本…"/>}{content?.downloads.map(release => <article className="download-release" key={release.id}><header><div><span>{release.channel === 'stable' ? '稳定版' : '预览版'} · {release.platform} {release.architecture}</span><h2>{release.title}</h2><p>{release.summary}</p></div><div className="release-version"><strong>v{release.version}</strong>{formatReleaseDate(release.publishedAt) && <small>{formatReleaseDate(release.publishedAt)} 发布</small>}</div></header><div className="release-info"><p><b>环境要求</b>{release.minimumRequirements || '请查看版本说明'}</p><p><b>更新说明</b>{release.releaseNotes || '暂无更新说明'}</p>{release.sha256 && <p><b>SHA-256</b><code>{release.sha256}</code></p>}</div><div className="mirror-grid">{release.mirrors.map(mirror => <a key={mirror.id} href={mirror.url} target="_blank" rel="noreferrer"><Download/><span><strong>{mirror.label}</strong><small>{mirror.accessCode ? `提取码：${mirror.accessCode}` : '无需提取码'}</small></span><ExternalLink/></a>)}</div></article>)}</div></section></>;
 }
 
 /** 控件手册分组：分类名去掉后端前缀（如 Win32）后归为「基础控件 / 高级控件 / 浏览器控件」。 */

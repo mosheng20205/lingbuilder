@@ -72,9 +72,9 @@ function DownloadsAdmin({ data, request, reload }: AdminProps) {
   return <div className="downloads-layout">
     <RecordPanel title="下载版本列表" empty="尚未创建下载版本，请先在右侧填写版本信息。">{releases.map((item: any) => { const mirrors = item.mirrors || []; return (
       <article className="site-record download-record" key={item.id}>
-        <div><strong>{item.title}</strong><span>v{item.version} · {statusLabel(item.channel)} · {item.platform} {item.architecture}</span><small>{mirrors.length} 个镜像</small></div>
+        <div><strong>{item.title}</strong><span>v{item.version} · {statusLabel(item.channel)} · {item.platform} {item.architecture}</span><small>{item.publishedAt ? `${new Date(item.publishedAt).toLocaleDateString('zh-CN')} 发布 · ` : ''}{mirrors.length} 个镜像</small></div>
         <span className={`badge badge-${String(item.publicationStatus || 'DRAFT').toLowerCase()}`}>{statusLabel(item.publicationStatus)}</span>
-        <button className={editingId === item.id ? 'active' : ''} onClick={() => { setRelease({ ...item }); setEditingId(item.id); setPendingDirectUrl(''); setDirectNotice(null); }}>编辑版本</button>
+        <button className={editingId === item.id ? 'active' : ''} onClick={() => { setRelease({ ...item, publishedAt: toLocalInputValue(item.publishedAt || '') }); setEditingId(item.id); setPendingDirectUrl(''); setDirectNotice(null); }}>编辑版本</button>
         <div className="download-mirrors">
           <div className="download-mirrors-head"><span>网盘镜像</span><button onClick={() => openMirror(item.id)}>＋ 添加镜像</button></div>
           {mirrors.length > 0 && <div className="download-mirrors-list">{mirrors.map((entry: any) => <button key={entry.id} className={`${entry.enabled ? '' : 'off '}${expandedReleaseId === item.id && mirrorDraft?.provider === entry.provider ? 'active' : ''}`} onClick={() => openMirror(item.id, entry)}>{entry.label}{entry.enabled ? '' : '（已停用）'}</button>)}</div>}
@@ -84,7 +84,7 @@ function DownloadsAdmin({ data, request, reload }: AdminProps) {
     <EditorPanel title={editingId ? `编辑下载版本 v${release.version}` : '新建下载版本'} description="相同版本、渠道、平台和架构会更新原记录；网盘镜像直接在左侧版本卡片内管理，无需再单独选择所属版本。">
       <DirectUploadPanel key={`${editingId || 'new'}-${uploadEpoch}`} request={request} notice={directNotice} onNotice={setDirectNotice} onUploaded={handleDirectUploaded}/>
       <ManagedForm value={release} setValue={setRelease} fields={[
-        field('version','版本号'),field('title','下载标题'),field('channel','渠道','select',['preview','stable']),field('platform','平台'),field('architecture','架构'),field('summary','简要说明','textarea'),field('releaseNotes','更新说明','textarea'),field('minimumRequirements','环境要求','textarea'),field('fileSize','文件大小'),field('sha256','SHA-256'),field('publicationStatus','发布状态','select',statuses),field('sortOrder','排序','number')
+        field('version','版本号'),field('title','下载标题'),field('channel','渠道','select',['preview','stable']),field('platform','平台'),field('architecture','架构'),field('summary','简要说明','textarea'),field('releaseNotes','更新说明','textarea'),field('minimumRequirements','环境要求','textarea'),field('fileSize','文件大小'),field('sha256','SHA-256'),field('publicationStatus','发布状态','select',statuses),field('publishedAt','发布日期','datetime'),field('sortOrder','排序','number')
       ]} onSubmit={async value => {
         const saved = await post(request, '/v1/admin/site/downloads', value);
         let mirrorNote = '';
@@ -496,7 +496,7 @@ function csv(value:string){return String(value||'').split(/[,，\n]/u).map(item=
 function lines(value:string){return String(value||'').split(/\r?\n/u).map(item=>item.trim()).filter(Boolean)}
 function statusLabel(value:string){return ({DRAFT:'草稿',PUBLISHED:'已发布',ARCHIVED:'已归档',stable:'稳定版',preview:'预览版'} as Record<string,string>)[value]||value}
 function countFor(section:Section,data:any){return ({downloads:(data?.downloads||[]).length,commands:(data?.commands||[]).length,guides:(data?.guides||[]).length,demos:(data?.demos||[]).length,groups:(data?.groups||[]).length,sponsors:(data?.sponsors||[]).length} as Record<Section,number>)[section]||0}
-function emptyRelease(){return {version:'',channel:'preview',platform:'Windows',architecture:'x64',title:'LingBuilder 中文集成开发环境',summary:'',releaseNotes:'',minimumRequirements:'Windows 10/11',fileSize:'',sha256:'',publicationStatus:'DRAFT',sortOrder:0}}
+function emptyRelease(){return {version:'',channel:'preview',platform:'Windows',architecture:'x64',title:'LingBuilder 中文集成开发环境',summary:'',releaseNotes:'',minimumRequirements:'Windows 10/11',fileSize:'',sha256:'',publicationStatus:'DRAFT',publishedAt:'',sortOrder:0}}
 function emptyCommand(){return {name:'',stableKey:'',kind:'COMMAND',category:'其他',moduleId:'',moduleName:'',signature:'',returnType:'void',summary:'',parametersJson:'[]',examplesText:'',supportedBackendsText:'',minimumVersion:'',lifecycle:'AVAILABLE',publicationStatus:'DRAFT'}}
 function emptyGuide(){return {slug:'',title:'',kind:'CONTROL',category:'',summary:'',bodyMarkdown:'# 标题\n\n开始编写正文。',tagsText:'',minimumVersion:'',coverImageUrl:'',publicationStatus:'DRAFT',sortOrder:0}}
 function emptyDemo(){return {slug:'',title:'',category:'入门',difficulty:'入门',summary:'',lingBuilderVersion:'',modulesText:'',prerequisites:'',sourceLinks:[],screenshotUrl:'',videoUrl:'',license:'示例许可',publicationStatus:'DRAFT',sortOrder:0}}

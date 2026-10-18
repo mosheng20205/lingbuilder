@@ -1,4 +1,4 @@
-import { BUILTIN_MODULES } from '../src/services/modules/builtinModules.js';
+import { collectWebsiteCommandManifests, commandCountOf } from './websiteCommandManifestSources.js';
 
 // 官网「命令查找」页批量灌库脚本：把内置模块清单批量同步到云端 websiteCommandReference。
 // 凭据只从环境变量读取，禁止写入命令行参数或源码：
@@ -6,6 +6,8 @@ import { BUILTIN_MODULES } from '../src/services/modules/builtinModules.js';
 // 用法：
 //   npm run module:web-sync -- --dry-run          预检：列出模块、命令数与请求体积，不联网
 //   npm run module:web-sync -- --api <url>        覆盖云端地址（默认 LINGBUILDER_CLOUD_API_URL 或 https://api.lingbuilder.com）
+// 注意：超大清单（如 new_emoji.ui，6MB+）超过单请求上限会被跳过并报失败，
+// 应改走容器通道灌库（.deploy/ 同步运行器进程内调用 syncManifest，无 HTTP 体积限制）。
 
 const args = process.argv.slice(2);
 const dryRun = args.includes('--dry-run');
@@ -25,26 +27,18 @@ interface SyncResult {
   deprecated: number;
 }
 
-const manifests = BUILTIN_MODULES
-  .filter(manifest => (manifest.contributes?.commands?.length || 0) > 0 || (manifest.bindings?.commands?.length || 0) > 0)
-  .sort((left, right) => left.id.localeCompare(right.id, 'zh-CN'));
+const manifests = await collectWebsiteCommandManifests();
 
-const commandCount = (manifest: typeof BUILTIN_MODULES[number]) =>
-  new Set([
-    ...(manifest.contributes?.commands || []).map(command => command.name),
-    ...(manifest.bindings?.commands || []).map(command => command.command)
-  ].filter(Boolean)).size;
-
-const payloadBytes = (manifest: typeof BUILTIN_MODULES[number]) =>
+const payloadBytes = (manifest: (typeof manifests)[number]) =>
   Buffer.byteLength(JSON.stringify({ manifest, publish: true }), 'utf8');
 
 if (dryRun) {
   let totalCommands = 0;
   for (const manifest of manifests) {
     const bytes = payloadBytes(manifest);
-    const commands = commandCount(manifest);
+    const commands = commandCountOf(manifest);
     totalCommands += commands;
-    const oversized = bytes > MAX_PAYLOAD_BYTES ? '　[!] 超过单请求体积上限' : '';
+    const oversized = bytes > MAX_PAYLOAD_BYTES ? '　[!] 超过单请求体积上限，需走容器通道' : '';
     process.stdout.write(`${manifest.id}　v${manifest.version}　${commands} 条命令　${(bytes / 1024).toFixed(0)} KB${oversized}\n`);
   }
   process.stdout.write(`\n共 ${manifests.length} 个模块、${totalCommands} 条命令待同步到 ${apiBase}\n`);
@@ -87,7 +81,7 @@ const failures: Array<{ moduleId: string; reason: string }> = [];
 for (const manifest of manifests) {
   const bytes = payloadBytes(manifest);
   if (bytes > MAX_PAYLOAD_BYTES) {
-    failures.push({ moduleId: manifest.id, reason: `请求体积 ${(bytes / 1024).toFixed(0)} KB 超过单请求上限，需要先在云端调大 body 限制或拆分清单` });
+    failures.push({ moduleId: manifest.id, reason: `请求体积 ${(bytes / 1024).toFixed(0)} KB 超过单请求上限，HTTP 通道带不动；请用 npm run module:web-docs 导出清单后走容器通道灌库（.deploy/sync-website-commands.mjs）` });
     continue;
   }
   try {
