@@ -2,7 +2,7 @@
 
 更新时间：2026-09-29
 
-本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **102 个内置模块、4106 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
+本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **103 个内置模块、4153 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
 
 - `schemaVersion: 2`。
 - `contributes.commands` 与 `bindings.commands` 一一对应。
@@ -82,6 +82,7 @@ WebSocket 服务端模块 `2.0.0` 已从 6 条同步单连接原型升级为 50 
 | 已封装 | `lingbuilder.net.ftp` | FTP 客户端模块 | 7 |
 | 已封装（普通 SMTP） | `lingbuilder.net.mail` | SMTP 邮件模块 | 2 |
 | 已完整封装 | `lingbuilder.web.http` | 网页访问模块 1.3.0（易语言风格 网页_访问_对象 / 网页_异步访问，内置运行时；1.3.0 异步命令尾部可选参数与同步命令对齐，旧三参调用兼容） | 13 |
+| 已完整封装 | `lingbuilder.notify` | 消息推送模块 1.0.0（企业微信/钉钉/飞书群机器人 webhook 出站推送：文本/Markdown/图片/图文/文件/卡片/链接/FeedCard + 万能 推送_发JSON，内容转义与 HMAC-SHA256 加签由运行时代劳，详见 `electron/docs/modules/notify/README.md`） | 17 |
 | 已完整封装（Windows x64） | `lingbuilder.net.aria2` | Aria2 异步下载模块 | 12 |
 
 SMTP 模块当前只支持普通 SMTP/局域网调试服务，不支持 STARTTLS。服务端要求 TLS 时会明确失败，不能用于传输真实生产凭据。
@@ -146,8 +147,8 @@ OpenCV 模块保留基础 GDI+ 图像模块并作为新增高级能力。公开�
 
 | 状态 | 模块 ID | 名称 | 命令数 |
 |---|---|---|---:|
-| 已有（1.1.0） | `lingbuilder.win32.basic` | Win32 窗口基础模块 | 221 |
-| 已有 | `lingbuilder.win32.common-controls` | Win32 高级控件模块 | 550 |
+| 已有（1.1.0） | `lingbuilder.win32.basic` | Win32 窗口基础模块 | 241 |
+| 已有 | `lingbuilder.win32.common-controls` | Win32 高级控件模块 | 560 |
 | 已有 | `lingbuilder.edgeview` | EdgeView 浏览器模块 | 321 |
 | 3.0预览 | `lingbuilder.cef3.browser` | CEF3核心浏览器模块（CEF 150 x64） | 64 |
 | 3.0预览 | `lingbuilder.cef3.events` | CEF3事件绑定模块 | 6 |

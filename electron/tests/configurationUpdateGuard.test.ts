@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { runGuardedConfigurationUpdate } from '../src/services/configuration';
+import { createConfigurationMutationQueue, runGuardedConfigurationUpdate } from '../src/services/configuration';
 
 test('editor experience mode configuration commits only after draft flush succeeds', async () => {
   const calls: string[] = [];
@@ -59,4 +59,34 @@ test('resetting editor experience mode can force the same draft guard before del
   });
   assert.equal(result, true);
   assert.deepEqual(calls, ['flush', 'delete']);
+});
+
+test('configuration mutation queue serializes overlapping mutations in submission order', async () => {
+  const events: string[] = [];
+  const enqueue = createConfigurationMutationQueue();
+
+  const first = enqueue(async () => {
+    events.push('first:start');
+    await new Promise(resolve => setTimeout(resolve, 20));
+    events.push('first:end');
+    return 'a';
+  });
+  const second = enqueue(async () => {
+    events.push('second:start');
+    return 'b';
+  });
+
+  assert.deepEqual(await Promise.all([first, second]), ['a', 'b']);
+  assert.deepEqual(events, ['first:start', 'first:end', 'second:start']);
+});
+
+test('configuration mutation queue keeps serving later mutations after a rejection', async () => {
+  const enqueue = createConfigurationMutationQueue();
+  const failing = enqueue(async () => {
+    throw new Error('模拟变更失败');
+  });
+  const following = enqueue(async () => 'ok');
+
+  await assert.rejects(failing, /模拟变更失败/u);
+  assert.equal(await following, 'ok');
 });

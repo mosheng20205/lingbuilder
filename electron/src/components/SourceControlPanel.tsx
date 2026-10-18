@@ -67,6 +67,7 @@ export default function SourceControlPanel({
   const [open, setOpen] = useState(variant === 'full');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [history, setHistory] = useState<Commit[]>([]);
@@ -85,6 +86,15 @@ export default function SourceControlPanel({
   const [dialogError, setDialogError] = useState('');
   const [messageDialog, setMessageDialog] = useState<{ title: string; content: string } | null>(null);
   const busyRef = useRef(false);
+  const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => { if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current); }, []);
+
+  const showNotice = useCallback((text: string) => {
+    if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+    setNotice(text);
+    noticeTimerRef.current = setTimeout(() => setNotice(''), 6000);
+  }, []);
 
   useEffect(() => setStatus(initialStatus), [initialStatus]);
   useEffect(() => { if (variant === 'full') setOpen(true); }, [variant]);
@@ -112,7 +122,7 @@ export default function SourceControlPanel({
       : await sourceControlService.execute(operation, payload)
   ), [onExecuteCommand]);
 
-  const perform = useCallback(async (action: () => Promise<void>, options: { refresh?: boolean } = {}) => {
+  const perform = useCallback(async (action: () => Promise<void>, options: { refresh?: boolean; success?: string } = {}) => {
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
@@ -120,13 +130,15 @@ export default function SourceControlPanel({
     try {
       await action();
       if (options.refresh !== false) await refresh();
+      if (options.success) showNotice(options.success);
     } catch (reason) {
+      setNotice('');
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
       busyRef.current = false;
       setBusy(false);
     }
-  }, [refresh]);
+  }, [refresh, showNotice]);
 
   useEffect(() => {
     void refresh(false).catch(reason => setError(reason instanceof Error ? reason.message : String(reason)));
@@ -462,6 +474,7 @@ export default function SourceControlPanel({
       </div>
 
       {error && <div role="alert" className="mb-2 whitespace-pre-wrap rounded bg-rose-500/10 p-2 text-rose-500">{error}</div>}
+      {notice && <div role="status" className="mb-2 whitespace-pre-wrap rounded bg-emerald-500/10 p-2 text-emerald-500">{notice}</div>}
 
       {detail === 'changes' && <>
         <div className="mb-2 flex min-h-6 items-center gap-1.5 border-b border-inherit pb-1.5 text-[10px]">
@@ -479,7 +492,7 @@ export default function SourceControlPanel({
         </div>
         <label htmlFor="git-commit-message" className="mb-1 block font-semibold">提交说明</label>
         <textarea id="git-commit-message" value={message} onChange={event => setMessage(event.target.value)} placeholder="输入提交说明（必填）" rows={3} maxLength={4000} className={`mb-1 w-full resize-y rounded border border-inherit px-2 py-1.5 text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#007ACC] ${isDarkMode ? 'bg-black/20' : 'bg-white'}`} />
-        <button disabled={busy || !message.trim() || (stagedPaths.length === 0 && workingPaths.length === 0)} onClick={() => void perform(async () => { if (stagedPaths.length === 0 && workingPaths.length > 0) await mutate('stage.all', {}); await mutate('commit', { message }); setMessage(''); })} title={stagedPaths.length === 0 && workingPaths.length > 0 ? '当前没有已暂存文件，将先把全部修改加入暂存区再提交' : '提交暂存区中的全部更改'} className="mb-3 w-full rounded bg-[#007ACC] px-2 py-1.5 text-[11px] font-semibold text-white hover:bg-[#1687cf] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 disabled:cursor-not-allowed disabled:opacity-40">{stagedPaths.length === 0 && workingPaths.length > 0 ? '暂存全部并提交' : '提交已暂存更改'}</button>
+        <button disabled={busy || !message.trim() || (stagedPaths.length === 0 && workingPaths.length === 0)} onClick={() => void perform(async () => { if (stagedPaths.length === 0 && workingPaths.length > 0) await mutate('stage.all', {}); await mutate('commit', { message }); setMessage(''); }, { success: '提交完成' })} title={stagedPaths.length === 0 && workingPaths.length > 0 ? '当前没有已暂存文件，将先把全部修改加入暂存区再提交' : '提交暂存区中的全部更改'} className="mb-3 w-full rounded bg-[#007ACC] px-2 py-1.5 text-[11px] font-semibold text-white hover:bg-[#1687cf] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 disabled:cursor-not-allowed disabled:opacity-40">{stagedPaths.length === 0 && workingPaths.length > 0 ? '暂存全部并提交' : '提交已暂存更改'}</button>
 
         <section aria-labelledby="git-working-changes-title" className="mb-3">
           <div className="mb-1 flex min-h-7 items-center gap-1 border-b border-inherit">
@@ -590,9 +603,9 @@ export default function SourceControlPanel({
         {remotes.map(remote => <div key={remote.name} className="border-t border-inherit py-1">
           <div className="flex items-center gap-1"><div className="min-w-0 flex-1 truncate" title={remote.fetchUrl}>{remote.name} · {remote.fetchUrl}</div><button type="button" disabled={busy} title="修改远程地址" onClick={() => editRemote(remote)} className="rounded p-1"><Pencil className="h-3 w-3" /></button><button type="button" disabled={busy} title="删除远程仓库" onClick={() => confirmDeleteRemote(remote)} className="rounded p-1 text-rose-500"><Trash2 className="h-3 w-3" /></button></div>
           <div className="mt-1 flex flex-wrap gap-1">
-            <button disabled={busy} onClick={() => void perform(async () => { await mutate('fetch', { remote: remote.name }); })} className={buttonClass}>获取</button>
-            <button disabled={busy || !status.branch} onClick={() => void perform(async () => { await mutate('pull', { remote: remote.name, branch: status.branch, strategy: 'ff-only' }); })} className={buttonClass}>快进拉取</button>
-            <button disabled={busy || !status.branch} onClick={() => void perform(async () => { await mutate('push', { remote: remote.name, branch: status.branch, setUpstream: !status.upstream }); })} className={buttonClass}>推送</button>
+            <button disabled={busy} onClick={() => void perform(async () => { await mutate('fetch', { remote: remote.name }); }, { success: `已获取 ${remote.name} 的远程更新` })} className={buttonClass}>获取</button>
+            <button disabled={busy || !status.branch} onClick={() => void perform(async () => { await mutate('pull', { remote: remote.name, branch: status.branch, strategy: 'ff-only' }); }, { success: `已快进拉取 ${remote.name}/${status.branch}` })} className={buttonClass}>快进拉取</button>
+            <button disabled={busy || !status.branch} onClick={() => void perform(async () => { await mutate('push', { remote: remote.name, branch: status.branch, setUpstream: !status.upstream }); }, { success: `已推送到 ${remote.name}/${status.branch}` })} className={buttonClass}>推送</button>
             <button disabled={busy || !status.branch} onClick={() => createPullRequest(remote)} className={buttonClass}>创建 PR</button>
           </div>
         </div>)}

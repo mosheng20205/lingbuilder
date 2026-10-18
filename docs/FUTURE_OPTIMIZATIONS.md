@@ -1,5 +1,42 @@
 # LingBuilder 后期优化事项
 
+- 已完成（2026-10-17）：**`控件_` 运行期专属属性命令第一批（消息层 11 条）、第二批（自绘层 9 条）与第三批（common-controls 10 条）**。
+  第一批：只读/密码输入/提示文字/数值范围/不确定进度/表项高度 + 列表项目插入/删除/修改/取项目文本/取项目数量
+  （消息层 SendMessage + RuntimeControl 覆盖字段）。第二批：选中颜色（列表框/组合框渐变三色）、选中标记颜色
+  （复选/单选）、边框（列表框/分组框/组合框）、标题对齐（分组框）、文本对齐（列表框/组合框自绘通道；编辑框/标签
+  是创建期窗口样式明确不放）、填充方式（图片框即时重载/动态图像清帧重建）、播放/暂停/设置循环播放（GIF），
+  走「RuntimeControl 覆盖字段 + 对应绘制点 resolve + InvalidateRect」模式，颜色参数统一 `#RRGGBB` 文本（空文本=保持）。
+  第三批：滑块刻度间隔（置/取，Win32 无刻度读取消息，取值按设计器属性与运行期覆盖口径）、日期时间选择器置日期/
+  取日期/置显示格式（复用 ParseDateTimeValue 与 DTM_SETFORMATW）、月历置日期/取日期/置选中范围、富文本框置/取RTF文本
+  （EM_STREAMIN/OUT 复用创建期流式链路；红线=禁止 .lcpp 手写 RTF 字面量，\r 转义缺陷会破坏 RTF，用 文件_读入文本 读入）。
+  数值调节器范围由 控件_设置数值范围 直接覆盖未重复造命令。合计 win32.basic 221→241、common-controls 550→560；
+  MCP 第 20 条⑰ + 规则手册「运行期控件专属属性与项目操作」节 + 两模块随包 README 全同步；
+  冒烟 `scripts/smoke-win32basic-runtime-props.ts`（30 命令双平台 MSVC + 启动存活）与
+  `scripts/tmp-smoke-win32basic-stdio.ts`（握手 36 项，两模块 commandsTotal 双查）全过。
+  **真机抓错记录**：TBM_GETTICFREQ 在 Windows SDK 根本不存在（刻度间隔无读取消息，取值只能按属性口径）、
+  `static_cast<LPARAM>(nullptr)` 非法（改 static_cast<LPARAM>(0)）。
+  **明确不做（创建期样式，文档已写明）**：多行、仅数字、按钮样式、标签静态样式、滚动条方向、允许多选、自动排序、
+  组合框允许编辑、分组名、编辑框/标签文本对齐、日期时间选择器短/长日期/时间样式切换（显示格式用 DTM_SETFORMATW 改）。
+  new_emoji 后端：本三批命令均未登记进 `NEW_EMOJI_WIN32_BASIC_COMMANDS`/菜单白名单，NE 项目调用在生成 C++ 前
+  被中文阻断（设计行为）；若 NE 引擎有等价能力再逐条登记双实现。
+
+- 待办（2026-10-16 定案：先上预警、根治缓做）：**中文弯引号拼接表达式被生成器吞成单字面量的根治**。
+  拼接表达式以中文引号 `“` 开头、以 `”` 结尾时（`控件_设置文本(标签1, “你好,” + 名字 + “! 欢迎来到灵码”)`），
+  `lingCppWin32Project.ts` 两处中文引号单字面量捷径（`translateLingCppExpression` 与 `translateModuleCallArguments`
+  的 `/^“([\s\S]*)”$/u` 兜底，贪婪匹配）会把整段实参/表达式（含 `+ 变量 +`）吞成一个 C++ 字面量——编译可过、
+  运行期原样显示、变量不生效且零诊断（外部客户第 5 集跟练「标签不显示输入的名字」实测根因；ASCII 直引号同形
+  完全正常，`“...” + 变量`（尾端是变量）也不受影响，所以同段代码里调试输出对、标签错）。2026-10-16 已落地
+  warning 防线：`languageService.ts` 的 `getCurlyQuoteConcatDiagnostics`（`lingcpp-curly-quote-concat-*`，
+  与生成器同一条判定：首尾弯引号且字符串区间外存在顶层运算符；覆盖命令实参/赋值右侧/返回值/局部初始值；
+  永不阻断），提示改英文直引号。**根治方案（已验证通路，未动码）**：给两处捷径加 `!splitEplBinaryExpression(trimmed)`
+  守卫——表达式存在顶层运算符时放行到既有二元拼接路径（与 ASCII 同款；`splitEplBinaryExpression`/
+  `collectLingCppStringLiteralRegions` 已正确掩码中文引号区间、`producesWideStringPointer` 已认 `“...”` 字面量
+  （lingCppWin32Project.ts:32821），接住无新险；需同步核对 `isDefinitelyWideStringExpression:32760` 的贪婪形态
+  是否也要收紧）。改时必须同步 `tests/lingcpp.test.ts`（弯引号拼接翻译正确 + 单 `“...”` 字面量与含 `+`/`=` 的
+  单字面量不回归）与 `tests/stringLiteralRegions.test.ts` 相邻用例，并复核规则手册「中文弯引号拼接预警」条目。
+  复现脚本：`.zcode/tmp/repro-curly-quote-concat.ts`（直调 generateLingCppNativeWin32Project 对比两种引号）。
+
+
 - 已修复（2026-10-14）：**「设计器文件已被外部修改」误弹死循环 + AI Bridge 写设计器免确认（issue #IKLE7E）**。
   外部 AI 经 edit.apply 更新 window-designer.json 后 IDE 弹模态框等人，没盯着就卡住。两层根因：① 渲染层外部重载路径
   拿「磁盘原始 JSON」当设计器干净基线，saveWindowDesignerState 内部 normalizeWindowDesignerState（迁移/补默认值/键序

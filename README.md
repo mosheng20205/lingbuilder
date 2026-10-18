@@ -127,7 +127,7 @@ IDE 不再内置对话式 Agent 引擎；AI 辅助一律由**外部 AI 客户端
 - **24 个中文工具**：`workspace.list`、`file.read`、`file.search`、`edit.propose`、`edit.apply`、`project.create`、`project.create.undo`、`project.templates`、`build.run`、`build.stop`、`run.wait`、`run.log`、`lingcpp.diagnostics`、`modules.list`、`module.info`、`module.scaffold`、`module.writeFiles`、`module.validate`、`module.pack`、`module.installPreview`、`module.install`、`native.preview`、`native.export`、`installer.export`。
 - **写操作有门禁**：默认「预览确认」权限模式下，外部 AI 改你的文件必须先出 `edit.propose` 提案，经确认后才由 IDE 落盘；构建与运行同样受控，所有操作进审计日志。
 - **AI 生成模块**：模块开发页的「AI 生成模块」提供两条路——把模块规范复制给任意外部 AI，或让外部 AI 经模块封装链（`module.scaffold` → `writeFiles` → `validate` → `pack` → `installPreview` → `install`）直接生成，再把结果粘贴回本页导入校验。该链只写 `.lingbuilder/module-build` 与 `.lingbuilder/module-packages` 两个暂存目录，安装仍受预览 ID 与权益门禁约束。
-- **本机授权共享**：连接中心的「允许外部 AI 客户端使用本机授权」开关，决定外部 AI 拉起的 Bridge 宿主能否向本机 LingBuilder 换取模块授权与浏览器凭据；只监听回环、凭据不落盘不进日志、IDE 退出即撤销。关闭时外部 AI 只能使用免费模块。
+- **本机授权共享**：连接中心的「允许外部 AI 客户端使用本机授权」默认开启（可关闭），外部 AI 拉起的 Bridge 宿主可向本机 LingBuilder 换取或按需换发模块授权与浏览器凭据——只要本机登录了账号（购买/Pro/限免由云端判定），外部 AI 即可直接安装、启用收费模块并编译；只监听回环、凭据不落盘不进日志、IDE 退出即撤销。关闭后外部 AI 只能使用免费模块。
 - **计费**：本接入不消耗 LingBuilder 云端点数，模型费用由你在所接客户端侧承担。
 - **图文教程**：`docs/教程/外部AI连接MCP图文教程/README.md`（真机截图，含 Claude Code / Codex CLI / Gemini CLI / Cursor 的现成配置）。
 
