@@ -7173,3 +7173,54 @@ test('实参类型门禁豁免连续赋值语句（无 binding 调用不进 argu
   const diagnostics = getLingCppSemanticDiagnostics(source, undefined, undefined, { enabledModules: [], availableModules: [] });
   assert.equal(diagnostics.filter(item => item.id.startsWith('lingcpp-argument-type-')).length, 0, '连续赋值不得产生 argument-type 诊断');
 });
+
+test('中文弯引号拼接预警：首尾弯引号的拼接报 warning 引导改直引号，其余形态不误伤', () => {
+  const curlySource = [
+    '类 主窗口',
+    '    事件 _按钮1_被单击()',
+    '        局部 文本型 名字',
+    '        名字 = 控件_取文本(编辑框1)',
+    '        控件_设置文本(标签1, “你好,” + 名字 + “! 欢迎来到灵码”)',
+    '        调试输出(“打过招呼了：” + 名字)',
+    '        调试输出(“头” + 名字 + “尾”)',
+    '        信息框(“请先输入您的名字”, 64, “提示信息”)',
+    '        局部 文本型 结果 = “a” + 名字 + “b”',
+    '        结果 = “x” + 名字 + “y”',
+    '        返回 (“r” + 名字 + “e”)',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const curlyHits = getLingCppSemanticDiagnostics(curlySource)
+    .filter(item => item.id.startsWith('lingcpp-curly-quote-concat-'));
+  // 行5（命令实参）、行7（调试输出首尾弯引号）、行9（局部初始值）、行10（赋值）、行11（返回值）。
+  assert.deepEqual(curlyHits.map(item => item.line).sort((left, right) => left - right), [5, 7, 9, 10, 11]);
+  curlyHits.forEach(item => {
+    assert.equal(item.level, 'warning', '弯引号拼接预警永不阻断构建');
+    assert.ok(item.suggestion.includes('"'), '建议必须引导改用英文直引号');
+  });
+
+  // 「调试输出(“头” + 名字)」只首端有弯引号、结尾是变量：生成器不会吞并，不得误报。
+  const partialCurly = getLingCppSemanticDiagnostics([
+    '类 主窗口',
+    '    事件 _按钮1_被单击()',
+    '        局部 文本型 名字',
+    '        调试输出(“打过招呼了：” + 名字)',
+    '    结束',
+    '结束类'
+  ].join('\n')).filter(item => item.id.startsWith('lingcpp-curly-quote-concat-'));
+  assert.equal(partialCurly.length, 0, '首弯引号+变量收尾的拼接不受影响，不应误报');
+
+  // ASCII 拼接、单弯引号字面量（含 + = 等字符）都走原有正常路径，不应误报。
+  const noHitSource = getLingCppSemanticDiagnostics([
+    '类 主窗口',
+    '    事件 _按钮1_被单击()',
+    '        局部 文本型 名字',
+    '        控件_设置文本(标签1, "你好," + 名字 + "! 欢迎来到灵码")',
+    '        局部 文本型 单字面量 = “你好”',
+    '        控件_设置文本(标签2, “a+b=c 的字面量”)',
+    '        信息框("提示", 64, "标题")',
+    '    结束',
+    '结束类'
+  ].join('\n')).filter(item => item.id.startsWith('lingcpp-curly-quote-concat-'));
+  assert.equal(noHitSource.length, 0, 'ASCII 拼接与单弯引号字面量不应误报');
+});

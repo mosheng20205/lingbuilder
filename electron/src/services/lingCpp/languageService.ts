@@ -2,6 +2,7 @@ import { isLingCppCommentLine, LING_CPP_KEYWORDS, LING_CPP_LOGICAL_OPERATOR_NAME
 import { formatBuiltinConstantDisplayValue, getBuiltinLingCppConstants, LING_CPP_BUILTIN_CONSTANTS } from './builtinConstants';
 import { isProAccessActive, PRO_COMMAND_DIAGNOSTIC_ID_PREFIX, type ProCommandAuthorizationState } from './proCommandAccess';
 import { collectLingCppStringLiteralRegions } from './stringLiteralRegions';
+import { splitEplBinaryExpression } from '../windowDesigner/eplToCppRules';
 import { collectLingCppTextBlockOpaqueLines, scanLingCppTextBlockRanges } from './textBlock';
 import { collectInlineCppLines, collectInlineCppReplacementHints, isInlineCppLineExempt } from './inlineCppKnowledge';
 import { LIST_VIEW_ADVANCED_API } from '../modules/listViewApiCatalog';
@@ -333,6 +334,7 @@ export function getLingCppSemanticDiagnostics(
   diagnostics.push(...getModuleProCommandDiagnostics(parsed.program, moduleContext, splitLines(source), options));
   diagnostics.push(...getUnknownCommandDiagnostics(parsed.program, moduleContext, projectFunctions, splitLines(source), options));
   diagnostics.push(...getUnterminatedStringLiteralDiagnostics(parsed));
+  diagnostics.push(...getCurlyQuoteConcatDiagnostics(parsed));
   diagnostics.push(...getVariableDiagnostics([
     ...parsed.program.classes,
     ...parsed.program.functionLibraries.map(library => ({ name: library.name, line: library.line, endLine: library.endLine, members: [], methods: library.methods }))
@@ -486,6 +488,66 @@ export function getInlineCppReplacementDiagnostics(source: string): LingCppDiagn
         message: `字符串字面量缺少收尾引号（${quoteLabel}未闭合），无法生成正确的 C++。`,
         codeSnippet: trimmed,
         suggestion: '请在该行字符串末尾补上收尾引号；若要在字符串里包含引号本身，请写成 \\" 转义。'
+      });
+    });
+  });
+  return diagnostics;
+}
+
+/**
+ * 中文弯引号拼接预警（2026-10-16）：拼接表达式以中文引号“开头、以”结尾时，C++ 生成器的
+ * 中文引号单字面量捷径（translateLingCppExpression / translateModuleCallArguments）会把整段
+ * （含 + 变量 +）吞成一个字面量，运行期原样显示、变量不生效——客户「标签不显示输入的名字」
+ * 实测根因。这里按生成器同一条判定（首尾弯引号 + 存在字符串外的顶层运算符）给 warning 提醒
+ * 改用英文直引号，永不阻断构建；生成行为的根治另行排期（见 docs/FUTURE_OPTIMIZATIONS.md）。
+ */
+export function getCurlyQuoteConcatDiagnostics(parsed: LingCppParseResult): LingCppDiagnostic[] {
+  const diagnostics: LingCppDiagnostic[] = [];
+  const methods: LingCppMethod[] = [
+    ...parsed.program.classes.flatMap(cls => cls.methods),
+    ...parsed.program.functionLibraries.flatMap(library => library.methods)
+  ];
+  const isSwallowedCurlyConcat = (expression: string): boolean => {
+    const trimmed = expression.trim();
+    if (!/^“[\s\S]*”$/u.test(trimmed)) return false;
+    return splitEplBinaryExpression(trimmed) !== undefined;
+  };
+  methods.forEach(method => {
+    const candidates: Array<{ line: number; text: string; range?: LingCppDiagnostic['range'] }> = [];
+    (method.statements || []).forEach(statement => {
+      const trimmedText = statement.text.trim();
+      if (!trimmedText || isLingCppCommentLine(statement.text) || statement.endLine) return;
+      if (trimmedText.startsWith('@')) return;
+      const statementRange: LingCppDiagnostic['range'] = {
+        startLine: statement.line,
+        startColumn: statement.indent.length + 1,
+        endLine: statement.line,
+        endColumn: statement.indent.length + statement.text.length + 1
+      };
+      collectLineInvocations(statement.text).forEach(invocation => {
+        invocation.args.forEach(argument => candidates.push({ line: statement.line, text: argument, range: statementRange }));
+      });
+      // 赋值右侧（普通/成员/数组元素目标）与返回值：与命令实参走同一个表达式翻译入口，同病同报。
+      const assignment = trimmedText.match(/^[\p{L}_][\p{L}\p{N}_]*(?:\s*\.\s*[\p{L}_][\p{L}\p{N}_]*)*(?:\[[^\[\]]+\])?\s*[=＝](?!=)\s*(.+?)\s*;?$/u);
+      if (assignment?.[1]) candidates.push({ line: statement.line, text: assignment[1], range: statementRange });
+      const returnValue = trimmedText.match(/^返回\s*[（(]\s*(.*?)\s*[）)]\s*;?$/u) || trimmedText.match(/^返回\s+(.+?)\s*;?$/u);
+      if (returnValue?.[1]) candidates.push({ line: statement.line, text: returnValue[1], range: statementRange });
+    });
+    (method.locals || []).forEach(local => {
+      if (local.initialValue && !local.initialValue.trim().startsWith('@')) {
+        candidates.push({ line: local.line, text: local.initialValue });
+      }
+    });
+    candidates.forEach(candidate => {
+      if (!isSwallowedCurlyConcat(candidate.text)) return;
+      diagnostics.push({
+        id: `lingcpp-curly-quote-concat-${candidate.line}`,
+        line: candidate.line,
+        ...(candidate.range ? { range: candidate.range } : {}),
+        level: 'warning',
+        message: '字符串拼接的首尾用了中文引号“ ”，这一段会被当成一整句文字原样显示，中间的变量不会生效。',
+        codeSnippet: candidate.text.trim(),
+        suggestion: '请把这一段的中文引号“ ”改成英文直引号 " "，例如把 “你好,” + 名字 + “! 欢迎来到灵码” 改成 "你好," + 名字 + "! 欢迎来到灵码"。'
       });
     });
   });

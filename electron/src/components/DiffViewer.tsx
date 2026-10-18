@@ -101,6 +101,7 @@ import {
 } from '../services/lingCpp/beginnerFlowGuide';
 import { BEGINNER_BUILTIN_VALUE_COMPLETIONS } from '../services/lingCpp/beginnerBuiltinValueCompletions';
 import { toggleBeginnerLineComment } from '../services/lingCpp/beginnerLineComment';
+import { indentBeginnerLines, outdentBeginnerLines } from '../services/lingCpp/beginnerIndent';
 import { formatBeginnerAssignmentAtCursor } from '../services/lingCpp/beginnerStatementFormat';
 import { applyLingCppAstEdit } from '../services/lingCpp/astEditService';
 import {
@@ -3662,22 +3663,6 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     });
   };
 
-  const handleSourceKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key !== 'Tab' || !onUpdateSourceContent) return;
-
-    event.preventDefault();
-    const editor = event.currentTarget;
-    const start = editor.selectionStart;
-    const end = editor.selectionEnd;
-    const indent = '    ';
-    const nextCode = `${sourceCode.slice(0, start)}${indent}${sourceCode.slice(end)}`;
-    updateSourceCode(nextCode);
-
-    window.requestAnimationFrame(() => {
-      editor.setSelectionRange(start + indent.length, start + indent.length);
-    });
-  };
-
   const adjustEditorFontByWheel = useCallback((deltaY: number) => {
     if (!onFontSizeChange) return;
     onFontSizeChange(currentValue => currentValue + (deltaY < 0 ? 1 : -1));
@@ -6766,7 +6751,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           });
           return;
         }
-        if ((event.key === 'Enter' || event.key === 'Tab') && segmentContext) {
+        if ((event.key === 'Enter' || event.key === 'Tab') && !event.shiftKey && segmentContext) {
           event.preventDefault();
           const type = activeAutoLocalType.items[activeAutoLocalType.selectedIndex] || activeAutoLocalType.items[0];
           if (type) {
@@ -6859,7 +6844,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           moveBeginnerCompletionSelection(target, -1);
           return;
         }
-        if (event.key === 'Enter' || event.key === 'Tab') {
+        if ((event.key === 'Enter' || event.key === 'Tab') && !event.shiftKey) {
           event.preventDefault();
           const completion = activeCompletion.items[activeCompletion.selectedIndex] || activeCompletion.items[0];
           if (!completion) return;
@@ -6923,20 +6908,25 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       }
       if (event.key === 'Tab') {
         event.preventDefault();
-        const start = input.selectionStart;
-        const end = input.selectionEnd;
-        const nextValue = `${input.value.slice(0, start)}    ${input.value.slice(end)}`;
-        applyBeginnerTextareaEdit(input, nextValue);
+        // Tab 向右缩进 / Shift+Tab 向左缩进：多行选区按行整体移动（空行与
+        // 多行文本块不透明行豁免，开始行正常参与），无选区时插入/移除一个缩进单位。
+        // 走 execCommand 编辑管线，浏览器原生撤销栈记录本次编辑（Ctrl+Z 可撤销）。
+        const result = event.shiftKey
+          ? outdentBeginnerLines(input.value, input.selectionStart, input.selectionEnd)
+          : indentBeginnerLines(input.value, input.selectionStart, input.selectionEnd);
+        if (!result.changed) return;
+        applyBeginnerTextareaEdit(input, result.value);
         closeBeginnerCompletion(target);
-        if (segmentContext) updateBeginnerCodeSegmentDraft(target, segmentContext, nextValue, { defer: true });
-        else updateBeginnerCodeDraft(target, nextValue, { defer: true });
+        if (segmentContext) updateBeginnerCodeSegmentDraft(target, segmentContext, result.value, { defer: true });
+        else updateBeginnerCodeDraft(target, result.value, { defer: true });
         window.requestAnimationFrame(() => {
           const fresh = resolveBeginnerCodeTextarea(input);
           if (!fresh) return;
           fresh.focus();
-          fresh.selectionStart = fresh.selectionEnd = start + 4;
+          fresh.setSelectionRange(result.selectionStart, result.selectionEnd);
           captureBeginnerTextareaView(fresh);
         });
+        return;
       }
     };
     /**
