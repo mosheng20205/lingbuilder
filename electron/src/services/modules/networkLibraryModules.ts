@@ -4,6 +4,7 @@ import { createModuleBindingSnippetArgument } from './bindingValueType';
 import { HTTP_CLIENT_MODULE } from './httpClientModule';
 import { CDP_CLIENT_MODULE } from './cdpClientModule';
 import { WEB_HTTP_MODULE } from './webHttpModule';
+import { NOTIFY_MODULE } from './notifyModule';
 
 type Parameter = { name: string; type: ModuleBindingValueType; description: string };
 
@@ -169,4 +170,4 @@ const imap = createStandardModule({
   ]
 });
 
-export const NETWORK_LIBRARY_MODULES: LingBuilderModuleManifest[] = [HTTP_CLIENT_MODULE, CDP_CLIENT_MODULE, WEB_HTTP_MODULE, tcp, udp, dns, url, cookie, ftp, pop3, imap];
+export const NETWORK_LIBRARY_MODULES: LingBuilderModuleManifest[] = [HTTP_CLIENT_MODULE, CDP_CLIENT_MODULE, WEB_HTTP_MODULE, NOTIFY_MODULE, tcp, udp, dns, url, cookie, ftp, pop3, imap];

@@ -60,6 +60,7 @@ export const BUILTIN_MODULE_DOCUMENT_PATHS: Readonly<Record<string, string>> = {
   'lingbuilder.archive': 'docs/modules/archive/README.md',
   'lingbuilder.ipc': 'docs/modules/ipc/README.md',
   'lingbuilder.process': 'docs/modules/process/README.md',
+  'lingbuilder.notify': 'docs/modules/notify/README.md',
   'lingbuilder.media.audio': 'docs/modules/media-audio/README.md',
   'lingbuilder.cef3.automation': 'docs/modules/cef3-automation/README.md',
   'lingbuilder.cef3.devtools': 'docs/modules/cef3-devtools/README.md',

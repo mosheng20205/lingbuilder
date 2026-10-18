@@ -540,12 +540,28 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       // 基线 2026-10-15 写回（SSE 单向推送批次）：lingbuilder.http.server 2.1.0→2.2.0 新增
       // 7 命令 10 参数（HTTP_SSE_开始/推送/推送事件/推送心跳/结束/是否连接/取连接数，
       // 请求与服务端句柄为名义类型，无 controlRef）（实算摘要 0a3297a5/7d39a0d8）。
-      modules: 102,
-      commands: 4106,
-      parameters: 7204,
-      controlReferences: 1345,
-      commandDigest: '0a3297a5',
-      parameterDigest: '7d39a0d8'
+      // 基线 2026-10-17 写回（win32.basic 运行期专属属性批次）：lingbuilder.win32.basic 1.1.0
+      // 新增 11 命令 24 参数（控件_设置只读/设置密码输入/设置提示文字/设置数值范围/
+      // 设置不确定进度/插入项目/删除项目/修改项目/取项目文本/取项目数量/设置表项高度，
+      // 每条首参均为 controlRef，控件参数 +11）（实算摘要 7452a355/6bec5d4b）。
+      // 基线 2026-10-17 再写回（自绘层批次）：同模块新增 9 命令 21 参数（控件_设置选中颜色/
+      // 设置选中标记颜色/设置边框/设置标题对齐/设置文本对齐/设置填充方式/播放/暂停/
+      // 设置循环播放，颜色参数为 "#RRGGBB" 文本，每条首参均为 controlRef，控件参数 +9）
+      //（实算摘要 6ac8a152/5b5de579）。
+      // 基线 2026-10-17 三写回（common-controls 第三批）：lingbuilder.win32.common-controls
+      // 新增 10 命令 17 参数（滑块_置/取刻度间隔、日期时间选择器_置日期/取日期/置显示格式、
+      // 月历_置日期/取日期/置选中范围、富文本框_置/取RTF文本，每条首参均为 controlRef，控件参数 +10）
+      //（实算摘要 20f79191/3d0d76e7）。
+      // 基线 2026-10-17 四写回（消息推送模块批次）：新增 lingbuilder.notify 1.0.0（消息推送模块），
+      // 17 命令 55 参数（通用 3 + 企业微信 6 + 钉钉 6 + 飞书 2，全部文本/数值/布尔参数，无 controlRef；
+      // #推送_默认超时毫秒 常量不计命令）
+      //（实算摘要 b5b65530/7272074a）。
+      modules: 103,
+      commands: 4153,
+      parameters: 7321,
+      controlReferences: 1375,
+      commandDigest: 'b5b65530',
+      parameterDigest: '7272074a'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -688,7 +704,8 @@ test('模块源目录中的 controlRef 补全、示例和代码片段全部保�
   // 模块源文件，按当前工作区内容实算写回（全量字面量扫描 0 违规）。
   // 2026-10-01 写回 67→68：新增二维码模块 qrcodeModules.ts（全量字面量扫描 0 违规）。
   // 2026-10-06 写回 68→69：新增 proAccessStateFile.ts（Pro 会员授权状态落盘，无 controlRef 字面量；全量字面量扫描 0 违规）。
-  assert.equal(sourceFiles.length, 69, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
+  // 2026-10-17 写回 69→70：新增消息推送模块 notifyModule.ts（全部文本/数值/布尔参数，无 controlRef 字面量；全量字面量扫描 0 违规）。
+  assert.equal(sourceFiles.length, 70, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
   assert.deepEqual(violations, []);
 
   const unsafe = 'const command = { insertText: \'控件_设置文本("操作结果", "$2")\' };';
@@ -1049,12 +1066,24 @@ test('工作区已安装模块全部通过 controlRef 清单和示例门禁', as
       // 基线 2026-10-15 写回（SSE 单向推送批次）：内置 +7 命令 +10 参数
       //（lingbuilder.http.server 2.2.0 SSE 命令族，见上一用例）；本机磁盘仍为 11 份清单，
       // 磁盘侧 0 漂移（实算摘要 52e69486/5be22410）。
-      modules: 113,
-      commands: 8191,
-      parameters: 19468,
-      controlReferences: 5126,
-      commandDigest: '52e69486',
-      parameterDigest: '5be22410'
+      // 基线 2026-10-17 写回（win32.basic 运行期专属属性批次）：内置 +11 命令 +24 参数
+      //（lingbuilder.win32.basic 控件_运行期属性/项目操作族，见上一用例）；
+      // 本机磁盘仍为 11 份清单，磁盘侧 0 漂移（实算摘要 4c0ed6d4/5ee9bc73）。
+      // 基线 2026-10-17 再写回（自绘层批次）：内置 +9 命令 +21 参数
+      //（lingbuilder.win32.basic 控件_自绘属性/播放控制族，见上一用例）；
+      // 本机磁盘仍为 11 份清单，磁盘侧 0 漂移（实算摘要 af69ce81/8881b411）。
+      // 基线 2026-10-17 三写回（common-controls 第三批）：内置 +10 命令 +17 参数
+      //（lingbuilder.win32.common-controls 滑块/日期时间/月历/富文本运行期族，见上一用例）；
+      // 本机磁盘仍为 11 份清单，磁盘侧 0 漂移（实算摘要 671c137e/89490fff）。
+      // 基线 2026-10-17 四写回（消息推送模块批次）：内置 +17 命令 +55 参数
+      //（新增 lingbuilder.notify 1.0.0 消息推送模块，见上一用例）；
+      // 本机磁盘仍为 11 份清单，磁盘侧 0 漂移（实算摘要 eed225cd/343bc9fe）。
+      modules: 114,
+      commands: 8238,
+      parameters: 19585,
+      controlReferences: 5156,
+      commandDigest: 'eed225cd',
+      parameterDigest: '343bc9fe'
   }, '内置、官方和当前工作区第三方模块的每个方法与参数都必须进入全量审计');
   // OpenCV 以内置清单为准：本机未装 SDK 时磁盘上的同名清单是只有骨架的占位包（0 命令、无 targets）。
   const manifest = BUILTIN_MODULES.find(module => module.id === OPENCV_MODULE_ID) || auditedManifests.get('lingbuilder.opencv.sdk');
@@ -1804,7 +1833,7 @@ test('Win32 基础模块提供不冻结界面的延时、延迟调用与时钟�
 
 test('网络基础模块提供请求、状态、错误和关闭闭环', () => {
   assert.deepEqual(NETWORK_LIBRARY_MODULES.map(module => module.id), [
-    'lingbuilder.net.http-client', 'lingbuilder.cdp.client', 'lingbuilder.web.http', 'lingbuilder.net.tcp', 'lingbuilder.net.udp',
+    'lingbuilder.net.http-client', 'lingbuilder.cdp.client', 'lingbuilder.web.http', 'lingbuilder.notify', 'lingbuilder.net.tcp', 'lingbuilder.net.udp',
     'lingbuilder.net.dns', 'lingbuilder.net.url', 'lingbuilder.net.cookie', 'lingbuilder.net.ftp',
         'lingbuilder.net.pop3', 'lingbuilder.net.imap'
   ]);
@@ -2442,7 +2471,8 @@ test('模块封装清单覆盖实际内置模块注册表', async () => {
   assert.ok(checklist.includes(`${BUILTIN_MODULES.length} 个内置模块、${commandCount} 条中文命令`));
   assert.match(checklist, /51 个模块、336 条命令/u);
   assert.match(checklist, /`lingbuilder\.std\.encoding` \| 编码转换模块 \| 32/u);
-  assert.match(checklist, /`lingbuilder\.win32\.basic` \| Win32 窗口基础模块 \| 221/u);
+  assert.match(checklist, /`lingbuilder\.win32\.basic` \| Win32 窗口基础模块 \| 241/u);
+  assert.match(checklist, /`lingbuilder\.win32\.common-controls` \| Win32 高级控件模块 \| 560/u);
   for (const manifest of BUILTIN_MODULES) {
     assert.ok(checklist.includes(`\`${manifest.id}\``), `封装清单缺少 ${manifest.id}`);
   }

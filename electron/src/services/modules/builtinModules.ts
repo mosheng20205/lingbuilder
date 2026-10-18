@@ -625,6 +625,26 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: '控件_取选择项', signature: '控件_取选择项(控件名)', description: '读取选择项索引。', insertText: '控件_取选择项($1)', returnType: '整数型' },
         { name: '控件_添加项目', signature: '控件_添加项目(控件名, 文本)', description: '向列表框、组合框或增强组合框追加项目。', insertText: '控件_添加项目($1, "$2")', returnType: '整数型' },
         { name: '控件_清空项目', signature: '控件_清空项目(控件名)', description: '清空集合控件项目。', insertText: '控件_清空项目($1)', returnType: '逻辑型' },
+        { name: '控件_设置只读', signature: '控件_设置只读(控件名, 是否只读)', description: '运行期设置编辑框（或富文本框）只读状态：只读时用户不能输入修改，程序仍可用 控件_设置文本 写入。传假解除只读。', insertText: '控件_设置只读($1, 真)', returnType: '逻辑型' },
+        { name: '控件_设置密码输入', signature: '控件_设置密码输入(控件名, 是否密码)', description: '运行期把编辑框切换为密码掩码（以 * 回显）或恢复明文，等价于设计器「密码输入」属性的运行期开关。', insertText: '控件_设置密码输入($1, 真)', returnType: '逻辑型' },
+        { name: '控件_设置提示文字', signature: '控件_设置提示文字(控件名, 占位文本)', description: '运行期设置编辑框的占位提示：内容为空时显示灰字，输入或写入内容后自动消失；传空文本清除提示。等价于设计器「占位提示」属性的运行期改写。', insertText: '控件_设置提示文字($1, "$2")', returnType: '逻辑型' },
+        { name: '控件_设置数值范围', signature: '控件_设置数值范围(控件名, 最小值, 最大值)', description: '运行期设置进度条、滑块、数值调节器或滚动条的数值范围，当前值自动钳制到新范围；后续 控件_设置数值 也按新范围钳制。最小值大于最大值时自动交换。', insertText: '控件_设置数值范围($1, 0, 100)', returnType: '逻辑型' },
+        { name: '控件_设置不确定进度', signature: '控件_设置不确定进度(控件名, 是否)', description: '运行期把进度条切换为不确定进度（跑马灯往复动画），适合耗时未知的长任务；传假恢复确定进度。', insertText: '控件_设置不确定进度($1, 真)', returnType: '逻辑型' },
+        { name: '控件_插入项目', signature: '控件_插入项目(控件名, 索引, 文本)', description: '向列表框或组合框的指定零基索引插入项目；索引 -1 追加到末尾，返回实际插入索引，失败返回 -1。', insertText: '控件_插入项目($1, 0, "$2")', returnType: '整数型' },
+        { name: '控件_删除项目', signature: '控件_删除项目(控件名, 索引)', description: '删除列表框或组合框指定零基索引的项目；索引越界或控件不支持时返回假。', insertText: '控件_删除项目($1, 0)', returnType: '逻辑型' },
+        { name: '控件_修改项目', signature: '控件_修改项目(控件名, 索引, 文本)', description: '修改列表框或组合框指定零基索引的项目文本（整行替换，选中项按位移保持）。列表框是单列控件，没有行×列单元格；要修改某行某列的单元格请用 列表视图_设置单元格（列表视图）或 表格_置文本（数据表格）。', insertText: '控件_修改项目($1, 0, "$2")', returnType: '逻辑型' },
+        { name: '控件_取项目文本', signature: '控件_取项目文本(控件名, 索引)', description: '读取列表框或组合框指定零基索引的项目文本；索引越界返回空文本。', insertText: '控件_取项目文本($1, 0)', returnType: '文本型' },
+        { name: '控件_取项目数量', signature: '控件_取项目数量(控件名)', description: '返回列表框或组合框当前的项目数量。', insertText: '控件_取项目数量($1)', returnType: '整数型' },
+        { name: '控件_设置表项高度', signature: '控件_设置表项高度(控件名, 表项高度)', description: '运行期调整列表框或组合框每个项目的显示高度（设计器逻辑坐标，自动按窗口 DPI 缩放），滚动换算与自绘同步生效；高度必须大于 0。', insertText: '控件_设置表项高度($1, 28)', returnType: '逻辑型' },
+        { name: '控件_设置选中颜色', signature: '控件_设置选中颜色(控件名, 起始颜色, 结束颜色, 边框颜色)', description: '运行期修改列表框或组合框选中项的渐变起始色、结束色与边框色，颜色格式 "#RRGGBB"；传空文本表示保持该色不变。', insertText: '控件_设置选中颜色($1, "#0E7490", "#38BDF8", "#FFFFFF")', returnType: '逻辑型' },
+        { name: '控件_设置选中标记颜色', signature: '控件_设置选中标记颜色(控件名, 选中颜色, 标记颜色)', description: '运行期修改复选框或单选框选中时的底色与对勾/圆点标记颜色，颜色格式 "#RRGGBB"；传空文本表示保持该色不变。', insertText: '控件_设置选中标记颜色($1, "#0E7490", "#FFFFFF")', returnType: '逻辑型' },
+        { name: '控件_设置边框', signature: '控件_设置边框(控件名, 是否显示, 粗细, 颜色)', description: '运行期修改列表框、分组框或组合框的外边框：是否显示、粗细（设计器逻辑坐标）与颜色（"#RRGGBB"）；传假隐藏边框，颜色传空文本保持不变。', insertText: '控件_设置边框($1, 真, 1, "#334155")', returnType: '逻辑型' },
+        { name: '控件_设置标题对齐', signature: '控件_设置标题对齐(控件名, 对齐方式)', description: '运行期修改分组框标题对齐：0 居左、1 居中、2 居右。', insertText: '控件_设置标题对齐($1, 1)', returnType: '逻辑型' },
+        { name: '控件_设置文本对齐', signature: '控件_设置文本对齐(控件名, 对齐方式)', description: '运行期修改列表框或组合框（自绘通道）文本对齐：0 居左、1 居中、2 居右。编辑框与标签的对齐是创建期窗口样式，运行期改写不支持（返回假），请在设计器属性面板设置。', insertText: '控件_设置文本对齐($1, 1)', returnType: '逻辑型' },
+        { name: '控件_设置填充方式', signature: '控件_设置填充方式(控件名, 方式)', description: '运行期修改图片框或动态图像控件的填充方式：0 原始大小、1 拉伸填满、2 等比适应、3 等比填满；图片框当前已加载的图片会立即按新方式重载，动态图像控件随下一帧重建。', insertText: '控件_设置填充方式($1, 2)', returnType: '逻辑型' },
+        { name: '控件_播放', signature: '控件_播放(控件名)', description: '开始或继续播放动态图像控件（GIF）的逐帧动画，从当前帧推进；已在播放时返回真。', insertText: '控件_播放($1)', returnType: '逻辑型' },
+        { name: '控件_暂停', signature: '控件_暂停(控件名)', description: '暂停动态图像控件（GIF）的逐帧动画并保留当前帧；未在播放时返回真。', insertText: '控件_暂停($1)', returnType: '逻辑型' },
+        { name: '控件_设置循环播放', signature: '控件_设置循环播放(控件名, 是否循环)', description: '设置动态图像控件（GIF）播完最后一帧后是否回到第一帧继续；不循环时播完停在末帧并触发「播放完毕」事件。', insertText: '控件_设置循环播放($1, 真)', returnType: '逻辑型' },
         { name: '控件_是否有效', signature: '控件_是否有效(控件)', description: '判断类型化控件引用是否仍指向当前窗口内存活的控件。', insertText: '控件_是否有效($1)', returnType: '逻辑型' },
         ...createRuntimeControlCommandContributions('lingbuilder.win32.basic'),
         ...createRuntimeControlEventCommandContributions('lingbuilder.win32.basic'),
@@ -737,6 +757,26 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { command: '控件_取选择项', runtimeName: '控件_取选择项', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
         { command: '控件_添加项目', runtimeName: '控件_添加项目', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '文本', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
         { command: '控件_清空项目', runtimeName: '控件_清空项目', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'bool', encoding: 'wide' },
+        { command: '控件_设置只读', runtimeName: '控件_设置只读', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '是否只读', type: 'bool', description: '真=只读，假=可编辑。' }], returnType: 'bool', encoding: 'wide' },
+        { command: '控件_设置密码输入', runtimeName: '控件_设置密码输入', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '是否密码', type: 'bool', description: '真=以 * 掩码回显，假=明文显示。' }], returnType: 'bool', encoding: 'wide' },
+        { command: '控件_设置提示文字', runtimeName: '控件_设置提示文字', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '占位文本', type: 'wideString', description: '编辑框内容为空时显示的灰字提示；空文本清除提示。' }], returnType: 'bool', encoding: 'wide' },
+        { command: '控件_设置数值范围', runtimeName: '控件_设置数值范围', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '最小值', type: 'int', description: '范围下限；大于最大值时自动交换。' }, { name: '最大值', type: 'int', description: '范围上限。' }], returnType: 'bool', encoding: 'wide' },
+        { command: '控件_设置不确定进度', runtimeName: '控件_设置不确定进度', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '是否', type: 'bool', description: '真=跑马灯动画，假=确定进度。' }], returnType: 'bool', encoding: 'wide' },
+        { command: '控件_插入项目', runtimeName: '控件_插入项目', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '索引', type: 'int', description: '零基插入位置；-1 追加到末尾。' }, { name: '文本', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+        { command: '控件_删除项目', runtimeName: '控件_删除项目', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '索引', type: 'int', description: '零基项目下标，越界返回假。' }], returnType: 'bool', encoding: 'wide' },
+        { command: '控件_修改项目', runtimeName: '控件_修改项目', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '索引', type: 'int', description: '零基项目下标，越界返回假。' }, { name: '文本', type: 'wideString', description: '整行替换的新文本。' }], returnType: 'bool', encoding: 'wide' },
+        { command: '控件_取项目文本', runtimeName: '控件_取项目文本', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '索引', type: 'int', description: '零基项目下标，越界返回空文本。' }], returnType: 'wideString', encoding: 'wide' },
+        { command: '控件_取项目数量', runtimeName: '控件_取项目数量', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+        { command: '控件_设置表项高度', runtimeName: '控件_设置表项高度', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '表项高度', type: 'int', description: '每个项目的显示高度，设计器逻辑坐标；必须大于 0。' }], returnType: 'bool', encoding: 'wide' },
+        { command: '控件_设置选中颜色', runtimeName: '控件_设置选中颜色', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '起始颜色', type: 'wideString', description: '渐变起始色 "#RRGGBB"；空文本保持原值。' }, { name: '结束颜色', type: 'wideString', description: '渐变结束色 "#RRGGBB"；空文本保持原值。' }, { name: '边框颜色', type: 'wideString', description: '选中边框色 "#RRGGBB"；空文本保持原值。' }], returnType: 'bool', encoding: 'wide' },
+        { command: '控件_设置选中标记颜色', runtimeName: '控件_设置选中标记颜色', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '选中颜色', type: 'wideString', description: '选中底色 "#RRGGBB"；空文本保持原值。' }, { name: '标记颜色', type: 'wideString', description: '对勾/圆点颜色 "#RRGGBB"；空文本保持原值。' }], returnType: 'bool', encoding: 'wide' },
+        { command: '控件_设置边框', runtimeName: '控件_设置边框', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '是否显示', type: 'bool', description: '真=显示外边框，假=隐藏。' }, { name: '粗细', type: 'int', description: '设计器逻辑坐标；隐藏时忽略。' }, { name: '颜色', type: 'wideString', description: '"#RRGGBB"；空文本保持原值。' }], returnType: 'bool', encoding: 'wide' },
+        { command: '控件_设置标题对齐', runtimeName: '控件_设置标题对齐', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '对齐方式', type: 'int', description: '0 居左、1 居中、2 居右。' }], returnType: 'bool', encoding: 'wide' },
+        { command: '控件_设置文本对齐', runtimeName: '控件_设置文本对齐', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '对齐方式', type: 'int', description: '0 居左、1 居中、2 居右；仅列表框/组合框（自绘通道）。' }], returnType: 'bool', encoding: 'wide' },
+        { command: '控件_设置填充方式', runtimeName: '控件_设置填充方式', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '方式', type: 'int', description: '0 原始大小、1 拉伸填满、2 等比适应、3 等比填满。' }], returnType: 'bool', encoding: 'wide' },
+        { command: '控件_播放', runtimeName: '控件_播放', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'bool', encoding: 'wide' },
+        { command: '控件_暂停', runtimeName: '控件_暂停', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'bool', encoding: 'wide' },
+        { command: '控件_设置循环播放', runtimeName: '控件_设置循环播放', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '是否循环', type: 'bool', description: '真=循环播放，假=播完停在末帧。' }], returnType: 'bool', encoding: 'wide' },
         { command: '控件_是否有效', runtimeName: '控件_是否有效', parameters: [{ name: '控件', type: 'controlRef' }], returnType: 'bool' },
         ...createRuntimeControlBindings('lingbuilder.win32.basic'),
         ...createRuntimeControlEventBindings('lingbuilder.win32.basic'),
@@ -841,6 +881,16 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         ,{ name: '视频播放器_停止', signature: '视频播放器_停止(控件名)', description: '停止指定视频。', insertText: '视频播放器_停止(视频播放器1)', returnType: '逻辑型' }
         ,{ name: '视频播放器_设置音量', signature: '视频播放器_设置音量(控件名, 音量)', description: '设置视频音量，范围 0～100。', insertText: '视频播放器_设置音量(视频播放器1, 100)', returnType: '逻辑型' }
         ,{ name: '视频播放器_取状态', signature: '视频播放器_取状态(控件名)', description: '返回 Media Foundation 播放器状态；未创建时返回 -1。', insertText: '视频播放器_取状态(视频播放器1)', returnType: '整数型' }
+        ,{ name: '滑块_置刻度间隔', signature: '滑块_置刻度间隔(控件名, 刻度间隔)', description: '运行期设置滑块的刻度间隔（每隔多少单位画一刻度）；小于 1 按 1 处理。', insertText: '滑块_置刻度间隔($1, 10)', returnType: '逻辑型' }
+        ,{ name: '滑块_取刻度间隔', signature: '滑块_取刻度间隔(控件名)', description: '返回滑块的刻度间隔（创建期属性或最近一次 置刻度间隔 的值）；Win32 没有刻度间隔读取消息，这里按设计器属性与运行期覆盖口径返回，控件不支持时返回 0。', insertText: '滑块_取刻度间隔($1)', returnType: '整数型' }
+        ,{ name: '日期时间选择器_置日期', signature: '日期时间选择器_置日期(控件名, 日期文本)', description: '运行期设置日期时间选择器的当前值：日期写 "yyyy-MM-dd"，time 格式控件写 "HH:mm" 或 "HH:mm:ss"；解析失败返回假。', insertText: '日期时间选择器_置日期($1, "2026-10-17")', returnType: '逻辑型' }
+        ,{ name: '日期时间选择器_取日期', signature: '日期时间选择器_取日期(控件名)', description: '读取日期时间选择器当前值，返回 "yyyy-MM-dd HH:mm:ss" 文本；未设置时返回空文本。', insertText: '日期时间选择器_取日期($1)', returnType: '文本型' }
+        ,{ name: '日期时间选择器_置显示格式', signature: '日期时间选择器_置显示格式(控件名, 格式文本)', description: '运行期改写显示格式（DTM 格式串：yyyy 年、MM 月、dd 日、HH 时、mm 分、ss 秒，字面字符用单引号包裹）；传空文本恢复按控件格式属性的默认显示。', insertText: '日期时间选择器_置显示格式($1, "yyyy年MM月dd日")', returnType: '逻辑型' }
+        ,{ name: '月历_置日期', signature: '月历_置日期(控件名, 日期文本)', description: '运行期设置月历选中的日期（"yyyy-MM-dd"）；多选月历置为单日选区，普通月历直接选中；解析失败返回假。', insertText: '月历_置日期($1, "2026-10-17")', returnType: '逻辑型' }
+        ,{ name: '月历_取日期', signature: '月历_取日期(控件名)', description: '读取月历当前选中日期，返回 "yyyy-MM-dd" 文本；多选月历返回选区起始日，未选中返回空文本。', insertText: '月历_取日期($1)', returnType: '文本型' }
+        ,{ name: '月历_置选中范围', signature: '月历_置选中范围(控件名, 起始日期, 结束日期)', description: '运行期设置月历的选中日期范围（"yyyy-MM-dd"，起止自动按先后排序）；仅多选月历生效，单选月历返回假。', insertText: '月历_置选中范围($1, "2026-10-01", "2026-10-07")', returnType: '逻辑型' }
+        ,{ name: '富文本框_置RTF文本', signature: '富文本框_置RTF文本(控件名, RTF文本)', description: '把 RTF 格式化文本写入富文本框（EM_STREAMIN，与设计器「RTF 格式化文本」属性同一条流式链路）；传空文本清空内容。红线：RTF 含大量 \\rtf1/\\par 序列，禁止在 .lcpp 里手写 RTF 字面量（源码转义会把 \\r 变回车），用 文件_读入文本 从 .rtf 文件读入后传入。', insertText: '富文本框_置RTF文本($1, 文件_读入文本("模板.rtf"))', returnType: '逻辑型' }
+        ,{ name: '富文本框_取RTF文本', signature: '富文本框_取RTF文本(控件名)', description: '读取富文本框当前内容的 RTF 表示（EM_STREAMOUT，含颜色字体等格式信息）。', insertText: '富文本框_取RTF文本($1)', returnType: '文本型' }
       ],
       types: [
         ...createControlTypes('lingbuilder.win32.common-controls'),
@@ -928,6 +978,15 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         ,{ command: '视频播放器_停止', runtimeName: '视频播放器_停止', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'bool', encoding: 'wide' }
         ,{ command: '视频播放器_设置音量', runtimeName: '视频播放器_设置音量', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '音量', type: 'int' }], returnType: 'bool', encoding: 'wide' }
         ,{ command: '视频播放器_取状态', runtimeName: '视频播放器_取状态', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' }
+        ,{ command: '滑块_置刻度间隔', runtimeName: '滑块_置刻度间隔', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '刻度间隔', type: 'int', description: '每隔多少单位画一刻度；小于 1 按 1 处理。' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '滑块_取刻度间隔', runtimeName: '滑块_取刻度间隔', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' }        ,{ command: '日期时间选择器_置日期', runtimeName: '日期时间选择器_置日期', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '日期文本', type: 'wideString', description: '"yyyy-MM-dd"；time 格式控件写 "HH:mm" 或 "HH:mm:ss"。' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '日期时间选择器_取日期', runtimeName: '日期时间选择器_取日期', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'wideString', encoding: 'wide' }
+        ,{ command: '日期时间选择器_置显示格式', runtimeName: '日期时间选择器_置显示格式', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '格式文本', type: 'wideString', description: 'DTM 格式串：yyyy/MM/dd/HH/mm/ss；空文本恢复默认显示。' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '月历_置日期', runtimeName: '月历_置日期', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '日期文本', type: 'wideString', description: '"yyyy-MM-dd"。' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '月历_取日期', runtimeName: '月历_取日期', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'wideString', encoding: 'wide' }
+        ,{ command: '月历_置选中范围', runtimeName: '月历_置选中范围', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '起始日期', type: 'wideString', description: '"yyyy-MM-dd"；起止自动按先后排序。' }, { name: '结束日期', type: 'wideString', description: '"yyyy-MM-dd"。' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '富文本框_置RTF文本', runtimeName: '富文本框_置RTF文本', parameters: [{ name: '控件名', type: 'controlRef' }, { name: 'RTF文本', type: 'wideString', description: 'RTF 格式化文本；空文本清空内容。禁止 .lcpp 手写 RTF 字面量（\\r 会转回车），用 文件_读入文本 读入。' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '富文本框_取RTF文本', runtimeName: '富文本框_取RTF文本', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'wideString', encoding: 'wide' }
       ]
     }
   },
