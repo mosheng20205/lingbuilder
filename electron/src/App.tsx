@@ -15,7 +15,6 @@ import {
   Cpu,
   RefreshCw,
   X,
-  ChevronLeft,
   ChevronRight,
   Hammer,
   Code,
@@ -59,6 +58,7 @@ import { setActiveLingCppTokenColorSettings } from './services/lingCpp/semanticT
 
 // Components
 import Sidebar from './components/Sidebar';
+import SidebarResizeSash, { suppressNextSyntheticClick } from './components/SidebarResizeSash';
 import DiffViewer, { DiffViewerHandle } from './components/DiffViewer';
 import MonacoCodeEditor from './components/MonacoCodeEditor';
 import type { MonacoCodeEditorHandle, MonacoEditorState } from './components/MonacoCodeEditor';
@@ -155,7 +155,7 @@ import {
   LEGACY_EDITOR_FONT_SIZE_KEY,
   planLegacyWorkbenchConfigurationMigration
 } from './services/configuration/legacyWorkbenchConfiguration';
-import { runGuardedConfigurationUpdate } from './services/configuration/configurationUpdateGuard';
+import { createConfigurationMutationQueue, runGuardedConfigurationUpdate } from './services/configuration/configurationUpdateGuard';
 import {
   requestWindowDesignerLingCppSource,
   WINDOW_DESIGNER_LINGCPP_SOURCE_REQUEST,
@@ -1483,6 +1483,9 @@ export default function App() {
     value: ConfigurationValue,
     target: ConfigurationTarget
   ) => Promise<boolean>>(async () => false);
+  // 配置变更串行化：PATCH 响应全量回放服务器快照，并发在途的读改写交错会让旧快照复活旧状态。
+  const configurationMutationQueueRef = useRef<ReturnType<typeof createConfigurationMutationQueue> | null>(null);
+  if (!configurationMutationQueueRef.current) configurationMutationQueueRef.current = createConfigurationMutationQueue();
   const [isAppClosed, setIsAppClosed] = useState(false);
   const [editorFontSize, setEditorFontSizeState] = useState(getInitialEditorFontSize);
   const [sidebarFontSize, setSidebarFontSize] = useState(DEFAULT_SIDEBAR_FONT_SIZE);
@@ -1651,11 +1654,11 @@ export default function App() {
     void refreshSolution();
   }, [hasEnteredWorkbench]);
 
-  useEffect(() => { const receive = (event: Event) => { const diagnostics = (event as CustomEvent<{ diagnostics?: any[] }>).detail?.diagnostics || []; const next: ProblemItem[] = diagnostics.map((item, index) => ({ id: `quality:${item.source}:${index}:${item.filePath || ''}:${item.line || 0}`, filePath: item.filePath || '质量分析', line: item.line || 1, column: item.column, code: item.code, source: item.source, level: item.severity, message: item.message, codeSnippet: item.message, suggestion: item.source === 'sarif' ? '请根据静态分析规则修正代码后重新生成报告。' : '请根据 Sanitizer 调用栈修复内存或未定义行为问题。' })); setQualityProblems(next); if (next.length) { setShowBottomPanel(true); setActiveTabInBottom('problems'); } }; window.addEventListener('lingbuilder-quality-diagnostics', receive); return () => window.removeEventListener('lingbuilder-quality-diagnostics', receive); }, []);
+  useEffect(() => { const receive = (event: Event) => { const diagnostics = (event as CustomEvent<{ diagnostics?: any[] }>).detail?.diagnostics || []; const next: ProblemItem[] = diagnostics.map((item, index) => ({ id: `quality:${item.source}:${index}:${item.filePath || ''}:${item.line || 0}`, filePath: item.filePath || '质量分析', line: item.line || 1, column: item.column, code: item.code, source: item.source, level: item.severity, message: item.message, codeSnippet: item.message, suggestion: item.source === 'sarif' ? '请根据静态分析规则修正代码后重新生成报告。' : '请根据 Sanitizer 调用栈修复内存或未定义行为问题。' })); setQualityProblems(next); if (next.length) { commitPanelVisible(true); setActiveTabInBottom('problems'); } }; window.addEventListener('lingbuilder-quality-diagnostics', receive); return () => window.removeEventListener('lingbuilder-quality-diagnostics', receive); }, []);
   // 窗口设计器「添加控件」被模块门禁拦截时，把拦截原因送到用户眼前：自动弹开底部输出面板。
   // 设计器侧只写日志的话输出面板常被折叠，历史上表现为「点击控件没反应」（2026-09-25）。
   useEffect(() => {
-    const receive = () => { setShowBottomPanel(true); setActiveTabInBottom('output'); };
+    const receive = () => { commitPanelVisible(true); setActiveTabInBottom('output'); };
     window.addEventListener('lingbuilder-designer-add-blocked', receive);
     return () => window.removeEventListener('lingbuilder-designer-add-blocked', receive);
   }, []);
@@ -1666,7 +1669,7 @@ export default function App() {
       const detail = (event as CustomEvent<FindResultsData>).detail;
       if (!detail) return;
       setFindResultsData(detail);
-      setShowBottomPanel(true);
+      commitPanelVisible(true);
       setActiveTabInBottom('find_results');
     };
     window.addEventListener(LINGCPP_FIND_RESULTS_EVENT, receive);
@@ -1684,7 +1687,7 @@ export default function App() {
           : '请检查链接库、输出目录和构建架构。'
       }));
       setCompilerProblems(next);
-      if (next.length) { setShowBottomPanel(true); setActiveTabInBottom('problems'); }
+      if (next.length) { commitPanelVisible(true); setActiveTabInBottom('problems'); }
     };
     window.addEventListener('lingbuilder-compiler-diagnostics', receiveDiagnostics);
     return () => window.removeEventListener('lingbuilder-compiler-diagnostics', receiveDiagnostics);
@@ -1983,7 +1986,9 @@ export default function App() {
     value: ConfigurationValue,
     target: ConfigurationTarget
   ): Promise<boolean> => {
-    return runGuardedConfigurationUpdate({
+    const enqueueConfigurationMutation = configurationMutationQueueRef.current;
+    if (!enqueueConfigurationMutation) return false;
+    return enqueueConfigurationMutation(() => runGuardedConfigurationUpdate({
       key,
       value,
       currentEditorExperienceMode: editorExperienceMode,
@@ -2013,14 +2018,16 @@ export default function App() {
           return false;
         }
       }
-    });
+    }));
   }, [applyConfigurationSnapshot, editorExperienceMode, flushCurrentEditorDrafts, showEditorFlushFailure]);
 
   const resetWorkbenchConfiguration = useCallback(async (
     key: WorkbenchConfigurationKey,
     target: ConfigurationTarget
   ): Promise<boolean> => {
-    return runGuardedConfigurationUpdate({
+    const enqueueConfigurationMutation = configurationMutationQueueRef.current;
+    if (!enqueueConfigurationMutation) return false;
+    return enqueueConfigurationMutation(() => runGuardedConfigurationUpdate({
       key,
       value: editorExperienceMode,
       currentEditorExperienceMode: editorExperienceMode,
@@ -2047,7 +2054,7 @@ export default function App() {
           return false;
         }
       }
-    });
+    }));
   }, [applyConfigurationSnapshot, editorExperienceMode, flushCurrentEditorDrafts, showEditorFlushFailure]);
 
   useEffect(() => {
@@ -2102,6 +2109,18 @@ export default function App() {
     configurationMutationRef.current('workbench.panel.visible', !showBottomPanel, 'user')
   ), [showBottomPanel]);
 
+  // 可见性写穿助手：面板显隐的每一条写路径（用户切换、活动栏图标、程序化自动展开）都必须
+  // 同步持久化。只裸 setState 会让客户端与服务端脱同步——此后任何设置变更（含拖宽保存）的
+  // 响应快照都会把服务端旧值回放进 UI，实测表现为「拖拽结束面板被再次隐藏」（2026-10-18）。
+  const commitSidebarVisible = useCallback((visible: boolean) => {
+    setShowLeftSidebar(visible);
+    void configurationMutationRef.current('workbench.sidebar.visible', visible, 'user');
+  }, []);
+  const commitPanelVisible = useCallback((visible: boolean) => {
+    setShowBottomPanel(visible);
+    void configurationMutationRef.current('workbench.panel.visible', visible, 'user');
+  }, []);
+
   const toggleWorkbenchTheme = useCallback(async (): Promise<boolean> => (
     configurationMutationRef.current('workbench.colorTheme', isDarkMode ? 'light' : 'dark', 'user')
   ), [isDarkMode]);
@@ -2112,7 +2131,7 @@ export default function App() {
     setCommandHint(null);
     setModuleHint(hint);
     setActiveTabInBottom('module_hint');
-    setShowBottomPanel(true);
+    commitPanelVisible(true);
   }, []);
 
   const commandHintRef = useRef<CommandHintContent | null>(null);
@@ -2125,7 +2144,7 @@ export default function App() {
     if (!hint) return;
     setModuleHint(null);
     setActiveTabInBottom('module_hint');
-    setShowBottomPanel(true);
+    commitPanelVisible(true);
   }, []);
 
   // Resizable sidebars state
@@ -2147,6 +2166,9 @@ export default function App() {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
       if (didResize) {
+        // 拖拽期间 sash 跟随光标，mouseup 落点极可能仍压在 mousedown 元素上，浏览器会合成一次
+        // click；在捕获段吞掉，防止拖拽结束被任何点击入口误读成「点击」（历史折叠按钮教训）。
+        suppressNextSyntheticClick();
         void configurationMutationRef.current('workbench.sidebar.width', resizedWidth, 'user');
       }
     };
@@ -2516,11 +2538,11 @@ void DisplayStatus() {
           buildLaunchTimeoutRef.current = null;
         }
         setIsBuilding(true);
-        setShowBottomPanel(true);
+        commitPanelVisible(true);
         setActiveTabInBottom('output');
       } else {
         if (detail.status === 'completed' && detail.ok === true) {
-          setShowBottomPanel(true);
+          commitPanelVisible(true);
           setActiveTabInBottom('debug_logs');
         }
         buildStartedRef.current = false;
@@ -2983,7 +3005,7 @@ void DisplayStatus() {
   const appendEditorTransactionLog = (message: string, options?: { keepBottomPanelClosed?: boolean }) => {
     // 例行保存成功日志不得抢占底部面板：弹出会压缩设计器画布，自动保存每轮都会触发。
     if (!options?.keepBottomPanelClosed) {
-      setShowBottomPanel(true);
+      commitPanelVisible(true);
       setActiveTabInBottom('output');
     }
     setBuildLogs(previous => [
@@ -3468,7 +3490,7 @@ void DisplayStatus() {
             pendingWorkspaceSearchRevealRef.current = null;
             const message = data?.error || '读取项目文本文件失败。';
             setProjectFileLoadState(createProjectFileLoadState(projectId, 'error', message));
-            setShowBottomPanel(true);
+            commitPanelVisible(true);
             setActiveTabInBottom('output');
             setBuildLogs(previous => [
               ...previous,
@@ -3627,7 +3649,7 @@ void DisplayStatus() {
             });
           } else if (pendingReveal) {
             pendingWorkspaceSearchRevealRef.current = null;
-            setShowBottomPanel(true);
+            commitPanelVisible(true);
             setActiveTabInBottom('output');
             setBuildLogs(previous => [
               ...previous,
@@ -3642,7 +3664,7 @@ void DisplayStatus() {
           setProjectFileLoadState(createProjectFileLoadState(projectId, 'error', message));
           const missingPath = pendingWorkspaceSearchRevealRef.current?.filePath;
           pendingWorkspaceSearchRevealRef.current = null;
-          setShowBottomPanel(true);
+          commitPanelVisible(true);
           setActiveTabInBottom('output');
           setBuildLogs(previous => [
             ...previous,
@@ -3663,7 +3685,7 @@ void DisplayStatus() {
             : e instanceof Error ? e.message : '无法连接本地文件服务。';
           pendingWorkspaceSearchRevealRef.current = null;
           setProjectFileLoadState(createProjectFileLoadState(activeProjectId, 'error', message));
-          setShowBottomPanel(true);
+          commitPanelVisible(true);
           setActiveTabInBottom('output');
           setBuildLogs(previous => [
             ...previous,
@@ -4090,7 +4112,7 @@ void DisplayStatus() {
     events.addEventListener('debug', raw => {
       const session = JSON.parse((raw as MessageEvent).data); setNativeDebugSession(session);
       if (Array.isArray(session.logs)) setDebugLogs(session.logs.filter(Boolean));
-      if (session.state === 'stopped') { setShowBottomPanel(true); setActiveTabInBottom('debug_locals'); }
+      if (session.state === 'stopped') { commitPanelVisible(true); setActiveTabInBottom('debug_locals'); }
     });
     return () => events.close();
   }, [nativeDebugSession?.state]);
@@ -4457,7 +4479,7 @@ void DisplayStatus() {
     const owner = findWorkspaceSearchProject(match.filePath, solution.projects);
     if (!owner) {
       setWorkspaceSearchMode(null);
-      setShowBottomPanel(true);
+      commitPanelVisible(true);
       setActiveTabInBottom('output');
       appendEditorTransactionLog(`【搜索结果】${match.filePath} 不属于当前解决方案的源码或配置根目录；已保留搜索预览，但不能在项目编辑器中打开。`);
       return;
@@ -4760,7 +4782,7 @@ void DisplayStatus() {
       && !await handleSaveWorkspace('导出 LCPP 源码包前保存')) return false;
     const result = await sourcePackageApi.exportProject(project.id, project.name);
     if (result.canceled) return false;
-    setShowBottomPanel(true);
+    commitPanelVisible(true);
     setActiveTabInBottom('output');
     if (!result.ok) {
       setBuildLogs(previous => [...previous, `> [${new Date().toLocaleTimeString()}] 【源码分享错误】${result.error || 'LCPP 源码包导出失败。'}`]);
@@ -4826,7 +4848,7 @@ void DisplayStatus() {
     if (!state) return;
     setInstallerExportBusy(true);
     setInstallerExportError('');
-    setShowBottomPanel(true);
+    commitPanelVisible(true);
     setActiveTabInBottom('output');
     setBuildLogs(previous => [...previous, `> [${new Date().toLocaleTimeString()}] 【安装包导出】正在打包项目「${state.preflight.projectName}」（版本 ${value.version}）…`]);
     try {
@@ -4928,7 +4950,7 @@ void DisplayStatus() {
       return false;
     }
 
-    setShowBottomPanel(true);
+    commitPanelVisible(true);
     setActiveTabInBottom('output');
 
     if (actionName === 'new') {
@@ -4957,7 +4979,7 @@ void DisplayStatus() {
   const handleEnvCheck = async (): Promise<boolean> => {
     const requestLease = environmentCheckRequestGateRef.current.begin();
     if (!requestLease) {
-      setShowBottomPanel(true);
+      commitPanelVisible(true);
       setActiveTabInBottom('output');
       setBuildLogs(prev => [
         ...prev,
@@ -4967,7 +4989,7 @@ void DisplayStatus() {
     }
     const controller = requestLease.controller;
     const timeout = window.setTimeout(() => controller.abort(), 32_000);
-    setShowBottomPanel(true);
+    commitPanelVisible(true);
     setActiveTabInBottom('output');
     setBuildLogs([`> [${new Date().toLocaleTimeString()}] 正在检测真实开发环境，请稍候...`]);
     try {
@@ -4998,7 +5020,7 @@ void DisplayStatus() {
   // 任务服务会把错误消息写进 task.logs）。此前响应通道把 result.logs 再追加一遍，同一批
   // 行在面板里出现两次。这里只兜底「任务未创建」的失败响应（无 taskId），并派发编译诊断事件。
   const appendSolutionLogs = useCallback((title: string, result: { ok: boolean; taskId?: string; logs?: string[]; error?: string; stage?: string; compilerDiagnostics?: any[]; results?: Array<{ compilerDiagnostics?: any[] }> }) => {
-    setShowBottomPanel(true);
+    commitPanelVisible(true);
     setActiveTabInBottom('output');
     if (!result.taskId && !result.ok) {
       setBuildLogs(prev => [
@@ -5891,7 +5913,7 @@ void DisplayStatus() {
       buildIntervalRef.current = null;
     }
 
-    setShowBottomPanel(true);
+    commitPanelVisible(true);
     setActiveTabInBottom('output');
     setBuildLogs(prev => [
       ...prev,
@@ -6001,7 +6023,7 @@ void DisplayStatus() {
     editorOperationRef.current = 'build'; setIsBuilding(true);
     try {
       if (!await saveWorkspaceCore('原生调试前保存', true)) return false;
-      setShowBottomPanel(true); setActiveTabInBottom('debug_logs'); setDebugLogs(['正在构建 Debug 目标并启动原生调试适配器…']);
+      commitPanelVisible(true); setActiveTabInBottom('debug_logs'); setDebugLogs(['正在构建 Debug 目标并启动原生调试适配器…']);
       const response = await fetch('/api/debug/start', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectId: activeProjectId, breakpoints: debugBreakpoints, stopAtEntry: debugBreakpoints.length === 0 })
@@ -7294,7 +7316,7 @@ void DisplayStatus() {
       setShowCustomModal(false);
       
       // Toast notice via build output tab
-      setShowBottomPanel(true);
+      commitPanelVisible(true);
       setActiveTabInBottom('extracted');
       setBuildLogs(prev => [
         ...prev,
@@ -8372,7 +8394,7 @@ void DisplayStatus() {
           isBuilding={isBuilding}
           isDarkMode={isDarkMode}
           showLeftSidebar={showLeftSidebar}
-          setShowLeftSidebar={setShowLeftSidebar}
+          setShowLeftSidebar={commitSidebarVisible}
           showDesignerToolbox={isDesignerViewActive}
           onDesignerToolboxHostChange={setDesignerToolboxHost}
           onSetStatus={handleSetStatus}
@@ -8420,41 +8442,13 @@ void DisplayStatus() {
           onShowModuleHint={handleShowModuleHint}
         />
 
-        {/* LEFT DRAG RESIZER & COLLAPSE TOGGLE */}
-        <div
-          className={`w-[6px] relative flex items-center justify-center select-none transition-all duration-150 z-20 shrink-0 border-r border-[#2d2d34] group ${
-            showLeftSidebar 
-              ? 'bg-[#1c1c22] cursor-col-resize hover:bg-blue-500/20' 
-              : 'bg-[#16161c] cursor-pointer hover:bg-amber-500/10'
-          }`}
-          onMouseDown={showLeftSidebar ? startResizeLeft : undefined}
-          title={showLeftSidebar ? "拖拽两侧边缘调整宽度 / 双击重置 / 点击按钮折叠" : "点击展开左侧解决方案资源管理器"}
-          onDoubleClick={showLeftSidebar ? resetLeftSidebarWidth : undefined}
-          onClick={showLeftSidebar ? undefined : toggleSidebarVisibility}
-        >
-          {/* Thin line indicator */}
-          <div className={`w-[1px] rounded-full transition-all ${
-            showLeftSidebar 
-              ? 'h-8 bg-slate-700/50 group-hover:bg-blue-400 group-hover:h-12' 
-              : 'h-12 bg-amber-500/20 group-hover:bg-amber-500/50'
-          }`}></div>
-
-          {/* Toggle Trigger Pill Button */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleSidebarVisibility();
-            }}
-            className="absolute left-1/2 -translate-x-1/2 w-[16px] h-12 bg-[#2d2d36] hover:bg-[#3a3a45] active:bg-[#4a4a58] border border-[#444] hover:border-blue-500/60 rounded shadow-lg flex items-center justify-center cursor-pointer transition-all hover:scale-105 z-30 group-hover:opacity-100 opacity-60"
-            title={showLeftSidebar ? "折叠左侧面板" : "展开左侧面板"}
-          >
-            {showLeftSidebar ? (
-              <ChevronLeft className="w-3 h-3 text-slate-400 group-hover:text-blue-400 transition-transform" />
-            ) : (
-              <ChevronRight className="w-3 h-3 text-amber-500 group-hover:text-amber-400 transition-transform group-hover:scale-110" />
-            )}
-          </button>
-        </div>
+        {/* LEFT DRAG RESIZER：展开态纯拖拽调宽（折叠入口在活动栏/标题栏/命令面板），折叠态点击展开 */}
+        <SidebarResizeSash
+          visible={showLeftSidebar}
+          onResizeStart={startResizeLeft}
+          onResetWidth={resetLeftSidebarWidth}
+          onToggleVisibility={toggleSidebarVisibility}
+        />
 
         {/* Central Comparative Editor Area */}
         <div className="flex-1 flex flex-col overflow-hidden min-w-0">
@@ -8850,7 +8844,7 @@ void DisplayStatus() {
         isDarkMode={isDarkMode}
         onClose={() => setShowEnvironmentRepairCenter(false)}
         onEvent={message => {
-          setShowBottomPanel(true);
+          commitPanelVisible(true);
           setActiveTabInBottom('output');
           setBuildLogs(previous => [...previous, `> [${new Date().toLocaleTimeString()}] 【环境修复】${message}`]);
         }}
@@ -9154,7 +9148,7 @@ void DisplayStatus() {
             return <button
               type="button"
               title="点击取消当前任务"
-              onClick={() => { void fetch(`/api/tasks/${encodeURIComponent(task.id)}/cancel`, { method: 'POST' }); setShowBottomPanel(true); setActiveTabInBottom('output'); }}
+              onClick={() => { void fetch(`/api/tasks/${encodeURIComponent(task.id)}/cancel`, { method: 'POST' }); commitPanelVisible(true); setActiveTabInBottom('output'); }}
               className="rounded px-2 py-0.5 hover:bg-white/15"
             >{task.state === 'queued' ? '排队' : `${task.progress}%`} · {task.title} ×</button>;
           })()}
