@@ -28,10 +28,13 @@
 不要先创建项目再撞报错：
 
 1. **目标模块是否收费、要不要本机授权**：`lingbuilder.new_emoji.ui`（new_emoji 界面模块）及其外壳
-   `lingbuilder.new_emoji.fbro-shell` 是收费模块。外部 AI 客户端要用它们，必须请用户在
-   LingBuilder「帮助(H) → AI Bridge 连接中心 → Bridge 启动设置」勾选**「允许外部 AI 客户端使用本机授权」**
-   并保持 IDE 运行。门禁若报「宿主启动时未取得授权」，说明你的 MCP 宿主先于该开关启动：请用户勾选后
-   **重启 AI 客户端或重连 MCP** 再试——这是时序问题，不是未购买，不要建议用户购买模块，也不要反复重试。
+   `lingbuilder.new_emoji.fbro-shell` 是收费模块。本机授权代理随 LingBuilder 默认开启：只要用户在
+   LingBuilder **登录了账号**（购买/Pro/限免由云端判定），门禁失败时会自动向 IDE 按需换发 Permit，
+   安装/启用/构建收费模块不需要用户先在 IDE 手动启用。门禁若报「自动授权未成功：请先注册并登录…」，
+   请用户在 LingBuilder 登录账号后重试；若报「宿主启动时未取得授权」，说明本机授权代理不可达
+   （LingBuilder 未运行，或在「帮助(H) → AI Bridge 连接中心 → Bridge 启动设置」关闭了
+   **「允许外部 AI 客户端使用本机授权」**）：请用户保持 LingBuilder 运行并登录账号，必要时
+   **重启 AI 客户端或重连 MCP** 再试——这是环境/时序问题，不是未购买，用户未登录时不要建议购买模块，也不要反复重试。
 2. **目标构建架构**：含浏览器内核（CEF3/FBro）或 new_emoji 的项目通常需要 x64；
    纯 Win32 基础控件示例用默认 Win32 即可。架构写在工作区 `.lingbuilder/build-configuration.json`
    的**顶层** `mode`（Debug/Release）与 `architecture`（Win32/x64）两个字段，只认顶层字段；

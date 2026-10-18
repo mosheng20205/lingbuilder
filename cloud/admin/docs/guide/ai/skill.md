@@ -52,7 +52,7 @@ title: 灵码 Skill 使用
 
 | 环节 | 指引要求 AI 客户端做的事 |
 |---|---|
-| 收费模块与本机授权 | 用到 new_emoji 等收费模块时，先请用户在「AI Bridge 连接中心 → Bridge 启动设置」勾选**允许外部 AI 客户端使用本机授权**；报「宿主启动时未取得授权」时引导用户勾选后重启 AI 客户端或重连 MCP，而不是误判为未购买 |
+| 收费模块与本机授权 | 本机授权代理默认开启：用户在 LingBuilder 登录账号后（购买/Pro/限免由云端判定），收费模块门禁失败会自动按需换发 Permit，无需先在 IDE 手动启用；报「自动授权未成功：请先注册并登录」引导登录后重试，报「宿主启动时未取得授权」引导保持 LingBuilder 运行并登录、必要时重启 AI 客户端或重连 MCP，不要误判为未购买 |
 | 目标构建架构 | 含浏览器内核 / new_emoji 的项目通常需要 x64；架构与模式只认 `.lingbuilder/build-configuration.json` 顶层的 `architecture` 与 `mode` 字段 |
 | 全局 vs 工作区安装 | 默认写当前工作区的客户端配置；用户要求全局时才写用户级文件（如 `%USERPROFILE%\.codex\config.toml`），并先向用户复述落点 |
 | 工作区自检 | 连通后第一件事调 `lingbuilder.workspace.list`：返回首项 `type="workspace"` 的条目带 `workspaceRoot`（工作区根绝对路径），与用户项目目录不符就停止并让客户端切目录重启 MCP 宿主 |
