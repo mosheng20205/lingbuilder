@@ -148,5 +148,6 @@ export interface SourceControlStatus {
   ahead: number;
   behind: number;
   files: SourceControlFileStatus[];
+  managedTrackedFiles?: string[];
   error?: string;
 }

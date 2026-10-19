@@ -170,6 +170,24 @@ export default defineConfig({
           ],
         },
         {
+          text: '进阶实战系列',
+          collapsed: false,
+          items: [
+            { text: '系列总览', link: '/guide/tutorials/jinjie' },
+            { text: '01 · SQLite 数据库入门', link: '/guide/tutorials/jinjie-01-sqlite' },
+            { text: '02 · @ 行内嵌 C++', link: '/guide/tutorials/jinjie-02-inline-cpp' },
+            { text: '03 · 网络请求 web.http', link: '/guide/tutorials/jinjie-03-webhttp' },
+            { text: '04 · 多线程 threading', link: '/guide/tutorials/jinjie-04-threading' },
+            { text: '05 · 正则表达式 std.regex', link: '/guide/tutorials/jinjie-05-regex' },
+            { text: '06 · 压缩与打包 archive', link: '/guide/tutorials/jinjie-06-archive' },
+            { text: '07 · 定时任务 cron', link: '/guide/tutorials/jinjie-07-cron' },
+            { text: '08 · 邮件发送 mail', link: '/guide/tutorials/jinjie-08-mail' },
+            { text: '09 · HTTP 服务器 http.server', link: '/guide/tutorials/jinjie-09-httpserver' },
+            { text: '10 · 浏览器自动化 EdgeView（选学）', link: '/guide/tutorials/jinjie-10-edgeview' },
+            { text: '11 · 实战整合 + 安装包导出（收官）', link: '/guide/tutorials/jinjie-11-integration' },
+          ],
+        },
+        {
           text: '图文教程',
           collapsed: false,
           items: [
