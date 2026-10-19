@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.692Z",
+  "generatedAt": "2026-10-19T03:18:58.643Z",
   "module": {
     "id": "lingbuilder.advanced.assembly",
     "name": "CPU指令能力模块",
@@ -68,7 +68,8 @@
         "parameters": [
           {
             "name": "数值",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "要统计的 64 位数值；负数按补码的置位数量统计。"
           }
         ],
         "returnType": "int"
@@ -88,11 +89,13 @@
         "parameters": [
           {
             "name": "数值",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "要移位的 64 位数值。"
           },
           {
             "name": "位数",
-            "type": "int"
+            "type": "int",
+            "description": "循环左移的位数；实际位移取该值与 63 按位与的结果，负数同样按补码取模。"
           }
         ],
         "returnType": "longLong"

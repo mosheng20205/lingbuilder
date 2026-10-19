@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-25T22:05:22.442Z",
+  "generatedAt": "2026-10-19T03:18:58.858Z",
   "module": {
     "id": "lingbuilder.std.bigint",
     "name": "大数运算模块",

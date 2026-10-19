@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-25T22:05:22.493Z",
+  "generatedAt": "2026-10-19T03:18:58.875Z",
   "module": {
     "id": "lingbuilder.sunnynet",
     "name": "网络中间件模块",
     "version": "1.1.0",
     "description": "基于 SunnyNet 的网络抓包与改写中间件：捕获并查看、修改本机 HTTP/HTTPS/WebSocket/TCP/UDP 收发数据，支持根证书 HTTPS 解密、按进程代理（高级）与系统代理；事件处理器在窗口 UI 线程执行。"
   },
-  "commandCount": 69,
+  "commandCount": 73,
   "commands": [
     {
       "index": 1,
@@ -33,7 +33,7 @@
       "index": 2,
       "name": "网络中间件_销毁",
       "signature": "网络中间件_销毁(中间件)",
-      "description": "停止并释放中间件句柄；重复销毁返回假。",
+      "description": "停止并释放中间件句柄；重复销毁返回假。⚠️ 加载过进程代理驱动的实例：销毁只还原系统代理并清理驱动文件（捕获立即失效），底层缺陷下不再释放 Go 上下文（否则宿主进程延迟崩溃），上下文保留到进程退出由系统回收；需要彻底干净的停止请在进程退出前自然结束。",
       "insertText": "网络中间件_销毁($1)",
       "returnType": "逻辑型",
       "category": "生命周期",
@@ -51,7 +51,7 @@
         "returnType": "bool",
         "encoding": "wide",
         "example": "网络中间件_销毁()",
-        "description": "停止并释放中间件句柄；重复销毁返回假。"
+        "description": "停止并释放中间件句柄；重复销毁返回假。⚠️ 加载过进程代理驱动的实例：销毁只还原系统代理并清理驱动文件（捕获立即失效），底层缺陷下不再释放 Go 上下文（否则宿主进程延迟崩溃），上下文保留到进程退出由系统回收；需要彻底干净的停止请在进程退出前自然结束。"
       },
       "demoInvocation": "网络中间件_销毁(0)"
     },
@@ -116,7 +116,7 @@
       "index": 5,
       "name": "网络中间件_停止",
       "signature": "网络中间件_停止(中间件)",
-      "description": "停止本地代理监听并自动还原系统代理设置（与底层官方语义一致）；已建立的连接会被断开。",
+      "description": "停止本地代理监听并自动还原系统代理设置（与底层官方语义一致）；已建立的连接会被断开。⚠️ 已加载进程代理驱动时本命令拒绝执行（底层 Close 存在双重关闭崩溃缺陷）：请先调 网络中间件_卸载进程代理文件 再停止，或销毁实例。",
       "insertText": "网络中间件_停止($1)",
       "returnType": "逻辑型",
       "category": "生命周期",
@@ -134,7 +134,7 @@
         "returnType": "bool",
         "encoding": "wide",
         "example": "网络中间件_停止()",
-        "description": "停止本地代理监听并自动还原系统代理设置（与底层官方语义一致）；已建立的连接会被断开。"
+        "description": "停止本地代理监听并自动还原系统代理设置（与底层官方语义一致）；已建立的连接会被断开。⚠️ 已加载进程代理驱动时本命令拒绝执行（底层 Close 存在双重关闭崩溃缺陷）：请先调 网络中间件_卸载进程代理文件 再停止，或销毁实例。"
       },
       "demoInvocation": "网络中间件_停止(0)"
     },
@@ -285,7 +285,7 @@
       "index": 12,
       "name": "网络中间件_安装根证书",
       "signature": "网络中间件_安装根证书(中间件)",
-      "description": "⚠️ 系统级操作：向系统受信任根证书库安装 LingBuilder 网络中间件根证书（本地计算机库需管理员权限）。已安装时直接返回真；首次安装时程序会弹出中文确认对话框，用户点击“是”才执行安装。",
+      "description": "⚠️ 系统级操作：向系统受信任根证书库安装当前中间件正在使用的根证书（本地计算机库需管理员权限）。按当前根证书指纹判定：库里已是当前根时直接返回真；否则弹出中文确认对话框，用户点击“是”才执行安装（证书管理器每次创建都会生成新根，程序重启后需重新点一次安装，历史旧根保留不影响验证）。",
       "insertText": "网络中间件_安装根证书($1)",
       "returnType": "逻辑型",
       "category": "证书",
@@ -303,7 +303,7 @@
         "returnType": "bool",
         "encoding": "wide",
         "example": "网络中间件_安装根证书()",
-        "description": "⚠️ 系统级操作：向系统受信任根证书库安装 LingBuilder 网络中间件根证书（本地计算机库需管理员权限）。已安装时直接返回真；首次安装时程序会弹出中文确认对话框，用户点击“是”才执行安装。"
+        "description": "⚠️ 系统级操作：向系统受信任根证书库安装当前中间件正在使用的根证书（本地计算机库需管理员权限）。按当前根证书指纹判定：库里已是当前根时直接返回真；否则弹出中文确认对话框，用户点击“是”才执行安装（证书管理器每次创建都会生成新根，程序重启后需重新点一次安装，历史旧根保留不影响验证）。"
       },
       "demoInvocation": "网络中间件_安装根证书(0)"
     },
@@ -1193,6 +1193,86 @@
     },
     {
       "index": 49,
+      "name": "网络中间件_枚举请求头",
+      "signature": "网络中间件_枚举请求头()",
+      "description": "在 HTTP 事件处理器内返回本次请求的全部请求头文本（官方 GetRequestAllHeader，逐行「名: 值」）；审计与重发重建请用它，不要按固定头名清单逐个 取请求头。",
+      "insertText": "网络中间件_枚举请求头()",
+      "returnType": "文本型",
+      "category": "HTTP事件",
+      "capabilityKind": "single",
+      "binding": {
+        "command": "网络中间件_枚举请求头",
+        "runtimeName": "网络中间件_枚举请求头",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "网络中间件_枚举请求头()",
+        "description": "在 HTTP 事件处理器内返回本次请求的全部请求头文本（官方 GetRequestAllHeader，逐行「名: 值」）；审计与重发重建请用它，不要按固定头名清单逐个 取请求头。"
+      },
+      "demoInvocation": "网络中间件_枚举请求头()"
+    },
+    {
+      "index": 50,
+      "name": "网络中间件_枚举响应头",
+      "signature": "网络中间件_枚举响应头()",
+      "description": "在 HTTP 事件处理器内返回本次响应的全部响应头文本（官方 GetResponseAllHeader，逐行「名: 值」）。",
+      "insertText": "网络中间件_枚举响应头()",
+      "returnType": "文本型",
+      "category": "HTTP事件",
+      "capabilityKind": "single",
+      "binding": {
+        "command": "网络中间件_枚举响应头",
+        "runtimeName": "网络中间件_枚举响应头",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "网络中间件_枚举响应头()",
+        "description": "在 HTTP 事件处理器内返回本次响应的全部响应头文本（官方 GetResponseAllHeader，逐行「名: 值」）。"
+      },
+      "demoInvocation": "网络中间件_枚举响应头()"
+    },
+    {
+      "index": 51,
+      "name": "网络中间件_取响应体字节集",
+      "signature": "网络中间件_取响应体字节集()",
+      "description": "在 HTTP 响应事件处理器内返回响应正文的原始字节集（二进制安全：图片/压缩包/protobuf 可直接落盘）；文本预览场景仍可用 取响应体。",
+      "insertText": "网络中间件_取响应体字节集()",
+      "returnType": "字节集",
+      "category": "HTTP事件",
+      "capabilityKind": "single",
+      "binding": {
+        "command": "网络中间件_取响应体字节集",
+        "runtimeName": "网络中间件_取响应体字节集",
+        "parameters": [],
+        "returnType": "bytes",
+        "encoding": "wide",
+        "example": "网络中间件_取响应体字节集()",
+        "description": "在 HTTP 响应事件处理器内返回响应正文的原始字节集（二进制安全：图片/压缩包/protobuf 可直接落盘）；文本预览场景仍可用 取响应体。"
+      },
+      "demoInvocation": "网络中间件_取响应体字节集()"
+    },
+    {
+      "index": 52,
+      "name": "网络中间件_取请求体字节集",
+      "signature": "网络中间件_取请求体字节集()",
+      "description": "在 HTTP 请求事件处理器内返回请求正文的原始字节集（二进制安全）；文本预览场景仍可用 取请求体。",
+      "insertText": "网络中间件_取请求体字节集()",
+      "returnType": "字节集",
+      "category": "HTTP事件",
+      "capabilityKind": "single",
+      "binding": {
+        "command": "网络中间件_取请求体字节集",
+        "runtimeName": "网络中间件_取请求体字节集",
+        "parameters": [],
+        "returnType": "bytes",
+        "encoding": "wide",
+        "example": "网络中间件_取请求体字节集()",
+        "description": "在 HTTP 请求事件处理器内返回请求正文的原始字节集（二进制安全）；文本预览场景仍可用 取请求体。"
+      },
+      "demoInvocation": "网络中间件_取请求体字节集()"
+    },
+    {
+      "index": 53,
       "name": "网络中间件_TCP发送数据",
       "signature": "网络中间件_TCP发送数据(连接ID, 字节集)",
       "description": "向指定 TCP 连接主动发送数据；连接 ID 来自 网络中间件_取当前连接ID。",
@@ -1223,7 +1303,7 @@
       "demoInvocation": "网络中间件_TCP发送数据(1, {})"
     },
     {
-      "index": 50,
+      "index": 54,
       "name": "网络中间件_TCP关闭连接",
       "signature": "网络中间件_TCP关闭连接(连接ID)",
       "description": "关闭指定 TCP 连接。",
@@ -1249,7 +1329,7 @@
       "demoInvocation": "网络中间件_TCP关闭连接(1)"
     },
     {
-      "index": 51,
+      "index": 55,
       "name": "网络中间件_WS发送文本",
       "signature": "网络中间件_WS发送文本(事件ID, 文本)",
       "description": "向指定 WebSocket 连接以文本帧发送消息；事件 ID 来自 网络中间件_取当前事件ID。",
@@ -1280,7 +1360,7 @@
       "demoInvocation": "网络中间件_WS发送文本(1, \"演示参数2\")"
     },
     {
-      "index": 52,
+      "index": 56,
       "name": "网络中间件_WS发送字节集",
       "signature": "网络中间件_WS发送字节集(事件ID, 字节集)",
       "description": "向指定 WebSocket 连接以二进制帧发送数据。",
@@ -1311,7 +1391,7 @@
       "demoInvocation": "网络中间件_WS发送字节集(1, {})"
     },
     {
-      "index": 53,
+      "index": 57,
       "name": "网络中间件_WS关闭连接",
       "signature": "网络中间件_WS关闭连接(连接ID)",
       "description": "关闭指定 WebSocket 连接。",
@@ -1337,7 +1417,7 @@
       "demoInvocation": "网络中间件_WS关闭连接(1)"
     },
     {
-      "index": 54,
+      "index": 58,
       "name": "网络中间件_UDP发送数据",
       "signature": "网络中间件_UDP发送数据(连接ID, 字节集, 发往客户端)",
       "description": "向指定 UDP 会话发送数据；发往客户端 为真发往本地客户端，为假发往远端服务器。",
@@ -1373,7 +1453,7 @@
       "demoInvocation": "网络中间件_UDP发送数据(1, {}, 真)"
     },
     {
-      "index": 55,
+      "index": 59,
       "name": "网络中间件_加载进程代理驱动",
       "signature": "网络中间件_加载进程代理驱动(中间件, 模式)",
       "description": "⚠️ 高级能力：加载内核级进程代理驱动（需管理员权限，弹确认框），使指定进程的流量无需设置系统代理即可被中间件捕获。驱动加载一次即可常驻系统，日常反复抓包无需卸载、无需重启；同一时刻只允许一个中间件使用驱动。模式取值：#进程代理_模式_Proxifier / #进程代理_模式_NFAPI / #进程代理_模式_Tun；不想用驱动时改走 SOCKS 用户校验族（无驱动按进程代理）。",
@@ -1404,7 +1484,7 @@
       "demoInvocation": "网络中间件_加载进程代理驱动(0, 1)"
     },
     {
-      "index": 56,
+      "index": 60,
       "name": "网络中间件_添加代理进程",
       "signature": "网络中间件_添加代理进程(中间件, 进程名)",
       "description": "把指定进程名（如 python.exe）纳入进程代理捕获；须先成功加载进程代理驱动。",
@@ -1435,7 +1515,7 @@
       "demoInvocation": "网络中间件_添加代理进程(0, \"演示参数2\")"
     },
     {
-      "index": 57,
+      "index": 61,
       "name": "网络中间件_移除代理进程",
       "signature": "网络中间件_移除代理进程(中间件, 进程名)",
       "description": "把指定进程名移出进程代理捕获列表。",
@@ -1466,7 +1546,7 @@
       "demoInvocation": "网络中间件_移除代理进程(0, \"演示参数2\")"
     },
     {
-      "index": 58,
+      "index": 62,
       "name": "网络中间件_按PID添加代理进程",
       "signature": "网络中间件_按PID添加代理进程(中间件, 进程ID)",
       "description": "把指定进程 ID 纳入进程代理捕获。",
@@ -1497,7 +1577,7 @@
       "demoInvocation": "网络中间件_按PID添加代理进程(0, 1)"
     },
     {
-      "index": 59,
+      "index": 63,
       "name": "网络中间件_清空代理进程",
       "signature": "网络中间件_清空代理进程(中间件)",
       "description": "清空全部已登记的代理进程与进程 ID。",
@@ -1523,7 +1603,7 @@
       "demoInvocation": "网络中间件_清空代理进程(0)"
     },
     {
-      "index": 60,
+      "index": 64,
       "name": "网络中间件_卸载进程代理文件",
       "signature": "网络中间件_卸载进程代理文件(中间件)",
       "description": "日常清理路径：不重启地停止并删除驱动服务、把驱动文件移入临时目录，进程代理立即失效；清理后如需再次按进程抓包，重新加载驱动即可。",
@@ -1549,7 +1629,7 @@
       "demoInvocation": "网络中间件_卸载进程代理文件(0)"
     },
     {
-      "index": 61,
+      "index": 65,
       "name": "网络中间件_彻底清理驱动并重启计算机",
       "signature": "网络中间件_彻底清理驱动并重启计算机(中间件)",
       "description": "⚠️ 仅在彻底移除驱动时使用：⚠️ 驱动卸载必须重启计算机才能完成：程序运行时会弹出中文确认对话框，用户点击“是”后立即重启系统，点击“否”则不执行任何操作并返回假。日常使用无需调用本命令——驱动加载一次即可常驻，反复抓包不需要卸载。",
@@ -1576,7 +1656,7 @@
       "demoInvocation": "网络中间件_彻底清理驱动并重启计算机(0)"
     },
     {
-      "index": 62,
+      "index": 66,
       "name": "网络中间件_添加SOCKS用户",
       "signature": "网络中间件_添加SOCKS用户(中间件, 用户名, 密码)",
       "description": "给中间件代理端口的 SOCKS5 服务添加一个用户名密码；配合 Proxifier 类工具，把指定进程的代理指向 127.0.0.1:代理端口 即可按进程抓包，无驱动、无管理员、无需重启。",
@@ -1612,7 +1692,7 @@
       "demoInvocation": "网络中间件_添加SOCKS用户(0, \"演示参数2\", \"演示参数3\")"
     },
     {
-      "index": 63,
+      "index": 67,
       "name": "网络中间件_删除SOCKS用户",
       "signature": "网络中间件_删除SOCKS用户(中间件, 用户名, 密码)",
       "description": "删除 SOCKS5 服务中指定用户名与密码的账号。",
@@ -1648,7 +1728,7 @@
       "demoInvocation": "网络中间件_删除SOCKS用户(0, \"演示参数2\", \"演示参数3\")"
     },
     {
-      "index": 64,
+      "index": 68,
       "name": "网络中间件_开启SOCKS用户校验",
       "signature": "网络中间件_开启SOCKS用户校验(中间件, 开启)",
       "description": "开关 SOCKS5 用户名密码校验；开启后，Proxifier 类工具必须用已添加的用户名密码才能通过本中间件的 SOCKS5 代理。",
@@ -1679,7 +1759,7 @@
       "demoInvocation": "网络中间件_开启SOCKS用户校验(0, 真)"
     },
     {
-      "index": 65,
+      "index": 69,
       "name": "网络中间件_设置上游代理",
       "signature": "网络中间件_设置上游代理(中间件, 代理地址, 超时毫秒)",
       "description": "给中间件设置全局上游代理：所有经本中间件的流量先转发到该代理再出站。代理地址用标准 URL 格式，支持 socks5（可带账号密码，如 socks5://用户名:密码@主机:端口）、http、https。多进程分流的标准做法：创建多个中间件实例、各设不同端口与不同上游代理，再用 Proxifier 类工具把不同进程指向 127.0.0.1:不同端口。",
@@ -1715,7 +1795,7 @@
       "demoInvocation": "网络中间件_设置上游代理(0, \"https://example.com\", 1)"
     },
     {
-      "index": 66,
+      "index": 70,
       "name": "网络中间件_取消上游代理",
       "signature": "网络中间件_取消上游代理(中间件)",
       "description": "取消中间件的全局上游代理，流量恢复直连出站。",
@@ -1741,7 +1821,7 @@
       "demoInvocation": "网络中间件_取消上游代理(0)"
     },
     {
-      "index": 67,
+      "index": 71,
       "name": "网络中间件_设请求代理",
       "signature": "网络中间件_设请求代理(消息ID, 代理地址, 超时毫秒)",
       "description": "只给当前这一个请求设置上游代理（按请求分流）：在 HTTP 请求事件处理器内调用，消息ID 用 网络中间件_取当前事件ID() 取得；可与 网络中间件_取当前进程ID() 配合按进程决定走哪个上游。支持 socks5（可带账号密码）/http/https 地址。",
@@ -1777,7 +1857,7 @@
       "demoInvocation": "网络中间件_设请求代理(1, \"https://example.com\", 1)"
     },
     {
-      "index": 68,
+      "index": 72,
       "name": "网络中间件_设置系统代理",
       "signature": "网络中间件_设置系统代理(中间件)",
       "description": "⚠️ 系统级操作：把 Windows 系统代理（WinINET）指向本中间件监听端口，此后浏览器等走系统代理的程序流量都会被捕获。停止、销毁与程序正常退出时会自动还原系统代理（防断网）；也可随时用 网络中间件_取消系统代理 手动还原。",
@@ -1803,7 +1883,7 @@
       "demoInvocation": "网络中间件_设置系统代理(0)"
     },
     {
-      "index": 69,
+      "index": 73,
       "name": "网络中间件_取消系统代理",
       "signature": "网络中间件_取消系统代理(中间件)",
       "description": "取消由本中间件设置的系统代理。",

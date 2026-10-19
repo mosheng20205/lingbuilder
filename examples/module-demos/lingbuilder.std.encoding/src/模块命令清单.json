@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.970Z",
+  "generatedAt": "2026-10-19T03:18:58.864Z",
   "module": {
     "id": "lingbuilder.std.encoding",
     "name": "编码转换模块",
     "version": "1.0.0",
-    "description": "通过十六进制字节文本安全提供 UTF-8、UTF-16、UTF-32、ANSI、GBK、GB2312、GB18030、BOM、Base64、URL 与 HTML 编解码。"
+    "description": "通过十六进制字节文本安全提供 UTF-8、UTF-16、UTF-32、ANSI、GBK、GB2312、GB18030、RAW（按码点低 8 位截断）、BOM、Base64、URL 与 HTML 编解码。"
   },
-  "commandCount": 30,
+  "commandCount": 32,
   "commands": [
     {
       "index": 1,
@@ -22,7 +22,8 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要编码的源文本；出现未配对的 UTF-16 代理时返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -44,7 +45,8 @@
         "parameters": [
           {
             "name": "UTF8十六进制",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "十六进制字节文本，长度必须为偶数且每个字符只允许 0-9、a-f、A-F；格式非法按命令说明返回失败值。；解码或转码失败时返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -66,7 +68,8 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要编码的源文本；出现未配对的 UTF-16 代理时返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -87,7 +90,8 @@
         "parameters": [
           {
             "name": "UTF16LE十六进制",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "待解码的十六进制文本，长度必须为偶数且字节数是 2 的倍数；代理对不完整或格式非法时返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -108,7 +112,8 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要编码的源文本；出现未配对的 UTF-16 代理时返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -129,7 +134,8 @@
         "parameters": [
           {
             "name": "UTF16BE十六进制",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "待解码的十六进制文本，长度必须为偶数且字节数是 2 的倍数；代理对不完整或格式非法时返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -150,7 +156,8 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要编码的源文本；出现未配对的 UTF-16 代理时返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -171,7 +178,8 @@
         "parameters": [
           {
             "name": "UTF32LE十六进制",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "待解码的十六进制文本，字节数必须是 4 的倍数；出现代理区码点或超过 U+10FFFF 时返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -192,7 +200,8 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要编码的源文本；出现未配对的 UTF-16 代理时返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -213,7 +222,8 @@
         "parameters": [
           {
             "name": "UTF32BE十六进制",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "待解码的十六进制文本，字节数必须是 4 的倍数；出现代理区码点或超过 U+10FFFF 时返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -234,7 +244,8 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要编码的源文本；当前系统 ANSI 代码页无法无损表示的字符会导致返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -255,7 +266,8 @@
         "parameters": [
           {
             "name": "ANSI十六进制",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "待解码的十六进制字节文本，长度必须为偶数；按当前系统 ANSI 代码页解码，失败返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -276,7 +288,8 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要编码的源文本；Windows CP936 无法无损表示的字符会导致返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -297,7 +310,8 @@
         "parameters": [
           {
             "name": "GBK十六进制",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "待解码的十六进制字节文本，长度必须为偶数；按 Windows CP936 解码，失败返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -318,7 +332,8 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要编码的源文本；只能表示 GB2312 双字节范围，含 GBK 扩展字符或不可表示字符时返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -339,7 +354,8 @@
         "parameters": [
           {
             "name": "GB2312十六进制",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "待解码的十六进制字节文本，长度必须为偶数；先校验每个双字节落在 GB2312 范围，再按 Windows CP936 解码，超范围返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -360,7 +376,8 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要编码的源文本；按 Windows CP54936 严格编码，编码失败返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -381,7 +398,8 @@
         "parameters": [
           {
             "name": "GB18030十六进制",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "待解码的十六进制字节文本，长度必须为偶数；按 Windows CP54936 严格解码，失败返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -391,6 +409,61 @@
     },
     {
       "index": 19,
+      "name": "编码_字节集转文本",
+      "signature": "编码_字节集转文本(数据, 编码名称)",
+      "description": "把字节集按指定编码解码为 Unicode 文本，不经十六进制中介；读中文 CSV/文本文件时直接用它。",
+      "insertText": "编码_字节集转文本($1, \"GBK\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "编码_字节集转文本",
+        "runtimeName": "编码_字节集转文本",
+        "parameters": [
+          {
+            "name": "数据",
+            "type": "bytes",
+            "description": "要解码的原始字节集，例如 文件_读入字节集 的结果；空字节集返回空文本。"
+          },
+          {
+            "name": "编码名称",
+            "type": "wideString",
+            "description": "字节当前的编码名称，忽略大小写与空格、连字符、下划线；支持 UTF-8、UTF-16LE、UTF-16BE、UTF-32LE、UTF-32BE、ANSI、GBK、GB2312、GB18030、RAW（别名 LATIN1：按码点低 8 位截断/还原，不查任何代码页），传 AUTO 按「BOM → 严格 UTF-8 → GB18030」自动识别。名称无法识别或字节不是该编码合法序列时返回空文本。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "调试输出(编码_字节集转文本(文件_读入字节集(号, 长度), \"AUTO\"))"
+      },
+      "demoInvocation": "编码_字节集转文本({}, \"演示参数2\")"
+    },
+    {
+      "index": 20,
+      "name": "编码_文本转字节集",
+      "signature": "编码_文本转字节集(文本, 编码名称)",
+      "description": "把 Unicode 文本按指定编码编码为字节集，用于写出 GBK 等中文编码文件。",
+      "insertText": "编码_文本转字节集(\"$1\", \"GBK\")",
+      "returnType": "字节集",
+      "binding": {
+        "command": "编码_文本转字节集",
+        "runtimeName": "编码_文本转字节集",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要编码的源文本；空文本返回空字节集。"
+          },
+          {
+            "name": "编码名称",
+            "type": "wideString",
+            "description": "目标编码名称，取值同 编码_字节集转文本（含 RAW：按码点低 8 位截断，签名算法里的逐字符截断语义用它），但必须显式指定（AUTO 返回空字节集）；当前代码页无法无损表示该文本时返回空字节集，RAW 永远不失败。"
+          }
+        ],
+        "returnType": "bytes",
+        "encoding": "wide"
+      },
+      "demoInvocation": "编码_文本转字节集(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 21,
       "name": "编码_转换",
       "signature": "编码_转换(字节十六进制, 来源编码, 目标编码)",
       "description": "在支持的字符编码间转换十六进制字节；编码名支持 UTF-8、UTF-16LE/BE、UTF-32LE/BE、ANSI、GBK、GB2312、GB18030。输出不自动添加 BOM。",
@@ -402,15 +475,18 @@
         "parameters": [
           {
             "name": "字节十六进制",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "待转换的十六进制字节文本，长度必须为偶数且只含合法十六进制字符。"
           },
           {
             "name": "来源编码",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "这些字节当前的编码名称，忽略大小写和空格、连字符、下划线；支持 UTF-8、UTF-16LE、UTF-16BE、UTF-32LE、UTF-32BE、ANSI、GBK、GB2312、GB18030、RAW（按码点低 8 位截断/还原），无法识别时返回空文本。"
           },
           {
             "name": "目标编码",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要转换到的编码名称，取值范围同来源编码；无法识别时返回空文本，输出不自动附加 BOM。"
           }
         ],
         "returnType": "wideString",
@@ -419,7 +495,7 @@
       "demoInvocation": "编码_转换(\"演示参数1\", \"演示参数2\", \"演示参数3\")"
     },
     {
-      "index": 20,
+      "index": 22,
       "name": "编码_添加BOM",
       "signature": "编码_添加BOM(字节十六进制, 编码名称)",
       "description": "为 UTF-8、UTF-16LE/BE 或 UTF-32LE/BE 十六进制字节添加匹配 BOM；已有 BOM 不重复添加。",
@@ -431,11 +507,13 @@
         "parameters": [
           {
             "name": "字节十六进制",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "待补 BOM 的十六进制字节文本，长度必须为偶数。"
           },
           {
             "name": "编码名称",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要补加 BOM 的编码名称，仅支持 UTF-8、UTF-16LE、UTF-16BE、UTF-32LE、UTF-32BE；名称无法识别或字节已带不同 BOM 时返回空文本，已带相同 BOM 时原样返回。"
           }
         ],
         "returnType": "wideString",
@@ -444,7 +522,7 @@
       "demoInvocation": "编码_添加BOM(\"演示参数1\", \"演示参数2\")"
     },
     {
-      "index": 21,
+      "index": 23,
       "name": "编码_删除BOM",
       "signature": "编码_删除BOM(字节十六进制)",
       "description": "识别并删除 UTF-8、UTF-16 或 UTF-32 BOM，返回剩余大写十六进制字节。",
@@ -456,7 +534,8 @@
         "parameters": [
           {
             "name": "字节十六进制",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "待处理的十六进制字节文本，长度必须为偶数；没有 BOM 时原样返回。"
           }
         ],
         "returnType": "wideString",
@@ -465,7 +544,7 @@
       "demoInvocation": "编码_删除BOM(\"演示参数1\")"
     },
     {
-      "index": 22,
+      "index": 24,
       "name": "编码_是否有BOM",
       "signature": "编码_是否有BOM(字节十六进制)",
       "description": "判断十六进制字节是否以受支持的 BOM 开头。",
@@ -477,7 +556,8 @@
         "parameters": [
           {
             "name": "字节十六进制",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "待检测的十六进制字节文本，长度必须为偶数；格式非法时返回假。"
           }
         ],
         "returnType": "bool",
@@ -486,7 +566,7 @@
       "demoInvocation": "编码_是否有BOM(\"演示参数1\")"
     },
     {
-      "index": 23,
+      "index": 25,
       "name": "编码_检测BOM",
       "signature": "编码_检测BOM(字节十六进制)",
       "description": "根据 BOM 返回 UTF-8、UTF-16LE、UTF-16BE、UTF-32LE 或 UTF-32BE；没有 BOM 返回空文本。",
@@ -498,7 +578,8 @@
         "parameters": [
           {
             "name": "字节十六进制",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "待检测的十六进制字节文本，长度必须为偶数；无 BOM 或格式非法时返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -507,7 +588,7 @@
       "demoInvocation": "编码_检测BOM(\"演示参数1\")"
     },
     {
-      "index": 24,
+      "index": 26,
       "name": "编码_检测",
       "signature": "编码_检测(字节十六进制)",
       "description": "先检测 BOM；无 BOM 时仅在字节是严格 UTF-8 时返回 UTF-8，否则返回“未知”，不猜测 ANSI 或中文代码页。",
@@ -519,7 +600,8 @@
         "parameters": [
           {
             "name": "字节十六进制",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "待检测的十六进制字节文本，长度必须为偶数；优先看 BOM，无 BOM 时只有严格合法的 UTF-8 才返回 UTF-8，其余返回未知。"
           }
         ],
         "returnType": "wideString",
@@ -528,7 +610,7 @@
       "demoInvocation": "编码_检测(\"演示参数1\")"
     },
     {
-      "index": 25,
+      "index": 27,
       "name": "编码_Base64编码",
       "signature": "编码_Base64编码(文本)",
       "description": "将 Unicode 文本按 UTF-8 编码为 Base64。",
@@ -540,7 +622,8 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要编码的源文本，先按 UTF-8 转字节再编码，输出可含补齐等号。"
           }
         ],
         "returnType": "wideString",
@@ -550,7 +633,7 @@
       "demoInvocation": "编码_Base64编码(\"演示参数1\")"
     },
     {
-      "index": 26,
+      "index": 28,
       "name": "编码_Base64解码",
       "signature": "编码_Base64解码(Base64文本)",
       "description": "将 Base64 解码为 UTF-8 文本，格式错误返回空文本。",
@@ -562,7 +645,8 @@
         "parameters": [
           {
             "name": "Base64文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "标准 Base64 文本，长度必须是 4 的倍数；含非法字符或等号位置错误时返回空文本，结果按 UTF-8 解码为文本。"
           }
         ],
         "returnType": "wideString",
@@ -572,7 +656,7 @@
       "demoInvocation": "编码_Base64解码(\"演示参数1\")"
     },
     {
-      "index": 27,
+      "index": 29,
       "name": "编码_URL编码",
       "signature": "编码_URL编码(文本)",
       "description": "按 UTF-8 对 URL 参数内容进行百分号编码。",
@@ -584,7 +668,8 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要编码的源文本；字母、数字和 - _ . ~ 保持不变，其余字节按 UTF-8 做百分号编码。"
           }
         ],
         "returnType": "wideString",
@@ -593,7 +678,7 @@
       "demoInvocation": "编码_URL编码(\"演示参数1\")"
     },
     {
-      "index": 28,
+      "index": 30,
       "name": "编码_URL解码",
       "signature": "编码_URL解码(文本)",
       "description": "解码 URL 百分号编码和加号空格。",
@@ -605,7 +690,8 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "已百分号编码的文本；加号会还原为空格，百分号之后不是两位合法十六进制时返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -614,7 +700,7 @@
       "demoInvocation": "编码_URL解码(\"演示参数1\")"
     },
     {
-      "index": 29,
+      "index": 31,
       "name": "编码_HTML转义",
       "signature": "编码_HTML转义(文本)",
       "description": "转义 HTML 中的与号、尖括号、引号和单引号。",
@@ -626,7 +712,8 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要转义的源文本；与号、尖括号、双引号和单引号替换为对应实体。"
           }
         ],
         "returnType": "wideString",
@@ -635,7 +722,7 @@
       "demoInvocation": "编码_HTML转义(\"演示参数1\")"
     },
     {
-      "index": 30,
+      "index": 32,
       "name": "编码_HTML反转义",
       "signature": "编码_HTML反转义(文本)",
       "description": "还原本模块支持的常用 HTML 实体。",
@@ -647,7 +734,8 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要还原的文本，仅处理与号、lt、gt、quot、#39 五种实体。"
           }
         ],
         "returnType": "wideString",

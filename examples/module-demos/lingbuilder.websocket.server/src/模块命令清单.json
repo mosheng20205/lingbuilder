@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:36.004Z",
+  "generatedAt": "2026-10-19T03:18:58.888Z",
   "module": {
     "id": "lingbuilder.websocket.server",
     "name": "WebSocket 服务端模块",
@@ -44,19 +44,23 @@
         "parameters": [
           {
             "name": "服务端",
-            "type": "WebSocket服务端"
+            "type": "WebSocket服务端",
+            "description": "WSS_创建服务 返回的受管服务端句柄；服务必须处于停止状态，运行中修改配置会被拒绝。"
           },
           {
             "name": "监听地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要监听的 IPv4/IPv6 地址文本，例如 127.0.0.1；非回环地址必须先调用 WSS_允许外部监听。"
           },
           {
             "name": "端口",
-            "type": "int"
+            "type": "int",
+            "description": "监听端口，0 到 65535；0 表示由系统分配临时端口，启动后用 WSS_取监听端口 读取实际端口。"
           },
           {
             "name": "最大客户端数",
-            "type": "int"
+            "type": "int",
+            "description": "同时在线的客户端上限，1 到 4096；达到上限后新握手会被拒绝。"
           }
         ],
         "returnType": "bool",
@@ -81,23 +85,28 @@
         "parameters": [
           {
             "name": "服务端",
-            "type": "WebSocket服务端"
+            "type": "WebSocket服务端",
+            "description": "WSS_创建服务 返回的受管服务端句柄；服务必须处于停止状态，运行中修改配置会被拒绝。"
           },
           {
             "name": "握手头上限KB",
-            "type": "int"
+            "type": "int",
+            "description": "握手请求头总大小上限，单位 KB，4 到 1024；超限连接直接关闭。"
           },
           {
             "name": "消息上限MB",
-            "type": "int"
+            "type": "int",
+            "description": "单条消息重组后的字节上限，单位 MB，1 到 1024。"
           },
           {
             "name": "单客户端发送队列上限MB",
-            "type": "int"
+            "type": "int",
+            "description": "每个客户端待发队列的字节上限，单位 MB，1 到 1024；超限时该客户端被断开以形成背压。"
           },
           {
             "name": "超时毫秒",
-            "type": "int"
+            "type": "int",
+            "description": "读写空闲超时毫秒数，1000 到 3600000。"
           }
         ],
         "returnType": "bool",
@@ -122,15 +131,18 @@
         "parameters": [
           {
             "name": "服务端",
-            "type": "WebSocket服务端"
+            "type": "WebSocket服务端",
+            "description": "WSS_创建服务 返回的受管服务端句柄；服务必须处于停止状态，运行中修改配置会被拒绝。"
           },
           {
             "name": "间隔毫秒",
-            "type": "int"
+            "type": "int",
+            "description": "自动 Ping 的间隔毫秒数，0 到 3600000；0 表示关闭自动心跳。"
           },
           {
             "name": "Pong超时毫秒",
-            "type": "int"
+            "type": "int",
+            "description": "等待 Pong 回应的毫秒数，必须在 1000 毫秒到心跳间隔之间。"
           }
         ],
         "returnType": "bool",
@@ -155,11 +167,13 @@
         "parameters": [
           {
             "name": "服务端",
-            "type": "WebSocket服务端"
+            "type": "WebSocket服务端",
+            "description": "WSS_创建服务 返回的受管服务端句柄；服务必须处于停止状态，运行中修改配置会被拒绝。"
           },
           {
             "name": "允许",
-            "type": "bool"
+            "type": "bool",
+            "description": "传真才允许绑定非回环地址；默认假，只允许回环监听。"
           }
         ],
         "returnType": "bool",
@@ -184,11 +198,13 @@
         "parameters": [
           {
             "name": "服务端",
-            "type": "WebSocket服务端"
+            "type": "WebSocket服务端",
+            "description": "WSS_创建服务 返回的受管服务端句柄；服务必须处于停止状态，运行中修改配置会被拒绝。"
           },
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "允许的握手路径，必须以 / 开头；空文本接受任意路径。"
           }
         ],
         "returnType": "bool",
@@ -213,11 +229,13 @@
         "parameters": [
           {
             "name": "服务端",
-            "type": "WebSocket服务端"
+            "type": "WebSocket服务端",
+            "description": "WSS_创建服务 返回的受管服务端句柄；服务必须处于停止状态，运行中修改配置会被拒绝。"
           },
           {
             "name": "来源列表",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "逗号分隔的 Origin 白名单，按完整值匹配、不支持通配；空文本表示不校验来源。"
           }
         ],
         "returnType": "bool",
@@ -242,11 +260,13 @@
         "parameters": [
           {
             "name": "服务端",
-            "type": "WebSocket服务端"
+            "type": "WebSocket服务端",
+            "description": "WSS_创建服务 返回的受管服务端句柄；服务必须处于停止状态，运行中修改配置会被拒绝。"
           },
           {
             "name": "子协议列表",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "逗号分隔的服务端子协议优先表；握手时选择客户端也支持的第一项回给对端。"
           }
         ],
         "returnType": "bool",
@@ -271,7 +291,8 @@
         "parameters": [
           {
             "name": "服务端",
-            "type": "WebSocket服务端"
+            "type": "WebSocket服务端",
+            "description": "WSS_创建服务 返回的受管服务端句柄；句柄无效时命令按说明返回失败值。"
           },
           {
             "name": "处理器",
@@ -301,7 +322,8 @@
         "parameters": [
           {
             "name": "服务端",
-            "type": "WebSocket服务端"
+            "type": "WebSocket服务端",
+            "description": "WSS_创建服务 返回的受管服务端句柄；句柄无效时命令按说明返回失败值。"
           },
           {
             "name": "处理器",
@@ -331,7 +353,8 @@
         "parameters": [
           {
             "name": "服务端",
-            "type": "WebSocket服务端"
+            "type": "WebSocket服务端",
+            "description": "WSS_创建服务 返回的受管服务端句柄；句柄无效时命令按说明返回失败值。"
           },
           {
             "name": "处理器",
@@ -361,7 +384,8 @@
         "parameters": [
           {
             "name": "服务端",
-            "type": "WebSocket服务端"
+            "type": "WebSocket服务端",
+            "description": "WSS_创建服务 返回的受管服务端句柄；句柄无效时命令按说明返回失败值。"
           },
           {
             "name": "处理器",
@@ -391,7 +415,8 @@
         "parameters": [
           {
             "name": "服务端",
-            "type": "WebSocket服务端"
+            "type": "WebSocket服务端",
+            "description": "WSS_创建服务 返回的受管服务端句柄；句柄无效时命令按说明返回失败值。必须先完成配置；启动后配置类命令会被拒绝。"
           }
         ],
         "returnType": "bool",
@@ -416,7 +441,8 @@
         "parameters": [
           {
             "name": "服务端",
-            "type": "WebSocket服务端"
+            "type": "WebSocket服务端",
+            "description": "WSS_创建服务 返回的受管服务端句柄；句柄无效时命令按说明返回失败值。"
           }
         ],
         "returnType": "bool",
@@ -441,7 +467,8 @@
         "parameters": [
           {
             "name": "服务端",
-            "type": "WebSocket服务端"
+            "type": "WebSocket服务端",
+            "description": "WSS_创建服务 返回的受管服务端句柄；句柄无效时命令按说明返回失败值。销毁会先停止服务，重复销毁返回假。"
           }
         ],
         "returnType": "bool",
@@ -466,7 +493,8 @@
         "parameters": [
           {
             "name": "服务端",
-            "type": "WebSocket服务端"
+            "type": "WebSocket服务端",
+            "description": "WSS_创建服务 返回的受管服务端句柄；句柄无效时命令按说明返回失败值。"
           }
         ],
         "returnType": "bool",
@@ -491,7 +519,8 @@
         "parameters": [
           {
             "name": "服务端",
-            "type": "WebSocket服务端"
+            "type": "WebSocket服务端",
+            "description": "WSS_创建服务 返回的受管服务端句柄；句柄无效时命令按说明返回失败值。"
           }
         ],
         "returnType": "wideString",
@@ -516,7 +545,8 @@
         "parameters": [
           {
             "name": "服务端",
-            "type": "WebSocket服务端"
+            "type": "WebSocket服务端",
+            "description": "WSS_创建服务 返回的受管服务端句柄；句柄无效时命令按说明返回失败值。"
           }
         ],
         "returnType": "int",
@@ -541,7 +571,8 @@
         "parameters": [
           {
             "name": "服务端",
-            "type": "WebSocket服务端"
+            "type": "WebSocket服务端",
+            "description": "WSS_创建服务 返回的受管服务端句柄；句柄无效时命令按说明返回失败值。"
           }
         ],
         "returnType": "int",
@@ -566,7 +597,8 @@
         "parameters": [
           {
             "name": "服务端",
-            "type": "WebSocket服务端"
+            "type": "WebSocket服务端",
+            "description": "WSS_创建服务 返回的受管服务端句柄；句柄无效时命令按说明返回失败值。"
           }
         ],
         "returnType": "longLong",
@@ -591,7 +623,8 @@
         "parameters": [
           {
             "name": "服务端",
-            "type": "WebSocket服务端"
+            "type": "WebSocket服务端",
+            "description": "WSS_创建服务 返回的受管服务端句柄；句柄无效时命令按说明返回失败值。"
           }
         ],
         "returnType": "longLong",
@@ -616,7 +649,8 @@
         "parameters": [
           {
             "name": "服务端",
-            "type": "WebSocket服务端"
+            "type": "WebSocket服务端",
+            "description": "WSS_创建服务 返回的受管服务端句柄；句柄无效时命令按说明返回失败值。"
           }
         ],
         "returnType": "wideString",
@@ -781,7 +815,8 @@
         "parameters": [
           {
             "name": "客户端",
-            "type": "WebSocket客户端"
+            "type": "WebSocket客户端",
+            "description": "WSS_取当前客户端 或 WSS_取客户端列表JSON 返回的客户端句柄；客户端已离线或正在关闭时返回假。"
           }
         ],
         "returnType": "bool",
@@ -806,7 +841,8 @@
         "parameters": [
           {
             "name": "客户端",
-            "type": "WebSocket客户端"
+            "type": "WebSocket客户端",
+            "description": "WSS_取当前客户端 或 WSS_取客户端列表JSON 返回的客户端句柄；客户端已离线或正在关闭时返回假。"
           }
         ],
         "returnType": "wideString",
@@ -831,7 +867,8 @@
         "parameters": [
           {
             "name": "客户端",
-            "type": "WebSocket客户端"
+            "type": "WebSocket客户端",
+            "description": "WSS_取当前客户端 或 WSS_取客户端列表JSON 返回的客户端句柄；客户端已离线或正在关闭时返回假。"
           }
         ],
         "returnType": "int",
@@ -856,7 +893,8 @@
         "parameters": [
           {
             "name": "客户端",
-            "type": "WebSocket客户端"
+            "type": "WebSocket客户端",
+            "description": "WSS_取当前客户端 或 WSS_取客户端列表JSON 返回的客户端句柄；客户端已离线或正在关闭时返回假。"
           }
         ],
         "returnType": "wideString",
@@ -881,7 +919,8 @@
         "parameters": [
           {
             "name": "客户端",
-            "type": "WebSocket客户端"
+            "type": "WebSocket客户端",
+            "description": "WSS_取当前客户端 或 WSS_取客户端列表JSON 返回的客户端句柄；客户端已离线或正在关闭时返回假。"
           }
         ],
         "returnType": "wideString",
@@ -906,7 +945,8 @@
         "parameters": [
           {
             "name": "客户端",
-            "type": "WebSocket客户端"
+            "type": "WebSocket客户端",
+            "description": "WSS_取当前客户端 或 WSS_取客户端列表JSON 返回的客户端句柄；客户端已离线或正在关闭时返回假。"
           }
         ],
         "returnType": "wideString",
@@ -931,7 +971,8 @@
         "parameters": [
           {
             "name": "客户端",
-            "type": "WebSocket客户端"
+            "type": "WebSocket客户端",
+            "description": "WSS_取当前客户端 或 WSS_取客户端列表JSON 返回的客户端句柄；客户端已离线或正在关闭时返回假。"
           }
         ],
         "returnType": "longLong",
@@ -956,7 +997,8 @@
         "parameters": [
           {
             "name": "服务端",
-            "type": "WebSocket服务端"
+            "type": "WebSocket服务端",
+            "description": "WSS_创建服务 返回的受管服务端句柄；句柄无效时命令按说明返回失败值。"
           }
         ],
         "returnType": "wideString",
@@ -981,11 +1023,13 @@
         "parameters": [
           {
             "name": "客户端",
-            "type": "WebSocket客户端"
+            "type": "WebSocket客户端",
+            "description": "WSS_取当前客户端 或 WSS_取客户端列表JSON 返回的客户端句柄；客户端已离线或正在关闭时返回假。"
           },
           {
             "name": "内容",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要发送的文本，按 UTF-8 编码为一条完整消息，加入发送队列后立即返回。"
           }
         ],
         "returnType": "bool",
@@ -1010,11 +1054,13 @@
         "parameters": [
           {
             "name": "客户端",
-            "type": "WebSocket客户端"
+            "type": "WebSocket客户端",
+            "description": "WSS_取当前客户端 或 WSS_取客户端列表JSON 返回的客户端句柄；客户端已离线或正在关闭时返回假。"
           },
           {
             "name": "数据",
-            "type": "bytes"
+            "type": "bytes",
+            "description": "要发送的字节集，作为一条完整二进制消息加入发送队列；队列超限时该客户端被断开。"
           }
         ],
         "returnType": "bool",
@@ -1039,11 +1085,13 @@
         "parameters": [
           {
             "name": "服务端",
-            "type": "WebSocket服务端"
+            "type": "WebSocket服务端",
+            "description": "WSS_创建服务 返回的受管服务端句柄；句柄无效时命令按说明返回失败值。"
           },
           {
             "name": "内容",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要发送的文本，按 UTF-8 编码为一条完整消息，加入发送队列后立即返回。"
           }
         ],
         "returnType": "int",
@@ -1068,11 +1116,13 @@
         "parameters": [
           {
             "name": "服务端",
-            "type": "WebSocket服务端"
+            "type": "WebSocket服务端",
+            "description": "WSS_创建服务 返回的受管服务端句柄；句柄无效时命令按说明返回失败值。"
           },
           {
             "name": "数据",
-            "type": "bytes"
+            "type": "bytes",
+            "description": "要发送的字节集，作为一条完整二进制消息加入发送队列；队列超限时该客户端被断开。"
           }
         ],
         "returnType": "int",
@@ -1097,11 +1147,13 @@
         "parameters": [
           {
             "name": "客户端",
-            "type": "WebSocket客户端"
+            "type": "WebSocket客户端",
+            "description": "WSS_取当前客户端 或 WSS_取客户端列表JSON 返回的客户端句柄；客户端已离线或正在关闭时返回假。"
           },
           {
             "name": "数据",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "Ping 控制帧附带的数据，UTF-8 编码后不得超过 125 字节；空文本发送空 Ping。"
           }
         ],
         "returnType": "bool",
@@ -1126,15 +1178,18 @@
         "parameters": [
           {
             "name": "客户端",
-            "type": "WebSocket客户端"
+            "type": "WebSocket客户端",
+            "description": "WSS_取当前客户端 或 WSS_取客户端列表JSON 返回的客户端句柄；客户端已离线或正在关闭时返回假。"
           },
           {
             "name": "状态码",
-            "type": "int"
+            "type": "int",
+            "description": "RFC 6455 关闭状态码，取 1000 到 4999；保留码 1004、1005、1006、1015 和 1016 到 2999 不允许，常用值是 1000 正常关闭和 1001 离开。"
           },
           {
             "name": "原因",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "关闭原因文本，UTF-8 编码后不得超过 123 字节；空文本表示不带原因。"
           }
         ],
         "returnType": "bool",
@@ -1159,7 +1214,8 @@
         "parameters": [
           {
             "name": "客户端",
-            "type": "WebSocket客户端"
+            "type": "WebSocket客户端",
+            "description": "WSS_取当前客户端 或 WSS_取客户端列表JSON 返回的客户端句柄；直接关闭 TCP 连接，不走关闭握手。"
           }
         ],
         "returnType": "bool",
@@ -1185,7 +1241,8 @@
         "parameters": [
           {
             "name": "端口",
-            "type": "int"
+            "type": "int",
+            "description": "旧版默认服务在本机回环地址上监听的端口。"
           }
         ],
         "returnType": "int",
@@ -1274,7 +1331,8 @@
         "parameters": [
           {
             "name": "内容",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要发送的文本，按 UTF-8 编码为一条完整消息，加入发送队列后立即返回。旧版入口只面向默认服务最近连接的客户端。"
           }
         ],
         "returnType": "int",

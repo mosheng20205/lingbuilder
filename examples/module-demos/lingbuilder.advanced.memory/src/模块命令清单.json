@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.706Z",
+  "generatedAt": "2026-10-19T03:18:58.653Z",
   "module": {
     "id": "lingbuilder.advanced.memory",
     "name": "受控内存模块",
@@ -22,7 +22,8 @@
         "parameters": [
           {
             "name": "字节数",
-            "type": "int"
+            "type": "int",
+            "description": "要申请的字节数，1 到 268435456；超范围返回句柄 0，成功时内容全部清零。"
           }
         ],
         "returnType": "handle"
@@ -42,15 +43,18 @@
         "parameters": [
           {
             "name": "内存句柄",
-            "type": "handle"
+            "type": "handle",
+            "description": "内存_申请 返回的受控内存句柄；本模块只登记自己分配的内存块，裸地址一律拒绝访问。"
           },
           {
             "name": "偏移",
-            "type": "int"
+            "type": "int",
+            "description": "块内字节偏移，从 0 起；读写范围越过块尾时按说明返回假或零值。越过块尾放不下 4 个字节时返回假。"
           },
           {
             "name": "数值",
-            "type": "int"
+            "type": "int",
+            "description": "要写入的 32 位整数值，占 4 个字节。"
           }
         ],
         "returnType": "bool"
@@ -70,11 +74,13 @@
         "parameters": [
           {
             "name": "内存句柄",
-            "type": "handle"
+            "type": "handle",
+            "description": "内存_申请 返回的受控内存句柄；本模块只登记自己分配的内存块，裸地址一律拒绝访问。"
           },
           {
             "name": "偏移",
-            "type": "int"
+            "type": "int",
+            "description": "块内字节偏移，从 0 起；读写范围越过块尾时按说明返回假或零值。越界时返回 0。"
           }
         ],
         "returnType": "int"
@@ -94,15 +100,18 @@
         "parameters": [
           {
             "name": "内存句柄",
-            "type": "handle"
+            "type": "handle",
+            "description": "内存_申请 返回的受控内存句柄；本模块只登记自己分配的内存块，裸地址一律拒绝访问。"
           },
           {
             "name": "偏移",
-            "type": "int"
+            "type": "int",
+            "description": "块内字节偏移，从 0 起；读写范围越过块尾时按说明返回假或零值。"
           },
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要写入的文本，按 UTF-8 编码并自动补一个零结尾；连同结尾零必须完整落在块内。"
           }
         ],
         "returnType": "bool",
@@ -123,15 +132,18 @@
         "parameters": [
           {
             "name": "内存句柄",
-            "type": "handle"
+            "type": "handle",
+            "description": "内存_申请 返回的受控内存句柄；本模块只登记自己分配的内存块，裸地址一律拒绝访问。"
           },
           {
             "name": "偏移",
-            "type": "int"
+            "type": "int",
+            "description": "块内字节偏移，从 0 起；读写范围越过块尾时按说明返回假或零值。"
           },
           {
             "name": "最大字节数",
-            "type": "int"
+            "type": "int",
+            "description": "最多读取的字节数；小于等于 0 或偏移越界返回空文本，遇到零字节提前结束。"
           }
         ],
         "returnType": "wideString",
@@ -152,7 +164,8 @@
         "parameters": [
           {
             "name": "内存句柄",
-            "type": "handle"
+            "type": "handle",
+            "description": "内存_申请 返回的受控内存句柄；本模块只登记自己分配的内存块，裸地址一律拒绝访问。"
           }
         ],
         "returnType": "bool"

@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:36.036Z",
+  "generatedAt": "2026-10-19T03:18:58.908Z",
   "module": {
     "id": "lingbuilder.win32.window-utils",
     "name": "Win32窗口操作模块",
     "version": "1.0.0",
-    "description": "通过 HWND 安全封装常用窗口查找、标题、显示和位置操作。"
+    "description": "通过 HWND 安全封装常用窗口查找、标题、显示和位置操作，并提供无边框窗口的拖拽与边缘缩放入口。"
   },
-  "commandCount": 7,
+  "commandCount": 11,
   "commands": [
     {
       "index": 1,
@@ -22,7 +22,8 @@
         "parameters": [
           {
             "name": "标题",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要精确匹配的完整窗口标题，区分大小写且不是子串匹配；找不到时返回 0。"
           }
         ],
         "returnType": "handle",
@@ -43,7 +44,8 @@
         "parameters": [
           {
             "name": "窗口句柄",
-            "type": "handle"
+            "type": "handle",
+            "description": "待校验的窗口句柄；0 或已销毁的窗口返回假。"
           }
         ],
         "returnType": "bool"
@@ -63,7 +65,8 @@
         "parameters": [
           {
             "name": "窗口句柄",
-            "type": "handle"
+            "type": "handle",
+            "description": "要读取标题的窗口句柄；标题为空或读取失败返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -84,11 +87,13 @@
         "parameters": [
           {
             "name": "窗口句柄",
-            "type": "handle"
+            "type": "handle",
+            "description": "目标窗口的原生窗口句柄，可来自 窗口_按标题查找 或控件的窗口句柄；句柄已失效时命令返回假。"
           },
           {
             "name": "标题",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "新的标题文本，直接替换原标题；空文本清空标题栏文字。"
           }
         ],
         "returnType": "bool",
@@ -109,11 +114,13 @@
         "parameters": [
           {
             "name": "窗口句柄",
-            "type": "handle"
+            "type": "handle",
+            "description": "目标窗口句柄；句柄无效时返回假，合法句柄即使显示编号不认识也会返回真。"
           },
           {
             "name": "显示方式",
-            "type": "int"
+            "type": "int",
+            "description": "Win32 SW_* 显示编号，例如 0 隐藏、1 正常显示、2 最小化、3 最大化；运行时不校验取值范围。"
           }
         ],
         "returnType": "bool"
@@ -133,23 +140,28 @@
         "parameters": [
           {
             "name": "窗口句柄",
-            "type": "handle"
+            "type": "handle",
+            "description": "目标窗口的原生窗口句柄，可来自 窗口_按标题查找 或控件的窗口句柄；句柄已失效时命令返回假。"
           },
           {
             "name": "横坐标",
-            "type": "int"
+            "type": "int",
+            "description": "窗口左上角的屏幕横坐标，按物理像素计。"
           },
           {
             "name": "纵坐标",
-            "type": "int"
+            "type": "int",
+            "description": "窗口左上角的屏幕纵坐标，按物理像素计。"
           },
           {
             "name": "宽度",
-            "type": "int"
+            "type": "int",
+            "description": "窗口新的外框宽度；小于 1 时按 1 处理。"
           },
           {
             "name": "高度",
-            "type": "int"
+            "type": "int",
+            "description": "窗口新的外框高度；小于 1 时按 1 处理。"
           }
         ],
         "returnType": "bool"
@@ -169,12 +181,107 @@
         "parameters": [
           {
             "name": "窗口句柄",
-            "type": "handle"
+            "type": "handle",
+            "description": "要提到前台的窗口句柄；系统前台锁定策略可能拒绝，此时返回假。"
           }
         ],
         "returnType": "bool"
       },
       "demoInvocation": "窗口_置前台(0)"
+    },
+    {
+      "index": 8,
+      "name": "窗口_是否最大化",
+      "signature": "窗口_是否最大化(窗口句柄)",
+      "description": "判断窗口当前是否处于最大化（IsZoomed）状态。",
+      "insertText": "窗口_是否最大化(0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "窗口_是否最大化",
+        "runtimeName": "窗口_是否最大化",
+        "parameters": [
+          {
+            "name": "窗口句柄",
+            "type": "handle",
+            "description": "要判断的窗口句柄；只有当前处于最大化状态才返回真。"
+          }
+        ],
+        "returnType": "bool",
+        "example": "窗口_是否最大化(窗口句柄)"
+      },
+      "demoInvocation": "窗口_是否最大化(0)"
+    },
+    {
+      "index": 9,
+      "name": "窗口_取边界JSON",
+      "signature": "窗口_取边界JSON(窗口句柄)",
+      "description": "以 JSON 返回窗口屏幕边界（物理像素）：{\"x\":0,\"y\":0,\"width\":0,\"height\":0}；窗口无效时返回 {}。",
+      "insertText": "窗口_取边界JSON(0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "窗口_取边界JSON",
+        "runtimeName": "窗口_取边界JSON",
+        "parameters": [
+          {
+            "name": "窗口句柄",
+            "type": "handle",
+            "description": "要读取边界的窗口句柄；句柄无效时返回空对象文本 {}。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "窗口_取边界JSON(窗口句柄)"
+      },
+      "demoInvocation": "窗口_取边界JSON(0)"
+    },
+    {
+      "index": 10,
+      "name": "窗口_开始拖拽",
+      "signature": "窗口_开始拖拽(窗口句柄)",
+      "description": "对无边框窗口启动系统标题栏拖拽：向窗口发送 WM_NCLBUTTONDOWN(HTCAPTION)，进入系统移动循环，直到用户松开鼠标。适合在网页自绘标题栏的 mousedown 处理器里经浏览器桥调用；调用量较大的界面建议节流。",
+      "insertText": "窗口_开始拖拽(0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "窗口_开始拖拽",
+        "runtimeName": "窗口_开始拖拽",
+        "parameters": [
+          {
+            "name": "窗口句柄",
+            "type": "handle",
+            "description": "要拖动的无边框窗口句柄；调用会进入系统标题栏移动循环，直到用户松开鼠标才返回。"
+          }
+        ],
+        "returnType": "bool",
+        "example": "窗口_开始拖拽(窗口句柄)"
+      },
+      "demoInvocation": "窗口_开始拖拽(0)"
+    },
+    {
+      "index": 11,
+      "name": "窗口_开始边缘缩放",
+      "signature": "窗口_开始边缘缩放(窗口句柄, 边缘代码)",
+      "description": "对无边框窗口启动系统边缘缩放：向窗口发送 WM_NCLBUTTONDOWN 并携带 Win32 命中代码。边缘代码：10 左、11 右、12 上、13 左上、14 右上、15 下、16 左下、17 右下；其它值返回假。",
+      "insertText": "窗口_开始边缘缩放(0, 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "窗口_开始边缘缩放",
+        "runtimeName": "窗口_开始边缘缩放",
+        "parameters": [
+          {
+            "name": "窗口句柄",
+            "type": "handle",
+            "description": "要缩放的无边框窗口句柄。"
+          },
+          {
+            "name": "边缘代码",
+            "type": "int",
+            "description": "缩放方向命中代码：10 左、11 右、12 上、13 左上、14 右上、15 下、16 左下、17 右下；其它值返回假。"
+          }
+        ],
+        "returnType": "bool",
+        "example": "窗口_开始边缘缩放(窗口句柄, 17)"
+      },
+      "demoInvocation": "窗口_开始边缘缩放(0, 1)"
     }
   ]
 }

@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-25T22:05:22.076Z",
+  "generatedAt": "2026-10-19T03:18:58.668Z",
   "module": {
     "id": "lingbuilder.cdp.client",
     "name": "CDP 客户端模块",
-    "version": "3.0.0",
-    "description": "提供 Chrome DevTools Protocol 受管客户端：多连接多调试端口并存、页面与 Target/Session flatten 路由、OOPIF/Worker、Runtime binding、Debugger、Performance、Storage 和严格证书裁决地基；阶段 3 的 screencast、完整性能任务与确定性回放仍在实施。"
+    "version": "3.1.0",
+    "description": "提供 Chrome DevTools Protocol 受管客户端：多连接多调试端口并存、页面与 Target/Session flatten 路由、OOPIF/Worker、Runtime binding、Debugger、性能长任务（堆快照/追踪/CPU 分析/精确覆盖率）、画面串流、请求拦截、严格证书裁决，以及自动化录制与确定性回放执行器。"
   },
-  "commandCount": 148,
+  "commandCount": 161,
   "commands": [
     {
       "index": 1,
@@ -4169,7 +4169,7 @@
       "index": 120,
       "name": "CDP_记录步骤",
       "signature": "CDP_记录步骤(录制, 类型, 数据JSON)",
-      "description": "向录制追加结构化步骤；敏感字段会替换为 SECRET 占位符。",
+      "description": "向录制追加结构化步骤；敏感字段会替换为 SECRET 占位符。录制期间模块命令（点击/输入/导航等）会自动采集步骤，本命令用于补充自定义步骤。",
       "insertText": "CDP_记录步骤($1, $2, $3)",
       "returnType": "逻辑型",
       "category": "录制",
@@ -4197,7 +4197,7 @@
         "returnType": "bool",
         "encoding": "wide",
         "example": "CDP_记录步骤()",
-        "description": "向录制追加结构化步骤；敏感字段会替换为 SECRET 占位符。"
+        "description": "向录制追加结构化步骤；敏感字段会替换为 SECRET 占位符。录制期间模块命令（点击/输入/导航等）会自动采集步骤，本命令用于补充自定义步骤。"
       },
       "demoInvocation": "CDP_记录步骤(0, \"演示参数2\", \"{}\")"
     },
@@ -4231,7 +4231,7 @@
       "index": 122,
       "name": "CDP_加载回放",
       "signature": "CDP_加载回放(连接, 文件路径)",
-      "description": "加载录制文件并返回回放句柄；执行器将在后续阶段 3 增量中启用。",
+      "description": "加载录制文件并解析全部步骤，返回回放句柄；用 CDP_执行回放 在指定页面上逐步重放，用 CDP_取回放状态 查询进度。",
       "insertText": "CDP_加载回放($1, $2)",
       "returnType": "CDP回放",
       "category": "录制",
@@ -4248,18 +4248,459 @@
           {
             "name": "文件路径",
             "type": "wideString",
-            "description": "录制数据文件路径。"
+            "description": "要加载的录制文件路径。"
           }
         ],
         "returnType": "CDP回放",
         "encoding": "wide",
         "example": "CDP_加载回放()",
-        "description": "加载录制文件并返回回放句柄；执行器将在后续阶段 3 增量中启用。"
+        "description": "加载录制文件并解析全部步骤，返回回放句柄；用 CDP_执行回放 在指定页面上逐步重放，用 CDP_取回放状态 查询进度。"
       },
       "demoInvocation": "CDP_加载回放(0, \"module-demo-temp.txt\")"
     },
     {
       "index": 123,
+      "name": "CDP_执行回放",
+      "signature": "CDP_执行回放(回放, 页面, 完成处理器)",
+      "description": "在指定页面上按录制顺序逐步重放：导航步骤等待页面加载完成，点击/输入步骤按选择器重新定位元素，任一步骤失败立即中止并触发“回放失败”事件。完成或失败时触发完成处理器，用 CDP_取当前事件文本 读取摘要 JSON（总步骤/已执行/失败步骤/状态），用 CDP_取当前回放 取回放句柄。",
+      "insertText": "CDP_执行回放($1, $2, &${3:回放完成})",
+      "returnType": "逻辑型",
+      "category": "录制",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_执行回放",
+        "runtimeName": "CDP_执行回放",
+        "parameters": [
+          {
+            "name": "回放",
+            "type": "CDP回放",
+            "description": "CDP_加载回放 返回的回放会话 ID。"
+          },
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；回放完成或失败时在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_执行回放(示例值, 示例值, &回放完成)",
+        "description": "在指定页面上按录制顺序逐步重放：导航步骤等待页面加载完成，点击/输入步骤按选择器重新定位元素，任一步骤失败立即中止并触发“回放失败”事件。完成或失败时触发完成处理器，用 CDP_取当前事件文本 读取摘要 JSON（总步骤/已执行/失败步骤/状态），用 CDP_取当前回放 取回放句柄。"
+      },
+      "demoInvocation": "CDP_执行回放(0, 0, &模块演示回调)"
+    },
+    {
+      "index": 124,
+      "name": "CDP_停止回放",
+      "signature": "CDP_停止回放(回放)",
+      "description": "请求停止正在执行的回放；当前步骤完成后不再继续，状态变为“已停止”并触发完成事件。",
+      "insertText": "CDP_停止回放($1)",
+      "returnType": "逻辑型",
+      "category": "录制",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_停止回放",
+        "runtimeName": "CDP_停止回放",
+        "parameters": [
+          {
+            "name": "回放",
+            "type": "CDP回放",
+            "description": "CDP_加载回放 返回的回放会话 ID。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "CDP_停止回放()",
+        "description": "请求停止正在执行的回放；当前步骤完成后不再继续，状态变为“已停止”并触发完成事件。"
+      },
+      "demoInvocation": "CDP_停止回放(0)"
+    },
+    {
+      "index": 125,
+      "name": "CDP_取回放状态",
+      "signature": "CDP_取回放状态(回放)",
+      "description": "返回回放状态：已加载、执行中 第N/M步、已完成、已停止、已失败或无效回放。",
+      "insertText": "CDP_取回放状态($1)",
+      "returnType": "文本型",
+      "category": "录制",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取回放状态",
+        "runtimeName": "CDP_取回放状态",
+        "parameters": [
+          {
+            "name": "回放",
+            "type": "CDP回放",
+            "description": "CDP_加载回放 返回的回放会话 ID。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "CDP_取回放状态()",
+        "description": "返回回放状态：已加载、执行中 第N/M步、已完成、已停止、已失败或无效回放。"
+      },
+      "demoInvocation": "CDP_取回放状态(0)"
+    },
+    {
+      "index": 126,
+      "name": "CDP_开始堆快照",
+      "signature": "CDP_开始堆快照(页面, 文件路径, 完成处理器)",
+      "description": "对页面拍摄 V8 堆快照并流式写入 .heapsnapshot 文件（可用 Chrome DevTools 或内存分析工具打开）；进度用 CDP_取任务进度 查询，完成后触发“任务完成”事件，事件文本为输出文件路径。",
+      "insertText": "CDP_开始堆快照($1, \"${2:heap.heapsnapshot}\", &${3:任务完成})",
+      "returnType": "CDP任务",
+      "category": "任务",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_开始堆快照",
+        "runtimeName": "CDP_开始堆快照",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "文件路径",
+            "type": "wideString",
+            "description": "堆快照.heapsnapshot 输出文件路径。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；快照写入完成或失败时在 UI 线程执行，用 CDP_取当前任务 取任务句柄。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "CDP任务",
+        "encoding": "wide",
+        "example": "CDP_开始堆快照(示例值, \"heap.heapsnapshot\", &任务完成)",
+        "description": "对页面拍摄 V8 堆快照并流式写入 .heapsnapshot 文件（可用 Chrome DevTools 或内存分析工具打开）；进度用 CDP_取任务进度 查询，完成后触发“任务完成”事件，事件文本为输出文件路径。"
+      },
+      "demoInvocation": "CDP_开始堆快照(0, \"module-demo-temp.txt\", &模块演示回调)"
+    },
+    {
+      "index": 127,
+      "name": "CDP_开始追踪",
+      "signature": "CDP_开始追踪(页面, 类别, 文件路径, 完成处理器)",
+      "description": "开始性能追踪（Tracing，流式传输），停止时把追踪数据 JSON 写入文件；类别为逗号分隔的追踪类别（空使用默认 devtools.timeline,v8.execute,disabled-by-default-devtools.timeline）。用 CDP_停止任务 结束并落盘，完成后触发“任务完成”事件。",
+      "insertText": "CDP_开始追踪($1, \"\", \"${2:trace.json}\", &${3:追踪已开始})",
+      "returnType": "CDP任务",
+      "category": "任务",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_开始追踪",
+        "runtimeName": "CDP_开始追踪",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "类别",
+            "type": "wideString",
+            "description": "逗号分隔的追踪类别，例如 \"devtools.timeline,v8.execute\"；空使用默认类别。"
+          },
+          {
+            "name": "文件路径",
+            "type": "wideString",
+            "description": "追踪数据 JSON 输出文件路径。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；追踪开始或失败时在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "CDP任务",
+        "encoding": "wide",
+        "example": "CDP_开始追踪(示例值, \"\", \"trace.json\", &追踪已开始)",
+        "description": "开始性能追踪（Tracing，流式传输），停止时把追踪数据 JSON 写入文件；类别为逗号分隔的追踪类别（空使用默认 devtools.timeline,v8.execute,disabled-by-default-devtools.timeline）。用 CDP_停止任务 结束并落盘，完成后触发“任务完成”事件。"
+      },
+      "demoInvocation": "CDP_开始追踪(0, \"演示参数2\", \"module-demo-temp.txt\", &模块演示回调)"
+    },
+    {
+      "index": 128,
+      "name": "CDP_开始CPU分析",
+      "signature": "CDP_开始CPU分析(页面, 文件路径, 完成处理器)",
+      "description": "开始 CPU 采样分析（Profiler）；开始成功触发“任务已开始”，用 CDP_停止任务 结束并把 CPU Profile JSON 写入文件后触发完成处理器的“任务完成”事件。",
+      "insertText": "CDP_开始CPU分析($1, \"${2:cpu-profile.json}\", &${3:分析已开始})",
+      "returnType": "CDP任务",
+      "category": "任务",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_开始CPU分析",
+        "runtimeName": "CDP_开始CPU分析",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "文件路径",
+            "type": "wideString",
+            "description": "CPU Profile JSON 输出文件路径。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；分析开始或失败时在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "CDP任务",
+        "encoding": "wide",
+        "example": "CDP_开始CPU分析(示例值, \"cpu-profile.json\", &分析已开始)",
+        "description": "开始 CPU 采样分析（Profiler）；开始成功触发“任务已开始”，用 CDP_停止任务 结束并把 CPU Profile JSON 写入文件后触发完成处理器的“任务完成”事件。"
+      },
+      "demoInvocation": "CDP_开始CPU分析(0, \"module-demo-temp.txt\", &模块演示回调)"
+    },
+    {
+      "index": 129,
+      "name": "CDP_开始覆盖率",
+      "signature": "CDP_开始覆盖率(页面, 文件路径, 完成处理器)",
+      "description": "开始 JS 精确覆盖率统计（Profiler.startPreciseCoverage，含调用计数与块级明细）；开始成功触发“任务已开始”，用 CDP_停止任务 结束并把覆盖率 JSON 写入文件后触发“任务完成”事件。",
+      "insertText": "CDP_开始覆盖率($1, \"${2:coverage.json}\", &${3:覆盖率已开始})",
+      "returnType": "CDP任务",
+      "category": "任务",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_开始覆盖率",
+        "runtimeName": "CDP_开始覆盖率",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "文件路径",
+            "type": "wideString",
+            "description": "精确覆盖率 JSON 输出文件路径。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；覆盖率开始或失败时在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "CDP任务",
+        "encoding": "wide",
+        "example": "CDP_开始覆盖率(示例值, \"coverage.json\", &覆盖率已开始)",
+        "description": "开始 JS 精确覆盖率统计（Profiler.startPreciseCoverage，含调用计数与块级明细）；开始成功触发“任务已开始”，用 CDP_停止任务 结束并把覆盖率 JSON 写入文件后触发“任务完成”事件。"
+      },
+      "demoInvocation": "CDP_开始覆盖率(0, \"module-demo-temp.txt\", &模块演示回调)"
+    },
+    {
+      "index": 130,
+      "name": "CDP_停止任务",
+      "signature": "CDP_停止任务(任务, 完成处理器)",
+      "description": "停止进行中的长任务：CPU 分析/覆盖率会取回结果写入任务输出文件，追踪会结束采集并等待流式数据落盘；堆快照不支持停止，请等待其自然完成。输出就绪后触发“任务完成”事件，事件文本为输出文件路径。",
+      "insertText": "CDP_停止任务($1, &${2:任务完成})",
+      "returnType": "逻辑型",
+      "category": "任务",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_停止任务",
+        "runtimeName": "CDP_停止任务",
+        "parameters": [
+          {
+            "name": "任务",
+            "type": "CDP任务",
+            "description": "CDP_开始堆快照/开始追踪/开始CPU分析/开始覆盖率 返回的受管任务句柄。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；输出写入完成或失败时在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_停止任务(示例值, &任务完成)",
+        "description": "停止进行中的长任务：CPU 分析/覆盖率会取回结果写入任务输出文件，追踪会结束采集并等待流式数据落盘；堆快照不支持停止，请等待其自然完成。输出就绪后触发“任务完成”事件，事件文本为输出文件路径。"
+      },
+      "demoInvocation": "CDP_停止任务(0, &模块演示回调)"
+    },
+    {
+      "index": 131,
+      "name": "CDP_取任务状态",
+      "signature": "CDP_取任务状态(任务)",
+      "description": "返回任务状态：已创建、记录中、已完成、失败或无效任务。",
+      "insertText": "CDP_取任务状态($1)",
+      "returnType": "文本型",
+      "category": "任务",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取任务状态",
+        "runtimeName": "CDP_取任务状态",
+        "parameters": [
+          {
+            "name": "任务",
+            "type": "CDP任务",
+            "description": "CDP_开始堆快照/开始追踪/开始CPU分析/开始覆盖率 返回的受管任务句柄。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "CDP_取任务状态()",
+        "description": "返回任务状态：已创建、记录中、已完成、失败或无效任务。"
+      },
+      "demoInvocation": "CDP_取任务状态(0)"
+    },
+    {
+      "index": 132,
+      "name": "CDP_取任务进度",
+      "signature": "CDP_取任务进度(任务)",
+      "description": "返回任务进度百分比（0-100）；目前堆快照会报告进度，其余任务在完成时直接到 100。",
+      "insertText": "CDP_取任务进度($1)",
+      "returnType": "整数型",
+      "category": "任务",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取任务进度",
+        "runtimeName": "CDP_取任务进度",
+        "parameters": [
+          {
+            "name": "任务",
+            "type": "CDP任务",
+            "description": "CDP_开始堆快照/开始追踪/开始CPU分析/开始覆盖率 返回的受管任务句柄。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "raw",
+        "example": "CDP_取任务进度()",
+        "description": "返回任务进度百分比（0-100）；目前堆快照会报告进度，其余任务在完成时直接到 100。"
+      },
+      "demoInvocation": "CDP_取任务进度(0)"
+    },
+    {
+      "index": 133,
+      "name": "CDP_取任务结果路径",
+      "signature": "CDP_取任务结果路径(任务)",
+      "description": "返回任务的输出文件路径；文件在任务完成后可用。",
+      "insertText": "CDP_取任务结果路径($1)",
+      "returnType": "文本型",
+      "category": "任务",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取任务结果路径",
+        "runtimeName": "CDP_取任务结果路径",
+        "parameters": [
+          {
+            "name": "任务",
+            "type": "CDP任务",
+            "description": "CDP_开始堆快照/开始追踪/开始CPU分析/开始覆盖率 返回的受管任务句柄。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "CDP_取任务结果路径()",
+        "description": "返回任务的输出文件路径；文件在任务完成后可用。"
+      },
+      "demoInvocation": "CDP_取任务结果路径(0)"
+    },
+    {
+      "index": 134,
+      "name": "CDP_开始串流",
+      "signature": "CDP_开始串流(页面, 输出目录, 参数JSON, 帧处理器)",
+      "description": "开始页面画面串流（Page.startScreencast）：每帧解码后写入输出目录（文件名 串流帧_000001.jpg/png）并触发“串流帧”事件，事件文本为帧文件路径、详情为帧元数据 JSON、辅助数值为帧序号。参数 JSON 可含「格式（jpeg/png，默认 jpeg）、质量（0-100，默认 60）、最大宽度、最大高度、每N帧（1-60，默认 1）」，传空用全默认。停止用 CDP_停止串流；页面释放自动停止。高频页面建议用 每N帧 降低帧率。",
+      "insertText": "CDP_开始串流($1, \"${2:C:\\frames}\", \"\", &${3:串流帧})",
+      "returnType": "逻辑型",
+      "category": "串流",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_开始串流",
+        "runtimeName": "CDP_开始串流",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          },
+          {
+            "name": "输出目录",
+            "type": "wideString",
+            "description": "帧图片输出目录；不存在时自动创建。"
+          },
+          {
+            "name": "参数JSON",
+            "type": "wideString",
+            "description": "JSON 对象文本，字段均可缺省：格式、质量、最大宽度、最大高度、每N帧。"
+          },
+          {
+            "name": "帧处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；每帧在 UI 线程执行。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "CDP_开始串流(示例值, \"C:\\frames\", \"\", &串流帧)",
+        "description": "开始页面画面串流（Page.startScreencast）：每帧解码后写入输出目录（文件名 串流帧_000001.jpg/png）并触发“串流帧”事件，事件文本为帧文件路径、详情为帧元数据 JSON、辅助数值为帧序号。参数 JSON 可含「格式（jpeg/png，默认 jpeg）、质量（0-100，默认 60）、最大宽度、最大高度、每N帧（1-60，默认 1）」，传空用全默认。停止用 CDP_停止串流；页面释放自动停止。高频页面建议用 每N帧 降低帧率。"
+      },
+      "demoInvocation": "CDP_开始串流(0, \".\", \"{}\", &模块演示回调)"
+    },
+    {
+      "index": 135,
+      "name": "CDP_停止串流",
+      "signature": "CDP_停止串流(页面)",
+      "description": "停止该页面的画面串流并停止落盘。",
+      "insertText": "CDP_停止串流($1)",
+      "returnType": "逻辑型",
+      "category": "串流",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_停止串流",
+        "runtimeName": "CDP_停止串流",
+        "parameters": [
+          {
+            "name": "页面",
+            "type": "CDP页面",
+            "description": "受管页面句柄（CDP_附加页面/新建页面 返回）；页面关闭后失效。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "CDP_停止串流()",
+        "description": "停止该页面的画面串流并停止落盘。"
+      },
+      "demoInvocation": "CDP_停止串流(0)"
+    },
+    {
+      "index": 136,
       "name": "CDP_取录制状态",
       "signature": "CDP_取录制状态(录制)",
       "description": "返回录制状态。",
@@ -4285,33 +4726,7 @@
       "demoInvocation": "CDP_取录制状态(0)"
     },
     {
-      "index": 124,
-      "name": "CDP_取回放状态",
-      "signature": "CDP_取回放状态(回放)",
-      "description": "返回回放状态。",
-      "insertText": "CDP_取回放状态($1)",
-      "returnType": "文本型",
-      "category": "录制",
-      "capabilityKind": "managed",
-      "binding": {
-        "command": "CDP_取回放状态",
-        "runtimeName": "CDP_取回放状态",
-        "parameters": [
-          {
-            "name": "回放",
-            "type": "CDP回放",
-            "description": "CDP_加载回放 返回的回放会话 ID。"
-          }
-        ],
-        "returnType": "wideString",
-        "encoding": "wide",
-        "example": "CDP_取回放状态()",
-        "description": "返回回放状态。"
-      },
-      "demoInvocation": "CDP_取回放状态(0)"
-    },
-    {
-      "index": 125,
+      "index": 137,
       "name": "CDP_取当前目标",
       "signature": "CDP_取当前目标()",
       "description": "返回当前 Target 事件对应的受管目标句柄。",
@@ -4331,7 +4746,7 @@
       "demoInvocation": "CDP_取当前目标()"
     },
     {
-      "index": 126,
+      "index": 138,
       "name": "CDP_取当前会话",
       "signature": "CDP_取当前会话()",
       "description": "返回当前 Target、Debugger 或 binding 事件对应的会话句柄。",
@@ -4351,7 +4766,7 @@
       "demoInvocation": "CDP_取当前会话()"
     },
     {
-      "index": 127,
+      "index": 139,
       "name": "CDP_取当前帧",
       "signature": "CDP_取当前帧()",
       "description": "返回当前 Frame 事件对应的帧句柄。",
@@ -4371,7 +4786,7 @@
       "demoInvocation": "CDP_取当前帧()"
     },
     {
-      "index": 128,
+      "index": 140,
       "name": "CDP_取当前绑定",
       "signature": "CDP_取当前绑定()",
       "description": "返回当前 Runtime binding 事件对应的绑定句柄。",
@@ -4391,7 +4806,7 @@
       "demoInvocation": "CDP_取当前绑定()"
     },
     {
-      "index": 129,
+      "index": 141,
       "name": "CDP_取当前任务",
       "signature": "CDP_取当前任务()",
       "description": "返回当前长任务事件对应的任务句柄。",
@@ -4411,7 +4826,27 @@
       "demoInvocation": "CDP_取当前任务()"
     },
     {
-      "index": 130,
+      "index": 142,
+      "name": "CDP_取当前回放",
+      "signature": "CDP_取当前回放()",
+      "description": "返回当前回放完成/失败事件对应的回放句柄。",
+      "insertText": "CDP_取当前回放()",
+      "returnType": "CDP回放",
+      "category": "快照",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "CDP_取当前回放",
+        "runtimeName": "CDP_取当前回放",
+        "parameters": [],
+        "returnType": "CDP回放",
+        "encoding": "raw",
+        "example": "CDP_取当前回放()",
+        "description": "返回当前回放完成/失败事件对应的回放句柄。"
+      },
+      "demoInvocation": "CDP_取当前回放()"
+    },
+    {
+      "index": 143,
       "name": "CDP_取当前断点",
       "signature": "CDP_取当前断点()",
       "description": "返回当前断点事件对应的断点句柄。",
@@ -4431,7 +4866,7 @@
       "demoInvocation": "CDP_取当前断点()"
     },
     {
-      "index": 131,
+      "index": 144,
       "name": "CDP_取当前证书错误",
       "signature": "CDP_取当前证书错误()",
       "description": "返回当前证书错误事件的一次性裁决句柄。",
@@ -4451,10 +4886,10 @@
       "demoInvocation": "CDP_取当前证书错误()"
     },
     {
-      "index": 132,
+      "index": 145,
       "name": "CDP_取当前事件类型",
       "signature": "CDP_取当前事件类型()",
-      "description": "返回当前回调事件类型：已就绪、连接失败、已断开、页面就绪、页面失败、加载完成、页面销毁、命令完成、命令失败、网络请求、网络响应、网络完成、网络失败、请求被拦截、需要认证、对话框出现、下载开始、下载进度、下载完成、下载取消、新页面出现、控制台或页面异常。",
+      "description": "返回当前回调事件类型：已就绪、连接失败、已断开、页面就绪、页面失败、加载完成、页面销毁、命令完成、命令失败、网络请求、网络响应、网络完成、网络失败、请求被拦截、需要认证、对话框出现、下载开始、下载进度、下载完成、下载取消、新页面出现、控制台、页面异常、任务已开始、任务完成、任务失败、串流帧、回放完成或回放失败。",
       "insertText": "CDP_取当前事件类型()",
       "returnType": "文本型",
       "category": "快照",
@@ -4466,12 +4901,12 @@
         "returnType": "wideString",
         "encoding": "wide",
         "example": "CDP_取当前事件类型()",
-        "description": "返回当前回调事件类型：已就绪、连接失败、已断开、页面就绪、页面失败、加载完成、页面销毁、命令完成、命令失败、网络请求、网络响应、网络完成、网络失败、请求被拦截、需要认证、对话框出现、下载开始、下载进度、下载完成、下载取消、新页面出现、控制台或页面异常。"
+        "description": "返回当前回调事件类型：已就绪、连接失败、已断开、页面就绪、页面失败、加载完成、页面销毁、命令完成、命令失败、网络请求、网络响应、网络完成、网络失败、请求被拦截、需要认证、对话框出现、下载开始、下载进度、下载完成、下载取消、新页面出现、控制台、页面异常、任务已开始、任务完成、任务失败、串流帧、回放完成或回放失败。"
       },
       "demoInvocation": "CDP_取当前事件类型()"
     },
     {
-      "index": 133,
+      "index": 146,
       "name": "CDP_取当前事件文本",
       "signature": "CDP_取当前事件文本()",
       "description": "返回当前事件的结果文本、错误说明或 JSON 数据快照；拦截事件返回请求头 JSON。",
@@ -4491,7 +4926,7 @@
       "demoInvocation": "CDP_取当前事件文本()"
     },
     {
-      "index": 134,
+      "index": 147,
       "name": "CDP_取当前事件详情",
       "signature": "CDP_取当前事件详情()",
       "description": "返回当前事件的补充信息，例如控制台级别、拦截阶段（请求/响应）、对话框类型或下载编号。",
@@ -4511,7 +4946,7 @@
       "demoInvocation": "CDP_取当前事件详情()"
     },
     {
-      "index": 135,
+      "index": 148,
       "name": "CDP_取当前错误",
       "signature": "CDP_取当前错误()",
       "description": "返回当前事件的中文错误说明；无错误返回空文本。",
@@ -4531,7 +4966,7 @@
       "demoInvocation": "CDP_取当前错误()"
     },
     {
-      "index": 136,
+      "index": 149,
       "name": "CDP_取最后错误",
       "signature": "CDP_取最后错误()",
       "description": "返回最近一次同步失败的中文原因（CDP_启动浏览器/CDP_连接/CDP_停止浏览器 返回 0 后立即读取）；异步错误请用 CDP_取当前错误。",
@@ -4551,7 +4986,7 @@
       "demoInvocation": "CDP_取最后错误()"
     },
     {
-      "index": 137,
+      "index": 150,
       "name": "CDP_取当前网络网址",
       "signature": "CDP_取当前网络网址()",
       "description": "返回当前网络事件或拦截事件的请求网址。",
@@ -4571,7 +5006,7 @@
       "demoInvocation": "CDP_取当前网络网址()"
     },
     {
-      "index": 138,
+      "index": 151,
       "name": "CDP_取当前网络方法",
       "signature": "CDP_取当前网络方法()",
       "description": "返回当前网络事件或拦截事件的 HTTP 方法。",
@@ -4591,7 +5026,7 @@
       "demoInvocation": "CDP_取当前网络方法()"
     },
     {
-      "index": 139,
+      "index": 152,
       "name": "CDP_取当前网络编号",
       "signature": "CDP_取当前网络编号()",
       "description": "返回当前网络事件或拦截事件的请求编号，供 CDP_取网络响应体 使用。",
@@ -4611,7 +5046,7 @@
       "demoInvocation": "CDP_取当前网络编号()"
     },
     {
-      "index": 140,
+      "index": 153,
       "name": "CDP_取当前对话框消息",
       "signature": "CDP_取当前对话框消息()",
       "description": "返回当前对话框事件的提示消息。",
@@ -4631,7 +5066,7 @@
       "demoInvocation": "CDP_取当前对话框消息()"
     },
     {
-      "index": 141,
+      "index": 154,
       "name": "CDP_取当前对话框类型",
       "signature": "CDP_取当前对话框类型()",
       "description": "返回当前对话框类型：alert、confirm、prompt 或 beforeunload。",
@@ -4651,7 +5086,7 @@
       "demoInvocation": "CDP_取当前对话框类型()"
     },
     {
-      "index": 142,
+      "index": 155,
       "name": "CDP_取当前对话框默认文本",
       "signature": "CDP_取当前对话框默认文本()",
       "description": "返回 prompt 对话框的默认输入文本。",
@@ -4671,7 +5106,7 @@
       "demoInvocation": "CDP_取当前对话框默认文本()"
     },
     {
-      "index": 143,
+      "index": 156,
       "name": "CDP_取当前下载文件名",
       "signature": "CDP_取当前下载文件名()",
       "description": "返回当前下载事件对应的建议文件名。",
@@ -4691,7 +5126,7 @@
       "demoInvocation": "CDP_取当前下载文件名()"
     },
     {
-      "index": 144,
+      "index": 157,
       "name": "CDP_取当前网络状态",
       "signature": "CDP_取当前网络状态()",
       "description": "返回当前网络响应事件或响应阶段拦截的 HTTP 状态码；其它事件返回 0。",
@@ -4711,7 +5146,7 @@
       "demoInvocation": "CDP_取当前网络状态()"
     },
     {
-      "index": 145,
+      "index": 158,
       "name": "CDP_取当前下载进度",
       "signature": "CDP_取当前下载进度()",
       "description": "返回当前下载事件的百分比进度（0-100）。",
@@ -4731,7 +5166,7 @@
       "demoInvocation": "CDP_取当前下载进度()"
     },
     {
-      "index": 146,
+      "index": 159,
       "name": "CDP_取当前拦截",
       "signature": "CDP_取当前拦截()",
       "description": "返回当前拦截事件对应的受管 CDP拦截 句柄，供 CDP_拦截继续、CDP_拦截改写、CDP_拦截模拟响应、CDP_拦截终止或 CDP_拦截应答认证 裁决。",
@@ -4751,7 +5186,7 @@
       "demoInvocation": "CDP_取当前拦截()"
     },
     {
-      "index": 147,
+      "index": 160,
       "name": "CDP_取当前连接",
       "signature": "CDP_取当前连接()",
       "description": "返回当前事件对应的受管连接 ID。",
@@ -4771,7 +5206,7 @@
       "demoInvocation": "CDP_取当前连接()"
     },
     {
-      "index": 148,
+      "index": 161,
       "name": "CDP_取当前页面",
       "signature": "CDP_取当前页面()",
       "description": "返回当前事件对应的受管页面 ID；连接级事件返回 0。",

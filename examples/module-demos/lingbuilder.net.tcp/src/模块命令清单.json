@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.885Z",
+  "generatedAt": "2026-10-19T03:18:58.784Z",
   "module": {
     "id": "lingbuilder.net.tcp",
     "name": "TCP通信模块",
@@ -22,15 +22,18 @@
         "parameters": [
           {
             "name": "主机",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "目标主机名或 IP 文本；同时按 IPv4 和 IPv6 尝试，逐个地址直到连上为止。"
           },
           {
             "name": "端口",
-            "type": "int"
+            "type": "int",
+            "description": "服务端端口，1 到 65535；超范围直接判为参数无效。"
           },
           {
             "name": "超时毫秒",
-            "type": "int"
+            "type": "int",
+            "description": "连接以及后续收发的超时毫秒数；小于 1 时按 1 毫秒处理。"
           }
         ],
         "returnType": "bool",
@@ -52,7 +55,8 @@
         "parameters": [
           {
             "name": "内容",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要发送的文本，按 UTF-8 编码后循环发送直到全部发出；未连接或发送中断返回 -1。"
           }
         ],
         "returnType": "int",
@@ -73,7 +77,8 @@
         "parameters": [
           {
             "name": "最大字节数",
-            "type": "int"
+            "type": "int",
+            "description": "单次最多接收的字节数，上限 16 MiB；小于 1 时按 1 处理，收到的字节按 UTF-8 严格解码。"
           }
         ],
         "returnType": "wideString",

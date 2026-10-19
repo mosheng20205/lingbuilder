@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.865Z",
+  "generatedAt": "2026-10-19T03:18:58.766Z",
   "module": {
     "id": "lingbuilder.ipc",
     "name": "进程通信模块",
@@ -22,7 +22,8 @@
         "parameters": [
           {
             "name": "名称",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "自定义管道或互斥体名称，不要包含反斜杠；运行时会自动加上 LingBuilder 前缀。重复创建会先关闭上一个管道实例。"
           }
         ],
         "returnType": "bool",
@@ -58,11 +59,13 @@
         "parameters": [
           {
             "name": "名称",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "自定义管道或互斥体名称，不要包含反斜杠；运行时会自动加上 LingBuilder 前缀。"
           },
           {
             "name": "超时毫秒",
-            "type": "int"
+            "type": "int",
+            "description": "等待管道出现的超时毫秒数；小于 0 时按 0 处理，即不等待直接尝试。"
           }
         ],
         "returnType": "bool",
@@ -83,7 +86,8 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要发送的文本，按 UTF-8 编码并附带 4 字节长度前缀；未建立连接时返回假。"
           }
         ],
         "returnType": "bool",
@@ -120,7 +124,8 @@
         "parameters": [
           {
             "name": "名称",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "自定义管道或互斥体名称，不要包含反斜杠；运行时会自动加上 LingBuilder 前缀。同名互斥体已被其它实例占用时返回假。"
           }
         ],
         "returnType": "bool",

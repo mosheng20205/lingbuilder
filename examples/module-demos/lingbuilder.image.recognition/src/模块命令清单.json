@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.856Z",
+  "generatedAt": "2026-10-19T03:18:58.761Z",
   "module": {
     "id": "lingbuilder.image.recognition",
     "name": "基础识图模块",
@@ -22,15 +22,18 @@
         "parameters": [
           {
             "name": "图片路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "图片文件的完整路径；GDI+ 打不开或文件损坏时按说明返回 0、空文本或假。"
           },
           {
             "name": "ARGB",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "一个 ARGB 颜色值，高位到低位依次为 Alpha、红、绿、蓝，通常来自 位图_取像素ARGB。"
           },
           {
             "name": "容差",
-            "type": "int"
+            "type": "int",
+            "description": "各颜色通道允许的最大差值；小于 0 按 0、大于 255 按 255 处理。"
           }
         ],
         "returnType": "bool",
@@ -51,15 +54,18 @@
         "parameters": [
           {
             "name": "图片路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "图片文件的完整路径；GDI+ 打不开或文件损坏时按说明返回 0、空文本或假。"
           },
           {
             "name": "模板路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "小模板图片路径；模板不得超过 512×512 像素，也不得大于目标图片。"
           },
           {
             "name": "容差",
-            "type": "int"
+            "type": "int",
+            "description": "每个通道允许的最大色差；小于 0 按 0、大于 255 按 255 处理。"
           }
         ],
         "returnType": "bool",
@@ -110,11 +116,13 @@
         "parameters": [
           {
             "name": "ARGB一",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "第一个 ARGB 颜色值。"
           },
           {
             "name": "ARGB二",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "第二个 ARGB 颜色值。"
           }
         ],
         "returnType": "int"

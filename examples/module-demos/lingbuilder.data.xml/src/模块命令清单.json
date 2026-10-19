@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.785Z",
+  "generatedAt": "2026-10-19T03:18:58.718Z",
   "module": {
     "id": "lingbuilder.data.xml",
     "name": "XML 文本模块",
@@ -22,7 +22,8 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要写入 XML 文本节点的原始内容；与号、尖括号、双引号和单引号会被替换为实体。"
           }
         ],
         "returnType": "wideString",
@@ -44,7 +45,8 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要还原的文本，仅处理与号、lt、gt、quot、apos 五种预定义实体。"
           }
         ],
         "returnType": "wideString",
@@ -65,11 +67,13 @@
         "parameters": [
           {
             "name": "节点名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "XML 元素名，首字符只能是字母、下划线或冒号，其余可含字母数字、下划线、冒号、点和短横；非法时命令返回空文本或假。"
           },
           {
             "name": "内容",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "节点内的文本内容，运行时自动做 XML 转义，可以传空文本生成空节点。"
           }
         ],
         "returnType": "wideString",
@@ -90,11 +94,13 @@
         "parameters": [
           {
             "name": "XML文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要搜索的 XML 文本，按 <节点名> 开始标签做字符串匹配，不做完整 XML 解析。"
           },
           {
             "name": "节点名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "XML 元素名，首字符只能是字母、下划线或冒号，其余可含字母数字、下划线、冒号、点和短横；非法时命令返回空文本或假。"
           }
         ],
         "returnType": "bool",
@@ -115,11 +121,13 @@
         "parameters": [
           {
             "name": "XML文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要搜索的 XML 文本，按 <节点名> 开始标签做字符串匹配，不做完整 XML 解析。"
           },
           {
             "name": "节点名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要读取的元素名，命名规则同生成节点；只返回首个匹配节点的内容并自动反转义。"
           }
         ],
         "returnType": "wideString",

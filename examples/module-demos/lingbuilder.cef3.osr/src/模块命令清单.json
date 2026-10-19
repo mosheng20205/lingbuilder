@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-25T22:05:22.107Z",
+  "generatedAt": "2026-10-19T03:18:58.685Z",
   "module": {
     "id": "lingbuilder.cef3.osr",
     "name": "CEF3无头渲染模块",
-    "version": "3.0.0-alpha.3",
+    "version": "3.0.0-alpha.4",
     "description": "提供 CEF 官方无窗口渲染（OSR）的重绘、帧率与回调订阅入口；无头浏览器实例配合 CEF3无头_* 命令使用，全部按浏览器句柄寻址。"
   },
   "commandCount": 5,

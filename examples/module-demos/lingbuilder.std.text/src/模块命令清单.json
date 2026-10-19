@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.980Z",
+  "generatedAt": "2026-10-19T03:18:58.873Z",
   "module": {
     "id": "lingbuilder.std.text",
     "name": "文本处理模块",
-    "version": "1.0.0",
-    "description": "提供 Unicode 文本查找、截取、替换、修剪和大小写转换能力。索引统一从 0 开始。"
+    "version": "1.4.0",
+    "description": "提供 Unicode 文本查找、截取、替换、修剪、大小写转换、定宽填充（按显示列数）与数组合并能力。索引统一从 0 开始。"
   },
-  "commandCount": 10,
+  "commandCount": 31,
   "commands": [
     {
       "index": 1,
@@ -22,7 +22,8 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要处理的源文本，字符位置一律从 0 开始计数。"
           }
         ],
         "returnType": "int",
@@ -44,11 +45,13 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要处理的源文本，字符位置一律从 0 开始计数。"
           },
           {
             "name": "目标",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要查找的子文本，区分大小写。空文本时返回 0。"
           }
         ],
         "returnType": "int",
@@ -70,11 +73,13 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要处理的源文本，字符位置一律从 0 开始计数。"
           },
           {
             "name": "目标",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要查找的子文本，区分大小写。空文本时恒判为包含。"
           }
         ],
         "returnType": "bool",
@@ -95,11 +100,13 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要处理的源文本，字符位置一律从 0 开始计数。"
           },
           {
             "name": "前缀",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要比较的开头内容，区分大小写；空文本时恒判为真。"
           }
         ],
         "returnType": "bool",
@@ -120,11 +127,13 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要处理的源文本，字符位置一律从 0 开始计数。"
           },
           {
             "name": "后缀",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要比较的结尾内容，区分大小写；空文本时恒判为真。"
           }
         ],
         "returnType": "bool",
@@ -145,15 +154,18 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要处理的源文本，按 UTF-16 字符计数，位置与长度均从 0 起算。"
           },
           {
             "name": "起始位置",
-            "type": "int"
+            "type": "int",
+            "description": "截取起始索引，从 0 起；为负或已到达文本末尾时返回空文本。"
           },
           {
             "name": "长度",
-            "type": "int"
+            "type": "int",
+            "description": "要截取的字符数；小于等于 0 返回空文本，越过末尾时只取到末尾。"
           }
         ],
         "returnType": "wideString",
@@ -174,15 +186,18 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要处理的源文本，字符位置一律从 0 开始计数。"
           },
           {
             "name": "查找内容",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要被替换掉的子文本，区分大小写；空文本时不替换，原样返回。"
           },
           {
             "name": "替换内容",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "替换后写入的文本；空文本表示删除匹配内容。"
           }
         ],
         "returnType": "wideString",
@@ -203,7 +218,8 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要修剪的源文本；空白判定采用 C 运行库 iswspace，含空格、制表符和换行。"
           }
         ],
         "returnType": "wideString",
@@ -224,7 +240,8 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要转换的源文本；仅对有大写形式的字符生效，其余字符原样保留。"
           }
         ],
         "returnType": "wideString",
@@ -245,13 +262,625 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要转换的源文本；仅对有小写形式的字符生效，其余字符原样保留。"
           }
         ],
         "returnType": "wideString",
         "encoding": "wide"
       },
       "demoInvocation": "文本_转小写(\"演示参数1\")"
+    },
+    {
+      "index": 11,
+      "name": "文本_分割",
+      "signature": "文本_分割(文本, 分隔符, 结果数组, 忽略末尾空段)",
+      "description": "把文本按分隔符拆分写入文本数组，返回分段数量；分隔符为空时整段作为一条返回。文本以分隔符结尾时默认会多出一段空文本（\"a|b|\" 得 3 段），累积拼接场景请传 真 忽略它。",
+      "insertText": "文本_分割($1, \"$2\", $3)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "文本_分割",
+        "runtimeName": "文本_分割",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要处理的源文本，按 UTF-16 字符计数，位置与长度均从 0 起算。"
+          },
+          {
+            "name": "分隔符",
+            "type": "wideString",
+            "description": "分段依据，按完整子文本匹配；连续分隔符会产生空分段，空分隔符时整段作为唯一分段返回。"
+          },
+          {
+            "name": "结果数组",
+            "type": "array",
+            "description": "接收分段结果的文本型数组变量，调用前会先清空原有内容。"
+          },
+          {
+            "name": "忽略末尾空段",
+            "type": "bool",
+            "optional": true,
+            "defaultValue": false,
+            "description": "传 假（省略时）保留尾部空段：\"a|b|\" 拆成 \"a\"、\"b\"、\"\" 三段；传 真 丢弃末尾连续的空分段：\"a|b|\" 拆成 \"a\"、\"b\" 两段。中间的空分段（\"a||b\"）不受影响，两种取值都保留。累积拼接串（串 = 串 + 字段 + \"|\"）应传真，否则段数比实际记录多 1。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "文本_分割(\"演示参数1\", \"演示参数2\", 0, 真)"
+    },
+    {
+      "index": 12,
+      "name": "文本_倒找",
+      "signature": "文本_倒找(文本, 目标)",
+      "description": "从末尾向开头查找目标文本首次出现的位置（从 0 起）；未找到返回 -1。",
+      "insertText": "文本_倒找(\"$1\", \"$2\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "文本_倒找",
+        "runtimeName": "文本_倒找",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要处理的源文本，按 UTF-16 字符计数，位置与长度均从 0 起算。"
+          },
+          {
+            "name": "目标",
+            "type": "wideString",
+            "description": "要查找的子文本，区分大小写；空文本时返回文本末尾位置。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "文本_倒找(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 13,
+      "name": "文本_替换子文本",
+      "signature": "文本_替换子文本(文本, 查找内容, 替换内容, 起始位置, 次数)",
+      "description": "从起始位置（从 0 起）开始替换查找内容；次数小于等于 0 表示全部替换；起始位置越界或查找内容为空时原样返回。",
+      "insertText": "文本_替换子文本(\"$1\", \"$2\", \"$3\", 0, 0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "文本_替换子文本",
+        "runtimeName": "文本_替换子文本",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要处理的源文本，按 UTF-16 字符计数，位置与长度均从 0 起算。"
+          },
+          {
+            "name": "查找内容",
+            "type": "wideString",
+            "description": "要被替换掉的子文本，区分大小写；空文本时原样返回。"
+          },
+          {
+            "name": "替换内容",
+            "type": "wideString",
+            "description": "替换后写入的文本；空文本表示删除匹配内容。"
+          },
+          {
+            "name": "起始位置",
+            "type": "int",
+            "description": "开始替换的字符索引，从 0 起；为负或不小于文本长度时原样返回。"
+          },
+          {
+            "name": "次数",
+            "type": "int",
+            "description": "最多替换的匹配个数；小于等于 0 表示从起始位置起全部替换。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "文本_替换子文本(\"演示参数1\", \"演示参数2\", \"演示参数3\", 1, 1)"
+    },
+    {
+      "index": 14,
+      "name": "文本_删全部空白",
+      "signature": "文本_删全部空白(文本)",
+      "description": "删除文本中全部空白字符（含首尾与中间）。",
+      "insertText": "文本_删全部空白(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "文本_删全部空白",
+        "runtimeName": "文本_删全部空白",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要去空白的源文本；首尾与中间符合 iswspace 判定的空白字符全部删除。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "文本_删全部空白(\"演示参数1\")"
+    },
+    {
+      "index": 15,
+      "name": "文本_到全角",
+      "signature": "文本_到全角(文本)",
+      "description": "把半角空格与 ASCII 可见字符转换为对应全角字符。",
+      "insertText": "文本_到全角(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "文本_到全角",
+        "runtimeName": "文本_到全角",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要转换的源文本；仅空格和感叹号到波浪号区间的 ASCII 可见字符有全角形式，其余字符不变。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "文本_到全角(\"演示参数1\")"
+    },
+    {
+      "index": 16,
+      "name": "文本_到半角",
+      "signature": "文本_到半角(文本)",
+      "description": "把全角空格与全角 ASCII 字符转换为对应半角字符。",
+      "insertText": "文本_到半角(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "文本_到半角",
+        "runtimeName": "文本_到半角",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要转换的源文本；仅全角空格和 U+FF01 到 U+FF5E 区间的字符会转回半角，其余字符不变。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "文本_到半角(\"演示参数1\")"
+    },
+    {
+      "index": 17,
+      "name": "文本_重复",
+      "signature": "文本_重复(文本, 次数)",
+      "description": "把文本重复拼接指定次数；次数小于等于 0 或总长超过 16777216 字符时返回空文本。",
+      "insertText": "文本_重复(\"$1\", 3)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "文本_重复",
+        "runtimeName": "文本_重复",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要重复拼接的源文本；空文本直接返回空文本。"
+          },
+          {
+            "name": "次数",
+            "type": "int",
+            "description": "重复次数；小于等于 0，或重复后总字符数超过 16777216 时返回空文本。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "文本_重复(\"演示参数1\", 1)"
+    },
+    {
+      "index": 18,
+      "name": "文本_插入",
+      "signature": "文本_插入(文本, 位置, 插入内容)",
+      "description": "在指定位置（从 0 起）插入内容；位置为负或超过长度时原样返回。",
+      "insertText": "文本_插入(\"$1\", 0, \"$2\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "文本_插入",
+        "runtimeName": "文本_插入",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要处理的源文本，按 UTF-16 字符计数，位置与长度均从 0 起算。"
+          },
+          {
+            "name": "位置",
+            "type": "int",
+            "description": "插入点字符索引，从 0 起，等于文本长度时追加到末尾；为负或更大时原样返回。"
+          },
+          {
+            "name": "插入内容",
+            "type": "wideString",
+            "description": "要插入的文本；空文本时结果与源文本相同。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "文本_插入(\"演示参数1\", 1, \"演示参数3\")"
+    },
+    {
+      "index": 19,
+      "name": "文本_取左边",
+      "signature": "文本_取左边(文本, 长度)",
+      "description": "取出文本左边指定数量的字符；长度小于等于 0 返回空文本，超过文本长度时取全部。",
+      "insertText": "文本_取左边(\"$1\", 1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "文本_取左边",
+        "runtimeName": "文本_取左边",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要处理的源文本，按 UTF-16 字符计数，位置与长度均从 0 起算。"
+          },
+          {
+            "name": "长度",
+            "type": "int",
+            "description": "要从左边取出的字符数；小于等于 0 返回空文本，大于文本长度时返回整个文本。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "文本_取左边(\"LingBuilder\", 4)"
+      },
+      "demoInvocation": "文本_取左边(\"演示参数1\", 1)"
+    },
+    {
+      "index": 20,
+      "name": "文本_取右边",
+      "signature": "文本_取右边(文本, 长度)",
+      "description": "取出文本右边指定数量的字符；长度小于等于 0 返回空文本，超过文本长度时取全部。",
+      "insertText": "文本_取右边(\"$1\", 1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "文本_取右边",
+        "runtimeName": "文本_取右边",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要处理的源文本，按 UTF-16 字符计数，位置与长度均从 0 起算。"
+          },
+          {
+            "name": "长度",
+            "type": "int",
+            "description": "要从右边取出的字符数；小于等于 0 返回空文本，大于文本长度时返回整个文本。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "文本_取右边(\"LingBuilder\", 6)"
+      },
+      "demoInvocation": "文本_取右边(\"演示参数1\", 1)"
+    },
+    {
+      "index": 21,
+      "name": "文本_码点转字符",
+      "signature": "文本_码点转字符(码点)",
+      "description": "返回 Unicode 码点对应的字符；超过 0xFFFF 的码点自动生成代理对。",
+      "insertText": "文本_码点转字符(0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "文本_码点转字符",
+        "runtimeName": "文本_码点转字符",
+        "parameters": [
+          {
+            "name": "码点",
+            "type": "int",
+            "description": "Unicode 码点，0 到 1114111；代理区（55296～57343）或超出上限时返回空文本，65536 以上自动编码为 UTF-16 代理对。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "文本_码点转字符(20320)"
+      },
+      "demoInvocation": "文本_码点转字符(1)"
+    },
+    {
+      "index": 22,
+      "name": "文本_取码点",
+      "signature": "文本_取码点(文本, 位置)",
+      "description": "返回文本中指定位置（从 0 起）字符的 Unicode 码点；越界返回 0。",
+      "insertText": "文本_取码点(\"$1\", 0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "文本_取码点",
+        "runtimeName": "文本_取码点",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要处理的源文本，按 UTF-16 字符计数，位置与长度均从 0 起算。"
+          },
+          {
+            "name": "位置",
+            "type": "int",
+            "description": "字符位置索引，从 0 起；越界返回 0。若该位置是代理对的高半部分且后继合法，返回合成后的完整码点。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "文本_取码点(\"你\", 0)"
+      },
+      "demoInvocation": "文本_取码点(\"演示参数1\", 1)"
+    },
+    {
+      "index": 23,
+      "name": "文本_删首空白",
+      "signature": "文本_删首空白(文本)",
+      "description": "删除文本首部的空白字符。",
+      "insertText": "文本_删首空白(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "文本_删首空白",
+        "runtimeName": "文本_删首空白",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要修剪的源文本；首部符合 iswspace 判定的空白（含空格、全角空格、制表符和换行）全部删除，其余不变。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "文本_删首空白(\"  你好\")"
+      },
+      "demoInvocation": "文本_删首空白(\"演示参数1\")"
+    },
+    {
+      "index": 24,
+      "name": "文本_删尾空白",
+      "signature": "文本_删尾空白(文本)",
+      "description": "删除文本尾部的空白字符。",
+      "insertText": "文本_删尾空白(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "文本_删尾空白",
+        "runtimeName": "文本_删尾空白",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要修剪的源文本；尾部符合 iswspace 判定的空白（含空格、全角空格、制表符和换行）全部删除，其余不变。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "文本_删尾空白(\"你好  \")"
+      },
+      "demoInvocation": "文本_删尾空白(\"演示参数1\")"
+    },
+    {
+      "index": 25,
+      "name": "文本_填充右边",
+      "signature": "文本_填充右边(文本, 目标显示宽度, 填充字符)",
+      "description": "左对齐补齐：按显示宽度在右侧补到目标宽度，已够宽时原样返回且不截断，表格排版用它对齐每一列。",
+      "insertText": "文本_填充右边(\"$1\", 10)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "文本_填充右边",
+        "runtimeName": "文本_填充右边",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要处理的源文本，按 UTF-16 字符计数，位置与长度均从 0 起算。"
+          },
+          {
+            "name": "目标显示宽度",
+            "type": "int",
+            "description": "目标显示宽度，单位是显示列数而不是字符数：中日韩全角字符占 2 列、组合符号占 0 列、其余占 1 列（例如\"莫生网店\"是 8 列）；文本当前显示宽度已达到或超过该值时原样返回。"
+          },
+          {
+            "name": "填充字符",
+            "type": "wideString",
+            "optional": true,
+            "defaultValue": " ",
+            "description": "补在右侧的文本，省略时为半角空格；只取首个字符重复，剩余列数不足一个填充字符宽度时少补一次（结果不会超过目标宽度）。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "调试输出(\"[\" + 文本_填充右边(\"莫生网店\", 12) + \"]\")"
+      },
+      "demoInvocation": "文本_填充右边(\"演示参数1\", 1, \"演示参数3\")"
+    },
+    {
+      "index": 26,
+      "name": "文本_填充左边",
+      "signature": "文本_填充左边(文本, 目标显示宽度, 填充字符)",
+      "description": "右对齐补齐：按显示宽度在左侧补到目标宽度（数字列常用），已够宽时原样返回且不截断。",
+      "insertText": "文本_填充左边(\"$1\", 10)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "文本_填充左边",
+        "runtimeName": "文本_填充左边",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要处理的源文本，按 UTF-16 字符计数，位置与长度均从 0 起算。"
+          },
+          {
+            "name": "目标显示宽度",
+            "type": "int",
+            "description": "目标显示宽度，单位是显示列数而不是字符数：中日韩全角字符占 2 列、组合符号占 0 列、其余占 1 列；文本当前显示宽度已达到或超过该值时原样返回。"
+          },
+          {
+            "name": "填充字符",
+            "type": "wideString",
+            "optional": true,
+            "defaultValue": " ",
+            "description": "补在左侧的文本，省略时为半角空格；只取首个字符重复，剩余列数不足一个填充字符宽度时少补一次（结果不会超过目标宽度）。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "调试输出(\"[\" + 文本_填充左边(\"999\", 8) + \"]\")"
+      },
+      "demoInvocation": "文本_填充左边(\"演示参数1\", 1, \"演示参数3\")"
+    },
+    {
+      "index": 27,
+      "name": "文本_居中",
+      "signature": "文本_居中(文本, 目标显示宽度, 填充字符)",
+      "description": "居中补齐：按显示宽度在两侧补到目标宽度，左侧分到多余的半列（左侧宽度取剩余列数的一半向下取整），已够宽时原样返回。",
+      "insertText": "文本_居中(\"$1\", 10)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "文本_居中",
+        "runtimeName": "文本_居中",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要处理的源文本，按 UTF-16 字符计数，位置与长度均从 0 起算。"
+          },
+          {
+            "name": "目标显示宽度",
+            "type": "int",
+            "description": "目标显示宽度，单位是显示列数而不是字符数：中日韩全角字符占 2 列、组合符号占 0 列、其余占 1 列；文本当前显示宽度已达到或超过该值时原样返回。"
+          },
+          {
+            "name": "填充字符",
+            "type": "wideString",
+            "optional": true,
+            "defaultValue": " ",
+            "description": "补在两侧的文本，省略时为半角空格；只取首个字符重复，剩余列数不足一个填充字符宽度时少补一次。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "调试输出(\"[\" + 文本_居中(\"标题\", 12) + \"]\")"
+      },
+      "demoInvocation": "文本_居中(\"演示参数1\", 1, \"演示参数3\")"
+    },
+    {
+      "index": 28,
+      "name": "文本_取显示宽度",
+      "signature": "文本_取显示宽度(文本, 中日韩按 2 列)",
+      "description": "返回文本在等宽字体下占用的显示列数（不是字符数）；制表符和换行等控制字符按 0 列计算。",
+      "insertText": "文本_取显示宽度(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "文本_取显示宽度",
+        "runtimeName": "文本_取显示宽度",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要处理的源文本，按 UTF-16 字符计数，位置与长度均从 0 起算。"
+          },
+          {
+            "name": "中日韩按 2 列",
+            "type": "bool",
+            "optional": true,
+            "defaultValue": true,
+            "description": "传真（省略时）按终端惯例计算：中日韩全角字符 2 列、组合符号 0 列、其余 1 列；传假时每个字符一律算 1 列（等价于 文本_取长度，用于只按字符数对齐的场合）。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "调试输出(文本_取显示宽度(\"莫生网店\"))"
+      },
+      "demoInvocation": "文本_取显示宽度(\"演示参数1\", 真)"
+    },
+    {
+      "index": 29,
+      "name": "文本_连接",
+      "signature": "文本_连接(文本数组, 分隔符, 起始下标, 数量)",
+      "description": "用分隔符把数组区间内的成员依次连成一段文本（文本_分割 的反向操作），拼接 JSON/CSV 记录时不必再手写「首个元素不加逗号」的累加逻辑。",
+      "insertText": "文本_连接($1, \"$2\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "文本_连接",
+        "runtimeName": "文本_连接",
+        "parameters": [
+          {
+            "name": "文本数组",
+            "type": "array",
+            "description": "要操作的目标数组变量，元素类型不限；位置参数一律按成员索引从 0 计数。"
+          },
+          {
+            "name": "分隔符",
+            "type": "wideString",
+            "description": "连接各成员时插入的文本，允许空文本；分隔符不参与成员内容。"
+          },
+          {
+            "name": "起始下标",
+            "type": "int",
+            "optional": true,
+            "defaultValue": 0,
+            "description": "从哪个成员开始连接，索引从 0 起；省略或小于 0 时按 0 处理，不小于成员数时返回空文本。"
+          },
+          {
+            "name": "数量",
+            "type": "int",
+            "optional": true,
+            "defaultValue": -1,
+            "description": "最多连接的成员个数；省略或小于等于 0 表示从起始下标一直连到末尾，超出时只连到末尾。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "局部 文本型 名单[]\n数组_加入成员(名单, \"a\")\n调试输出(文本_连接(名单, \",\"))"
+      },
+      "demoInvocation": "文本_连接(0, \"演示参数2\", 1, 1)"
+    },
+    {
+      "index": 30,
+      "name": "文本_取数据地址",
+      "signature": "文本_取数据地址(文本)",
+      "description": "返回文本变量宽字符缓冲区的内存地址（长整数型），用于直接递给 DLL 命令的 指针整数 形参（wchar_t*/指针宽度参数），配合项目 DLL 命令声明完成原生互操作。⚠️ 传变量时地址直达该变量的字符缓冲区；传拼接结果或字面量时地址只在当条语句内有效，一律不要保存后延迟使用。",
+      "insertText": "文本_取数据地址($1)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "文本_取数据地址",
+        "runtimeName": "文本_取数据地址",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要取地址的文本；传变量时得到该变量字符缓冲区的地址，空文本返回有效的空串地址。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide",
+        "example": "局部 文本型 缓冲\n缓冲 = \"LingBuilder\"\n调试输出(文本_取数据地址(缓冲) > 0)"
+      },
+      "demoInvocation": "文本_取数据地址(\"演示参数1\")"
+    },
+    {
+      "index": 31,
+      "name": "文本_倒序",
+      "signature": "文本_倒序(文本)",
+      "description": "【Pro 专享】把文本按字符逆序排列后返回；Pro 会员可用。",
+      "insertText": "文本_倒序(\"$1\")",
+      "returnType": "文本型",
+      "access": "pro",
+      "binding": {
+        "command": "文本_倒序",
+        "runtimeName": "文本_倒序",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要逆序的源文本；按 UTF-16 码元逆序，空文本返回空文本。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "调试输出(文本_倒序(\"LingBuilder\"))",
+        "access": "pro"
+      },
+      "demoInvocation": "文本_倒序(\"演示参数1\")"
     }
   ]
 }

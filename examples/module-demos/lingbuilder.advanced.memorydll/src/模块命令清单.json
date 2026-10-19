@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-25T22:05:22.063Z",
+  "generatedAt": "2026-10-19T03:18:58.658Z",
   "module": {
     "id": "lingbuilder.advanced.memorydll",
     "name": "内存加载DLL模块",

@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.871Z",
+  "generatedAt": "2026-10-19T03:18:58.772Z",
   "module": {
     "id": "lingbuilder.net.cookie",
     "name": "Cookie文本模块",
     "version": "1.0.0",
-    "description": "提供 Cookie 请求头文本的读取、设置、删除和存在性检查。"
+    "description": "提供 Cookie 请求头文本的读取、设置、删除和存在性检查，并支持把 Cookie 记录集导出为 Netscape cookies.txt 与 EditThisCookie JSON 两种通用格式。"
   },
-  "commandCount": 5,
+  "commandCount": 8,
   "commands": [
     {
       "index": 1,
@@ -22,11 +22,13 @@
         "parameters": [
           {
             "name": "Cookie文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "请求头形式的 Cookie 文本，形如 a=1; b=2；按分号拆分并去掉每项两端空白，不含等号的片段会被忽略。"
           },
           {
             "name": "名称",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要操作的 Cookie 名称，区分大小写。不存在时返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -47,11 +49,13 @@
         "parameters": [
           {
             "name": "Cookie文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "请求头形式的 Cookie 文本，形如 a=1; b=2；按分号拆分并去掉每项两端空白，不含等号的片段会被忽略。"
           },
           {
             "name": "名称",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要操作的 Cookie 名称，区分大小写。"
           }
         ],
         "returnType": "bool",
@@ -72,15 +76,18 @@
         "parameters": [
           {
             "name": "Cookie文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "请求头形式的 Cookie 文本，形如 a=1; b=2；按分号拆分并去掉每项两端空白，不含等号的片段会被忽略。"
           },
           {
             "name": "名称",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要操作的 Cookie 名称，区分大小写。"
           },
           {
             "name": "值",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "新的 Cookie 值；不能包含分号，否则重新解析时会被截断。"
           }
         ],
         "returnType": "wideString",
@@ -101,11 +108,13 @@
         "parameters": [
           {
             "name": "Cookie文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "请求头形式的 Cookie 文本，形如 a=1; b=2；按分号拆分并去掉每项两端空白，不含等号的片段会被忽略。"
           },
           {
             "name": "名称",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要操作的 Cookie 名称，区分大小写。名称不存在时返回原文本。"
           }
         ],
         "returnType": "wideString",
@@ -126,25 +135,91 @@
         "parameters": [
           {
             "name": "名称",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "Set-Cookie 左侧的 Cookie 名称。"
           },
           {
             "name": "值",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "Cookie 值，直接拼接不做转义，不能包含分号。"
           },
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "Cookie 的 Path 属性；空文本时不输出 Path。"
           },
           {
             "name": "最大秒数",
-            "type": "int"
+            "type": "int",
+            "description": "Max-Age 秒数；小于 0 时不输出 Max-Age。生成的响应项固定附带 HttpOnly 和 SameSite=Lax。"
           }
         ],
         "returnType": "wideString",
         "encoding": "wide"
       },
       "demoInvocation": "Cookie_生成响应项(\"演示参数1\", \"演示参数2\", \"module-demo-temp.txt\", 1)"
+    },
+    {
+      "index": 6,
+      "name": "Cookie_导出Netscape",
+      "signature": "Cookie_导出Netscape(Cookie数组JSON)",
+      "description": "把 Cookie 记录集导出为Netscape cookies.txt（curl / wget / yt-dlp 与 Python MozillaCookieJar 可直接读取）；按字段别名自动归一 Chromium 与浏览器扩展两种写法，域名或名称缺失、JSON 语法错误时返回空文本并用 Cookie_取错误 读取中文原因。",
+      "insertText": "Cookie_导出Netscape(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "Cookie_导出Netscape",
+        "runtimeName": "Cookie_导出Netscape",
+        "parameters": [
+          {
+            "name": "Cookie数组JSON",
+            "type": "wideString",
+            "description": "由扁平 Cookie 对象组成的 JSON 数组文本，一次传入全部记录；也接受单个对象。值只能是字符串、数字、逻辑值或 null，出现嵌套对象/数组视为格式错误。字段名两套写法自动识别：域名取 domain / host_key / host；名称取 name；值取 value；路径取 path（缺省 \"/\"）；安全位取 secure / is_secure、HttpOnly 位取 httpOnly / is_httponly（数字按 ≠0 为真，字符串 \"1\"/\"true\" 也为真）；过期时间优先取 expirationDate（已是 Unix 秒，可为小数，原样保留），否则取 expires_utc（Chromium 自 1601-01-01 起的微秒整数，按整数换算为 Unix 秒，不经过双精度以免丢失小数位）；两者都缺省、为 0 或换算结果不晚于 1601 年视为会话 Cookie。hostOnly 显式给出则照用，否则按域名不以英文句点开头推导；sameSite 为字符串时原样输出（no_restriction / lax / strict / unspecified），为数字时按 Chromium 枚举映射：-1 输出 null、0 输出 no_restriction、1 输出 lax、2 输出 strict；storeId 是 Firefox 专有字段，导出时固定为 null；Netscape 格式的 includeSubDomains 列由域名是否以句点开头写成 TRUE/FALSE。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "Cookie_导出Netscape(Cookie数组JSON)"
+      },
+      "demoInvocation": "Cookie_导出Netscape(\"{}\")"
+    },
+    {
+      "index": 7,
+      "name": "Cookie_导出EditThisCookieJSON",
+      "signature": "Cookie_导出EditThisCookieJSON(Cookie数组JSON)",
+      "description": "把 Cookie 记录集导出为EditThisCookie JSON 数组（可直接粘贴进浏览器 Cookie 导入器）；按字段别名自动归一 Chromium 与浏览器扩展两种写法，域名或名称缺失、JSON 语法错误时返回空文本并用 Cookie_取错误 读取中文原因。",
+      "insertText": "Cookie_导出EditThisCookieJSON(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "Cookie_导出EditThisCookieJSON",
+        "runtimeName": "Cookie_导出EditThisCookieJSON",
+        "parameters": [
+          {
+            "name": "Cookie数组JSON",
+            "type": "wideString",
+            "description": "由扁平 Cookie 对象组成的 JSON 数组文本，一次传入全部记录；也接受单个对象。值只能是字符串、数字、逻辑值或 null，出现嵌套对象/数组视为格式错误。字段名两套写法自动识别：域名取 domain / host_key / host；名称取 name；值取 value；路径取 path（缺省 \"/\"）；安全位取 secure / is_secure、HttpOnly 位取 httpOnly / is_httponly（数字按 ≠0 为真，字符串 \"1\"/\"true\" 也为真）；过期时间优先取 expirationDate（已是 Unix 秒，可为小数，原样保留），否则取 expires_utc（Chromium 自 1601-01-01 起的微秒整数，按整数换算为 Unix 秒，不经过双精度以免丢失小数位）；两者都缺省、为 0 或换算结果不晚于 1601 年视为会话 Cookie。hostOnly 显式给出则照用，否则按域名不以英文句点开头推导；sameSite 为字符串时原样输出（no_restriction / lax / strict / unspecified），为数字时按 Chromium 枚举映射：-1 输出 null、0 输出 no_restriction、1 输出 lax、2 输出 strict；storeId 是 Firefox 专有字段，导出时固定为 null；Netscape 格式的 includeSubDomains 列由域名是否以句点开头写成 TRUE/FALSE。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "Cookie_导出EditThisCookieJSON(Cookie数组JSON)"
+      },
+      "demoInvocation": "Cookie_导出EditThisCookieJSON(\"{}\")"
+    },
+    {
+      "index": 8,
+      "name": "Cookie_取错误",
+      "signature": "Cookie_取错误()",
+      "description": "返回最近一次 Cookie 导出失败的中文错误；解析成功会清空该错误。",
+      "insertText": "Cookie_取错误()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "Cookie_取错误",
+        "runtimeName": "Cookie_取错误",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Cookie_取错误()"
     }
   ]
 }

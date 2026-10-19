@@ -7,12 +7,12 @@
 类 MainWindow : 公开 窗口
     事件 _MainWindow_创建完毕()
         控件_设置选择项(命令分组选项卡, 0)
-        控件_设置文本(演示状态, "FBro自动化模块：25 条命令，默认处于安全预览模式。")
+        控件_设置文本(演示状态, "FBro自动化模块：72 条命令，默认处于安全预览模式。")
         调试输出("已加载模块演示：lingbuilder.fbro.automation")
     结束
 
     事件 _运行第01组_被单击()
-        控件_设置文本(演示状态, "命令 1–13：FBro自动化_执行JS异步 至 FBro框架_取标识；源码内含完整签名、参数、返回值与调用。")
+        控件_设置文本(演示状态, "命令 1–18：FBro自动化_执行JS异步 至 FBro框架_剪切；源码内含完整签名、参数、返回值与调用。")
         如果 (控件_取勾选(允许实际执行))
             // 命令ID：FBro自动化_执行JS异步
             // [1] FBro自动化_执行JS异步(控件名, 脚本)
@@ -79,13 +79,6 @@
             // 功能：取得框架官方字符串标识。
             // 参数：框架句柄:longLong；返回：wideString；可见性：advanced
             FBro框架_取标识(1)
-        如果结束
-        调试输出("已查看 命令 1–13：FBro自动化_执行JS异步 至 FBro框架_取标识；勾选允许实际执行后会使用演示参数调用。")
-    结束
-
-    事件 _运行第02组_被单击()
-        控件_设置文本(演示状态, "命令 14–25：FBro框架_取父框架 至 FBro框架_执行JS；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选(允许实际执行))
             // 命令ID：FBro框架_取父框架
             // [14] FBro框架_取父框架(框架句柄)
             // 功能：取得父框架受管句柄；主框架返回零。
@@ -111,6 +104,13 @@
             // 功能：剪切框架当前选择。
             // 参数：框架句柄:longLong；返回：int；可见性：advanced
             FBro框架_剪切(1)
+        如果结束
+        调试输出("已查看 命令 1–18：FBro自动化_执行JS异步 至 FBro框架_剪切；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第02组_被单击()
+        控件_设置文本(演示状态, "命令 19–36：FBro框架_复制 至 FBro填表_取值；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：FBro框架_复制
             // [19] FBro框架_复制(框架句柄)
             // 功能：复制框架当前选择。
@@ -146,8 +146,257 @@
             // 功能：在指定框架执行 JavaScript，不等待返回值。
             // 参数：框架句柄:longLong，脚本:wideString，脚本地址:wideString，起始行:int；返回：int；可见性：advanced
             FBro框架_执行JS(1, "演示参数2", "https://example.com", 1)
+            // 命令ID：FBro框架_载入请求
+            // [26] FBro框架_载入请求(框架句柄, 请求句柄)
+            // 功能：让指定框架按受管请求对象载入（URL、方法、头与提交体）。
+            // 参数：框架句柄:longLong，请求句柄:longLong；返回：int；可见性：advanced
+            FBro框架_载入请求(1, 1)
+            // 命令ID：FBro框架_发送进程消息
+            // [27] FBro框架_发送进程消息(框架句柄, 目标进程, 消息句柄)
+            // 功能：向目标进程发送进程消息；目标进程 0=浏览器进程、1=渲染进程。
+            // 参数：框架句柄:longLong，目标进程:int，消息句柄:longLong；返回：int；可见性：advanced
+            FBro框架_发送进程消息(1, 1, 1)
+            // 命令ID：FBro框架_创建URL请求
+            // [28] FBro框架_创建URL请求(框架句柄, 请求句柄)
+            // 功能：在框架所属上下文中异步发起 URL 请求；任务结果包含 urlRequest 句柄与 status/error/cached 字段。
+            // 参数：框架句柄:longLong，请求句柄:longLong；返回：longLong；可见性：advanced
+            FBro框架_创建URL请求(1, 1)
+            // 命令ID：FBro异步请求_发起
+            // [29] FBro异步请求_发起(控件名, 请求句柄)
+            // 功能：使用指定浏览器会话上下文异步发起受管 URL 请求（Chromium 网络栈直发，TLS/H2 指纹与内核浏览器一致，适合纯协议直连接口）；任务结果包含 urlRequest 句柄、status、error 与 cached。本任务同时是请求的完成事件：FBro任务_等待 后可直接取响应对象；下载数据要在任务进行中用 FBro网络_取下载数据事件 领取。请求头务必先设 Accept-Encoding: identity（Chromium 不自动解压正文）。多步流程必须先声明不带初始化的局部变量再按序赋值（带初始化声明会被提升到子程序最前，设置类调用会被排到发起之后而失败，请求发起后对象只读）。
+            // 参数：控件名:controlRef，请求句柄:longLong；返回：longLong；可见性：advanced
+            FBro异步请求_发起(演示FBroBrowser控件, 1)
+            // 命令ID：FBro异步请求_取状态
+            // [30] FBro异步请求_取状态(URL请求句柄)
+            // 功能：读取 URL 请求官方状态（1=未知 2=进行中 3=成功 4=失败）。
+            // 参数：URL请求句柄:longLong；返回：int；可见性：advanced
+            FBro异步请求_取状态(1)
+            // 命令ID：FBro异步请求_取原请求
+            // [31] FBro异步请求_取原请求(URL请求句柄)
+            // 功能：取得 URL 请求对应的受管请求对象句柄。
+            // 参数：URL请求句柄:longLong；返回：longLong；可见性：advanced
+            FBro异步请求_取原请求(1)
+            // 命令ID：FBro填表_点击元素
+            // [32] FBro填表_点击元素(框架句柄, 选择器, 序号)
+            // 功能：按 CSS 选择器点击第 index 个匹配元素（从 0 起）。
+            // 参数：框架句柄:longLong，选择器:wideString，序号:int；返回：int；可见性：advanced
+            FBro填表_点击元素(1, "演示参数2", 1)
+            // 命令ID：FBro填表_滚动到元素
+            // [33] FBro填表_滚动到元素(框架句柄, 选择器, 序号, 滚到顶部)
+            // 功能：把匹配元素滚动到可视区域；滚到顶部为真时贴顶，否则尽量贴底。
+            // 参数：框架句柄:longLong，选择器:wideString，序号:int，滚到顶部:bool；返回：int；可见性：advanced
+            FBro填表_滚动到元素(1, "演示参数2", 1, 真)
+            // 命令ID：FBro填表_聚焦元素
+            // [34] FBro填表_聚焦元素(框架句柄, 选择器, 序号, 是否聚焦)
+            // 功能：设置匹配元素的输入焦点。
+            // 参数：框架句柄:longLong，选择器:wideString，序号:int，是否聚焦:bool；返回：int；可见性：advanced
+            FBro填表_聚焦元素(1, "演示参数2", 1, 真)
+            // 命令ID：FBro填表_赋值
+            // [35] FBro填表_赋值(框架句柄, 选择器, 序号, 值)
+            // 功能：设置匹配元素的值（等效表单赋值）。
+            // 参数：框架句柄:longLong，选择器:wideString，序号:int，值:wideString；返回：int；可见性：advanced
+            FBro填表_赋值(1, "演示参数2", 1, "演示参数4")
+            // 命令ID：FBro填表_取值
+            // [36] FBro填表_取值(框架句柄, 选择器, 序号)
+            // 功能：读取匹配元素的值；内部等待任务完成后返回 JSON 结果。
+            // 参数：框架句柄:longLong，选择器:wideString，序号:int；返回：wideString；可见性：advanced
+            FBro填表_取值(1, "演示参数2", 1)
         如果结束
-        调试输出("已查看 命令 14–25：FBro框架_取父框架 至 FBro框架_执行JS；勾选允许实际执行后会使用演示参数调用。")
+        调试输出("已查看 命令 19–36：FBro框架_复制 至 FBro填表_取值；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第03组_被单击()
+        控件_设置文本(演示状态, "命令 37–54：FBro填表_取坐标 至 FBro框架_取源码；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
+            // 命令ID：FBro填表_取坐标
+            // [37] FBro填表_取坐标(框架句柄, 选择器, 序号)
+            // 功能：读取匹配元素页面坐标；内部等待任务完成后返回 JSON 结果。
+            // 参数：框架句柄:longLong，选择器:wideString，序号:int；返回：wideString；可见性：advanced
+            FBro填表_取坐标(1, "演示参数2", 1)
+            // 命令ID：FBro填表_置选择框
+            // [38] FBro填表_置选择框(框架句柄, 选择器, 序号, 是否选中)
+            // 功能：设置匹配复选框/单选框的勾选状态（同步，发后即忘）。
+            // 参数：框架句柄:longLong，选择器:wideString，序号:int，是否选中:bool；返回：int；可见性：advanced
+            FBro填表_置选择框(1, "演示参数2", 1, 真)
+            // 命令ID：FBro填表_取选择框
+            // [39] FBro填表_取选择框(框架句柄, 选择器, 序号)
+            // 功能：读取匹配元素勾选状态；内部等待任务完成后返回 JSON 结果。
+            // 参数：框架句柄:longLong，选择器:wideString，序号:int；返回：wideString；可见性：advanced
+            FBro填表_取选择框(1, "演示参数2", 1)
+            // 命令ID：FBro填表_置选择项
+            // [40] FBro填表_置选择项(框架句柄, 选择器, 序号, 选项序号)
+            // 功能：把匹配下拉框选中第选项序号个 option（从 0 起）。
+            // 参数：框架句柄:longLong，选择器:wideString，序号:int，选项序号:int；返回：int；可见性：advanced
+            FBro填表_置选择项(1, "演示参数2", 1, 1)
+            // 命令ID：FBro填表_取选择项
+            // [41] FBro填表_取选择项(框架句柄, 选择器, 序号)
+            // 功能：读取匹配下拉框当前选中项序号；内部等待任务完成后返回 JSON 结果。
+            // 参数：框架句柄:longLong，选择器:wideString，序号:int；返回：wideString；可见性：advanced
+            FBro填表_取选择项(1, "演示参数2", 1)
+            // 命令ID：FBro填表_置内文本
+            // [42] FBro填表_置内文本(框架句柄, 选择器, 序号, 文本)
+            // 功能：设置匹配元素 innerText。
+            // 参数：框架句柄:longLong，选择器:wideString，序号:int，文本:wideString；返回：int；可见性：advanced
+            FBro填表_置内文本(1, "演示参数2", 1, "演示参数4")
+            // 命令ID：FBro填表_取内文本
+            // [43] FBro填表_取内文本(框架句柄, 选择器, 序号)
+            // 功能：读取匹配元素 innerText；内部等待任务完成后返回 JSON 结果。
+            // 参数：框架句柄:longLong，选择器:wideString，序号:int；返回：wideString；可见性：advanced
+            FBro填表_取内文本(1, "演示参数2", 1)
+            // 命令ID：FBro填表_置外文本
+            // [44] FBro填表_置外文本(框架句柄, 选择器, 序号, 文本)
+            // 功能：设置匹配元素 outerText。
+            // 参数：框架句柄:longLong，选择器:wideString，序号:int，文本:wideString；返回：int；可见性：advanced
+            FBro填表_置外文本(1, "演示参数2", 1, "演示参数4")
+            // 命令ID：FBro填表_取外文本
+            // [45] FBro填表_取外文本(框架句柄, 选择器, 序号)
+            // 功能：读取匹配元素 outerText；内部等待任务完成后返回 JSON 结果。
+            // 参数：框架句柄:longLong，选择器:wideString，序号:int；返回：wideString；可见性：advanced
+            FBro填表_取外文本(1, "演示参数2", 1)
+            // 命令ID：FBro填表_置内代码
+            // [46] FBro填表_置内代码(框架句柄, 选择器, 序号, 代码文本)
+            // 功能：设置匹配元素 innerHTML（富文本/标签结构）。
+            // 参数：框架句柄:longLong，选择器:wideString，序号:int，代码文本:wideString；返回：int；可见性：advanced
+            FBro填表_置内代码(1, "演示参数2", 1, "演示参数4")
+            // 命令ID：FBro填表_取内代码
+            // [47] FBro填表_取内代码(框架句柄, 选择器, 序号)
+            // 功能：读取匹配元素 innerHTML；内部等待任务完成后返回 JSON 结果。
+            // 参数：框架句柄:longLong，选择器:wideString，序号:int；返回：wideString；可见性：advanced
+            FBro填表_取内代码(1, "演示参数2", 1)
+            // 命令ID：FBro填表_置外代码
+            // [48] FBro填表_置外代码(框架句柄, 选择器, 序号, 代码文本)
+            // 功能：设置匹配元素 outerHTML（含元素自身标签）。
+            // 参数：框架句柄:longLong，选择器:wideString，序号:int，代码文本:wideString；返回：int；可见性：advanced
+            FBro填表_置外代码(1, "演示参数2", 1, "演示参数4")
+            // 命令ID：FBro填表_取外代码
+            // [49] FBro填表_取外代码(框架句柄, 选择器, 序号)
+            // 功能：读取匹配元素 outerHTML；内部等待任务完成后返回 JSON 结果。
+            // 参数：框架句柄:longLong，选择器:wideString，序号:int；返回：wideString；可见性：advanced
+            FBro填表_取外代码(1, "演示参数2", 1)
+            // 命令ID：FBro填表_置属性
+            // [50] FBro填表_置属性(框架句柄, 选择器, 序号, 属性名, 值)
+            // 功能：设置匹配元素的指定属性。
+            // 参数：框架句柄:longLong，选择器:wideString，序号:int，属性名:wideString，值:wideString；返回：int；可见性：advanced
+            FBro填表_置属性(1, "演示参数2", 1, "演示参数4", "演示参数5")
+            // 命令ID：FBro填表_取属性
+            // [51] FBro填表_取属性(框架句柄, 选择器, 序号, 属性名)
+            // 功能：读取匹配元素的指定属性；内部等待任务完成后返回 JSON 结果。
+            // 参数：框架句柄:longLong，选择器:wideString，序号:int，属性名:wideString；返回：wideString；可见性：advanced
+            FBro填表_取属性(1, "演示参数2", 1, "演示参数4")
+            // 命令ID：FBro填表_元素是否存在
+            // [52] FBro填表_元素是否存在(框架句柄, 选择器, 序号)
+            // 功能：判断匹配元素是否存在；内部等待任务完成后返回 JSON 结果。
+            // 参数：框架句柄:longLong，选择器:wideString，序号:int；返回：wideString；可见性：advanced
+            FBro填表_元素是否存在(1, "演示参数2", 1)
+            // 命令ID：FBro填表_触发事件
+            // [53] FBro填表_触发事件(框架句柄, 选择器, 序号, 事件名, 按键代码)
+            // 功能：在匹配元素上合成 DOM 事件；事件名如 onclick、ondblclick、keydown、change、input，按键代码回车传 13。
+            // 参数：框架句柄:longLong，选择器:wideString，序号:int，事件名:wideString，按键代码:int；返回：int；可见性：advanced
+            FBro填表_触发事件(1, "演示参数2", 1, "演示事件", 1)
+            // 命令ID：FBro框架_取源码
+            // [54] FBro框架_取源码(框架句柄)
+            // 功能：异步取框架完整 HTML 源码；用 FBro任务_等待 + FBro任务_取缓冲 取 UTF-8 字节缓冲，再 FBro缓冲_保存文件 或 FBro缓冲_转文本。
+            // 参数：框架句柄:longLong；返回：longLong；可见性：advanced
+            FBro框架_取源码(1)
+        如果结束
+        调试输出("已查看 命令 37–54：FBro填表_取坐标 至 FBro框架_取源码；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第04组_被单击()
+        控件_设置文本(演示状态, "命令 55–72：FBro框架_取文本 至 FBro遍历_按路径赋值；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
+            // 命令ID：FBro框架_取文本
+            // [55] FBro框架_取文本(框架句柄)
+            // 功能：异步取框架可见文本；用 FBro任务_等待 + FBro任务_取缓冲 取 UTF-8 字节缓冲，再 FBro缓冲_转文本。
+            // 参数：框架句柄:longLong；返回：longLong；可见性：advanced
+            FBro框架_取文本(1)
+            // 命令ID：FBro框架_遍历DOM
+            // [56] FBro框架_遍历DOM(框架句柄, 最大深度, 最大节点数)
+            // 功能：按官方 VisitDOM 遍历框架 DOM 并序列化为受管快照；内部等待任务完成，返回快照句柄（0=失败），节点用 FBro遍历_* 按序号访问；深度/节点数传 0 使用默认值（16/4000）。
+            // 参数：框架句柄:longLong，最大深度:int，最大节点数:int；返回：longLong；可见性：advanced
+            FBro框架_遍历DOM(1, 1, 1)
+            // 命令ID：FBro遍历_取标题
+            // [57] FBro遍历_取标题(快照句柄)
+            // 功能：读取 DOM 快照对应的页面标题。
+            // 参数：快照句柄:longLong；返回：wideString；可见性：advanced
+            FBro遍历_取标题(1)
+            // 命令ID：FBro遍历_取基础地址
+            // [58] FBro遍历_取基础地址(快照句柄)
+            // 功能：读取 DOM 快照对应文档的基础地址。
+            // 参数：快照句柄:longLong；返回：wideString；可见性：advanced
+            FBro遍历_取基础地址(1)
+            // 命令ID：FBro遍历_取节点数
+            // [59] FBro遍历_取节点数(快照句柄)
+            // 功能：返回 DOM 快照捕获的节点总数。
+            // 参数：快照句柄:longLong；返回：int；可见性：advanced
+            FBro遍历_取节点数(1)
+            // 命令ID：FBro遍历_取节点类型
+            // [60] FBro遍历_取节点类型(快照句柄, 节点序号)
+            // 功能：读取节点官方类型（0 未定义、1 元素、2 文本、3 注释等）。
+            // 参数：快照句柄:longLong，节点序号:int；返回：int；可见性：advanced
+            FBro遍历_取节点类型(1, 1)
+            // 命令ID：FBro遍历_取节点路径
+            // [61] FBro遍历_取节点路径(快照句柄, 节点序号)
+            // 功能：读取节点路径 JSON（如 [0,2,1]，从 Body 起逐层子序号）；可传给按路径写回命令。
+            // 参数：快照句柄:longLong，节点序号:int；返回：wideString；可见性：advanced
+            FBro遍历_取节点路径(1, 1)
+            // 命令ID：FBro遍历_取节点名称
+            // [62] FBro遍历_取节点名称(快照句柄, 节点序号)
+            // 功能：读取节点名称（元素标签名小写或特殊节点名）。
+            // 参数：快照句柄:longLong，节点序号:int；返回：wideString；可见性：advanced
+            FBro遍历_取节点名称(1, 1)
+            // 命令ID：FBro遍历_取节点值
+            // [63] FBro遍历_取节点值(快照句柄, 节点序号)
+            // 功能：读取节点值（文本/注释节点内容）。
+            // 参数：快照句柄:longLong，节点序号:int；返回：wideString；可见性：advanced
+            FBro遍历_取节点值(1, 1)
+            // 命令ID：FBro遍历_取节点内部文本
+            // [64] FBro遍历_取节点内部文本(快照句柄, 节点序号)
+            // 功能：读取元素的 innerText（超长截断到 4096 字符）。
+            // 参数：快照句柄:longLong，节点序号:int；返回：wideString；可见性：advanced
+            FBro遍历_取节点内部文本(1, 1)
+            // 命令ID：FBro遍历_取节点属性数
+            // [65] FBro遍历_取节点属性数(快照句柄, 节点序号)
+            // 功能：返回元素节点捕获的属性个数。
+            // 参数：快照句柄:longLong，节点序号:int；返回：int；可见性：advanced
+            FBro遍历_取节点属性数(1, 1)
+            // 命令ID：FBro遍历_取节点属性名
+            // [66] FBro遍历_取节点属性名(快照句柄, 节点序号, 属性序号)
+            // 功能：按序号读取元素属性名。
+            // 参数：快照句柄:longLong，节点序号:int，属性序号:int；返回：wideString；可见性：advanced
+            FBro遍历_取节点属性名(1, 1, 1)
+            // 命令ID：FBro遍历_取节点属性值
+            // [67] FBro遍历_取节点属性值(快照句柄, 节点序号, 属性序号)
+            // 功能：按序号读取元素属性值。
+            // 参数：快照句柄:longLong，节点序号:int，属性序号:int；返回：wideString；可见性：advanced
+            FBro遍历_取节点属性值(1, 1, 1)
+            // 命令ID：FBro遍历_取节点属性
+            // [68] FBro遍历_取节点属性(快照句柄, 节点序号, 属性名)
+            // 功能：按名称读取元素属性值；不存在返回空文本。
+            // 参数：快照句柄:longLong，节点序号:int，属性名:wideString；返回：wideString；可见性：advanced
+            FBro遍历_取节点属性(1, 1, "演示参数3")
+            // 命令ID：FBro遍历_取焦点节点路径
+            // [69] FBro遍历_取焦点节点路径(快照句柄)
+            // 功能：读取遍历当时的焦点节点路径 JSON；无焦点节点返回空。
+            // 参数：快照句柄:longLong；返回：wideString；可见性：advanced
+            FBro遍历_取焦点节点路径(1)
+            // 命令ID：FBro遍历_按路径取序号
+            // [70] FBro遍历_按路径取序号(快照句柄, 路径JSON)
+            // 功能：把节点路径 JSON 换算成节点序号；未找到返回 -1。
+            // 参数：快照句柄:longLong，路径JSON:wideString；返回：int；可见性：advanced
+            FBro遍历_按路径取序号(1, "module-demo-temp.txt")
+            // 命令ID：FBro遍历_按路径设属性
+            // [71] FBro遍历_按路径设属性(框架句柄, 路径JSON, 属性名, 属性值)
+            // 功能：重新遍历定位路径节点并设置元素属性；内部等待任务完成，返回 1=成功。
+            // 参数：框架句柄:longLong，路径JSON:wideString，属性名:wideString，属性值:wideString；返回：int；可见性：advanced
+            FBro遍历_按路径设属性(1, "module-demo-temp.txt", "演示参数3", "演示参数4")
+            // 命令ID：FBro遍历_按路径赋值
+            // [72] FBro遍历_按路径赋值(框架句柄, 路径JSON, 值)
+            // 功能：重新遍历定位路径节点并写入节点值（表单赋值语义）；内部等待任务完成，返回 1=成功。
+            // 参数：框架句柄:longLong，路径JSON:wideString，值:wideString；返回：int；可见性：advanced
+            FBro遍历_按路径赋值(1, "module-demo-temp.txt", "演示参数3")
+        如果结束
+        调试输出("已查看 命令 55–72：FBro框架_取文本 至 FBro遍历_按路径赋值；勾选允许实际执行后会使用演示参数调用。")
     结束
 
 结束类

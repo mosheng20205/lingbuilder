@@ -3,7 +3,7 @@
 - 模块 ID：`lingbuilder.net.cookie`
 - 版本：`1.0.0`
 - 类型：LingBuilder 内置模块
-- 命令数：5
+- 命令数：8
 - 设计器控件数：0
 - 分组数：1
 
@@ -15,7 +15,7 @@
 
 ## 模块说明
 
-提供 Cookie 请求头文本的读取、设置、删除和存在性检查。
+提供 Cookie 请求头文本的读取、设置、删除和存在性检查，并支持把 Cookie 记录集导出为 Netscape cookies.txt 与 EditThisCookie JSON 两种通用格式。
 
 ## 命令清单
 
@@ -26,3 +26,6 @@
 | 3 | `Cookie_设置` | `Cookie_设置(Cookie文本, 名称, 值)` | wideString | 添加或替换 Cookie 值。 |
 | 4 | `Cookie_删除` | `Cookie_删除(Cookie文本, 名称)` | wideString | 删除指定 Cookie。 |
 | 5 | `Cookie_生成响应项` | `Cookie_生成响应项(名称, 值, 路径, 最大秒数)` | wideString | 生成一条 Set-Cookie 响应值。 |
+| 6 | `Cookie_导出Netscape` | `Cookie_导出Netscape(Cookie数组JSON)` | wideString | 把 Cookie 记录集导出为Netscape cookies.txt（curl / wget / yt-dlp 与 Python MozillaCookieJar 可直接读取）；按字段别名自动归一 Chromium 与浏览器扩展两种写法，域名或名称缺失、JSON 语法错误时返回空文本并用 Cookie_取错误 读取中文原因。 |
+| 7 | `Cookie_导出EditThisCookieJSON` | `Cookie_导出EditThisCookieJSON(Cookie数组JSON)` | wideString | 把 Cookie 记录集导出为EditThisCookie JSON 数组（可直接粘贴进浏览器 Cookie 导入器）；按字段别名自动归一 Chromium 与浏览器扩展两种写法，域名或名称缺失、JSON 语法错误时返回空文本并用 Cookie_取错误 读取中文原因。 |
+| 8 | `Cookie_取错误` | `Cookie_取错误()` | wideString | 返回最近一次 Cookie 导出失败的中文错误；解析成功会清空该错误。 |

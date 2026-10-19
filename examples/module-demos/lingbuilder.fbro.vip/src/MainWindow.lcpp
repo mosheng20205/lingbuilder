@@ -7,7 +7,7 @@
 类 MainWindow : 公开 窗口
     事件 _MainWindow_创建完毕()
         控件_设置选择项(命令分组选项卡, 0)
-        控件_设置文本(演示状态, "FBro VIP 指纹模块：198 条命令，默认处于安全预览模式。")
+        控件_设置文本(演示状态, "FBro VIP 指纹模块：200 条命令，默认处于安全预览模式。")
         调试输出("已加载模块演示：lingbuilder.fbro.vip")
     结束
 
@@ -975,7 +975,7 @@
     结束
 
     事件 _运行第10组_被单击()
-        控件_设置文本(演示状态, "命令 181–198：FBroVIP_UserAgent_设置主平台 至 FBroVIP_设置启动代理；源码内含完整签名、参数、返回值与调用。")
+        控件_设置文本(演示状态, "命令 181–200：FBroVIP_UserAgent_设置主平台 至 FBroVIP_实例应用指纹JSON；源码内含完整签名、参数、返回值与调用。")
         如果 (控件_取勾选(允许实际执行))
             // 命令ID：FBroVIP_UserAgent_设置主平台
             // [181] FBroVIP_UserAgent_设置主平台(控件名, 参数JSON)
@@ -1067,8 +1067,18 @@
             // 功能：配置 VIP 启动代理；必须在首个 FBro 运行时初始化前调用，凭据只保存在 Bridge 内存中。
             // 参数：地址:wideString，用户名:wideString，密码:wideString；返回：int；可见性：advanced
             FBroVIP_设置启动代理("https://example.com", "演示参数2", "演示参数3")
+            // 命令ID：FBroVIP_实例设置新窗口转标签页
+            // [199] FBroVIP_实例设置新窗口转标签页(实例句柄, 开关)
+            // 功能：开启后（开关传 1，传 0 关闭），该实例内的新窗口（target=_blank、window.open）在 Chrome 原生UI 实例中自动转为本窗口新标签页（等价官方 C# OnBeforePopup+AddTabAt 示例），不再走"当前页加载"兜底；FBro_实例打开原生UI 弹出的窗口继承来源实例的开关，也可以直接把开关设置在弹窗句柄上。仅进程内实例有效；VIP 控制器不可用时自动回落当前页加载。
+            // 参数：实例句柄:longLong，开关:int；返回：int；可见性：default
+            FBroVIP_实例设置新窗口转标签页(1, 1)
+            // 命令ID：FBroVIP_实例应用指纹JSON
+            // [200] FBroVIP_实例应用指纹JSON(实例句柄, JSON)
+            // 功能：对 FBro_后台创建 / FBro_实例打开原生UI 返回的后台实例或弹窗句柄批量应用完整直接指纹配置，JSON 契约与 FBroVIP_应用指纹JSON 完全一致；指纹设置按浏览器生效，弹窗与来源实例共用缓存目录但是两个浏览器，需要各自应用一次。实例句柄无效返回 -1，浏览器尚未就绪返回 -1（可延迟重试），VIP 授权校验失败返回 -5、VIP 控制器不可用返回 -4。
+            // 参数：实例句柄:longLong，JSON:wideString；返回：int；可见性：default
+            FBroVIP_实例应用指纹JSON(1, "{}")
         如果结束
-        调试输出("已查看 命令 181–198：FBroVIP_UserAgent_设置主平台 至 FBroVIP_设置启动代理；勾选允许实际执行后会使用演示参数调用。")
+        调试输出("已查看 命令 181–200：FBroVIP_UserAgent_设置主平台 至 FBroVIP_实例应用指纹JSON；勾选允许实际执行后会使用演示参数调用。")
     结束
 
 结束类

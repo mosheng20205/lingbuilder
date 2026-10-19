@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.727Z",
+  "generatedAt": "2026-10-19T03:18:58.678Z",
   "module": {
     "id": "lingbuilder.cef3.events",
     "name": "CEF3事件模块",
-    "version": "3.0.0-alpha.3",
+    "version": "3.0.0-alpha.4",
     "description": "提供浏览器事件数据、同步决策和处理器引用绑定。"
   },
   "commandCount": 6,
@@ -33,7 +33,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "wideString",
@@ -65,7 +66,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "wideString",
@@ -97,11 +99,13 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "字段名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "当前事件 JSON 中的字段名，取值见各事件说明。"
           }
         ],
         "returnType": "wideString",
@@ -133,11 +137,13 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "动作",
-            "type": "int"
+            "type": "int",
+            "description": "同步事件动作码：0 默认、1 继续、2 取消、3 已处理；超出 0~3 设置失败返回 0。"
           }
         ],
         "returnType": "int",
@@ -169,11 +175,13 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "同步事件返回给调用方的文本内容。"
           }
         ],
         "returnType": "int",
@@ -205,11 +213,13 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "事件名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要绑定的浏览器事件名（中文事件名，如 \"加载完成\"），须与事件清单一致。"
           },
           {
             "name": "处理器",

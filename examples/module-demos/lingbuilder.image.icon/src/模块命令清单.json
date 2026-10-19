@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.851Z",
+  "generatedAt": "2026-10-19T03:18:58.760Z",
   "module": {
     "id": "lingbuilder.image.icon",
     "name": "图标处理模块",
@@ -22,7 +22,8 @@
         "parameters": [
           {
             "name": "文件路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "含图标的 EXE、DLL 或 ICO 文件路径。"
           }
         ],
         "returnType": "int",
@@ -43,15 +44,18 @@
         "parameters": [
           {
             "name": "文件路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "含图标的 EXE、DLL 或 ICO 文件路径。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "图标序号，从 0 起，必须小于 图标_取数量 返回的数量。"
           },
           {
             "name": "目标路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "保存图标的目标 PNG 路径。"
           }
         ],
         "returnType": "bool",
@@ -72,15 +76,18 @@
         "parameters": [
           {
             "name": "文件路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "含图标的 EXE、DLL 或 ICO 文件路径。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "图标序号，从 0 起，必须小于 图标_取数量 返回的数量。"
           },
           {
             "name": "目标路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "保存图标的目标 PNG 路径。"
           }
         ],
         "returnType": "bool",

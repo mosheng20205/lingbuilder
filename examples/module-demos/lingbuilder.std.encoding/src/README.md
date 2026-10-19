@@ -3,7 +3,7 @@
 - 模块 ID：`lingbuilder.std.encoding`
 - 版本：`1.0.0`
 - 类型：LingBuilder 内置模块
-- 命令数：30
+- 命令数：32
 - 设计器控件数：0
 - 分组数：2
 
@@ -15,7 +15,7 @@
 
 ## 模块说明
 
-通过十六进制字节文本安全提供 UTF-8、UTF-16、UTF-32、ANSI、GBK、GB2312、GB18030、BOM、Base64、URL 与 HTML 编解码。
+通过十六进制字节文本安全提供 UTF-8、UTF-16、UTF-32、ANSI、GBK、GB2312、GB18030、RAW（按码点低 8 位截断）、BOM、Base64、URL 与 HTML 编解码。
 
 ## 命令清单
 
@@ -39,15 +39,17 @@
 | 16 | `编码_GB2312转文本` | `编码_GB2312转文本(GB2312十六进制)` | wideString | 校验 GB2312 字节范围后按 Windows CP936 解码为 Unicode 文本。 |
 | 17 | `编码_文本转GB18030` | `编码_文本转GB18030(文本)` | wideString | 按 Windows CP54936 把文本编码为 GB18030 字节，返回大写十六进制文本。 |
 | 18 | `编码_GB18030转文本` | `编码_GB18030转文本(GB18030十六进制)` | wideString | 按 Windows CP54936 解码十六进制表示的 GB18030 字节。 |
-| 19 | `编码_转换` | `编码_转换(字节十六进制, 来源编码, 目标编码)` | wideString | 在支持的字符编码间转换十六进制字节；编码名支持 UTF-8、UTF-16LE/BE、UTF-32LE/BE、ANSI、GBK、GB2312、GB18030。输出不自动添加 BOM。 |
-| 20 | `编码_添加BOM` | `编码_添加BOM(字节十六进制, 编码名称)` | wideString | 为 UTF-8、UTF-16LE/BE 或 UTF-32LE/BE 十六进制字节添加匹配 BOM；已有 BOM 不重复添加。 |
-| 21 | `编码_删除BOM` | `编码_删除BOM(字节十六进制)` | wideString | 识别并删除 UTF-8、UTF-16 或 UTF-32 BOM，返回剩余大写十六进制字节。 |
-| 22 | `编码_是否有BOM` | `编码_是否有BOM(字节十六进制)` | bool | 判断十六进制字节是否以受支持的 BOM 开头。 |
-| 23 | `编码_检测BOM` | `编码_检测BOM(字节十六进制)` | wideString | 根据 BOM 返回 UTF-8、UTF-16LE、UTF-16BE、UTF-32LE 或 UTF-32BE；没有 BOM 返回空文本。 |
-| 24 | `编码_检测` | `编码_检测(字节十六进制)` | wideString | 先检测 BOM；无 BOM 时仅在字节是严格 UTF-8 时返回 UTF-8，否则返回“未知”，不猜测 ANSI 或中文代码页。 |
-| 25 | `编码_Base64编码` | `编码_Base64编码(文本)` | wideString | 将 Unicode 文本按 UTF-8 编码为 Base64。 |
-| 26 | `编码_Base64解码` | `编码_Base64解码(Base64文本)` | wideString | 将 Base64 解码为 UTF-8 文本，格式错误返回空文本。 |
-| 27 | `编码_URL编码` | `编码_URL编码(文本)` | wideString | 按 UTF-8 对 URL 参数内容进行百分号编码。 |
-| 28 | `编码_URL解码` | `编码_URL解码(文本)` | wideString | 解码 URL 百分号编码和加号空格。 |
-| 29 | `编码_HTML转义` | `编码_HTML转义(文本)` | wideString | 转义 HTML 中的与号、尖括号、引号和单引号。 |
-| 30 | `编码_HTML反转义` | `编码_HTML反转义(文本)` | wideString | 还原本模块支持的常用 HTML 实体。 |
+| 19 | `编码_字节集转文本` | `编码_字节集转文本(数据, 编码名称)` | wideString | 把字节集按指定编码解码为 Unicode 文本，不经十六进制中介；读中文 CSV/文本文件时直接用它。 |
+| 20 | `编码_文本转字节集` | `编码_文本转字节集(文本, 编码名称)` | bytes | 把 Unicode 文本按指定编码编码为字节集，用于写出 GBK 等中文编码文件。 |
+| 21 | `编码_转换` | `编码_转换(字节十六进制, 来源编码, 目标编码)` | wideString | 在支持的字符编码间转换十六进制字节；编码名支持 UTF-8、UTF-16LE/BE、UTF-32LE/BE、ANSI、GBK、GB2312、GB18030。输出不自动添加 BOM。 |
+| 22 | `编码_添加BOM` | `编码_添加BOM(字节十六进制, 编码名称)` | wideString | 为 UTF-8、UTF-16LE/BE 或 UTF-32LE/BE 十六进制字节添加匹配 BOM；已有 BOM 不重复添加。 |
+| 23 | `编码_删除BOM` | `编码_删除BOM(字节十六进制)` | wideString | 识别并删除 UTF-8、UTF-16 或 UTF-32 BOM，返回剩余大写十六进制字节。 |
+| 24 | `编码_是否有BOM` | `编码_是否有BOM(字节十六进制)` | bool | 判断十六进制字节是否以受支持的 BOM 开头。 |
+| 25 | `编码_检测BOM` | `编码_检测BOM(字节十六进制)` | wideString | 根据 BOM 返回 UTF-8、UTF-16LE、UTF-16BE、UTF-32LE 或 UTF-32BE；没有 BOM 返回空文本。 |
+| 26 | `编码_检测` | `编码_检测(字节十六进制)` | wideString | 先检测 BOM；无 BOM 时仅在字节是严格 UTF-8 时返回 UTF-8，否则返回“未知”，不猜测 ANSI 或中文代码页。 |
+| 27 | `编码_Base64编码` | `编码_Base64编码(文本)` | wideString | 将 Unicode 文本按 UTF-8 编码为 Base64。 |
+| 28 | `编码_Base64解码` | `编码_Base64解码(Base64文本)` | wideString | 将 Base64 解码为 UTF-8 文本，格式错误返回空文本。 |
+| 29 | `编码_URL编码` | `编码_URL编码(文本)` | wideString | 按 UTF-8 对 URL 参数内容进行百分号编码。 |
+| 30 | `编码_URL解码` | `编码_URL解码(文本)` | wideString | 解码 URL 百分号编码和加号空格。 |
+| 31 | `编码_HTML转义` | `编码_HTML转义(文本)` | wideString | 转义 HTML 中的与号、尖括号、引号和单引号。 |
+| 32 | `编码_HTML反转义` | `编码_HTML反转义(文本)` | wideString | 还原本模块支持的常用 HTML 实体。 |

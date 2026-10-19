@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.749Z",
+  "generatedAt": "2026-10-19T03:18:58.693Z",
   "module": {
     "id": "lingbuilder.cef3.views",
     "name": "CEF3视图模块",
-    "version": "3.0.0-alpha.3",
+    "version": "3.0.0-alpha.4",
     "description": "提供Chrome Runtime独立窗口入口。"
   },
   "commandCount": 1,
@@ -33,11 +33,13 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "新窗口要打开的完整 URL（含协议）。"
           }
         ],
         "returnType": "int",

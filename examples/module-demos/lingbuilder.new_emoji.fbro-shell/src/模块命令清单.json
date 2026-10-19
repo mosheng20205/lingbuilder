@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T17:09:24.109Z",
+  "generatedAt": "2026-10-19T03:18:58.789Z",
   "module": {
     "id": "lingbuilder.new_emoji.fbro-shell",
     "name": "new_emoji FBro 浏览器外壳",
-    "version": "1.1.0",
-    "description": "在 new_emoji 浏览器框架窗口中管理 FBro x64 多标签独立 HWND、导航状态和 BrowserViewport 占位区。"
+    "version": "1.4.0",
+    "description": "在 new_emoji 浏览器框架窗口中按稳定 ID 管理 FBro x64 独立会话、RichList、原生 HWND 和隔离 Profile。"
   },
-  "commandCount": 38,
+  "commandCount": 64,
   "commands": [
     {
       "index": 1,
@@ -30,7 +30,8 @@
               "visual"
             ],
             "scope": "currentWindow",
-            "runtimeRepresentation": "stableId"
+            "runtimeRepresentation": "stableId",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 lingbuilder.new_emoji.ui/Tabs；生成 C++ 时按设计器稳定 ID 定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "页面占位控件",
@@ -42,7 +43,8 @@
               "visual"
             ],
             "scope": "currentWindow",
-            "runtimeRepresentation": "stableId"
+            "runtimeRepresentation": "stableId",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 lingbuilder.new_emoji.ui/BrowserViewport；生成 C++ 时按设计器稳定 ID 定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "状态处理器",
@@ -55,7 +57,8 @@
                 "逻辑型"
               ],
               "returnType": "空"
-            }
+            },
+            "description": "必须使用 &处理器名；形参类型依次为 整数型、文本型、文本型、逻辑型，返回类型必须是 空。"
           }
         ],
         "returnType": "bool"
@@ -83,7 +86,8 @@
               "visual"
             ],
             "scope": "currentWindow",
-            "runtimeRepresentation": "stableId"
+            "runtimeRepresentation": "stableId",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 lingbuilder.new_emoji.ui/RichList；生成 C++ 时按设计器稳定 ID 定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "bool"
@@ -103,7 +107,8 @@
         "parameters": [
           {
             "name": "选中键JSON",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "列表选择动作携带的选中键 JSON 文本。"
           }
         ],
         "returnType": "bool",
@@ -139,15 +144,18 @@
         "parameters": [
           {
             "name": "稳定ID",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "实例的稳定 ID 文本，唯一标识一个外壳实例。"
           },
           {
             "name": "地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "完整 URL 或本地文件路径。"
           },
           {
             "name": "标题",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "对话框或窗口标题文本。"
           }
         ],
         "returnType": "bool",
@@ -168,19 +176,23 @@
         "parameters": [
           {
             "name": "稳定ID",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "实例的稳定 ID 文本，唯一标识一个外壳实例。"
           },
           {
             "name": "地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "完整 URL 或本地文件路径。"
           },
           {
             "name": "标题",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "对话框或窗口标题文本。"
           },
           {
             "name": "缓存目录",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "实例专用缓存目录路径。"
           }
         ],
         "returnType": "bool",
@@ -190,6 +202,662 @@
     },
     {
       "index": 7,
+      "name": "浏览器外壳_新建独立实例代理",
+      "signature": "浏览器外壳_新建独立实例代理(稳定ID, 地址, 标题, 缓存目录, 代理地址, 用户代理)",
+      "description": "动态创建带独立代理和 User-Agent 的独立实例：代理地址非空即该店铺独立出口 IP（独立 Host 进程天然隔离），用户代理在进程启动前写入 config；空值分别回落直连与 FBro 默认 UA。多店铺独立代理/UA 验证首选。",
+      "insertText": "浏览器外壳_新建独立实例代理(\"$1\", \"$2\", \"$3\", \"$4\", \"http://127.0.0.1:7890\", \"Mozilla/5.0\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器外壳_新建独立实例代理",
+        "runtimeName": "浏览器外壳_新建独立实例代理",
+        "parameters": [
+          {
+            "name": "稳定ID",
+            "type": "wideString",
+            "description": "实例的稳定 ID 文本，唯一标识一个外壳实例。"
+          },
+          {
+            "name": "地址",
+            "type": "wideString",
+            "description": "完整 URL 或本地文件路径。"
+          },
+          {
+            "name": "标题",
+            "type": "wideString",
+            "description": "对话框或窗口标题文本。"
+          },
+          {
+            "name": "缓存目录",
+            "type": "wideString",
+            "description": "实例专用缓存目录路径。"
+          },
+          {
+            "name": "代理地址",
+            "type": "wideString",
+            "description": "代理地址，如 \"http://127.0.0.1:7890\" 或 \"socks5://127.0.0.1:1080\"。"
+          },
+          {
+            "name": "用户代理",
+            "type": "wideString",
+            "description": "要使用的 User-Agent 字符串；需在首次导航前生效，建议建弹窗时直接传入。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器外壳_新建独立实例代理(\"演示参数1\", \"https://example.com\", \"演示参数3\", \".\", \"https://example.com\", \"演示参数6\")"
+    },
+    {
+      "index": 8,
+      "name": "浏览器外壳_新建内嵌实例区域",
+      "signature": "浏览器外壳_新建内嵌实例区域(稳定ID, 左, 顶, 宽, 高, 地址, 缓存目录, 代理地址, 用户代理)",
+      "description": "把 FBro 独立进程浏览器内嵌到当前宿主窗口的指定矩形区域（复用已出货的独立进程嵌入路径，跨进程浏览器作为子窗口挂到该矩形承载窗），可同时内嵌多个、各自独立缓存/代理/UA，随主窗口缩放与 DPI 变化跟随各自矩形——与 EdgeView_创建区域 / CEF3_创建区域 同口径的动态内嵌多店铺浏览器。稳定ID 供后续 浏览器外壳_导航实例/关闭实例/设置实例Cookie/取实例状态 等按 ID 操作；重复 ID 或缓存目录被占用返回假。坐标尺寸为逻辑像素。",
+      "insertText": "浏览器外壳_新建内嵌实例区域(\"store-a\", 10, 60, 600, 400, \"https://www.example.com\", \".fbro-region/store-a\", \"\", \"\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器外壳_新建内嵌实例区域",
+        "runtimeName": "浏览器外壳_新建内嵌实例区域",
+        "parameters": [
+          {
+            "name": "稳定ID",
+            "type": "wideString",
+            "description": "实例的稳定 ID 文本，唯一标识一个外壳实例。"
+          },
+          {
+            "name": "左",
+            "type": "int",
+            "description": "左边界 X 坐标（像素或 DIP，视命令而定）。"
+          },
+          {
+            "name": "顶",
+            "type": "int",
+            "description": "顶边界 Y 坐标（像素或 DIP，视命令而定）。"
+          },
+          {
+            "name": "宽",
+            "type": "int",
+            "description": "宽度（像素或 DIP，视命令而定）。"
+          },
+          {
+            "name": "高",
+            "type": "int",
+            "description": "高度（像素或 DIP，视命令而定）。"
+          },
+          {
+            "name": "地址",
+            "type": "wideString",
+            "description": "完整 URL 或本地文件路径。"
+          },
+          {
+            "name": "缓存目录",
+            "type": "wideString",
+            "description": "实例专用缓存目录路径。"
+          },
+          {
+            "name": "代理地址",
+            "type": "wideString",
+            "description": "代理地址，如 \"http://127.0.0.1:7890\" 或 \"socks5://127.0.0.1:1080\"。"
+          },
+          {
+            "name": "用户代理",
+            "type": "wideString",
+            "description": "要使用的 User-Agent 字符串；需在首次导航前生效，建议建弹窗时直接传入。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器外壳_新建内嵌实例区域(\"演示参数1\", 1, 1, 1, 1, \"https://example.com\", \".\", \"https://example.com\", \"演示参数9\")"
+    },
+    {
+      "index": 9,
+      "name": "浏览器外壳_取内嵌区域实例JSON",
+      "signature": "浏览器外壳_取内嵌区域实例JSON()",
+      "description": "返回当前全部内嵌区域 FBro 实例的 JSON 数组，每项含 稳定ID/地址/标题/左/顶/宽/高/状态/是否有效，供动态多店铺内嵌列表自省。",
+      "insertText": "浏览器外壳_取内嵌区域实例JSON()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器外壳_取内嵌区域实例JSON",
+        "runtimeName": "浏览器外壳_取内嵌区域实例JSON",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器外壳_取内嵌区域实例JSON()"
+    },
+    {
+      "index": 10,
+      "name": "浏览器外壳_启用实例持久化",
+      "signature": "浏览器外壳_启用实例持久化(工作台键)",
+      "description": "从 LocalAppData 中的 UTF-8 原子 JSON 恢复稳定 ID、名称、顺序、地址和独立 Profile；返回恢复数量，损坏时返回 -1。",
+      "insertText": "浏览器外壳_启用实例持久化(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "浏览器外壳_启用实例持久化",
+        "runtimeName": "浏览器外壳_启用实例持久化",
+        "parameters": [
+          {
+            "name": "工作台键",
+            "type": "wideString",
+            "description": "工作台标识键，用于外壳实例列表持久化恢复。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器外壳_启用实例持久化(\"演示参数1\")"
+    },
+    {
+      "index": 11,
+      "name": "浏览器外壳_取持久化诊断",
+      "signature": "浏览器外壳_取持久化诊断()",
+      "description": "返回配置恢复或原子写入的中文诊断，不包含 Cookie。",
+      "insertText": "浏览器外壳_取持久化诊断()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器外壳_取持久化诊断",
+        "runtimeName": "浏览器外壳_取持久化诊断",
+        "parameters": [],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "浏览器外壳_取持久化诊断()"
+    },
+    {
+      "index": 12,
+      "name": "浏览器外壳_重命名实例",
+      "signature": "浏览器外壳_重命名实例(稳定ID, 新名称)",
+      "description": "修改显示名称并立即持久化，不改变稳定 ID 或缓存路径。",
+      "insertText": "浏览器外壳_重命名实例(\"$1\", \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器外壳_重命名实例",
+        "runtimeName": "浏览器外壳_重命名实例",
+        "parameters": [
+          {
+            "name": "稳定ID",
+            "type": "wideString",
+            "description": "实例的稳定 ID 文本，唯一标识一个外壳实例。"
+          },
+          {
+            "name": "新名称",
+            "type": "wideString",
+            "description": "实例的新显示名称。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器外壳_重命名实例(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 13,
+      "name": "浏览器外壳_关闭实例",
+      "signature": "浏览器外壳_关闭实例(稳定ID)",
+      "description": "释放指定独立会话的 Host 和伴随 HWND，但保留 RichList 表项、稳定 ID、地址与缓存目录。",
+      "insertText": "浏览器外壳_关闭实例(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器外壳_关闭实例",
+        "runtimeName": "浏览器外壳_关闭实例",
+        "parameters": [
+          {
+            "name": "稳定ID",
+            "type": "wideString",
+            "description": "实例的稳定 ID 文本，唯一标识一个外壳实例。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器外壳_关闭实例(\"演示参数1\")"
+    },
+    {
+      "index": 14,
+      "name": "浏览器外壳_重新打开实例",
+      "signature": "浏览器外壳_重新打开实例(稳定ID)",
+      "description": "使用原稳定 ID、地址和缓存目录重新创建已关闭的独立会话。",
+      "insertText": "浏览器外壳_重新打开实例(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器外壳_重新打开实例",
+        "runtimeName": "浏览器外壳_重新打开实例",
+        "parameters": [
+          {
+            "name": "稳定ID",
+            "type": "wideString",
+            "description": "实例的稳定 ID 文本，唯一标识一个外壳实例。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器外壳_重新打开实例(\"演示参数1\")"
+    },
+    {
+      "index": 15,
+      "name": "浏览器外壳_删除实例",
+      "signature": "浏览器外壳_删除实例(稳定ID)",
+      "description": "关闭并删除指定会话的 RichList 表项和运行时绑定；默认保留缓存目录。",
+      "insertText": "浏览器外壳_删除实例(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器外壳_删除实例",
+        "runtimeName": "浏览器外壳_删除实例",
+        "parameters": [
+          {
+            "name": "稳定ID",
+            "type": "wideString",
+            "description": "实例的稳定 ID 文本，唯一标识一个外壳实例。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器外壳_删除实例(\"演示参数1\")"
+    },
+    {
+      "index": 16,
+      "name": "浏览器外壳_确认删除实例",
+      "signature": "浏览器外壳_确认删除实例(稳定ID, 清除数据)",
+      "description": "提供保留缓存或二次确认清除数据两种路径，并限制删除目标只能位于当前工作台 profiles 根目录。",
+      "insertText": "浏览器外壳_确认删除实例(\"$1\", $2)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器外壳_确认删除实例",
+        "runtimeName": "浏览器外壳_确认删除实例",
+        "parameters": [
+          {
+            "name": "稳定ID",
+            "type": "wideString",
+            "description": "实例的稳定 ID 文本，唯一标识一个外壳实例。"
+          },
+          {
+            "name": "清除数据",
+            "type": "bool",
+            "description": "真=同时清除实例的缓存数据。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器外壳_确认删除实例(\"演示参数1\", 真)"
+    },
+    {
+      "index": 17,
+      "name": "浏览器外壳_打开实例缓存目录",
+      "signature": "浏览器外壳_打开实例缓存目录(稳定ID)",
+      "description": "在资源管理器打开经过受管根目录校验的实例 Profile。",
+      "insertText": "浏览器外壳_打开实例缓存目录(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器外壳_打开实例缓存目录",
+        "runtimeName": "浏览器外壳_打开实例缓存目录",
+        "parameters": [
+          {
+            "name": "稳定ID",
+            "type": "wideString",
+            "description": "实例的稳定 ID 文本，唯一标识一个外壳实例。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器外壳_打开实例缓存目录(\"演示参数1\")"
+    },
+    {
+      "index": 18,
+      "name": "浏览器外壳_清理实例缓存",
+      "signature": "浏览器外壳_清理实例缓存(稳定ID, 包含Cookie)",
+      "description": "通过目标独立 FBro Host 清理真实缓存；可选择同时清理 Cookie 和插件私有数据。",
+      "insertText": "浏览器外壳_清理实例缓存(\"$1\", $2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器外壳_清理实例缓存",
+        "runtimeName": "浏览器外壳_清理实例缓存",
+        "parameters": [
+          {
+            "name": "稳定ID",
+            "type": "wideString",
+            "description": "实例的稳定 ID 文本，唯一标识一个外壳实例。"
+          },
+          {
+            "name": "包含Cookie",
+            "type": "bool",
+            "description": "真=清理时同时删除 Cookie。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器外壳_清理实例缓存(\"演示参数1\", 真)"
+    },
+    {
+      "index": 19,
+      "name": "浏览器外壳_导出实例Cookie",
+      "signature": "浏览器外壳_导出实例Cookie(稳定ID, 文件, 全部网站)",
+      "description": "从目标实例的真实 FBro CookieManager 导出 LingBuilder JSON；不会写入普通日志。",
+      "insertText": "浏览器外壳_导出实例Cookie(\"$1\", \"$2\", $3)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器外壳_导出实例Cookie",
+        "runtimeName": "浏览器外壳_导出实例Cookie",
+        "parameters": [
+          {
+            "name": "稳定ID",
+            "type": "wideString",
+            "description": "实例的稳定 ID 文本，唯一标识一个外壳实例。"
+          },
+          {
+            "name": "文件",
+            "type": "wideString",
+            "description": "导出或导入 Cookie 的文件路径。"
+          },
+          {
+            "name": "全部网站",
+            "type": "bool",
+            "description": "真=导出全部网站的 Cookie。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器外壳_导出实例Cookie(\"演示参数1\", \"module-demo-temp.txt\", 真)"
+    },
+    {
+      "index": 20,
+      "name": "浏览器外壳_导入实例Cookie",
+      "signature": "浏览器外壳_导入实例Cookie(稳定ID, 文件, 覆盖冲突, 包含过期)",
+      "description": "预览有效、无效、过期、域名和冲突后，将结构化 Cookie 写入目标实例并刷新页面。",
+      "insertText": "浏览器外壳_导入实例Cookie(\"$1\", \"$2\", $3, $4)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器外壳_导入实例Cookie",
+        "runtimeName": "浏览器外壳_导入实例Cookie",
+        "parameters": [
+          {
+            "name": "稳定ID",
+            "type": "wideString",
+            "description": "实例的稳定 ID 文本，唯一标识一个外壳实例。"
+          },
+          {
+            "name": "文件",
+            "type": "wideString",
+            "description": "导出或导入 Cookie 的文件路径。"
+          },
+          {
+            "name": "覆盖冲突",
+            "type": "bool",
+            "description": "真=导入时覆盖同名 Cookie。"
+          },
+          {
+            "name": "包含过期",
+            "type": "bool",
+            "description": "真=导入时包含已过期的 Cookie。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器外壳_导入实例Cookie(\"演示参数1\", \"module-demo-temp.txt\", 真, 真)"
+    },
+    {
+      "index": 21,
+      "name": "浏览器外壳_取当前插件状态",
+      "signature": "浏览器外壳_取当前插件状态()",
+      "description": "返回当前实例的插件已加载、加载中、加载失败或缺失状态。",
+      "insertText": "浏览器外壳_取当前插件状态()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器外壳_取当前插件状态",
+        "runtimeName": "浏览器外壳_取当前插件状态",
+        "parameters": [],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "浏览器外壳_取当前插件状态()"
+    },
+    {
+      "index": 22,
+      "name": "浏览器外壳_取当前插件错误",
+      "signature": "浏览器外壳_取当前插件错误()",
+      "description": "返回当前实例最近的插件清单或 FBro 加载错误。",
+      "insertText": "浏览器外壳_取当前插件错误()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器外壳_取当前插件错误",
+        "runtimeName": "浏览器外壳_取当前插件错误",
+        "parameters": [],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "浏览器外壳_取当前插件错误()"
+    },
+    {
+      "index": 23,
+      "name": "浏览器外壳_处理实例列表动作",
+      "signature": "浏览器外壳_处理实例列表动作(事件JSON)",
+      "description": "按 RichList ItemClicked/ButtonClicked 的 itemKey/actionId 切换会话，或执行关闭、删除、Cookie 和稳定 ID 排序，返回中文状态。",
+      "insertText": "浏览器外壳_处理实例列表动作($1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器外壳_处理实例列表动作",
+        "runtimeName": "浏览器外壳_处理实例列表动作",
+        "parameters": [
+          {
+            "name": "事件JSON",
+            "type": "wideString",
+            "description": "实例列表 UI 动作事件 JSON 文本。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器外壳_处理实例列表动作(\"{}\")"
+    },
+    {
+      "index": 24,
+      "name": "浏览器外壳_设置实例Cookie",
+      "signature": "浏览器外壳_设置实例Cookie(稳定ID, 地址, Cookie文本)",
+      "description": "通过指定独立 Host 的 FBro Cookie API 写入 Cookie；不会输出敏感明文。",
+      "insertText": "浏览器外壳_设置实例Cookie(\"$1\", \"$2\", \"$3\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器外壳_设置实例Cookie",
+        "runtimeName": "浏览器外壳_设置实例Cookie",
+        "parameters": [
+          {
+            "name": "稳定ID",
+            "type": "wideString",
+            "description": "实例的稳定 ID 文本，唯一标识一个外壳实例。"
+          },
+          {
+            "name": "地址",
+            "type": "wideString",
+            "description": "完整 URL 或本地文件路径。"
+          },
+          {
+            "name": "Cookie文本",
+            "type": "wideString",
+            "description": "要写入的 Cookie 文本，格式与导出文件一致。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器外壳_设置实例Cookie(\"演示参数1\", \"https://example.com\", \"演示参数3\")"
+    },
+    {
+      "index": 25,
+      "name": "浏览器外壳_打开Cookie对话框",
+      "signature": "浏览器外壳_打开Cookie对话框(稳定ID, 默认地址)",
+      "description": "打开包含目标网址与 Cookie 文本输入的中文模态对话框，并仅写入指定稳定会话。",
+      "insertText": "浏览器外壳_打开Cookie对话框(\"$1\", \"$2\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器外壳_打开Cookie对话框",
+        "runtimeName": "浏览器外壳_打开Cookie对话框",
+        "parameters": [
+          {
+            "name": "稳定ID",
+            "type": "wideString",
+            "description": "实例的稳定 ID 文本，唯一标识一个外壳实例。"
+          },
+          {
+            "name": "默认地址",
+            "type": "wideString",
+            "description": "Cookie 对话框默认显示的地址。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器外壳_打开Cookie对话框(\"演示参数1\", \"https://example.com\")"
+    },
+    {
+      "index": 26,
+      "name": "浏览器外壳_取实例Cookie",
+      "signature": "浏览器外壳_取实例Cookie(稳定ID, 地址)",
+      "description": "通过指定独立 Host 读取 Cookie，用于隔离验证；调用方不得记录敏感结果。",
+      "insertText": "浏览器外壳_取实例Cookie(\"$1\", \"$2\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器外壳_取实例Cookie",
+        "runtimeName": "浏览器外壳_取实例Cookie",
+        "parameters": [
+          {
+            "name": "稳定ID",
+            "type": "wideString",
+            "description": "实例的稳定 ID 文本，唯一标识一个外壳实例。"
+          },
+          {
+            "name": "地址",
+            "type": "wideString",
+            "description": "完整 URL 或本地文件路径。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器外壳_取实例Cookie(\"演示参数1\", \"https://example.com\")"
+    },
+    {
+      "index": 27,
+      "name": "浏览器外壳_取实例状态",
+      "signature": "浏览器外壳_取实例状态(稳定ID)",
+      "description": "返回已打开、已关闭或不存在。",
+      "insertText": "浏览器外壳_取实例状态(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器外壳_取实例状态",
+        "runtimeName": "浏览器外壳_取实例状态",
+        "parameters": [
+          {
+            "name": "稳定ID",
+            "type": "wideString",
+            "description": "实例的稳定 ID 文本，唯一标识一个外壳实例。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器外壳_取实例状态(\"演示参数1\")"
+    },
+    {
+      "index": 28,
+      "name": "浏览器外壳_取实例缓存目录",
+      "signature": "浏览器外壳_取实例缓存目录(稳定ID)",
+      "description": "返回稳定会话绑定的独立缓存目录。",
+      "insertText": "浏览器外壳_取实例缓存目录(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器外壳_取实例缓存目录",
+        "runtimeName": "浏览器外壳_取实例缓存目录",
+        "parameters": [
+          {
+            "name": "稳定ID",
+            "type": "wideString",
+            "description": "实例的稳定 ID 文本，唯一标识一个外壳实例。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器外壳_取实例缓存目录(\"演示参数1\")"
+    },
+    {
+      "index": 29,
+      "name": "浏览器外壳_取实例进程ID",
+      "signature": "浏览器外壳_取实例进程ID(稳定ID)",
+      "description": "返回指定已打开独立会话的 Host PID。",
+      "insertText": "浏览器外壳_取实例进程ID(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "浏览器外壳_取实例进程ID",
+        "runtimeName": "浏览器外壳_取实例进程ID",
+        "parameters": [
+          {
+            "name": "稳定ID",
+            "type": "wideString",
+            "description": "实例的稳定 ID 文本，唯一标识一个外壳实例。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器外壳_取实例进程ID(\"演示参数1\")"
+    },
+    {
+      "index": 30,
+      "name": "浏览器外壳_取实例宿主句柄",
+      "signature": "浏览器外壳_取实例宿主句柄(稳定ID)",
+      "description": "返回指定已打开独立会话的伴随宿主 HWND。",
+      "insertText": "浏览器外壳_取实例宿主句柄(\"$1\")",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "浏览器外壳_取实例宿主句柄",
+        "runtimeName": "浏览器外壳_取实例宿主句柄",
+        "parameters": [
+          {
+            "name": "稳定ID",
+            "type": "wideString",
+            "description": "实例的稳定 ID 文本，唯一标识一个外壳实例。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器外壳_取实例宿主句柄(\"演示参数1\")"
+    },
+    {
+      "index": 31,
+      "name": "浏览器外壳_取实例顺序JSON",
+      "signature": "浏览器外壳_取实例顺序JSON()",
+      "description": "返回当前 RichList 稳定 ID 顺序的 JSON 数组。",
+      "insertText": "浏览器外壳_取实例顺序JSON()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器外壳_取实例顺序JSON",
+        "runtimeName": "浏览器外壳_取实例顺序JSON",
+        "parameters": [],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "浏览器外壳_取实例顺序JSON()"
+    },
+    {
+      "index": 32,
+      "name": "浏览器外壳_生成稳定实例ID",
+      "signature": "浏览器外壳_生成稳定实例ID()",
+      "description": "使用系统随机数生成不会因重命名改变的浏览器实例 ID。",
+      "insertText": "浏览器外壳_生成稳定实例ID()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器外壳_生成稳定实例ID",
+        "runtimeName": "浏览器外壳_生成稳定实例ID",
+        "parameters": [],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "浏览器外壳_生成稳定实例ID()"
+    },
+    {
+      "index": 33,
       "name": "浏览器外壳_新建空白标签页",
       "signature": "浏览器外壳_新建空白标签页()",
       "description": "使用运行时生成的稳定 ID 新建并选择空白标签页。",
@@ -204,7 +872,7 @@
       "demoInvocation": "浏览器外壳_新建空白标签页()"
     },
     {
-      "index": 8,
+      "index": 34,
       "name": "浏览器外壳_关闭标签页",
       "signature": "浏览器外壳_关闭标签页(稳定ID)",
       "description": "关闭并销毁指定稳定 ID 的标签页。",
@@ -216,7 +884,8 @@
         "parameters": [
           {
             "name": "稳定ID",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "实例的稳定 ID 文本，唯一标识一个外壳实例。"
           }
         ],
         "returnType": "bool",
@@ -225,7 +894,7 @@
       "demoInvocation": "浏览器外壳_关闭标签页(\"演示参数1\")"
     },
     {
-      "index": 9,
+      "index": 35,
       "name": "浏览器外壳_关闭当前标签页",
       "signature": "浏览器外壳_关闭当前标签页()",
       "description": "关闭当前选中的标签页。",
@@ -240,7 +909,7 @@
       "demoInvocation": "浏览器外壳_关闭当前标签页()"
     },
     {
-      "index": 10,
+      "index": 36,
       "name": "浏览器外壳_关闭其他标签页",
       "signature": "浏览器外壳_关闭其他标签页()",
       "description": "保留当前标签页并关闭、销毁其余标签页宿主。",
@@ -255,7 +924,7 @@
       "demoInvocation": "浏览器外壳_关闭其他标签页()"
     },
     {
-      "index": 11,
+      "index": 37,
       "name": "浏览器外壳_取标签页数量",
       "signature": "浏览器外壳_取标签页数量()",
       "description": "返回浏览器外壳当前受管标签页数量。",
@@ -270,7 +939,7 @@
       "demoInvocation": "浏览器外壳_取标签页数量()"
     },
     {
-      "index": 12,
+      "index": 38,
       "name": "浏览器外壳_选择标签页",
       "signature": "浏览器外壳_选择标签页(稳定ID)",
       "description": "只显示指定稳定 ID 的页面宿主。",
@@ -282,7 +951,8 @@
         "parameters": [
           {
             "name": "稳定ID",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "实例的稳定 ID 文本，唯一标识一个外壳实例。"
           }
         ],
         "returnType": "bool",
@@ -291,7 +961,7 @@
       "demoInvocation": "浏览器外壳_选择标签页(\"演示参数1\")"
     },
     {
-      "index": 13,
+      "index": 39,
       "name": "浏览器外壳_重排标签页",
       "signature": "浏览器外壳_重排标签页(稳定ID, 新索引)",
       "description": "按稳定 ID 重排标签页和运行时映射。",
@@ -303,11 +973,13 @@
         "parameters": [
           {
             "name": "稳定ID",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "实例的稳定 ID 文本，唯一标识一个外壳实例。"
           },
           {
             "name": "新索引",
-            "type": "int"
+            "type": "int",
+            "description": "标签页新位置下标，从 0 起。"
           }
         ],
         "returnType": "bool",
@@ -316,7 +988,7 @@
       "demoInvocation": "浏览器外壳_重排标签页(\"演示参数1\", 1)"
     },
     {
-      "index": 14,
+      "index": 40,
       "name": "浏览器外壳_导航",
       "signature": "浏览器外壳_导航(地址)",
       "description": "让当前标签页导航到地址。",
@@ -328,7 +1000,8 @@
         "parameters": [
           {
             "name": "地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "完整 URL 或本地文件路径。"
           }
         ],
         "returnType": "bool",
@@ -337,7 +1010,7 @@
       "demoInvocation": "浏览器外壳_导航(\"https://example.com\")"
     },
     {
-      "index": 15,
+      "index": 41,
       "name": "浏览器外壳_后退",
       "signature": "浏览器外壳_后退()",
       "description": "当前标签页后退。",
@@ -352,7 +1025,7 @@
       "demoInvocation": "浏览器外壳_后退()"
     },
     {
-      "index": 16,
+      "index": 42,
       "name": "浏览器外壳_前进",
       "signature": "浏览器外壳_前进()",
       "description": "当前标签页前进。",
@@ -367,7 +1040,7 @@
       "demoInvocation": "浏览器外壳_前进()"
     },
     {
-      "index": 17,
+      "index": 43,
       "name": "浏览器外壳_刷新",
       "signature": "浏览器外壳_刷新()",
       "description": "刷新当前标签页。",
@@ -382,7 +1055,7 @@
       "demoInvocation": "浏览器外壳_刷新()"
     },
     {
-      "index": 18,
+      "index": 44,
       "name": "浏览器外壳_停止",
       "signature": "浏览器外壳_停止()",
       "description": "停止当前标签页加载。",
@@ -397,7 +1070,7 @@
       "demoInvocation": "浏览器外壳_停止()"
     },
     {
-      "index": 19,
+      "index": 45,
       "name": "浏览器外壳_取地址",
       "signature": "浏览器外壳_取地址()",
       "description": "读取当前标签页地址。",
@@ -412,7 +1085,7 @@
       "demoInvocation": "浏览器外壳_取地址()"
     },
     {
-      "index": 20,
+      "index": 46,
       "name": "浏览器外壳_取标题",
       "signature": "浏览器外壳_取标题()",
       "description": "读取当前标签页标题。",
@@ -427,7 +1100,7 @@
       "demoInvocation": "浏览器外壳_取标题()"
     },
     {
-      "index": 21,
+      "index": 47,
       "name": "浏览器外壳_取当前稳定ID",
       "signature": "浏览器外壳_取当前稳定ID()",
       "description": "返回当前实例的稳定 ID。",
@@ -442,7 +1115,7 @@
       "demoInvocation": "浏览器外壳_取当前稳定ID()"
     },
     {
-      "index": 22,
+      "index": 48,
       "name": "浏览器外壳_取当前进程状态",
       "signature": "浏览器外壳_取当前进程状态()",
       "description": "返回当前独立 Host 的启动状态。",
@@ -457,7 +1130,7 @@
       "demoInvocation": "浏览器外壳_取当前进程状态()"
     },
     {
-      "index": 23,
+      "index": 49,
       "name": "浏览器外壳_取当前进程ID",
       "signature": "浏览器外壳_取当前进程ID()",
       "description": "返回当前独立 Host 的 PID。",
@@ -472,7 +1145,7 @@
       "demoInvocation": "浏览器外壳_取当前进程ID()"
     },
     {
-      "index": 24,
+      "index": 50,
       "name": "浏览器外壳_取当前调试端口",
       "signature": "浏览器外壳_取当前调试端口()",
       "description": "返回当前独立 Host 的随机 CDP 端口。",
@@ -487,7 +1160,7 @@
       "demoInvocation": "浏览器外壳_取当前调试端口()"
     },
     {
-      "index": 25,
+      "index": 51,
       "name": "浏览器外壳_取当前错误",
       "signature": "浏览器外壳_取当前错误()",
       "description": "返回当前实例最近的进程或 FBro 错误。",
@@ -502,7 +1175,7 @@
       "demoInvocation": "浏览器外壳_取当前错误()"
     },
     {
-      "index": 26,
+      "index": 52,
       "name": "浏览器外壳_强制刷新",
       "signature": "浏览器外壳_强制刷新()",
       "description": "忽略缓存刷新当前实例。",
@@ -517,7 +1190,7 @@
       "demoInvocation": "浏览器外壳_强制刷新()"
     },
     {
-      "index": 27,
+      "index": 53,
       "name": "浏览器外壳_执行JS",
       "signature": "浏览器外壳_执行JS(脚本)",
       "description": "通过 WebSocket 在当前独立 Host 中同步执行 JavaScript。",
@@ -529,7 +1202,8 @@
         "parameters": [
           {
             "name": "脚本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "JavaScript 源码文本。"
           }
         ],
         "returnType": "wideString",
@@ -538,7 +1212,7 @@
       "demoInvocation": "浏览器外壳_执行JS(\"演示参数1\")"
     },
     {
-      "index": 28,
+      "index": 54,
       "name": "浏览器外壳_取Cookie",
       "signature": "浏览器外壳_取Cookie(地址)",
       "description": "通过 WebSocket 读取当前独立 Host 指定地址的 Cookie。",
@@ -550,7 +1224,8 @@
         "parameters": [
           {
             "name": "地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "完整 URL 或本地文件路径。"
           }
         ],
         "returnType": "wideString",
@@ -559,7 +1234,7 @@
       "demoInvocation": "浏览器外壳_取Cookie(\"https://example.com\")"
     },
     {
-      "index": 29,
+      "index": 55,
       "name": "浏览器外壳_截图到文件",
       "signature": "浏览器外壳_截图到文件(路径, 格式, 质量)",
       "description": "让当前独立 Host 截图并保存到文件。",
@@ -571,15 +1246,18 @@
         "parameters": [
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "截图保存路径。"
           },
           {
             "name": "格式",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "图像格式 \"png\" 或 \"jpeg\"。"
           },
           {
             "name": "质量",
-            "type": "int"
+            "type": "int",
+            "description": "JPEG 压缩质量 0~100；png 忽略。"
           }
         ],
         "returnType": "bool",
@@ -588,7 +1266,7 @@
       "demoInvocation": "浏览器外壳_截图到文件(\"module-demo-temp.txt\", \"演示参数2\", 1)"
     },
     {
-      "index": 30,
+      "index": 56,
       "name": "浏览器外壳_隐藏当前",
       "signature": "浏览器外壳_隐藏当前()",
       "description": "隐藏当前 Host，但保持进程和页面状态。",
@@ -603,7 +1281,7 @@
       "demoInvocation": "浏览器外壳_隐藏当前()"
     },
     {
-      "index": 31,
+      "index": 57,
       "name": "浏览器外壳_显示当前",
       "signature": "浏览器外壳_显示当前()",
       "description": "恢复显示当前 Host。",
@@ -618,7 +1296,7 @@
       "demoInvocation": "浏览器外壳_显示当前()"
     },
     {
-      "index": 32,
+      "index": 58,
       "name": "浏览器外壳_取当前代理",
       "signature": "浏览器外壳_取当前代理()",
       "description": "读取当前实例保存的代理地址。",
@@ -633,7 +1311,7 @@
       "demoInvocation": "浏览器外壳_取当前代理()"
     },
     {
-      "index": 33,
+      "index": 59,
       "name": "浏览器外壳_取当前UserAgent",
       "signature": "浏览器外壳_取当前UserAgent()",
       "description": "读取当前实例保存的 User-Agent。",
@@ -648,7 +1326,7 @@
       "demoInvocation": "浏览器外壳_取当前UserAgent()"
     },
     {
-      "index": 34,
+      "index": 60,
       "name": "浏览器外壳_取当前指纹配置",
       "signature": "浏览器外壳_取当前指纹配置()",
       "description": "读取当前实例保存的指纹 JSON。",
@@ -663,7 +1341,7 @@
       "demoInvocation": "浏览器外壳_取当前指纹配置()"
     },
     {
-      "index": 35,
+      "index": 61,
       "name": "浏览器外壳_取当前视口宽度",
       "signature": "浏览器外壳_取当前视口宽度()",
       "description": "读取当前实例视口宽度。",
@@ -678,7 +1356,7 @@
       "demoInvocation": "浏览器外壳_取当前视口宽度()"
     },
     {
-      "index": 36,
+      "index": 62,
       "name": "浏览器外壳_取当前视口高度",
       "signature": "浏览器外壳_取当前视口高度()",
       "description": "读取当前实例视口高度。",
@@ -693,7 +1371,7 @@
       "demoInvocation": "浏览器外壳_取当前视口高度()"
     },
     {
-      "index": 37,
+      "index": 63,
       "name": "浏览器外壳_按配置重建当前",
       "signature": "浏览器外壳_按配置重建当前(代理, UserAgent, 指纹JSON, 宽度, 高度)",
       "description": "保留稳定 ID 与 Profile，关闭并按新配置重启当前独立 Host。",
@@ -705,23 +1383,28 @@
         "parameters": [
           {
             "name": "代理",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "实例代理地址，空文本表示直连。"
           },
           {
             "name": "UserAgent",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要设置的 User-Agent 字符串。"
           },
           {
             "name": "指纹JSON",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "指纹配置 JSON 文本。"
           },
           {
             "name": "宽度",
-            "type": "int"
+            "type": "int",
+            "description": "宽度（像素）。"
           },
           {
             "name": "高度",
-            "type": "int"
+            "type": "int",
+            "description": "高度（像素）。"
           }
         ],
         "returnType": "bool",
@@ -730,7 +1413,7 @@
       "demoInvocation": "浏览器外壳_按配置重建当前(\"演示参数1\", \"演示参数2\", \"{}\", 1, 1)"
     },
     {
-      "index": 38,
+      "index": 64,
       "name": "浏览器外壳_聚焦地址栏",
       "signature": "浏览器外壳_聚焦地址栏(地址栏控件)",
       "description": "把键盘焦点切换到指定 new_emoji Omnibox。",
@@ -750,7 +1433,8 @@
               "visual"
             ],
             "scope": "currentWindow",
-            "runtimeRepresentation": "stableId"
+            "runtimeRepresentation": "stableId",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 lingbuilder.new_emoji.ui/Omnibox；生成 C++ 时按设计器稳定 ID 定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "bool"

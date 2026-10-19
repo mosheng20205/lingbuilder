@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.701Z",
+  "generatedAt": "2026-10-19T03:18:58.649Z",
   "module": {
     "id": "lingbuilder.advanced.driver",
     "name": "设备驱动通信模块",
@@ -22,11 +22,13 @@
         "parameters": [
           {
             "name": "设备路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "系统给出的设备接口路径，不是普通文件名；打不开时返回 0 并可用 设备_取错误码 查看原因。"
           },
           {
             "name": "允许写入",
-            "type": "bool"
+            "type": "bool",
+            "description": "传真时以读写方式打开，执行会改变设备状态的 IOCTL 才需要。"
           }
         ],
         "returnType": "handle",
@@ -47,11 +49,13 @@
         "parameters": [
           {
             "name": "设备句柄",
-            "type": "handle"
+            "type": "handle",
+            "description": "设备_打开 返回的设备句柄。"
           },
           {
             "name": "控制码",
-            "type": "int"
+            "type": "int",
+            "description": "IOCTL 控制码；本命令不带任何输入输出缓冲区。"
           }
         ],
         "returnType": "bool"
@@ -71,7 +75,8 @@
         "parameters": [
           {
             "name": "设备句柄",
-            "type": "handle"
+            "type": "handle",
+            "description": "设备_打开 返回的设备句柄；传 0 直接返回假。"
           }
         ],
         "returnType": "bool"

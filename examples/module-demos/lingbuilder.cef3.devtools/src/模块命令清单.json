@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T09:07:19.426Z",
+  "generatedAt": "2026-10-19T03:18:58.676Z",
   "module": {
     "id": "lingbuilder.cef3.devtools",
     "name": "CEF3开发者工具模块",
-    "version": "3.0.0-alpha.3",
+    "version": "3.0.0-alpha.4",
     "description": "提供受设计器策略控制的DevTools入口。"
   },
   "commandCount": 8,
@@ -33,7 +33,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "int",
@@ -65,7 +66,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "int",
@@ -97,7 +99,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "int",
@@ -130,15 +133,18 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "方法名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "DevTools Protocol 方法名，如 \"Runtime.enable\"。"
           },
           {
             "name": "参数JSON",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "方法参数 JSON 对象文本；无参数传 \"{}\"。"
           }
         ],
         "returnType": "longLong",
@@ -172,11 +178,13 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "启用",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=开启订阅并投递对应事件，假=停止。"
           }
         ],
         "returnType": "int",
@@ -209,11 +217,13 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "启用",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=开启订阅并投递对应事件，假=停止。"
           }
         ],
         "returnType": "int",
@@ -246,11 +256,13 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "启用",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=开启订阅并投递对应事件，假=停止。"
           }
         ],
         "returnType": "int",
@@ -283,11 +295,13 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "启用",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=开启订阅并投递对应事件，假=停止。"
           }
         ],
         "returnType": "int",

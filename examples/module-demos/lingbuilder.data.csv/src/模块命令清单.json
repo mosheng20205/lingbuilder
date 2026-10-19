@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.777Z",
+  "generatedAt": "2026-10-19T03:18:58.710Z",
   "module": {
     "id": "lingbuilder.data.csv",
     "name": "CSV数据模块",
-    "version": "1.0.0",
-    "description": "提供 RFC 4180 风格的 CSV 字段转义、行生成和字段读取。"
+    "version": "1.1.0",
+    "description": "RFC 4180 风格 CSV：字段转义与行生成、按文件整体读取、记录级解析（支持引号内换行、双写引号、CRLF/CR/LF、自定义分隔符、空行跳过）与 UTF-8/GBK/GB18030/UTF-16/UTF-32 编码自动识别；解析结果用 表格数据 快照按行列读取。"
   },
-  "commandCount": 5,
+  "commandCount": 18,
   "commands": [
     {
       "index": 1,
@@ -22,7 +22,8 @@
         "parameters": [
           {
             "name": "字段",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要写入 CSV 单元格的原始文本；含逗号、双引号、回车或换行时会自动加外层引号，内部引号翻倍。"
           }
         ],
         "returnType": "wideString",
@@ -43,11 +44,13 @@
         "parameters": [
           {
             "name": "第一列",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要写入 CSV 单元格的原始文本；含逗号、双引号、回车或换行时会自动加外层引号，内部引号翻倍。"
           },
           {
             "name": "第二列",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要写入 CSV 单元格的原始文本；含逗号、双引号、回车或换行时会自动加外层引号，内部引号翻倍。"
           }
         ],
         "returnType": "wideString",
@@ -68,15 +71,18 @@
         "parameters": [
           {
             "name": "第一列",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要写入 CSV 单元格的原始文本；含逗号、双引号、回车或换行时会自动加外层引号，内部引号翻倍。"
           },
           {
             "name": "第二列",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要写入 CSV 单元格的原始文本；含逗号、双引号、回车或换行时会自动加外层引号，内部引号翻倍。"
           },
           {
             "name": "第三列",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要写入 CSV 单元格的原始文本；含逗号、双引号、回车或换行时会自动加外层引号，内部引号翻倍。"
           }
         ],
         "returnType": "wideString",
@@ -97,7 +103,8 @@
         "parameters": [
           {
             "name": "行文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "待解析的一行 CSV 文本；按引号识别字段，不跨行解析多行记录，含换行的字段请改用 CSV_打开文件 或 CSV_解析文本。"
           }
         ],
         "returnType": "int",
@@ -118,17 +125,393 @@
         "parameters": [
           {
             "name": "行文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "待解析的一行 CSV 文本；按引号识别字段，不跨行解析多行记录，含换行的字段请改用 CSV_打开文件 或 CSV_解析文本。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "字段序号，从 0 起；越界返回空文本。"
           }
         ],
         "returnType": "wideString",
         "encoding": "wide"
       },
       "demoInvocation": "CSV_取字段(\"演示参数1\", 1)"
+    },
+    {
+      "index": 6,
+      "name": "CSV_打开文件",
+      "signature": "CSV_打开文件(文件路径, 编码名称, 分隔符, 含表头)",
+      "description": "按整个文件读取 CSV 并返回 表格数据 快照；引号内的换行属于字段内容，不会被当成换行。",
+      "insertText": "CSV_打开文件(\"$1\", \"$2\", \"$3\", 假)",
+      "returnType": "表格数据",
+      "binding": {
+        "command": "CSV_打开文件",
+        "runtimeName": "CSV_打开文件",
+        "parameters": [
+          {
+            "name": "文件路径",
+            "type": "wideString",
+            "description": "要读取的 CSV 文件完整路径；打不开时返回 0，原因见 数据表_取错误。"
+          },
+          {
+            "name": "编码名称",
+            "type": "wideString",
+            "optional": true,
+            "defaultValue": "AUTO",
+            "description": "文件编码名称，忽略大小写与空格、连字符、下划线；支持 UTF-8、UTF-16LE、UTF-16BE、UTF-32LE、UTF-32BE、ANSI、GBK、GB2312、GB18030，传 AUTO 按「BOM → 严格 UTF-8 → GB18030」自动识别。省略等价于 AUTO。"
+          },
+          {
+            "name": "分隔符",
+            "type": "wideString",
+            "optional": true,
+            "defaultValue": ",",
+            "description": "字段分隔符，取首字符生效；支持半角逗号、分号、竖线、制表符（写 \"\\t\" 或真实制表符）和全角逗号。省略按半角逗号。"
+          },
+          {
+            "name": "含表头",
+            "type": "bool",
+            "optional": true,
+            "defaultValue": true,
+            "description": "传真表示第一条记录是表头行，列名取自表头，缺名列按 列N 补齐；传假时全部记录都算数据，列名统一为 列N。"
+          }
+        ],
+        "returnType": "表格数据",
+        "encoding": "wide",
+        "example": "局部 表格数据 表\n表 = CSV_打开文件(\"员工.csv\")\n如果 (表 != 0)\n    调试输出(数据表_取文本(表, 1, 1))\n    数据表_关闭(表)\n如果结束"
+      },
+      "demoInvocation": "CSV_打开文件(\"module-demo-temp.txt\", \"演示参数2\", \"演示参数3\", 真)"
+    },
+    {
+      "index": 7,
+      "name": "CSV_解析文本",
+      "signature": "CSV_解析文本(CSV文本, 分隔符, 含表头)",
+      "description": "把多行 CSV 文本解析成 表格数据 快照；用于内容已在内存里的场景。",
+      "insertText": "CSV_解析文本(\"$1\", \"$2\", 假)",
+      "returnType": "表格数据",
+      "binding": {
+        "command": "CSV_解析文本",
+        "runtimeName": "CSV_解析文本",
+        "parameters": [
+          {
+            "name": "CSV文本",
+            "type": "wideString",
+            "description": "已经含全部记录的 CSV 文本，可以跨多行；通常来自 文件_读取文本。"
+          },
+          {
+            "name": "分隔符",
+            "type": "wideString",
+            "optional": true,
+            "defaultValue": ",",
+            "description": "字段分隔符，取首字符生效；支持半角逗号、分号、竖线、制表符（写 \"\\t\" 或真实制表符）和全角逗号。省略按半角逗号。"
+          },
+          {
+            "name": "含表头",
+            "type": "bool",
+            "optional": true,
+            "defaultValue": true,
+            "description": "传真表示第一条记录是表头行，列名取自表头，缺名列按 列N 补齐；传假时全部记录都算数据，列名统一为 列N。"
+          }
+        ],
+        "returnType": "表格数据",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CSV_解析文本(\"演示参数1\", \"演示参数2\", 真)"
+    },
+    {
+      "index": 8,
+      "name": "数据表_取错误",
+      "signature": "数据表_取错误()",
+      "description": "返回当前线程最近一次表格操作失败的中文说明；每次进入 数据表_ 或 CSV_ 命令时清空。",
+      "insertText": "数据表_取错误()",
+      "returnType": "文本型",
+      "category": "诊断",
+      "binding": {
+        "command": "数据表_取错误",
+        "runtimeName": "数据表_取错误",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "数据表_取错误()"
+    },
+    {
+      "index": 9,
+      "name": "数据表_行数",
+      "signature": "数据表_行数(表格)",
+      "description": "返回数据行数量，不含表头行；句柄无效返回 0。",
+      "insertText": "数据表_行数(0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "数据表_行数",
+        "runtimeName": "数据表_行数",
+        "parameters": [
+          {
+            "name": "表格",
+            "type": "表格数据",
+            "description": "由 CSV_打开文件 或 CSV_解析文本 返回的受管表格数据快照。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "数据表_行数(0)"
+    },
+    {
+      "index": 10,
+      "name": "数据表_列数",
+      "signature": "数据表_列数(表格)",
+      "description": "返回列数量，取所有记录的最大宽度；句柄无效返回 0。",
+      "insertText": "数据表_列数(0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "数据表_列数",
+        "runtimeName": "数据表_列数",
+        "parameters": [
+          {
+            "name": "表格",
+            "type": "表格数据",
+            "description": "由 CSV_打开文件 或 CSV_解析文本 返回的受管表格数据快照。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "数据表_列数(0)"
+    },
+    {
+      "index": 11,
+      "name": "数据表_列名",
+      "signature": "数据表_列名(表格, 列号)",
+      "description": "返回指定列的名称；无表头或表头缺名时为 列N。",
+      "insertText": "数据表_列名(0, 0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "数据表_列名",
+        "runtimeName": "数据表_列名",
+        "parameters": [
+          {
+            "name": "表格",
+            "type": "表格数据",
+            "description": "由 CSV_打开文件 或 CSV_解析文本 返回的受管表格数据快照。"
+          },
+          {
+            "name": "列号",
+            "type": "int",
+            "description": "列号，从 1 起；越界返回空文本。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "数据表_列名(0, 1)"
+    },
+    {
+      "index": 12,
+      "name": "数据表_取文本",
+      "signature": "数据表_取文本(表格, 行号, 列号)",
+      "description": "按行列读取单元格文本；越界返回空文本。",
+      "insertText": "数据表_取文本(0, 0, 0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "数据表_取文本",
+        "runtimeName": "数据表_取文本",
+        "parameters": [
+          {
+            "name": "表格",
+            "type": "表格数据",
+            "description": "由 CSV_打开文件 或 CSV_解析文本 返回的受管表格数据快照。"
+          },
+          {
+            "name": "行号",
+            "type": "int",
+            "description": "数据行号，从 1 起；不含表头行，越界返回空值并用 数据表_取错误 查看原因。"
+          },
+          {
+            "name": "列号",
+            "type": "int",
+            "description": "列号，从 1 起；越界返回空值并用 数据表_取错误 查看原因。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "数据表_取文本(0, 1, 1)"
+    },
+    {
+      "index": 13,
+      "name": "数据表_单元格类型",
+      "signature": "数据表_单元格类型(表格, 行号, 列号)",
+      "description": "返回单元格内容形态：0=空，1=整数，2=小数，3=布尔，4=文本；用于决定建表列类型与绑定哪个取值命令。",
+      "insertText": "数据表_单元格类型(0, 0, 0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "数据表_单元格类型",
+        "runtimeName": "数据表_单元格类型",
+        "parameters": [
+          {
+            "name": "表格",
+            "type": "表格数据",
+            "description": "由 CSV_打开文件 或 CSV_解析文本 返回的受管表格数据快照。"
+          },
+          {
+            "name": "行号",
+            "type": "int",
+            "description": "数据行号，从 1 起；不含表头行，越界返回空值并用 数据表_取错误 查看原因。"
+          },
+          {
+            "name": "列号",
+            "type": "int",
+            "description": "列号，从 1 起；越界返回空值并用 数据表_取错误 查看原因。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "数据表_单元格类型(0, 1, 1)"
+    },
+    {
+      "index": 14,
+      "name": "数据表_取整数",
+      "signature": "数据表_取整数(表格, 行号, 列号)",
+      "description": "把单元格按 64 位整数读取；内容不是整数时返回 0 并记录中文错误。",
+      "insertText": "数据表_取整数(0, 0, 0)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "数据表_取整数",
+        "runtimeName": "数据表_取整数",
+        "parameters": [
+          {
+            "name": "表格",
+            "type": "表格数据",
+            "description": "由 CSV_打开文件 或 CSV_解析文本 返回的受管表格数据快照。"
+          },
+          {
+            "name": "行号",
+            "type": "int",
+            "description": "数据行号，从 1 起；不含表头行，越界返回空值并用 数据表_取错误 查看原因。"
+          },
+          {
+            "name": "列号",
+            "type": "int",
+            "description": "列号，从 1 起；越界返回空值并用 数据表_取错误 查看原因。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "数据表_取整数(0, 1, 1)"
+    },
+    {
+      "index": 15,
+      "name": "数据表_取小数",
+      "signature": "数据表_取小数(表格, 行号, 列号)",
+      "description": "把单元格按双精度小数读取；内容不是小数时返回 0 并记录中文错误。",
+      "insertText": "数据表_取小数(0, 0, 0)",
+      "returnType": "双精度小数型",
+      "binding": {
+        "command": "数据表_取小数",
+        "runtimeName": "数据表_取小数",
+        "parameters": [
+          {
+            "name": "表格",
+            "type": "表格数据",
+            "description": "由 CSV_打开文件 或 CSV_解析文本 返回的受管表格数据快照。"
+          },
+          {
+            "name": "行号",
+            "type": "int",
+            "description": "数据行号，从 1 起；不含表头行，越界返回空值并用 数据表_取错误 查看原因。"
+          },
+          {
+            "name": "列号",
+            "type": "int",
+            "description": "列号，从 1 起；越界返回空值并用 数据表_取错误 查看原因。"
+          }
+        ],
+        "returnType": "double"
+      },
+      "demoInvocation": "数据表_取小数(0, 1, 1)"
+    },
+    {
+      "index": 16,
+      "name": "数据表_取布尔",
+      "signature": "数据表_取布尔(表格, 行号, 列号)",
+      "description": "把单元格读取为逻辑值：TRUE/真/1/YES/是 为真，FALSE/假/0/NO/否 为假，其它内容按假。",
+      "insertText": "数据表_取布尔(0, 0, 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "数据表_取布尔",
+        "runtimeName": "数据表_取布尔",
+        "parameters": [
+          {
+            "name": "表格",
+            "type": "表格数据",
+            "description": "由 CSV_打开文件 或 CSV_解析文本 返回的受管表格数据快照。"
+          },
+          {
+            "name": "行号",
+            "type": "int",
+            "description": "数据行号，从 1 起；不含表头行，越界返回空值并用 数据表_取错误 查看原因。"
+          },
+          {
+            "name": "列号",
+            "type": "int",
+            "description": "列号，从 1 起；越界返回空值并用 数据表_取错误 查看原因。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "数据表_取布尔(0, 1, 1)"
+    },
+    {
+      "index": 17,
+      "name": "数据表_单元格为空",
+      "signature": "数据表_单元格为空(表格, 行号, 列号)",
+      "description": "判断单元格是否为空文本或越界；越界同样返回真。",
+      "insertText": "数据表_单元格为空(0, 0, 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "数据表_单元格为空",
+        "runtimeName": "数据表_单元格为空",
+        "parameters": [
+          {
+            "name": "表格",
+            "type": "表格数据",
+            "description": "由 CSV_打开文件 或 CSV_解析文本 返回的受管表格数据快照。"
+          },
+          {
+            "name": "行号",
+            "type": "int",
+            "description": "数据行号，从 1 起；不含表头行，越界返回空值并用 数据表_取错误 查看原因。"
+          },
+          {
+            "name": "列号",
+            "type": "int",
+            "description": "列号，从 1 起；越界返回空值并用 数据表_取错误 查看原因。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "数据表_单元格为空(0, 1, 1)"
+    },
+    {
+      "index": 18,
+      "name": "数据表_关闭",
+      "signature": "数据表_关闭(表格)",
+      "description": "释放表格快照；句柄不存在或重复关闭返回假。",
+      "insertText": "数据表_关闭(0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "数据表_关闭",
+        "runtimeName": "数据表_关闭",
+        "parameters": [
+          {
+            "name": "表格",
+            "type": "表格数据",
+            "description": "由 CSV_打开文件 或 CSV_解析文本 返回的受管表格数据快照；关闭后句柄立即失效。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "数据表_关闭(0)"
     }
   ]
 }

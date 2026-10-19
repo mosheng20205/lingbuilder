@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.746Z",
+  "generatedAt": "2026-10-19T03:18:58.692Z",
   "module": {
     "id": "lingbuilder.cef3.transfer",
     "name": "CEF3传输模块",
-    "version": "3.0.0-alpha.3",
+    "version": "3.0.0-alpha.4",
     "description": "提供下载、打印、受管二进制流和读写处理器能力。"
   },
   "commandCount": 34,
@@ -33,11 +33,13 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要下载的资源完整 URL（含协议）。"
           }
         ],
         "returnType": "int",
@@ -69,7 +71,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "int",
@@ -94,7 +97,8 @@
         "parameters": [
           {
             "name": "缓冲句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "Bridge 受管缓冲句柄；读取流会保留源缓冲，源句柄释放后仍可继续读取。"
           }
         ],
         "returnType": "CEF3读取流句柄"
@@ -118,7 +122,8 @@
         "parameters": [
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "项目允许文件根目录内的文件路径；越界、空路径或无法打开时返回 0。"
           }
         ],
         "returnType": "CEF3读取流句柄",
@@ -143,11 +148,13 @@
         "parameters": [
           {
             "name": "缓冲句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "Bridge 受管缓冲句柄；读取流会保留源缓冲，源句柄释放后仍可继续读取。"
           },
           {
             "name": "可能阻塞",
-            "type": "bool"
+            "type": "bool",
+            "description": "线程调度提示：真=告诉 CEF 该处理器的读写可能阻塞。"
           }
         ],
         "returnType": "CEF3读取处理器句柄"
@@ -171,11 +178,13 @@
         "parameters": [
           {
             "name": "读取处理器句柄",
-            "type": "CEF3读取处理器句柄"
+            "type": "CEF3读取处理器句柄",
+            "description": "CEF3传输_从缓冲创建读取处理器 返回的受管句柄（CEF3读取处理器句柄 类型）。"
           },
           {
             "name": "最大字节数",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "单次读取上限（字节），不超过 64 MiB。"
           }
         ],
         "returnType": "longLong"
@@ -199,15 +208,18 @@
         "parameters": [
           {
             "name": "读取处理器句柄",
-            "type": "CEF3读取处理器句柄"
+            "type": "CEF3读取处理器句柄",
+            "description": "CEF3传输_从缓冲创建读取处理器 返回的受管句柄（CEF3读取处理器句柄 类型）。"
           },
           {
             "name": "偏移量",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "目标字节偏移；基准为当前位置时可为负。"
           },
           {
             "name": "基准",
-            "type": "int"
+            "type": "int",
+            "description": "定位基准：0 开头、1 当前位置、2 结尾（写入处理器为当前内存结尾）。"
           }
         ],
         "returnType": "int"
@@ -231,7 +243,8 @@
         "parameters": [
           {
             "name": "读取处理器句柄",
-            "type": "CEF3读取处理器句柄"
+            "type": "CEF3读取处理器句柄",
+            "description": "CEF3传输_从缓冲创建读取处理器 返回的受管句柄（CEF3读取处理器句柄 类型）。"
           }
         ],
         "returnType": "longLong"
@@ -255,7 +268,8 @@
         "parameters": [
           {
             "name": "读取处理器句柄",
-            "type": "CEF3读取处理器句柄"
+            "type": "CEF3读取处理器句柄",
+            "description": "CEF3传输_从缓冲创建读取处理器 返回的受管句柄（CEF3读取处理器句柄 类型）。"
           }
         ],
         "returnType": "bool"
@@ -279,7 +293,8 @@
         "parameters": [
           {
             "name": "读取处理器句柄",
-            "type": "CEF3读取处理器句柄"
+            "type": "CEF3读取处理器句柄",
+            "description": "CEF3传输_从缓冲创建读取处理器 返回的受管句柄（CEF3读取处理器句柄 类型）。"
           }
         ],
         "returnType": "bool"
@@ -303,7 +318,8 @@
         "parameters": [
           {
             "name": "读取处理器句柄",
-            "type": "CEF3读取处理器句柄"
+            "type": "CEF3读取处理器句柄",
+            "description": "CEF3传输_从缓冲创建读取处理器 返回的受管句柄（CEF3读取处理器句柄 类型）。"
           }
         ],
         "returnType": "CEF3读取流句柄"
@@ -327,7 +343,8 @@
         "parameters": [
           {
             "name": "读取处理器句柄",
-            "type": "CEF3读取处理器句柄"
+            "type": "CEF3读取处理器句柄",
+            "description": "CEF3传输_从缓冲创建读取处理器 返回的受管句柄（CEF3读取处理器句柄 类型）。"
           }
         ],
         "returnType": "int"
@@ -351,7 +368,8 @@
         "parameters": [
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "项目允许文件根目录内的文件路径；越界、空路径或无法打开时返回 0。"
           }
         ],
         "returnType": "CEF3写入流句柄",
@@ -376,7 +394,8 @@
         "parameters": [
           {
             "name": "可能阻塞",
-            "type": "bool"
+            "type": "bool",
+            "description": "线程调度提示：真=告诉 CEF 该处理器的读写可能阻塞。"
           }
         ],
         "returnType": "CEF3写入处理器句柄"
@@ -400,19 +419,23 @@
         "parameters": [
           {
             "name": "写入处理器句柄",
-            "type": "CEF3写入处理器句柄"
+            "type": "CEF3写入处理器句柄",
+            "description": "CEF3传输_创建写入处理器 返回的受管句柄（CEF3写入处理器句柄 类型）。"
           },
           {
             "name": "缓冲句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "Bridge 受管缓冲句柄；读取流会保留源缓冲，源句柄释放后仍可继续读取。"
           },
           {
             "name": "起始偏移",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "源受管缓冲中数据起始字节下标，从 0 起。"
           },
           {
             "name": "写入字节数",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "要写入的字节数；单次和总容量均不超过 64 MiB。"
           }
         ],
         "returnType": "longLong"
@@ -436,15 +459,18 @@
         "parameters": [
           {
             "name": "写入处理器句柄",
-            "type": "CEF3写入处理器句柄"
+            "type": "CEF3写入处理器句柄",
+            "description": "CEF3传输_创建写入处理器 返回的受管句柄（CEF3写入处理器句柄 类型）。"
           },
           {
             "name": "偏移量",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "目标字节偏移；基准为当前位置时可为负。"
           },
           {
             "name": "基准",
-            "type": "int"
+            "type": "int",
+            "description": "定位基准：0 开头、1 当前位置、2 结尾（写入处理器为当前内存结尾）。"
           }
         ],
         "returnType": "int"
@@ -468,7 +494,8 @@
         "parameters": [
           {
             "name": "写入处理器句柄",
-            "type": "CEF3写入处理器句柄"
+            "type": "CEF3写入处理器句柄",
+            "description": "CEF3传输_创建写入处理器 返回的受管句柄（CEF3写入处理器句柄 类型）。"
           }
         ],
         "returnType": "longLong"
@@ -492,7 +519,8 @@
         "parameters": [
           {
             "name": "写入处理器句柄",
-            "type": "CEF3写入处理器句柄"
+            "type": "CEF3写入处理器句柄",
+            "description": "CEF3传输_创建写入处理器 返回的受管句柄（CEF3写入处理器句柄 类型）。"
           }
         ],
         "returnType": "int"
@@ -516,7 +544,8 @@
         "parameters": [
           {
             "name": "写入处理器句柄",
-            "type": "CEF3写入处理器句柄"
+            "type": "CEF3写入处理器句柄",
+            "description": "CEF3传输_创建写入处理器 返回的受管句柄（CEF3写入处理器句柄 类型）。"
           }
         ],
         "returnType": "bool"
@@ -540,7 +569,8 @@
         "parameters": [
           {
             "name": "写入处理器句柄",
-            "type": "CEF3写入处理器句柄"
+            "type": "CEF3写入处理器句柄",
+            "description": "CEF3传输_创建写入处理器 返回的受管句柄（CEF3写入处理器句柄 类型）。"
           }
         ],
         "returnType": "longLong"
@@ -564,7 +594,8 @@
         "parameters": [
           {
             "name": "写入处理器句柄",
-            "type": "CEF3写入处理器句柄"
+            "type": "CEF3写入处理器句柄",
+            "description": "CEF3传输_创建写入处理器 返回的受管句柄（CEF3写入处理器句柄 类型）。"
           }
         ],
         "returnType": "CEF3写入流句柄"
@@ -588,7 +619,8 @@
         "parameters": [
           {
             "name": "写入处理器句柄",
-            "type": "CEF3写入处理器句柄"
+            "type": "CEF3写入处理器句柄",
+            "description": "CEF3传输_创建写入处理器 返回的受管句柄（CEF3写入处理器句柄 类型）。"
           }
         ],
         "returnType": "int"
@@ -612,19 +644,23 @@
         "parameters": [
           {
             "name": "写入流句柄",
-            "type": "CEF3写入流句柄"
+            "type": "CEF3写入流句柄",
+            "description": "写入流受管句柄（CEF3写入流句柄 类型）。"
           },
           {
             "name": "缓冲句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "Bridge 受管缓冲句柄；读取流会保留源缓冲，源句柄释放后仍可继续读取。"
           },
           {
             "name": "起始偏移",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "源受管缓冲中数据起始字节下标，从 0 起。"
           },
           {
             "name": "写入字节数",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "要写入的字节数；单次和总容量均不超过 64 MiB。"
           }
         ],
         "returnType": "longLong"
@@ -648,15 +684,18 @@
         "parameters": [
           {
             "name": "写入流句柄",
-            "type": "CEF3写入流句柄"
+            "type": "CEF3写入流句柄",
+            "description": "写入流受管句柄（CEF3写入流句柄 类型）。"
           },
           {
             "name": "偏移量",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "目标字节偏移；基准为当前位置时可为负。"
           },
           {
             "name": "基准",
-            "type": "int"
+            "type": "int",
+            "description": "定位基准：0 开头、1 当前位置、2 结尾（写入处理器为当前内存结尾）。"
           }
         ],
         "returnType": "int"
@@ -680,7 +719,8 @@
         "parameters": [
           {
             "name": "写入流句柄",
-            "type": "CEF3写入流句柄"
+            "type": "CEF3写入流句柄",
+            "description": "写入流受管句柄（CEF3写入流句柄 类型）。"
           }
         ],
         "returnType": "longLong"
@@ -704,7 +744,8 @@
         "parameters": [
           {
             "name": "写入流句柄",
-            "type": "CEF3写入流句柄"
+            "type": "CEF3写入流句柄",
+            "description": "写入流受管句柄（CEF3写入流句柄 类型）。"
           }
         ],
         "returnType": "int"
@@ -728,7 +769,8 @@
         "parameters": [
           {
             "name": "写入流句柄",
-            "type": "CEF3写入流句柄"
+            "type": "CEF3写入流句柄",
+            "description": "写入流受管句柄（CEF3写入流句柄 类型）。"
           }
         ],
         "returnType": "bool"
@@ -752,7 +794,8 @@
         "parameters": [
           {
             "name": "写入流句柄",
-            "type": "CEF3写入流句柄"
+            "type": "CEF3写入流句柄",
+            "description": "写入流受管句柄（CEF3写入流句柄 类型）。"
           }
         ],
         "returnType": "int"
@@ -776,11 +819,13 @@
         "parameters": [
           {
             "name": "读取流句柄",
-            "type": "CEF3读取流句柄"
+            "type": "CEF3读取流句柄",
+            "description": "读取流受管句柄（CEF3读取流句柄 类型）。"
           },
           {
             "name": "最大字节数",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "单次读取上限（字节），不超过 64 MiB。"
           }
         ],
         "returnType": "longLong"
@@ -804,15 +849,18 @@
         "parameters": [
           {
             "name": "读取流句柄",
-            "type": "CEF3读取流句柄"
+            "type": "CEF3读取流句柄",
+            "description": "读取流受管句柄（CEF3读取流句柄 类型）。"
           },
           {
             "name": "偏移量",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "目标字节偏移；基准为当前位置时可为负。"
           },
           {
             "name": "基准",
-            "type": "int"
+            "type": "int",
+            "description": "定位基准：0 开头、1 当前位置、2 结尾（写入处理器为当前内存结尾）。"
           }
         ],
         "returnType": "int"
@@ -836,7 +884,8 @@
         "parameters": [
           {
             "name": "读取流句柄",
-            "type": "CEF3读取流句柄"
+            "type": "CEF3读取流句柄",
+            "description": "读取流受管句柄（CEF3读取流句柄 类型）。"
           }
         ],
         "returnType": "longLong"
@@ -860,7 +909,8 @@
         "parameters": [
           {
             "name": "读取流句柄",
-            "type": "CEF3读取流句柄"
+            "type": "CEF3读取流句柄",
+            "description": "读取流受管句柄（CEF3读取流句柄 类型）。"
           }
         ],
         "returnType": "bool"
@@ -884,7 +934,8 @@
         "parameters": [
           {
             "name": "读取流句柄",
-            "type": "CEF3读取流句柄"
+            "type": "CEF3读取流句柄",
+            "description": "读取流受管句柄（CEF3读取流句柄 类型）。"
           }
         ],
         "returnType": "bool"
@@ -908,7 +959,8 @@
         "parameters": [
           {
             "name": "读取流句柄",
-            "type": "CEF3读取流句柄"
+            "type": "CEF3读取流句柄",
+            "description": "读取流受管句柄（CEF3读取流句柄 类型）。"
           }
         ],
         "returnType": "int"

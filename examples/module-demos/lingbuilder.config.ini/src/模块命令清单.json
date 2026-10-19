@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.752Z",
+  "generatedAt": "2026-10-19T03:18:58.695Z",
   "module": {
     "id": "lingbuilder.config.ini",
     "name": "INI 配置模块",
     "version": "1.0.0",
     "description": "使用 Windows Unicode 配置 API 读取和写入 INI 文件。"
   },
-  "commandCount": 6,
+  "commandCount": 8,
   "commands": [
     {
       "index": 1,
@@ -22,19 +22,23 @@
         "parameters": [
           {
             "name": "文件",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "INI 文件路径；相对路径会先转成绝对路径再读写，文件不存在时读取返回默认值。"
           },
           {
             "name": "节",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "中括号里的节名，不含方括号，必须与文件中的节名一致。"
           },
           {
             "name": "键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "节内的键名，等号左侧的部分。"
           },
           {
             "name": "默认值",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "键或文件不存在时返回的兜底文本，可以传空文本；读取缓冲区上限 32768 字符。"
           }
         ],
         "returnType": "wideString",
@@ -55,19 +59,23 @@
         "parameters": [
           {
             "name": "文件",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "INI 文件路径；相对路径会先转成绝对路径再读写，文件不存在时读取返回默认值。"
           },
           {
             "name": "节",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "中括号里的节名，不含方括号，必须与文件中的节名一致。"
           },
           {
             "name": "键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "节内的键名，等号左侧的部分。"
           },
           {
             "name": "默认值",
-            "type": "int"
+            "type": "int",
+            "description": "取不到值或值不是十进制整数时返回的兜底整数。"
           }
         ],
         "returnType": "int",
@@ -88,19 +96,23 @@
         "parameters": [
           {
             "name": "文件",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "INI 文件路径；相对路径会先转成绝对路径再读写，文件不存在时读取返回默认值。"
           },
           {
             "name": "节",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "中括号里的节名，不含方括号，必须与文件中的节名一致。"
           },
           {
             "name": "键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "节内的键名，等号左侧的部分。"
           },
           {
             "name": "值",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "写入的文本值，落在等号右边；含换行会破坏 INI 结构，应避免。"
           }
         ],
         "returnType": "bool",
@@ -121,19 +133,23 @@
         "parameters": [
           {
             "name": "文件",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "INI 文件路径；相对路径会先转成绝对路径再读写，文件不存在时读取返回默认值。"
           },
           {
             "name": "节",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "中括号里的节名，不含方括号，必须与文件中的节名一致。"
           },
           {
             "name": "键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "节内的键名，等号左侧的部分。"
           },
           {
             "name": "值",
-            "type": "int"
+            "type": "int",
+            "description": "写入的整数值，以十进制文本形式保存。"
           }
         ],
         "returnType": "bool",
@@ -154,15 +170,18 @@
         "parameters": [
           {
             "name": "文件",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "INI 文件路径；相对路径会先转成绝对路径再读写，文件不存在时读取返回默认值。"
           },
           {
             "name": "节",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "中括号里的节名，不含方括号，必须与文件中的节名一致。"
           },
           {
             "name": "键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要删除的键名；底层用写空值的方式删除该键。"
           }
         ],
         "returnType": "bool",
@@ -183,17 +202,78 @@
         "parameters": [
           {
             "name": "文件",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "INI 文件路径；相对路径会先转成绝对路径再读写，文件不存在时读取返回默认值。"
           },
           {
             "name": "节",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要整节删除的节名；底层以空键名方式删除整节。"
           }
         ],
         "returnType": "bool",
         "encoding": "wide"
       },
       "demoInvocation": "INI_删除节(\"module-demo-temp.txt\", \"演示参数2\")"
+    },
+    {
+      "index": 7,
+      "name": "INI_枚举节",
+      "signature": "INI_枚举节(文件, 结果数组)",
+      "description": "把 INI 文件中的全部节名写入文本数组，返回节的数量。",
+      "insertText": "INI_枚举节(\"$1\", 0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "INI_枚举节",
+        "runtimeName": "INI_枚举节",
+        "parameters": [
+          {
+            "name": "文件",
+            "type": "wideString",
+            "description": "INI 文件路径；相对路径会先转成绝对路径再读写，文件不存在时读取返回默认值。"
+          },
+          {
+            "name": "结果数组",
+            "type": "array",
+            "description": "接收全部节名的文本型数组变量，调用前会先清空原有内容。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "INI_枚举节(\"module-demo-temp.txt\", 0)"
+    },
+    {
+      "index": 8,
+      "name": "INI_枚举键",
+      "signature": "INI_枚举键(文件, 节, 结果数组)",
+      "description": "把指定节中的全部键名写入文本数组，返回键的数量。",
+      "insertText": "INI_枚举键(\"$1\", \"$2\", 0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "INI_枚举键",
+        "runtimeName": "INI_枚举键",
+        "parameters": [
+          {
+            "name": "文件",
+            "type": "wideString",
+            "description": "INI 文件路径；相对路径会先转成绝对路径再读写，文件不存在时读取返回默认值。"
+          },
+          {
+            "name": "节",
+            "type": "wideString",
+            "description": "要枚举键名的节名。"
+          },
+          {
+            "name": "结果数组",
+            "type": "array",
+            "description": "接收该节全部键名的文本型数组变量，调用前会先清空原有内容。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "INI_枚举键(\"module-demo-temp.txt\", \"演示参数2\", 0)"
     }
   ]
 }

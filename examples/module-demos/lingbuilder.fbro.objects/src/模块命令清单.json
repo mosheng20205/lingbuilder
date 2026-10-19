@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.813Z",
+  "generatedAt": "2026-10-19T03:18:58.740Z",
   "module": {
     "id": "lingbuilder.fbro.objects",
     "name": "FBro受管对象模块",
     "version": "2.1.0",
     "description": "提供任务、缓冲及 Value、Dictionary、List、Stream、Image、Certificate、DragData 的类型化不透明句柄 API。"
   },
-  "commandCount": 132,
+  "commandCount": 227,
   "commands": [
     {
       "index": 1,
@@ -26,7 +26,8 @@
         "parameters": [
           {
             "name": "任务ID",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "异步命令返回的受管任务 ID；释放后再使用返回负错误码。"
           }
         ],
         "returnType": "int"
@@ -50,7 +51,8 @@
         "parameters": [
           {
             "name": "任务ID",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "异步命令返回的受管任务 ID；释放后再使用返回负错误码。"
           }
         ],
         "returnType": "wideString"
@@ -74,7 +76,8 @@
         "parameters": [
           {
             "name": "任务ID",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "异步命令返回的受管任务 ID；释放后再使用返回负错误码。"
           }
         ],
         "returnType": "wideString"
@@ -98,11 +101,13 @@
         "parameters": [
           {
             "name": "任务ID",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "异步命令返回的受管任务 ID；释放后再使用返回负错误码。"
           },
           {
             "name": "超时毫秒",
-            "type": "int"
+            "type": "int",
+            "description": "最长等待毫秒数；0 表示只查当前状态不等待，上限 600000（10 分钟），负数或超限按无效参数拒绝。"
           }
         ],
         "returnType": "int"
@@ -126,7 +131,8 @@
         "parameters": [
           {
             "name": "任务ID",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "异步命令返回的受管任务 ID；释放后再使用返回负错误码。"
           }
         ],
         "returnType": "longLong"
@@ -150,7 +156,8 @@
         "parameters": [
           {
             "name": "任务ID",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "异步命令返回的受管任务 ID；释放后再使用返回负错误码。"
           }
         ],
         "returnType": "longLong"
@@ -174,7 +181,8 @@
         "parameters": [
           {
             "name": "任务ID",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "异步命令返回的受管任务 ID；释放后再使用返回负错误码。"
           }
         ],
         "returnType": "int"
@@ -198,7 +206,8 @@
         "parameters": [
           {
             "name": "任务ID",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "异步命令返回的受管任务 ID；释放后再使用返回负错误码。"
           }
         ],
         "returnType": "int"
@@ -222,7 +231,8 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要写入或发送的文本内容。"
           }
         ],
         "returnType": "longLong",
@@ -247,7 +257,8 @@
         "parameters": [
           {
             "name": "缓冲句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro缓冲_从文本”“FBro任务_取缓冲”等返回的受管缓冲句柄；释放后再用返回负错误码。"
           }
         ],
         "returnType": "longLong"
@@ -271,7 +282,8 @@
         "parameters": [
           {
             "name": "缓冲句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro缓冲_从文本”“FBro任务_取缓冲”等返回的受管缓冲句柄；释放后再用返回负错误码。"
           }
         ],
         "returnType": "wideString"
@@ -295,11 +307,13 @@
         "parameters": [
           {
             "name": "缓冲句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro缓冲_从文本”“FBro任务_取缓冲”等返回的受管缓冲句柄；释放后再用返回负错误码。"
           },
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "保存目标文件的完整路径。"
           }
         ],
         "returnType": "int",
@@ -324,7 +338,8 @@
         "parameters": [
           {
             "name": "缓冲句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro缓冲_从文本”“FBro任务_取缓冲”等返回的受管缓冲句柄；释放后再用返回负错误码。"
           }
         ],
         "returnType": "int"
@@ -333,6 +348,2805 @@
     },
     {
       "index": 14,
+      "name": "FBro缓冲_转文本",
+      "aliases": [
+        "LB_FBro_BufferToText"
+      ],
+      "signature": "FBro缓冲_转文本(缓冲句柄)",
+      "description": "按 UTF-8 解码受管缓冲并返回文本（单次上限约 16K 字符；大内容请用 FBro缓冲_保存文件）。",
+      "insertText": "FBro缓冲_转文本($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro缓冲_转文本",
+        "runtimeName": "FBro缓冲_转文本",
+        "parameters": [
+          {
+            "name": "缓冲句柄",
+            "type": "longLong",
+            "description": "“FBro缓冲_从文本”“FBro任务_取缓冲”等返回的受管缓冲句柄；释放后再用返回负错误码。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro缓冲_转文本(1)"
+    },
+    {
+      "index": 15,
+      "name": "FBro缓冲_是否有效",
+      "aliases": [
+        "LB_FBro_IsBufferValid"
+      ],
+      "signature": "FBro缓冲_是否有效(缓冲句柄)",
+      "description": "检查受管缓冲句柄是否仍然有效。",
+      "insertText": "FBro缓冲_是否有效($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro缓冲_是否有效",
+        "runtimeName": "FBro缓冲_是否有效",
+        "parameters": [
+          {
+            "name": "缓冲句柄",
+            "type": "longLong",
+            "description": "“FBro缓冲_从文本”“FBro任务_取缓冲”等返回的受管缓冲句柄；释放后再用返回负错误码。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro缓冲_是否有效(1)"
+    },
+    {
+      "index": 16,
+      "name": "FBro工具_创建数据URI",
+      "aliases": [
+        "LB_FBro_CreateDataUri"
+      ],
+      "signature": "FBro工具_创建数据URI(MIME类型, 数据)",
+      "description": "把文本数据编码为 data: URI；MIME 类型如 image/png、text/html。",
+      "insertText": "FBro工具_创建数据URI(\"$1\", \"$2\")",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro工具_创建数据URI",
+        "runtimeName": "FBro工具_创建数据URI",
+        "parameters": [
+          {
+            "name": "MIME类型",
+            "type": "wideString",
+            "description": "MIME 类型文本，如 \"image/png\"、\"text/html\"。"
+          },
+          {
+            "name": "数据",
+            "type": "wideString",
+            "description": "要编码为 data URI 的文本内容。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro工具_创建数据URI(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 17,
+      "name": "FBro请求_创建",
+      "aliases": [
+        "LB_FBro_RequestCreate"
+      ],
+      "signature": "FBro请求_创建()",
+      "description": "创建受管 HTTP 请求对象并返回句柄；可用 FBro框架_载入请求 或 FBro异步请求_发起 使用。",
+      "insertText": "FBro请求_创建()",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro请求_创建",
+        "runtimeName": "FBro请求_创建",
+        "parameters": [],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro请求_创建()"
+    },
+    {
+      "index": 18,
+      "name": "FBro请求_取地址",
+      "aliases": [
+        "LB_FBro_RequestGetUrl"
+      ],
+      "signature": "FBro请求_取地址(请求句柄)",
+      "description": "读取请求对象当前地址。",
+      "insertText": "FBro请求_取地址($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro请求_取地址",
+        "runtimeName": "FBro请求_取地址",
+        "parameters": [
+          {
+            "name": "请求句柄",
+            "type": "longLong",
+            "description": "“FBro请求_创建”返回的受管请求对象句柄；失效后返回负错误码。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro请求_取地址(1)"
+    },
+    {
+      "index": 19,
+      "name": "FBro请求_取方法",
+      "aliases": [
+        "LB_FBro_RequestGetMethod"
+      ],
+      "signature": "FBro请求_取方法(请求句柄)",
+      "description": "读取请求对象当前的 HTTP 方法（GET、POST 等）。",
+      "insertText": "FBro请求_取方法($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro请求_取方法",
+        "runtimeName": "FBro请求_取方法",
+        "parameters": [
+          {
+            "name": "请求句柄",
+            "type": "longLong",
+            "description": "“FBro请求_创建”返回的受管请求对象句柄；失效后返回负错误码。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro请求_取方法(1)"
+    },
+    {
+      "index": 20,
+      "name": "FBro请求_设置地址",
+      "aliases": [
+        "LB_FBro_RequestSetUrl"
+      ],
+      "signature": "FBro请求_设置地址(请求句柄, 地址)",
+      "description": "设置请求对象地址。",
+      "insertText": "FBro请求_设置地址($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro请求_设置地址",
+        "runtimeName": "FBro请求_设置地址",
+        "parameters": [
+          {
+            "name": "请求句柄",
+            "type": "longLong",
+            "description": "“FBro请求_创建”返回的受管请求对象句柄；失效后返回负错误码。"
+          },
+          {
+            "name": "地址",
+            "type": "wideString",
+            "description": "完整 URL（含协议）。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro请求_设置地址(1, \"https://example.com\")"
+    },
+    {
+      "index": 21,
+      "name": "FBro请求_设置方法",
+      "aliases": [
+        "LB_FBro_RequestSetMethod"
+      ],
+      "signature": "FBro请求_设置方法(请求句柄, 方法)",
+      "description": "设置请求方法，如 GET、POST。",
+      "insertText": "FBro请求_设置方法($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro请求_设置方法",
+        "runtimeName": "FBro请求_设置方法",
+        "parameters": [
+          {
+            "name": "请求句柄",
+            "type": "longLong",
+            "description": "“FBro请求_创建”返回的受管请求对象句柄；失效后返回负错误码。"
+          },
+          {
+            "name": "方法",
+            "type": "wideString",
+            "description": "HTTP 方法文本，如 \"GET\"、\"POST\"。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro请求_设置方法(1, \"演示参数2\")"
+    },
+    {
+      "index": 22,
+      "name": "FBro请求_设置引用页",
+      "aliases": [
+        "LB_FBro_RequestSetReferrer"
+      ],
+      "signature": "FBro请求_设置引用页(请求句柄, 引用页, 策略)",
+      "description": "设置请求引用页与策略（0=清除 1=省略 2=降级 3=始终 4=源）。",
+      "insertText": "FBro请求_设置引用页($1, \"$2\", $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro请求_设置引用页",
+        "runtimeName": "FBro请求_设置引用页",
+        "parameters": [
+          {
+            "name": "请求句柄",
+            "type": "longLong",
+            "description": "“FBro请求_创建”返回的受管请求对象句柄；失效后返回负错误码。"
+          },
+          {
+            "name": "引用页",
+            "type": "wideString",
+            "description": "引用页 URL，配合策略参数使用。"
+          },
+          {
+            "name": "策略",
+            "type": "int",
+            "description": "引用页策略：0 清除、1 省略、2 降级、3 始终、4 源。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro请求_设置引用页(1, \"演示参数2\", 1)"
+    },
+    {
+      "index": 23,
+      "name": "FBro请求_设置头映射JSON",
+      "aliases": [
+        "LB_FBro_RequestSetHeaderMapJson"
+      ],
+      "signature": "FBro请求_设置头映射JSON(请求句柄, 头列表JSON)",
+      "description": "按 [{\"name\":\"...\",\"value\":\"...\"}] 数组设置请求头；不覆盖未列出的已有头。",
+      "insertText": "FBro请求_设置头映射JSON($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro请求_设置头映射JSON",
+        "runtimeName": "FBro请求_设置头映射JSON",
+        "parameters": [
+          {
+            "name": "请求句柄",
+            "type": "longLong",
+            "description": "“FBro请求_创建”返回的受管请求对象句柄；失效后返回负错误码。"
+          },
+          {
+            "name": "头列表JSON",
+            "type": "wideString",
+            "description": "请求头 JSON 数组，格式 [{\"name\":\"...\",\"value\":\"...\"}]。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro请求_设置头映射JSON(1, \"{}\")"
+    },
+    {
+      "index": 24,
+      "name": "FBro请求_组合设置",
+      "aliases": [
+        "LB_FBro_RequestComposeSet"
+      ],
+      "signature": "FBro请求_组合设置(请求句柄, 地址, 方法, 提交数据句柄, 头列表JSON)",
+      "description": "一次性设置地址、方法、提交体与头；提交数据句柄传 0 跳过，头 JSON 传空跳过。",
+      "insertText": "FBro请求_组合设置($1, \"$2\", \"$3\", $4, \"$5\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro请求_组合设置",
+        "runtimeName": "FBro请求_组合设置",
+        "parameters": [
+          {
+            "name": "请求句柄",
+            "type": "longLong",
+            "description": "“FBro请求_创建”返回的受管请求对象句柄；失效后返回负错误码。"
+          },
+          {
+            "name": "地址",
+            "type": "wideString",
+            "description": "完整 URL（含协议）。"
+          },
+          {
+            "name": "方法",
+            "type": "wideString",
+            "description": "HTTP 方法文本，如 \"GET\"、\"POST\"。"
+          },
+          {
+            "name": "提交数据句柄",
+            "type": "longLong",
+            "description": "“FBro提交数据_创建”创建的 POST 提交数据对象句柄。"
+          },
+          {
+            "name": "头列表JSON",
+            "type": "wideString",
+            "description": "请求头 JSON 数组，格式 [{\"name\":\"...\",\"value\":\"...\"}]。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro请求_组合设置(1, \"https://example.com\", \"演示参数3\", 1, \"{}\")"
+    },
+    {
+      "index": 25,
+      "name": "FBro提交数据_创建",
+      "aliases": [
+        "LB_FBro_PostDataCreate"
+      ],
+      "signature": "FBro提交数据_创建()",
+      "description": "创建受管提交数据对象（POST 请求体）。",
+      "insertText": "FBro提交数据_创建()",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro提交数据_创建",
+        "runtimeName": "FBro提交数据_创建",
+        "parameters": [],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro提交数据_创建()"
+    },
+    {
+      "index": 26,
+      "name": "FBro提交数据_添加元素",
+      "aliases": [
+        "LB_FBro_PostDataAddElement"
+      ],
+      "signature": "FBro提交数据_添加元素(提交数据句柄, 元素句柄)",
+      "description": "向提交数据对象追加一个提交元素。",
+      "insertText": "FBro提交数据_添加元素($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro提交数据_添加元素",
+        "runtimeName": "FBro提交数据_添加元素",
+        "parameters": [
+          {
+            "name": "提交数据句柄",
+            "type": "longLong",
+            "description": "“FBro提交数据_创建”创建的 POST 提交数据对象句柄。"
+          },
+          {
+            "name": "元素句柄",
+            "type": "longLong",
+            "description": "“FBro提交数据_创建元素”创建或“FBro提交数据_取元素句柄列表JSON”注册的提交元素句柄。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro提交数据_添加元素(1, 1)"
+    },
+    {
+      "index": 27,
+      "name": "FBro提交数据_取元素数量",
+      "aliases": [
+        "LB_FBro_PostDataGetElementCount"
+      ],
+      "signature": "FBro提交数据_取元素数量(提交数据句柄)",
+      "description": "取得提交数据对象中的元素数量。",
+      "insertText": "FBro提交数据_取元素数量($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro提交数据_取元素数量",
+        "runtimeName": "FBro提交数据_取元素数量",
+        "parameters": [
+          {
+            "name": "提交数据句柄",
+            "type": "longLong",
+            "description": "“FBro提交数据_创建”创建的 POST 提交数据对象句柄。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro提交数据_取元素数量(1)"
+    },
+    {
+      "index": 28,
+      "name": "FBro提交数据_取元素句柄列表JSON",
+      "aliases": [
+        "LB_FBro_PostDataGetElementHandlesJson"
+      ],
+      "signature": "FBro提交数据_取元素句柄列表JSON(提交数据句柄)",
+      "description": "取得全部提交元素并注册为受管句柄，返回 JSON 数组。",
+      "insertText": "FBro提交数据_取元素句柄列表JSON($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro提交数据_取元素句柄列表JSON",
+        "runtimeName": "FBro提交数据_取元素句柄列表JSON",
+        "parameters": [
+          {
+            "name": "提交数据句柄",
+            "type": "longLong",
+            "description": "“FBro提交数据_创建”创建的 POST 提交数据对象句柄。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro提交数据_取元素句柄列表JSON(1)"
+    },
+    {
+      "index": 29,
+      "name": "FBro提交数据_创建元素",
+      "aliases": [
+        "LB_FBro_PostDataElementCreate"
+      ],
+      "signature": "FBro提交数据_创建元素()",
+      "description": "创建受管提交元素。",
+      "insertText": "FBro提交数据_创建元素()",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro提交数据_创建元素",
+        "runtimeName": "FBro提交数据_创建元素",
+        "parameters": [],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro提交数据_创建元素()"
+    },
+    {
+      "index": 30,
+      "name": "FBro提交数据_元素设字节",
+      "aliases": [
+        "LB_FBro_PostDataElementSetBytes"
+      ],
+      "signature": "FBro提交数据_元素设字节(元素句柄, 文本)",
+      "description": "把元素内容设为 UTF-8 字节（按文本传入）。",
+      "insertText": "FBro提交数据_元素设字节($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro提交数据_元素设字节",
+        "runtimeName": "FBro提交数据_元素设字节",
+        "parameters": [
+          {
+            "name": "元素句柄",
+            "type": "longLong",
+            "description": "“FBro提交数据_创建元素”创建或“FBro提交数据_取元素句柄列表JSON”注册的提交元素句柄。"
+          },
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要写入或发送的文本内容。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro提交数据_元素设字节(1, \"演示参数2\")"
+    },
+    {
+      "index": 31,
+      "name": "FBro提交数据_元素取字节大小",
+      "aliases": [
+        "LB_FBro_PostDataElementGetBytesCount"
+      ],
+      "signature": "FBro提交数据_元素取字节大小(元素句柄)",
+      "description": "取得元素字节大小。",
+      "insertText": "FBro提交数据_元素取字节大小($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro提交数据_元素取字节大小",
+        "runtimeName": "FBro提交数据_元素取字节大小",
+        "parameters": [
+          {
+            "name": "元素句柄",
+            "type": "longLong",
+            "description": "“FBro提交数据_创建元素”创建或“FBro提交数据_取元素句柄列表JSON”注册的提交元素句柄。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro提交数据_元素取字节大小(1)"
+    },
+    {
+      "index": 32,
+      "name": "FBro提交数据_元素取文本",
+      "aliases": [
+        "LB_FBro_PostDataElementGetText"
+      ],
+      "signature": "FBro提交数据_元素取文本(元素句柄)",
+      "description": "按 UTF-8 读取元素字节并返回文本。",
+      "insertText": "FBro提交数据_元素取文本($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro提交数据_元素取文本",
+        "runtimeName": "FBro提交数据_元素取文本",
+        "parameters": [
+          {
+            "name": "元素句柄",
+            "type": "longLong",
+            "description": "“FBro提交数据_创建元素”创建或“FBro提交数据_取元素句柄列表JSON”注册的提交元素句柄。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro提交数据_元素取文本(1)"
+    },
+    {
+      "index": 33,
+      "name": "FBro消息_创建",
+      "aliases": [
+        "LB_FBro_ProcessMessageCreate"
+      ],
+      "signature": "FBro消息_创建(消息名)",
+      "description": "创建受管进程消息对象。",
+      "insertText": "FBro消息_创建(\"$1\")",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro消息_创建",
+        "runtimeName": "FBro消息_创建",
+        "parameters": [
+          {
+            "name": "消息名",
+            "type": "wideString",
+            "description": "进程消息名称，接收方按该名称识别消息。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro消息_创建(\"演示参数1\")"
+    },
+    {
+      "index": 34,
+      "name": "FBro消息_取参数列表",
+      "aliases": [
+        "LB_FBro_ProcessMessageGetArgumentList"
+      ],
+      "signature": "FBro消息_取参数列表(消息句柄)",
+      "description": "取得消息参数列表的受管 List 句柄；可用 FBro列表_* 读写。",
+      "insertText": "FBro消息_取参数列表($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro消息_取参数列表",
+        "runtimeName": "FBro消息_取参数列表",
+        "parameters": [
+          {
+            "name": "消息句柄",
+            "type": "longLong",
+            "description": "“FBro消息_创建”创建的受管进程消息句柄。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro消息_取参数列表(1)"
+    },
+    {
+      "index": 35,
+      "name": "FBro菜单_添加项",
+      "aliases": [
+        "LB_FBro_MenuModelAddItem"
+      ],
+      "signature": "FBro菜单_添加项(菜单句柄, 命令ID, 标题)",
+      "description": "向右键菜单模型添加菜单项；仅可在“上下文菜单显示前”事件处理期内使用。",
+      "insertText": "FBro菜单_添加项($1, $2, \"$3\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro菜单_添加项",
+        "runtimeName": "FBro菜单_添加项",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong",
+            "description": "“上下文菜单显示前”事件字段 menuHandle 携带的菜单模型句柄；仅事件处理期内有效，事件结束后被回收。"
+          },
+          {
+            "name": "命令ID",
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
+          },
+          {
+            "name": "标题",
+            "type": "wideString",
+            "description": "菜单项显示文本。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro菜单_添加项(1, 1, \"演示参数3\")"
+    },
+    {
+      "index": 36,
+      "name": "FBro菜单_添加子菜单",
+      "aliases": [
+        "LB_FBro_MenuModelAddSubMenu"
+      ],
+      "signature": "FBro菜单_添加子菜单(菜单句柄, 命令ID, 标题)",
+      "description": "向右键菜单模型添加子菜单并返回其受管句柄；仅可在事件处理期内使用。",
+      "insertText": "FBro菜单_添加子菜单($1, $2, \"$3\")",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro菜单_添加子菜单",
+        "runtimeName": "FBro菜单_添加子菜单",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong",
+            "description": "“上下文菜单显示前”事件字段 menuHandle 携带的菜单模型句柄；仅事件处理期内有效，事件结束后被回收。"
+          },
+          {
+            "name": "命令ID",
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
+          },
+          {
+            "name": "标题",
+            "type": "wideString",
+            "description": "菜单项显示文本。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro菜单_添加子菜单(1, 1, \"演示参数3\")"
+    },
+    {
+      "index": 37,
+      "name": "FBro菜单_设置加速键",
+      "aliases": [
+        "LB_FBro_MenuModelSetAccelerator"
+      ],
+      "signature": "FBro菜单_设置加速键(菜单句柄, 命令ID, 键码, Shift, Ctrl, Alt)",
+      "description": "为菜单项设置加速键组合。",
+      "insertText": "FBro菜单_设置加速键($1, $2, $3, 假, 假, 假)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro菜单_设置加速键",
+        "runtimeName": "FBro菜单_设置加速键",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong",
+            "description": "“上下文菜单显示前”事件字段 menuHandle 携带的菜单模型句柄；仅事件处理期内有效，事件结束后被回收。"
+          },
+          {
+            "name": "命令ID",
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
+          },
+          {
+            "name": "键码",
+            "type": "int",
+            "description": "加速键的 Windows 虚拟键码，如 13=回车、65=字母 A。"
+          },
+          {
+            "name": "Shift",
+            "type": "bool",
+            "description": "是否按住 Shift 键。"
+          },
+          {
+            "name": "Ctrl",
+            "type": "bool",
+            "description": "是否按住 Ctrl 键。"
+          },
+          {
+            "name": "Alt",
+            "type": "bool",
+            "description": "是否按住 Alt 键。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro菜单_设置加速键(1, 1, 1, 真, 真, 真)"
+    },
+    {
+      "index": 38,
+      "name": "FBro菜单_取颜色",
+      "aliases": [
+        "LB_FBro_MenuModelGetColor"
+      ],
+      "signature": "FBro菜单_取颜色(菜单句柄, 命令ID, 颜色类型)",
+      "description": "读取菜单项颜色，返回 red/green/blue/alpha JSON。",
+      "insertText": "FBro菜单_取颜色($1, $2, $3)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro菜单_取颜色",
+        "runtimeName": "FBro菜单_取颜色",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong",
+            "description": "“上下文菜单显示前”事件字段 menuHandle 携带的菜单模型句柄；仅事件处理期内有效，事件结束后被回收。"
+          },
+          {
+            "name": "命令ID",
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
+          },
+          {
+            "name": "颜色类型",
+            "type": "int",
+            "description": "菜单颜色类型常量，指定读取或设置哪一类颜色（文字、悬停背景等）。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro菜单_取颜色(1, 1, 1)"
+    },
+    {
+      "index": 39,
+      "name": "FBro右键参数_取X",
+      "aliases": [
+        "LB_FBro_ContextMenuParamsGetX"
+      ],
+      "signature": "FBro右键参数_取X(参数句柄)",
+      "description": "读取右键菜单弹出坐标 X；仅可在事件处理期内使用。",
+      "insertText": "FBro右键参数_取X($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro右键参数_取X",
+        "runtimeName": "FBro右键参数_取X",
+        "parameters": [
+          {
+            "name": "参数句柄",
+            "type": "longLong",
+            "description": "“上下文菜单显示前”事件字段 paramsHandle 携带的右键菜单参数句柄；仅事件处理期内有效，事件结束后被回收。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro右键参数_取X(1)"
+    },
+    {
+      "index": 40,
+      "name": "FBro右键参数_取Y",
+      "aliases": [
+        "LB_FBro_ContextMenuParamsGetY"
+      ],
+      "signature": "FBro右键参数_取Y(参数句柄)",
+      "description": "读取右键菜单弹出坐标 Y；仅可在事件处理期内使用。",
+      "insertText": "FBro右键参数_取Y($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro右键参数_取Y",
+        "runtimeName": "FBro右键参数_取Y",
+        "parameters": [
+          {
+            "name": "参数句柄",
+            "type": "longLong",
+            "description": "“上下文菜单显示前”事件字段 paramsHandle 携带的右键菜单参数句柄；仅事件处理期内有效，事件结束后被回收。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro右键参数_取Y(1)"
+    },
+    {
+      "index": 41,
+      "name": "FBro右键参数_取类型标志",
+      "aliases": [
+        "LB_FBro_ContextMenuParamsGetTypeFlags"
+      ],
+      "signature": "FBro右键参数_取类型标志(参数句柄)",
+      "description": "读取右键菜单上下文类型标志位（TypeFlags 位掩码）；仅可在事件处理期内使用。",
+      "insertText": "FBro右键参数_取类型标志($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro右键参数_取类型标志",
+        "runtimeName": "FBro右键参数_取类型标志",
+        "parameters": [
+          {
+            "name": "参数句柄",
+            "type": "longLong",
+            "description": "“上下文菜单显示前”事件字段 paramsHandle 携带的右键菜单参数句柄；仅事件处理期内有效，事件结束后被回收。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro右键参数_取类型标志(1)"
+    },
+    {
+      "index": 42,
+      "name": "FBro菜单_清空",
+      "aliases": [
+        "LB_FBro_MenuModelClear"
+      ],
+      "signature": "FBro菜单_清空(句柄)",
+      "description": "清空菜单全部项。",
+      "insertText": "FBro菜单_清空($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro菜单_清空",
+        "runtimeName": "FBro菜单_清空",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro菜单_清空(1)"
+    },
+    {
+      "index": 43,
+      "name": "FBro菜单_取数量",
+      "aliases": [
+        "LB_FBro_MenuModelGetCount"
+      ],
+      "signature": "FBro菜单_取数量(句柄)",
+      "description": "取菜单项数量。",
+      "insertText": "FBro菜单_取数量($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro菜单_取数量",
+        "runtimeName": "FBro菜单_取数量",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro菜单_取数量(1)"
+    },
+    {
+      "index": 44,
+      "name": "FBro菜单_添加分隔栏",
+      "aliases": [
+        "LB_FBro_MenuModelAddSeparator"
+      ],
+      "signature": "FBro菜单_添加分隔栏(句柄)",
+      "description": "在菜单末尾添加分隔栏。",
+      "insertText": "FBro菜单_添加分隔栏($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro菜单_添加分隔栏",
+        "runtimeName": "FBro菜单_添加分隔栏",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro菜单_添加分隔栏(1)"
+    },
+    {
+      "index": 45,
+      "name": "FBro菜单_添加复选项",
+      "aliases": [
+        "LB_FBro_MenuModelAddCheckItem"
+      ],
+      "signature": "FBro菜单_添加复选项(句柄, 命令ID, 标签)",
+      "description": "添加带勾选状态的菜单项。",
+      "insertText": "FBro菜单_添加复选项($1, $2, \"$3\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro菜单_添加复选项",
+        "runtimeName": "FBro菜单_添加复选项",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          },
+          {
+            "name": "命令ID",
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
+          },
+          {
+            "name": "标签",
+            "type": "wideString",
+            "description": "菜单项标签文本。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro菜单_添加复选项(1, 1, \"演示参数3\")"
+    },
+    {
+      "index": 46,
+      "name": "FBro菜单_添加单选项",
+      "aliases": [
+        "LB_FBro_MenuModelAddRadioItem"
+      ],
+      "signature": "FBro菜单_添加单选项(句柄, 命令ID, 标签, 分组ID)",
+      "description": "添加单选菜单项；同分组ID互斥。",
+      "insertText": "FBro菜单_添加单选项($1, $2, \"$3\", $4)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro菜单_添加单选项",
+        "runtimeName": "FBro菜单_添加单选项",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          },
+          {
+            "name": "命令ID",
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
+          },
+          {
+            "name": "标签",
+            "type": "wideString",
+            "description": "菜单项标签文本。"
+          },
+          {
+            "name": "分组ID",
+            "type": "int",
+            "description": "单选项分组标识；同分组内的单选项互斥。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro菜单_添加单选项(1, 1, \"演示参数3\", 1)"
+    },
+    {
+      "index": 47,
+      "name": "FBro菜单_删除项",
+      "aliases": [
+        "LB_FBro_MenuModelRemove"
+      ],
+      "signature": "FBro菜单_删除项(句柄, 命令ID)",
+      "description": "按命令ID删除菜单项。",
+      "insertText": "FBro菜单_删除项($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro菜单_删除项",
+        "runtimeName": "FBro菜单_删除项",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          },
+          {
+            "name": "命令ID",
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro菜单_删除项(1, 1)"
+    },
+    {
+      "index": 48,
+      "name": "FBro菜单_取标签",
+      "aliases": [
+        "LB_FBro_MenuModelGetLabel"
+      ],
+      "signature": "FBro菜单_取标签(句柄, 命令ID)",
+      "description": "取菜单项标签文本。",
+      "insertText": "FBro菜单_取标签($1, $2)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro菜单_取标签",
+        "runtimeName": "FBro菜单_取标签",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          },
+          {
+            "name": "命令ID",
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro菜单_取标签(1, 1)"
+    },
+    {
+      "index": 49,
+      "name": "FBro菜单_置标签",
+      "aliases": [
+        "LB_FBro_MenuModelSetLabel"
+      ],
+      "signature": "FBro菜单_置标签(句柄, 命令ID, 标签)",
+      "description": "设置菜单项标签文本。",
+      "insertText": "FBro菜单_置标签($1, $2, \"$3\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro菜单_置标签",
+        "runtimeName": "FBro菜单_置标签",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          },
+          {
+            "name": "命令ID",
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
+          },
+          {
+            "name": "标签",
+            "type": "wideString",
+            "description": "菜单项标签文本。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro菜单_置标签(1, 1, \"演示参数3\")"
+    },
+    {
+      "index": 50,
+      "name": "FBro菜单_取类型",
+      "aliases": [
+        "LB_FBro_MenuModelGetType"
+      ],
+      "signature": "FBro菜单_取类型(句柄, 命令ID)",
+      "description": "取菜单项类型（命令/复选/单选/分隔栏/子菜单）。",
+      "insertText": "FBro菜单_取类型($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro菜单_取类型",
+        "runtimeName": "FBro菜单_取类型",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          },
+          {
+            "name": "命令ID",
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro菜单_取类型(1, 1)"
+    },
+    {
+      "index": 51,
+      "name": "FBro菜单_取分组",
+      "aliases": [
+        "LB_FBro_MenuModelGetGroup"
+      ],
+      "signature": "FBro菜单_取分组(句柄, 命令ID)",
+      "description": "取单选项分组ID。",
+      "insertText": "FBro菜单_取分组($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro菜单_取分组",
+        "runtimeName": "FBro菜单_取分组",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          },
+          {
+            "name": "命令ID",
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro菜单_取分组(1, 1)"
+    },
+    {
+      "index": 52,
+      "name": "FBro菜单_置分组",
+      "aliases": [
+        "LB_FBro_MenuModelSetGroup"
+      ],
+      "signature": "FBro菜单_置分组(句柄, 命令ID, 分组ID)",
+      "description": "设置单选项分组ID。",
+      "insertText": "FBro菜单_置分组($1, $2, $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro菜单_置分组",
+        "runtimeName": "FBro菜单_置分组",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          },
+          {
+            "name": "命令ID",
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
+          },
+          {
+            "name": "分组ID",
+            "type": "int",
+            "description": "单选项分组标识；同分组内的单选项互斥。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro菜单_置分组(1, 1, 1)"
+    },
+    {
+      "index": 53,
+      "name": "FBro菜单_取子菜单",
+      "aliases": [
+        "LB_FBro_MenuModelGetSubMenu"
+      ],
+      "signature": "FBro菜单_取子菜单(句柄, 命令ID)",
+      "description": "取命令ID对应的子菜单句柄，可继续用 FBro菜单_* 操作。",
+      "insertText": "FBro菜单_取子菜单($1, $2)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro菜单_取子菜单",
+        "runtimeName": "FBro菜单_取子菜单",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          },
+          {
+            "name": "命令ID",
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro菜单_取子菜单(1, 1)"
+    },
+    {
+      "index": 54,
+      "name": "FBro菜单_是否可见",
+      "aliases": [
+        "LB_FBro_MenuModelIsVisible"
+      ],
+      "signature": "FBro菜单_是否可见(句柄, 命令ID)",
+      "description": "判断菜单项是否可见。",
+      "insertText": "FBro菜单_是否可见($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro菜单_是否可见",
+        "runtimeName": "FBro菜单_是否可见",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          },
+          {
+            "name": "命令ID",
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro菜单_是否可见(1, 1)"
+    },
+    {
+      "index": 55,
+      "name": "FBro菜单_置可见",
+      "aliases": [
+        "LB_FBro_MenuModelSetVisible"
+      ],
+      "signature": "FBro菜单_置可见(句柄, 命令ID, 是否可见)",
+      "description": "设置菜单项可见性。",
+      "insertText": "FBro菜单_置可见($1, $2, 假)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro菜单_置可见",
+        "runtimeName": "FBro菜单_置可见",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          },
+          {
+            "name": "命令ID",
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
+          },
+          {
+            "name": "是否可见",
+            "type": "bool",
+            "description": "真=显示，假=隐藏。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro菜单_置可见(1, 1, 真)"
+    },
+    {
+      "index": 56,
+      "name": "FBro菜单_是否启用",
+      "aliases": [
+        "LB_FBro_MenuModelIsEnabled"
+      ],
+      "signature": "FBro菜单_是否启用(句柄, 命令ID)",
+      "description": "判断菜单项是否可用（非置灰）。",
+      "insertText": "FBro菜单_是否启用($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro菜单_是否启用",
+        "runtimeName": "FBro菜单_是否启用",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          },
+          {
+            "name": "命令ID",
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro菜单_是否启用(1, 1)"
+    },
+    {
+      "index": 57,
+      "name": "FBro菜单_置启用",
+      "aliases": [
+        "LB_FBro_MenuModelSetEnabled"
+      ],
+      "signature": "FBro菜单_置启用(句柄, 命令ID, 是否启用)",
+      "description": "设置菜单项可用/置灰。",
+      "insertText": "FBro菜单_置启用($1, $2, 假)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro菜单_置启用",
+        "runtimeName": "FBro菜单_置启用",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          },
+          {
+            "name": "命令ID",
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
+          },
+          {
+            "name": "是否启用",
+            "type": "bool",
+            "description": "真=可用，假=置灰。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro菜单_置启用(1, 1, 真)"
+    },
+    {
+      "index": 58,
+      "name": "FBro菜单_是否选中",
+      "aliases": [
+        "LB_FBro_MenuModelIsChecked"
+      ],
+      "signature": "FBro菜单_是否选中(句柄, 命令ID)",
+      "description": "判断复选/单选项勾选状态。",
+      "insertText": "FBro菜单_是否选中($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro菜单_是否选中",
+        "runtimeName": "FBro菜单_是否选中",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          },
+          {
+            "name": "命令ID",
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro菜单_是否选中(1, 1)"
+    },
+    {
+      "index": 59,
+      "name": "FBro菜单_置选中",
+      "aliases": [
+        "LB_FBro_MenuModelSetChecked"
+      ],
+      "signature": "FBro菜单_置选中(句柄, 命令ID, 是否选中)",
+      "description": "设置复选/单选项勾选状态。",
+      "insertText": "FBro菜单_置选中($1, $2, 假)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro菜单_置选中",
+        "runtimeName": "FBro菜单_置选中",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          },
+          {
+            "name": "命令ID",
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
+          },
+          {
+            "name": "是否选中",
+            "type": "bool",
+            "description": "真=勾选，假=取消勾选。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro菜单_置选中(1, 1, 真)"
+    },
+    {
+      "index": 60,
+      "name": "FBro菜单_按序置选中",
+      "aliases": [
+        "LB_FBro_MenuModelSetCheckedAt"
+      ],
+      "signature": "FBro菜单_按序置选中(句柄, 序号, 是否选中)",
+      "description": "按序号设置勾选状态。",
+      "insertText": "FBro菜单_按序置选中($1, $2, 假)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro菜单_按序置选中",
+        "runtimeName": "FBro菜单_按序置选中",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "菜单项下标，从 0 起、小于“FBro菜单_取数量”；越界时命令失败。"
+          },
+          {
+            "name": "是否选中",
+            "type": "bool",
+            "description": "真=勾选，假=取消勾选。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro菜单_按序置选中(1, 1, 真)"
+    },
+    {
+      "index": 61,
+      "name": "FBro菜单_是否有加速键",
+      "aliases": [
+        "LB_FBro_MenuModelHasAccelerator"
+      ],
+      "signature": "FBro菜单_是否有加速键(句柄, 命令ID)",
+      "description": "判断菜单项是否设置了加速键。",
+      "insertText": "FBro菜单_是否有加速键($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro菜单_是否有加速键",
+        "runtimeName": "FBro菜单_是否有加速键",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          },
+          {
+            "name": "命令ID",
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro菜单_是否有加速键(1, 1)"
+    },
+    {
+      "index": 62,
+      "name": "FBro菜单_按序是否有加速键",
+      "aliases": [
+        "LB_FBro_MenuModelHasAcceleratorAt"
+      ],
+      "signature": "FBro菜单_按序是否有加速键(句柄, 序号)",
+      "description": "按序号判断是否设置了加速键。",
+      "insertText": "FBro菜单_按序是否有加速键($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro菜单_按序是否有加速键",
+        "runtimeName": "FBro菜单_按序是否有加速键",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "菜单项下标，从 0 起、小于“FBro菜单_取数量”；越界时命令失败。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro菜单_按序是否有加速键(1, 1)"
+    },
+    {
+      "index": 63,
+      "name": "FBro菜单_按序设置加速键",
+      "aliases": [
+        "LB_FBro_MenuModelSetAcceleratorAt"
+      ],
+      "signature": "FBro菜单_按序设置加速键(句柄, 序号, 键码, 是否Shift, 是否Ctrl, 是否Alt)",
+      "description": "按序号设置加速键组合。",
+      "insertText": "FBro菜单_按序设置加速键($1, $2, $3, 假, 假, 假)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro菜单_按序设置加速键",
+        "runtimeName": "FBro菜单_按序设置加速键",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "菜单项下标，从 0 起、小于“FBro菜单_取数量”；越界时命令失败。"
+          },
+          {
+            "name": "键码",
+            "type": "int",
+            "description": "加速键的 Windows 虚拟键码，如 13=回车、65=字母 A。"
+          },
+          {
+            "name": "是否Shift",
+            "type": "bool",
+            "description": "是否按住 Shift 键。"
+          },
+          {
+            "name": "是否Ctrl",
+            "type": "bool",
+            "description": "是否按住 Ctrl 键。"
+          },
+          {
+            "name": "是否Alt",
+            "type": "bool",
+            "description": "是否按住 Alt 键。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro菜单_按序设置加速键(1, 1, 1, 真, 真, 真)"
+    },
+    {
+      "index": 64,
+      "name": "FBro菜单_移除加速键",
+      "aliases": [
+        "LB_FBro_MenuModelRemoveAccelerator"
+      ],
+      "signature": "FBro菜单_移除加速键(句柄, 命令ID)",
+      "description": "移除菜单项加速键。",
+      "insertText": "FBro菜单_移除加速键($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro菜单_移除加速键",
+        "runtimeName": "FBro菜单_移除加速键",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          },
+          {
+            "name": "命令ID",
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro菜单_移除加速键(1, 1)"
+    },
+    {
+      "index": 65,
+      "name": "FBro菜单_按序移除加速键",
+      "aliases": [
+        "LB_FBro_MenuModelRemoveAcceleratorAt"
+      ],
+      "signature": "FBro菜单_按序移除加速键(句柄, 序号)",
+      "description": "按序号移除加速键。",
+      "insertText": "FBro菜单_按序移除加速键($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro菜单_按序移除加速键",
+        "runtimeName": "FBro菜单_按序移除加速键",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "菜单项下标，从 0 起、小于“FBro菜单_取数量”；越界时命令失败。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro菜单_按序移除加速键(1, 1)"
+    },
+    {
+      "index": 66,
+      "name": "FBro菜单_取加速键",
+      "aliases": [
+        "LB_FBro_MenuModelGetAccelerator"
+      ],
+      "signature": "FBro菜单_取加速键(句柄, 命令ID)",
+      "description": "取菜单项加速键，返回 {\"key\",\"shift\",\"ctrl\",\"alt\"} JSON。",
+      "insertText": "FBro菜单_取加速键($1, $2)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro菜单_取加速键",
+        "runtimeName": "FBro菜单_取加速键",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          },
+          {
+            "name": "命令ID",
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro菜单_取加速键(1, 1)"
+    },
+    {
+      "index": 67,
+      "name": "FBro菜单_按序取加速键",
+      "aliases": [
+        "LB_FBro_MenuModelGetAcceleratorAt"
+      ],
+      "signature": "FBro菜单_按序取加速键(句柄, 序号)",
+      "description": "按序号取加速键，返回 JSON。",
+      "insertText": "FBro菜单_按序取加速键($1, $2)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro菜单_按序取加速键",
+        "runtimeName": "FBro菜单_按序取加速键",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "菜单项下标，从 0 起、小于“FBro菜单_取数量”；越界时命令失败。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro菜单_按序取加速键(1, 1)"
+    },
+    {
+      "index": 68,
+      "name": "FBro菜单_置颜色",
+      "aliases": [
+        "LB_FBro_MenuModelSetColor"
+      ],
+      "signature": "FBro菜单_置颜色(句柄, 命令ID, 颜色类型, Alpha, Red, Green, Blue)",
+      "description": "设置菜单项文字/悬停等颜色（颜色类型参考菜单颜色类型常量）。",
+      "insertText": "FBro菜单_置颜色($1, $2, $3, $4, $5, $6, $7)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro菜单_置颜色",
+        "runtimeName": "FBro菜单_置颜色",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          },
+          {
+            "name": "命令ID",
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
+          },
+          {
+            "name": "颜色类型",
+            "type": "int",
+            "description": "菜单颜色类型常量，指定读取或设置哪一类颜色（文字、悬停背景等）。"
+          },
+          {
+            "name": "Alpha",
+            "type": "int",
+            "description": "Alpha 透明度分量 0~255。"
+          },
+          {
+            "name": "Red",
+            "type": "int",
+            "description": "红色分量 0~255。"
+          },
+          {
+            "name": "Green",
+            "type": "int",
+            "description": "绿色分量 0~255。"
+          },
+          {
+            "name": "Blue",
+            "type": "int",
+            "description": "蓝色分量 0~255。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro菜单_置颜色(1, 1, 1, 1, 1, 1, 1)"
+    },
+    {
+      "index": 69,
+      "name": "FBro菜单_按序置颜色",
+      "aliases": [
+        "LB_FBro_MenuModelSetColorAt"
+      ],
+      "signature": "FBro菜单_按序置颜色(句柄, 序号, 颜色类型, Alpha, Red, Green, Blue)",
+      "description": "按序号设置颜色。",
+      "insertText": "FBro菜单_按序置颜色($1, $2, $3, $4, $5, $6, $7)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro菜单_按序置颜色",
+        "runtimeName": "FBro菜单_按序置颜色",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "菜单项下标，从 0 起、小于“FBro菜单_取数量”；越界时命令失败。"
+          },
+          {
+            "name": "颜色类型",
+            "type": "int",
+            "description": "菜单颜色类型常量，指定读取或设置哪一类颜色（文字、悬停背景等）。"
+          },
+          {
+            "name": "Alpha",
+            "type": "int",
+            "description": "Alpha 透明度分量 0~255。"
+          },
+          {
+            "name": "Red",
+            "type": "int",
+            "description": "红色分量 0~255。"
+          },
+          {
+            "name": "Green",
+            "type": "int",
+            "description": "绿色分量 0~255。"
+          },
+          {
+            "name": "Blue",
+            "type": "int",
+            "description": "蓝色分量 0~255。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro菜单_按序置颜色(1, 1, 1, 1, 1, 1, 1)"
+    },
+    {
+      "index": 70,
+      "name": "FBro菜单_按序取颜色",
+      "aliases": [
+        "LB_FBro_MenuModelGetColorAt"
+      ],
+      "signature": "FBro菜单_按序取颜色(句柄, 序号, 颜色类型)",
+      "description": "按序号取颜色，返回 {\"red\",\"green\",\"blue\",\"alpha\"} JSON。",
+      "insertText": "FBro菜单_按序取颜色($1, $2, $3)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro菜单_按序取颜色",
+        "runtimeName": "FBro菜单_按序取颜色",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "菜单项下标，从 0 起、小于“FBro菜单_取数量”；越界时命令失败。"
+          },
+          {
+            "name": "颜色类型",
+            "type": "int",
+            "description": "菜单颜色类型常量，指定读取或设置哪一类颜色（文字、悬停背景等）。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro菜单_按序取颜色(1, 1, 1)"
+    },
+    {
+      "index": 71,
+      "name": "FBro菜单_置字体",
+      "aliases": [
+        "LB_FBro_MenuModelSetFontList"
+      ],
+      "signature": "FBro菜单_置字体(句柄, 命令ID, 字体列表)",
+      "description": "设置菜单项字体（CSS 字体列表格式）。",
+      "insertText": "FBro菜单_置字体($1, $2, \"$3\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro菜单_置字体",
+        "runtimeName": "FBro菜单_置字体",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          },
+          {
+            "name": "命令ID",
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
+          },
+          {
+            "name": "字体列表",
+            "type": "wideString",
+            "description": "CSS 字体列表文本，如 \"Microsoft YaHei, Arial\"。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro菜单_置字体(1, 1, \"演示参数3\")"
+    },
+    {
+      "index": 72,
+      "name": "FBro菜单_按序置字体",
+      "aliases": [
+        "LB_FBro_MenuModelSetFontListAt"
+      ],
+      "signature": "FBro菜单_按序置字体(句柄, 序号, 字体列表)",
+      "description": "按序号设置字体。",
+      "insertText": "FBro菜单_按序置字体($1, $2, \"$3\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro菜单_按序置字体",
+        "runtimeName": "FBro菜单_按序置字体",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "菜单项下标，从 0 起、小于“FBro菜单_取数量”；越界时命令失败。"
+          },
+          {
+            "name": "字体列表",
+            "type": "wideString",
+            "description": "CSS 字体列表文本，如 \"Microsoft YaHei, Arial\"。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro菜单_按序置字体(1, 1, \"演示参数3\")"
+    },
+    {
+      "index": 73,
+      "name": "FBro右键参数_取链接地址",
+      "aliases": [
+        "LB_FBro_ContextMenuParamsGetLinkUrl"
+      ],
+      "signature": "FBro右键参数_取链接地址(句柄)",
+      "description": "取右键目标链接地址。",
+      "insertText": "FBro右键参数_取链接地址($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro右键参数_取链接地址",
+        "runtimeName": "FBro右键参数_取链接地址",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro右键参数_取链接地址(1)"
+    },
+    {
+      "index": 74,
+      "name": "FBro右键参数_取完整链接地址",
+      "aliases": [
+        "LB_FBro_ContextMenuParamsGetUnfilteredLinkUrl"
+      ],
+      "signature": "FBro右键参数_取完整链接地址(句柄)",
+      "description": "取未过滤的完整链接地址。",
+      "insertText": "FBro右键参数_取完整链接地址($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro右键参数_取完整链接地址",
+        "runtimeName": "FBro右键参数_取完整链接地址",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro右键参数_取完整链接地址(1)"
+    },
+    {
+      "index": 75,
+      "name": "FBro右键参数_取源地址",
+      "aliases": [
+        "LB_FBro_ContextMenuParamsGetSourceUrl"
+      ],
+      "signature": "FBro右键参数_取源地址(句柄)",
+      "description": "取媒体/图片等元素源地址。",
+      "insertText": "FBro右键参数_取源地址($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro右键参数_取源地址",
+        "runtimeName": "FBro右键参数_取源地址",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro右键参数_取源地址(1)"
+    },
+    {
+      "index": 76,
+      "name": "FBro右键参数_取页面地址",
+      "aliases": [
+        "LB_FBro_ContextMenuParamsGetPageUrl"
+      ],
+      "signature": "FBro右键参数_取页面地址(句柄)",
+      "description": "取右键所在页面地址。",
+      "insertText": "FBro右键参数_取页面地址($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro右键参数_取页面地址",
+        "runtimeName": "FBro右键参数_取页面地址",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro右键参数_取页面地址(1)"
+    },
+    {
+      "index": 77,
+      "name": "FBro右键参数_取框架编码",
+      "aliases": [
+        "LB_FBro_ContextMenuParamsGetFrameCharset"
+      ],
+      "signature": "FBro右键参数_取框架编码(句柄)",
+      "description": "取右键所在框架的网页编码。",
+      "insertText": "FBro右键参数_取框架编码($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro右键参数_取框架编码",
+        "runtimeName": "FBro右键参数_取框架编码",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro右键参数_取框架编码(1)"
+    },
+    {
+      "index": 78,
+      "name": "FBro右键参数_取框架地址",
+      "aliases": [
+        "LB_FBro_ContextMenuParamsGetFrameUrl"
+      ],
+      "signature": "FBro右键参数_取框架地址(句柄)",
+      "description": "取右键所在框架地址。",
+      "insertText": "FBro右键参数_取框架地址($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro右键参数_取框架地址",
+        "runtimeName": "FBro右键参数_取框架地址",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro右键参数_取框架地址(1)"
+    },
+    {
+      "index": 79,
+      "name": "FBro右键参数_是否有图片",
+      "aliases": [
+        "LB_FBro_ContextMenuParamsHasImageContents"
+      ],
+      "signature": "FBro右键参数_是否有图片(句柄)",
+      "description": "判断右键目标是否含图片内容。",
+      "insertText": "FBro右键参数_是否有图片($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro右键参数_是否有图片",
+        "runtimeName": "FBro右键参数_是否有图片",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro右键参数_是否有图片(1)"
+    },
+    {
+      "index": 80,
+      "name": "FBro右键参数_取媒体类型",
+      "aliases": [
+        "LB_FBro_ContextMenuParamsGetMediaType"
+      ],
+      "signature": "FBro右键参数_取媒体类型(句柄)",
+      "description": "取右键目标媒体类型。",
+      "insertText": "FBro右键参数_取媒体类型($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro右键参数_取媒体类型",
+        "runtimeName": "FBro右键参数_取媒体类型",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro右键参数_取媒体类型(1)"
+    },
+    {
+      "index": 81,
+      "name": "FBro右键参数_取媒体状态标志",
+      "aliases": [
+        "LB_FBro_ContextMenuParamsGetMediaStateFlags"
+      ],
+      "signature": "FBro右键参数_取媒体状态标志(句柄)",
+      "description": "取媒体状态标志（可播放/可暂停/可静音等）。",
+      "insertText": "FBro右键参数_取媒体状态标志($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro右键参数_取媒体状态标志",
+        "runtimeName": "FBro右键参数_取媒体状态标志",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro右键参数_取媒体状态标志(1)"
+    },
+    {
+      "index": 82,
+      "name": "FBro右键参数_取选择文本",
+      "aliases": [
+        "LB_FBro_ContextMenuParamsGetSelectionText"
+      ],
+      "signature": "FBro右键参数_取选择文本(句柄)",
+      "description": "取当前选中的文本。",
+      "insertText": "FBro右键参数_取选择文本($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro右键参数_取选择文本",
+        "runtimeName": "FBro右键参数_取选择文本",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro右键参数_取选择文本(1)"
+    },
+    {
+      "index": 83,
+      "name": "FBro右键参数_取错误单词",
+      "aliases": [
+        "LB_FBro_ContextMenuParamsGetMisspelledWord"
+      ],
+      "signature": "FBro右键参数_取错误单词(句柄)",
+      "description": "取拼写检查命中的错误单词。",
+      "insertText": "FBro右键参数_取错误单词($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro右键参数_取错误单词",
+        "runtimeName": "FBro右键参数_取错误单词",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro右键参数_取错误单词(1)"
+    },
+    {
+      "index": 84,
+      "name": "FBro右键参数_取字典建议",
+      "aliases": [
+        "LB_FBro_ContextMenuParamsGetDictionarySuggestions"
+      ],
+      "signature": "FBro右键参数_取字典建议(句柄)",
+      "description": "取拼写建议，返回字符串数组 JSON。",
+      "insertText": "FBro右键参数_取字典建议($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro右键参数_取字典建议",
+        "runtimeName": "FBro右键参数_取字典建议",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro右键参数_取字典建议(1)"
+    },
+    {
+      "index": 85,
+      "name": "FBro右键参数_是否可编辑",
+      "aliases": [
+        "LB_FBro_ContextMenuParamsIsEditable"
+      ],
+      "signature": "FBro右键参数_是否可编辑(句柄)",
+      "description": "判断右键目标是否为可编辑元素。",
+      "insertText": "FBro右键参数_是否可编辑($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro右键参数_是否可编辑",
+        "runtimeName": "FBro右键参数_是否可编辑",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro右键参数_是否可编辑(1)"
+    },
+    {
+      "index": 86,
+      "name": "FBro右键参数_是否启用拼写检查",
+      "aliases": [
+        "LB_FBro_ContextMenuParamsIsSpellCheckEnabled"
+      ],
+      "signature": "FBro右键参数_是否启用拼写检查(句柄)",
+      "description": "判断拼写检查是否启用。",
+      "insertText": "FBro右键参数_是否启用拼写检查($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro右键参数_是否启用拼写检查",
+        "runtimeName": "FBro右键参数_是否启用拼写检查",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro右键参数_是否启用拼写检查(1)"
+    },
+    {
+      "index": 87,
+      "name": "FBro右键参数_取编辑状态标志",
+      "aliases": [
+        "LB_FBro_ContextMenuParamsGetEditStateFlags"
+      ],
+      "signature": "FBro右键参数_取编辑状态标志(句柄)",
+      "description": "取编辑状态标志（可撤销/可重做/可剪切/可粘贴等）。",
+      "insertText": "FBro右键参数_取编辑状态标志($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro右键参数_取编辑状态标志",
+        "runtimeName": "FBro右键参数_取编辑状态标志",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro右键参数_取编辑状态标志(1)"
+    },
+    {
+      "index": 88,
+      "name": "FBro右键参数_是否自定义菜单",
+      "aliases": [
+        "LB_FBro_ContextMenuParamsIsCustomMenu"
+      ],
+      "signature": "FBro右键参数_是否自定义菜单(句柄)",
+      "description": "判断是否为自定义菜单请求。",
+      "insertText": "FBro右键参数_是否自定义菜单($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro右键参数_是否自定义菜单",
+        "runtimeName": "FBro右键参数_是否自定义菜单",
+        "parameters": [
+          {
+            "name": "句柄",
+            "type": "longLong",
+            "description": "菜单模型句柄：事件字段 menuHandle，或“FBro菜单_添加子菜单”返回的子菜单句柄；仅在对应事件处理期内有效。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro右键参数_是否自定义菜单(1)"
+    },
+    {
+      "index": 89,
+      "name": "FBro响应_创建",
+      "aliases": [
+        "LB_FBro_ResponseCreate"
+      ],
+      "signature": "FBro响应_创建()",
+      "description": "创建自定义响应对象（配合自定义资源处理器使用），用完可 FBro对象_释放。",
+      "insertText": "FBro响应_创建()",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro响应_创建",
+        "runtimeName": "FBro响应_创建",
+        "parameters": [],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro响应_创建()"
+    },
+    {
+      "index": 90,
+      "name": "FBro响应_是否只读",
+      "aliases": [
+        "LB_FBro_ResponseIsReadOnly"
+      ],
+      "signature": "FBro响应_是否只读(响应句柄)",
+      "description": "判断响应是否只读（事件中收到的响应在改写场景外通常只读）。",
+      "insertText": "FBro响应_是否只读($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro响应_是否只读",
+        "runtimeName": "FBro响应_是否只读",
+        "parameters": [
+          {
+            "name": "响应句柄",
+            "type": "longLong",
+            "description": "资源响应类事件字段 response 携带的响应句柄，或“FBro响应_创建”创建的自定义响应句柄。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro响应_是否只读(1)"
+    },
+    {
+      "index": 91,
+      "name": "FBro响应_取错误",
+      "aliases": [
+        "LB_FBro_ResponseGetError"
+      ],
+      "signature": "FBro响应_取错误(响应句柄)",
+      "description": "取响应错误码。",
+      "insertText": "FBro响应_取错误($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro响应_取错误",
+        "runtimeName": "FBro响应_取错误",
+        "parameters": [
+          {
+            "name": "响应句柄",
+            "type": "longLong",
+            "description": "资源响应类事件字段 response 携带的响应句柄，或“FBro响应_创建”创建的自定义响应句柄。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro响应_取错误(1)"
+    },
+    {
+      "index": 92,
+      "name": "FBro响应_置错误",
+      "aliases": [
+        "LB_FBro_ResponseSetError"
+      ],
+      "signature": "FBro响应_置错误(响应句柄, 错误码)",
+      "description": "设置响应错误码。",
+      "insertText": "FBro响应_置错误($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro响应_置错误",
+        "runtimeName": "FBro响应_置错误",
+        "parameters": [
+          {
+            "name": "响应句柄",
+            "type": "longLong",
+            "description": "资源响应类事件字段 response 携带的响应句柄，或“FBro响应_创建”创建的自定义响应句柄。"
+          },
+          {
+            "name": "错误码",
+            "type": "int",
+            "description": "响应错误码；0 表示无错误。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro响应_置错误(1, 1)"
+    },
+    {
+      "index": 93,
+      "name": "FBro响应_取状态码",
+      "aliases": [
+        "LB_FBro_ResponseGetStatus"
+      ],
+      "signature": "FBro响应_取状态码(响应句柄)",
+      "description": "取 HTTP 状态码。",
+      "insertText": "FBro响应_取状态码($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro响应_取状态码",
+        "runtimeName": "FBro响应_取状态码",
+        "parameters": [
+          {
+            "name": "响应句柄",
+            "type": "longLong",
+            "description": "资源响应类事件字段 response 携带的响应句柄，或“FBro响应_创建”创建的自定义响应句柄。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro响应_取状态码(1)"
+    },
+    {
+      "index": 94,
+      "name": "FBro响应_置状态码",
+      "aliases": [
+        "LB_FBro_ResponseSetStatus"
+      ],
+      "signature": "FBro响应_置状态码(响应句柄, 状态码)",
+      "description": "设置 HTTP 状态码。",
+      "insertText": "FBro响应_置状态码($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro响应_置状态码",
+        "runtimeName": "FBro响应_置状态码",
+        "parameters": [
+          {
+            "name": "响应句柄",
+            "type": "longLong",
+            "description": "资源响应类事件字段 response 携带的响应句柄，或“FBro响应_创建”创建的自定义响应句柄。"
+          },
+          {
+            "name": "状态码",
+            "type": "int",
+            "description": "HTTP 状态码，如 200、404。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro响应_置状态码(1, 1)"
+    },
+    {
+      "index": 95,
+      "name": "FBro响应_取状态文本",
+      "aliases": [
+        "LB_FBro_ResponseGetStatusText"
+      ],
+      "signature": "FBro响应_取状态文本(响应句柄)",
+      "description": "取状态文本（如 OK、Not Found）。",
+      "insertText": "FBro响应_取状态文本($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro响应_取状态文本",
+        "runtimeName": "FBro响应_取状态文本",
+        "parameters": [
+          {
+            "name": "响应句柄",
+            "type": "longLong",
+            "description": "资源响应类事件字段 response 携带的响应句柄，或“FBro响应_创建”创建的自定义响应句柄。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro响应_取状态文本(1)"
+    },
+    {
+      "index": 96,
+      "name": "FBro响应_置状态文本",
+      "aliases": [
+        "LB_FBro_ResponseSetStatusText"
+      ],
+      "signature": "FBro响应_置状态文本(响应句柄, 状态文本)",
+      "description": "设置状态文本。",
+      "insertText": "FBro响应_置状态文本($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro响应_置状态文本",
+        "runtimeName": "FBro响应_置状态文本",
+        "parameters": [
+          {
+            "name": "响应句柄",
+            "type": "longLong",
+            "description": "资源响应类事件字段 response 携带的响应句柄，或“FBro响应_创建”创建的自定义响应句柄。"
+          },
+          {
+            "name": "状态文本",
+            "type": "wideString",
+            "description": "HTTP 状态文本，如 \"OK\"、\"Not Found\"。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro响应_置状态文本(1, \"演示参数2\")"
+    },
+    {
+      "index": 97,
+      "name": "FBro响应_取MIME类型",
+      "aliases": [
+        "LB_FBro_ResponseGetMimeType"
+      ],
+      "signature": "FBro响应_取MIME类型(响应句柄)",
+      "description": "取响应 MIME 类型。",
+      "insertText": "FBro响应_取MIME类型($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro响应_取MIME类型",
+        "runtimeName": "FBro响应_取MIME类型",
+        "parameters": [
+          {
+            "name": "响应句柄",
+            "type": "longLong",
+            "description": "资源响应类事件字段 response 携带的响应句柄，或“FBro响应_创建”创建的自定义响应句柄。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro响应_取MIME类型(1)"
+    },
+    {
+      "index": 98,
+      "name": "FBro响应_置MIME类型",
+      "aliases": [
+        "LB_FBro_ResponseSetMimeType"
+      ],
+      "signature": "FBro响应_置MIME类型(响应句柄, MIME类型)",
+      "description": "设置响应 MIME 类型。",
+      "insertText": "FBro响应_置MIME类型($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro响应_置MIME类型",
+        "runtimeName": "FBro响应_置MIME类型",
+        "parameters": [
+          {
+            "name": "响应句柄",
+            "type": "longLong",
+            "description": "资源响应类事件字段 response 携带的响应句柄，或“FBro响应_创建”创建的自定义响应句柄。"
+          },
+          {
+            "name": "MIME类型",
+            "type": "wideString",
+            "description": "MIME 类型文本，如 \"image/png\"、\"text/html\"。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro响应_置MIME类型(1, \"演示参数2\")"
+    },
+    {
+      "index": 99,
+      "name": "FBro响应_取字符集",
+      "aliases": [
+        "LB_FBro_ResponseGetCharset"
+      ],
+      "signature": "FBro响应_取字符集(响应句柄)",
+      "description": "取响应字符集。",
+      "insertText": "FBro响应_取字符集($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro响应_取字符集",
+        "runtimeName": "FBro响应_取字符集",
+        "parameters": [
+          {
+            "name": "响应句柄",
+            "type": "longLong",
+            "description": "资源响应类事件字段 response 携带的响应句柄，或“FBro响应_创建”创建的自定义响应句柄。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro响应_取字符集(1)"
+    },
+    {
+      "index": 100,
+      "name": "FBro响应_置字符集",
+      "aliases": [
+        "LB_FBro_ResponseSetCharset"
+      ],
+      "signature": "FBro响应_置字符集(响应句柄, 字符集)",
+      "description": "设置响应字符集。",
+      "insertText": "FBro响应_置字符集($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro响应_置字符集",
+        "runtimeName": "FBro响应_置字符集",
+        "parameters": [
+          {
+            "name": "响应句柄",
+            "type": "longLong",
+            "description": "资源响应类事件字段 response 携带的响应句柄，或“FBro响应_创建”创建的自定义响应句柄。"
+          },
+          {
+            "name": "字符集",
+            "type": "wideString",
+            "description": "响应字符集名称，如 \"utf-8\"。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro响应_置字符集(1, \"演示参数2\")"
+    },
+    {
+      "index": 101,
+      "name": "FBro响应_取地址",
+      "aliases": [
+        "LB_FBro_ResponseGetURL"
+      ],
+      "signature": "FBro响应_取地址(响应句柄)",
+      "description": "取响应地址。",
+      "insertText": "FBro响应_取地址($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro响应_取地址",
+        "runtimeName": "FBro响应_取地址",
+        "parameters": [
+          {
+            "name": "响应句柄",
+            "type": "longLong",
+            "description": "资源响应类事件字段 response 携带的响应句柄，或“FBro响应_创建”创建的自定义响应句柄。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro响应_取地址(1)"
+    },
+    {
+      "index": 102,
+      "name": "FBro响应_置地址",
+      "aliases": [
+        "LB_FBro_ResponseSetURL"
+      ],
+      "signature": "FBro响应_置地址(响应句柄, 地址)",
+      "description": "设置响应地址。",
+      "insertText": "FBro响应_置地址($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro响应_置地址",
+        "runtimeName": "FBro响应_置地址",
+        "parameters": [
+          {
+            "name": "响应句柄",
+            "type": "longLong",
+            "description": "资源响应类事件字段 response 携带的响应句柄，或“FBro响应_创建”创建的自定义响应句柄。"
+          },
+          {
+            "name": "地址",
+            "type": "wideString",
+            "description": "完整 URL（含协议）。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro响应_置地址(1, \"https://example.com\")"
+    },
+    {
+      "index": 103,
+      "name": "FBro响应_取协议头",
+      "aliases": [
+        "LB_FBro_ResponseGetHeaderByName"
+      ],
+      "signature": "FBro响应_取协议头(响应句柄, 头名)",
+      "description": "按名称取响应协议头。",
+      "insertText": "FBro响应_取协议头($1, \"$2\")",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro响应_取协议头",
+        "runtimeName": "FBro响应_取协议头",
+        "parameters": [
+          {
+            "name": "响应句柄",
+            "type": "longLong",
+            "description": "资源响应类事件字段 response 携带的响应句柄，或“FBro响应_创建”创建的自定义响应句柄。"
+          },
+          {
+            "name": "头名",
+            "type": "wideString",
+            "description": "协议头名称，如 \"Content-Type\"。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro响应_取协议头(1, \"演示参数2\")"
+    },
+    {
+      "index": 104,
+      "name": "FBro响应_置协议头",
+      "aliases": [
+        "LB_FBro_ResponseSetHeaderByName"
+      ],
+      "signature": "FBro响应_置协议头(响应句柄, 头名, 值, 覆盖同名)",
+      "description": "按名称设置响应协议头。",
+      "insertText": "FBro响应_置协议头($1, \"$2\", \"$3\", 假)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro响应_置协议头",
+        "runtimeName": "FBro响应_置协议头",
+        "parameters": [
+          {
+            "name": "响应句柄",
+            "type": "longLong",
+            "description": "资源响应类事件字段 response 携带的响应句柄，或“FBro响应_创建”创建的自定义响应句柄。"
+          },
+          {
+            "name": "头名",
+            "type": "wideString",
+            "description": "协议头名称，如 \"Content-Type\"。"
+          },
+          {
+            "name": "值",
+            "type": "wideString",
+            "description": "要写入的值。"
+          },
+          {
+            "name": "覆盖同名",
+            "type": "bool",
+            "description": "真=替换已存在的同名协议头。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro响应_置协议头(1, \"演示参数2\", \"演示参数3\", 真)"
+    },
+    {
+      "index": 105,
+      "name": "FBro响应_取协议头映射JSON",
+      "aliases": [
+        "LB_FBro_ResponseGetHeaderMap"
+      ],
+      "signature": "FBro响应_取协议头映射JSON(响应句柄)",
+      "description": "取全部协议头，返回 [{\"name\":\"...\",\"value\":\"...\"}] JSON 数组；保持服务端顺序，多值头（如 Set-Cookie）会出现多个同名条目。响应句柄可来自资源响应事件，或 FBro异步请求_取响应对象 返回的纯协议请求响应。",
+      "insertText": "FBro响应_取协议头映射JSON($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro响应_取协议头映射JSON",
+        "runtimeName": "FBro响应_取协议头映射JSON",
+        "parameters": [
+          {
+            "name": "响应句柄",
+            "type": "longLong",
+            "description": "资源响应类事件字段 response 携带的响应句柄，或“FBro响应_创建”创建的自定义响应句柄。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro响应_取协议头映射JSON(1)"
+    },
+    {
+      "index": 106,
+      "name": "FBro响应_设置协议头映射JSON",
+      "aliases": [
+        "LB_FBro_ResponseSetHeaderMapJson"
+      ],
+      "signature": "FBro响应_设置协议头映射JSON(响应句柄, 协议头JSON, 清除原有)",
+      "description": "按 [{\"name\":..,\"value\":..}] JSON 批量设置协议头。",
+      "insertText": "FBro响应_设置协议头映射JSON($1, \"$2\", 假)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro响应_设置协议头映射JSON",
+        "runtimeName": "FBro响应_设置协议头映射JSON",
+        "parameters": [
+          {
+            "name": "响应句柄",
+            "type": "longLong",
+            "description": "资源响应类事件字段 response 携带的响应句柄，或“FBro响应_创建”创建的自定义响应句柄。"
+          },
+          {
+            "name": "协议头JSON",
+            "type": "wideString",
+            "description": "协议头 JSON 数组，格式 [{\"name\":\"...\",\"value\":\"...\"}]。"
+          },
+          {
+            "name": "清除原有",
+            "type": "bool",
+            "description": "真=先移除全部已有协议头再写入。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro响应_设置协议头映射JSON(1, \"{}\", 真)"
+    },
+    {
+      "index": 107,
+      "name": "FBro响应_删除协议头",
+      "aliases": [
+        "LB_FBro_ResponseDeleteHeaderMap"
+      ],
+      "signature": "FBro响应_删除协议头(响应句柄, 头名)",
+      "description": "按名称删除协议头。",
+      "insertText": "FBro响应_删除协议头($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro响应_删除协议头",
+        "runtimeName": "FBro响应_删除协议头",
+        "parameters": [
+          {
+            "name": "响应句柄",
+            "type": "longLong",
+            "description": "资源响应类事件字段 response 携带的响应句柄，或“FBro响应_创建”创建的自定义响应句柄。"
+          },
+          {
+            "name": "头名",
+            "type": "wideString",
+            "description": "协议头名称，如 \"Content-Type\"。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro响应_删除协议头(1, \"演示参数2\")"
+    },
+    {
+      "index": 108,
       "name": "FBro对象_取类型",
       "aliases": [
         "LB_FBro_ObjectGetType"
@@ -348,7 +3162,8 @@
         "parameters": [
           {
             "name": "对象句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "任意 FBro 受管对象句柄；已释放后再操作返回负错误码。"
           }
         ],
         "returnType": "int"
@@ -356,7 +3171,7 @@
       "demoInvocation": "FBro对象_取类型(1)"
     },
     {
-      "index": 15,
+      "index": 109,
       "name": "FBro对象_释放",
       "aliases": [
         "LB_FBro_ObjectRelease"
@@ -372,7 +3187,8 @@
         "parameters": [
           {
             "name": "对象句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "任意 FBro 受管对象句柄；已释放后再操作返回负错误码。"
           }
         ],
         "returnType": "int"
@@ -380,7 +3196,7 @@
       "demoInvocation": "FBro对象_释放(1)"
     },
     {
-      "index": 16,
+      "index": 110,
       "name": "FBro值_创建",
       "aliases": [
         "FBroHsValue_Create"
@@ -399,7 +3215,7 @@
       "demoInvocation": "FBro值_创建()"
     },
     {
-      "index": 17,
+      "index": 111,
       "name": "FBro值_是否有效",
       "aliases": [
         "FBroHsValue_IsValid"
@@ -415,7 +3231,8 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro值_创建”创建或“FBro任务_取对象”“FBro字典_取值对象”等返回的 Value 受管句柄。"
           }
         ],
         "returnType": "int"
@@ -423,7 +3240,7 @@
       "demoInvocation": "FBro值_是否有效(1)"
     },
     {
-      "index": 18,
+      "index": 112,
       "name": "FBro值_是否被拥有",
       "aliases": [
         "FBroHsValue_IsOwned"
@@ -439,7 +3256,8 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro值_创建”创建或“FBro任务_取对象”“FBro字典_取值对象”等返回的 Value 受管句柄。"
           }
         ],
         "returnType": "int"
@@ -447,7 +3265,7 @@
       "demoInvocation": "FBro值_是否被拥有(1)"
     },
     {
-      "index": 19,
+      "index": 113,
       "name": "FBro值_是否只读",
       "aliases": [
         "FBroHsValue_IsReadOnly"
@@ -463,7 +3281,8 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro值_创建”创建或“FBro任务_取对象”“FBro字典_取值对象”等返回的 Value 受管句柄。"
           }
         ],
         "returnType": "int"
@@ -471,7 +3290,7 @@
       "demoInvocation": "FBro值_是否只读(1)"
     },
     {
-      "index": 20,
+      "index": 114,
       "name": "FBro值_是否同一对象",
       "aliases": [
         "FBroHsValue_IsSame"
@@ -487,11 +3306,13 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro值_创建”创建或“FBro任务_取对象”“FBro字典_取值对象”等返回的 Value 受管句柄。"
           },
           {
             "name": "另一值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "参与比较的另一个 Value 受管句柄。"
           }
         ],
         "returnType": "int"
@@ -499,7 +3320,7 @@
       "demoInvocation": "FBro值_是否同一对象(1, 1)"
     },
     {
-      "index": 21,
+      "index": 115,
       "name": "FBro值_是否相等",
       "aliases": [
         "FBroHsValue_IsEqual"
@@ -515,11 +3336,13 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro值_创建”创建或“FBro任务_取对象”“FBro字典_取值对象”等返回的 Value 受管句柄。"
           },
           {
             "name": "另一值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "参与比较的另一个 Value 受管句柄。"
           }
         ],
         "returnType": "int"
@@ -527,7 +3350,7 @@
       "demoInvocation": "FBro值_是否相等(1, 1)"
     },
     {
-      "index": 22,
+      "index": 116,
       "name": "FBro值_复制",
       "aliases": [
         "FBroHsValue_Copy"
@@ -543,7 +3366,8 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro值_创建”创建或“FBro任务_取对象”“FBro字典_取值对象”等返回的 Value 受管句柄。"
           }
         ],
         "returnType": "longLong"
@@ -551,7 +3375,7 @@
       "demoInvocation": "FBro值_复制(1)"
     },
     {
-      "index": 23,
+      "index": 117,
       "name": "FBro值_取类型",
       "aliases": [
         "FBroHsValue_GetType"
@@ -567,7 +3391,8 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro值_创建”创建或“FBro任务_取对象”“FBro字典_取值对象”等返回的 Value 受管句柄。"
           }
         ],
         "returnType": "int"
@@ -575,7 +3400,7 @@
       "demoInvocation": "FBro值_取类型(1)"
     },
     {
-      "index": 24,
+      "index": 118,
       "name": "FBro值_取逻辑",
       "aliases": [
         "FBroHsValue_GetBool"
@@ -591,7 +3416,8 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro值_创建”创建或“FBro任务_取对象”“FBro字典_取值对象”等返回的 Value 受管句柄。"
           }
         ],
         "returnType": "int"
@@ -599,7 +3425,7 @@
       "demoInvocation": "FBro值_取逻辑(1)"
     },
     {
-      "index": 25,
+      "index": 119,
       "name": "FBro值_取整数",
       "aliases": [
         "FBroHsValue_GetInt"
@@ -615,7 +3441,8 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro值_创建”创建或“FBro任务_取对象”“FBro字典_取值对象”等返回的 Value 受管句柄。"
           }
         ],
         "returnType": "int"
@@ -623,7 +3450,7 @@
       "demoInvocation": "FBro值_取整数(1)"
     },
     {
-      "index": 26,
+      "index": 120,
       "name": "FBro值_取小数",
       "aliases": [
         "FBroHsValue_GetDouble"
@@ -639,7 +3466,8 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro值_创建”创建或“FBro任务_取对象”“FBro字典_取值对象”等返回的 Value 受管句柄。"
           }
         ],
         "returnType": "double"
@@ -647,7 +3475,7 @@
       "demoInvocation": "FBro值_取小数(1)"
     },
     {
-      "index": 27,
+      "index": 121,
       "name": "FBro值_取文本",
       "aliases": [
         "FBroHsValue_GetString"
@@ -663,7 +3491,8 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro值_创建”创建或“FBro任务_取对象”“FBro字典_取值对象”等返回的 Value 受管句柄。"
           }
         ],
         "returnType": "wideString"
@@ -671,7 +3500,7 @@
       "demoInvocation": "FBro值_取文本(1)"
     },
     {
-      "index": 28,
+      "index": 122,
       "name": "FBro值_设为空",
       "aliases": [
         "FBroHsValue_SetNull"
@@ -687,7 +3516,8 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro值_创建”创建或“FBro任务_取对象”“FBro字典_取值对象”等返回的 Value 受管句柄。"
           }
         ],
         "returnType": "int"
@@ -695,7 +3525,7 @@
       "demoInvocation": "FBro值_设为空(1)"
     },
     {
-      "index": 29,
+      "index": 123,
       "name": "FBro值_设置逻辑",
       "aliases": [
         "FBroHsValue_SetBool"
@@ -711,11 +3541,13 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro值_创建”创建或“FBro任务_取对象”“FBro字典_取值对象”等返回的 Value 受管句柄。"
           },
           {
             "name": "值",
-            "type": "bool"
+            "type": "bool",
+            "description": "要写入的值。"
           }
         ],
         "returnType": "int"
@@ -723,7 +3555,7 @@
       "demoInvocation": "FBro值_设置逻辑(1, 真)"
     },
     {
-      "index": 30,
+      "index": 124,
       "name": "FBro值_设置整数",
       "aliases": [
         "FBroHsValue_SetInt"
@@ -739,11 +3571,13 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro值_创建”创建或“FBro任务_取对象”“FBro字典_取值对象”等返回的 Value 受管句柄。"
           },
           {
             "name": "值",
-            "type": "int"
+            "type": "int",
+            "description": "要写入的值。"
           }
         ],
         "returnType": "int"
@@ -751,7 +3585,7 @@
       "demoInvocation": "FBro值_设置整数(1, 1)"
     },
     {
-      "index": 31,
+      "index": 125,
       "name": "FBro值_设置小数",
       "aliases": [
         "FBroHsValue_SetDouble"
@@ -767,11 +3601,13 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro值_创建”创建或“FBro任务_取对象”“FBro字典_取值对象”等返回的 Value 受管句柄。"
           },
           {
             "name": "值",
-            "type": "double"
+            "type": "double",
+            "description": "要写入的值。"
           }
         ],
         "returnType": "int"
@@ -779,7 +3615,7 @@
       "demoInvocation": "FBro值_设置小数(1, 1.0)"
     },
     {
-      "index": 32,
+      "index": 126,
       "name": "FBro值_设置文本",
       "aliases": [
         "FBroHsValue_SetString"
@@ -795,11 +3631,13 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro值_创建”创建或“FBro任务_取对象”“FBro字典_取值对象”等返回的 Value 受管句柄。"
           },
           {
             "name": "值",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要写入的值。"
           }
         ],
         "returnType": "int",
@@ -808,7 +3646,7 @@
       "demoInvocation": "FBro值_设置文本(1, \"演示参数2\")"
     },
     {
-      "index": 33,
+      "index": 127,
       "name": "FBro值_取二进制",
       "aliases": [
         "FBroHsValue_GetBinary"
@@ -824,7 +3662,8 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro值_创建”创建或“FBro任务_取对象”“FBro字典_取值对象”等返回的 Value 受管句柄。"
           }
         ],
         "returnType": "longLong"
@@ -832,7 +3671,7 @@
       "demoInvocation": "FBro值_取二进制(1)"
     },
     {
-      "index": 34,
+      "index": 128,
       "name": "FBro值_设置二进制",
       "aliases": [
         "FBroHsValue_SetBinary"
@@ -848,11 +3687,13 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro值_创建”创建或“FBro任务_取对象”“FBro字典_取值对象”等返回的 Value 受管句柄。"
           },
           {
             "name": "缓冲句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro缓冲_从文本”“FBro任务_取缓冲”等返回的受管缓冲句柄；释放后再用返回负错误码。"
           }
         ],
         "returnType": "int"
@@ -860,7 +3701,7 @@
       "demoInvocation": "FBro值_设置二进制(1, 1)"
     },
     {
-      "index": 35,
+      "index": 129,
       "name": "FBro值_取字典",
       "aliases": [
         "FBroHsValue_GetDictionary"
@@ -876,7 +3717,8 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro值_创建”创建或“FBro任务_取对象”“FBro字典_取值对象”等返回的 Value 受管句柄。"
           }
         ],
         "returnType": "longLong"
@@ -884,7 +3726,7 @@
       "demoInvocation": "FBro值_取字典(1)"
     },
     {
-      "index": 36,
+      "index": 130,
       "name": "FBro值_取列表",
       "aliases": [
         "FBroHsValue_GetList"
@@ -900,7 +3742,8 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro值_创建”创建或“FBro任务_取对象”“FBro字典_取值对象”等返回的 Value 受管句柄。"
           }
         ],
         "returnType": "longLong"
@@ -908,7 +3751,7 @@
       "demoInvocation": "FBro值_取列表(1)"
     },
     {
-      "index": 37,
+      "index": 131,
       "name": "FBro值_设置字典",
       "aliases": [
         "FBroHsValue_SetDictionary"
@@ -924,11 +3767,13 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro值_创建”创建或“FBro任务_取对象”“FBro字典_取值对象”等返回的 Value 受管句柄。"
           },
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro字典_创建”创建或“FBro值_取字典”“FBro字典_取字典”等返回的 Dictionary 受管句柄。"
           }
         ],
         "returnType": "int"
@@ -936,7 +3781,7 @@
       "demoInvocation": "FBro值_设置字典(1, 1)"
     },
     {
-      "index": 38,
+      "index": 132,
       "name": "FBro值_设置列表",
       "aliases": [
         "FBroHsValue_SetList"
@@ -952,11 +3797,13 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro值_创建”创建或“FBro任务_取对象”“FBro字典_取值对象”等返回的 Value 受管句柄。"
           },
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro列表_创建”创建或“FBro消息_取参数列表”“FBro值_取列表”等返回的 List 受管句柄。"
           }
         ],
         "returnType": "int"
@@ -964,7 +3811,7 @@
       "demoInvocation": "FBro值_设置列表(1, 1)"
     },
     {
-      "index": 39,
+      "index": 133,
       "name": "FBro字典_创建",
       "aliases": [
         "FBroHsDictionaryValue_Create"
@@ -983,7 +3830,7 @@
       "demoInvocation": "FBro字典_创建()"
     },
     {
-      "index": 40,
+      "index": 134,
       "name": "FBro字典_是否有效",
       "aliases": [
         "FBroHsDictionaryValue_IsValid"
@@ -999,7 +3846,8 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro字典_创建”创建或“FBro值_取字典”“FBro字典_取字典”等返回的 Dictionary 受管句柄。"
           }
         ],
         "returnType": "int"
@@ -1007,7 +3855,7 @@
       "demoInvocation": "FBro字典_是否有效(1)"
     },
     {
-      "index": 41,
+      "index": 135,
       "name": "FBro字典_是否被拥有",
       "aliases": [
         "FBroHsDictionaryValue_IsOwned"
@@ -1023,7 +3871,8 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro字典_创建”创建或“FBro值_取字典”“FBro字典_取字典”等返回的 Dictionary 受管句柄。"
           }
         ],
         "returnType": "int"
@@ -1031,7 +3880,7 @@
       "demoInvocation": "FBro字典_是否被拥有(1)"
     },
     {
-      "index": 42,
+      "index": 136,
       "name": "FBro字典_是否只读",
       "aliases": [
         "FBroHsDictionaryValue_IsReadOnly"
@@ -1047,7 +3896,8 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro字典_创建”创建或“FBro值_取字典”“FBro字典_取字典”等返回的 Dictionary 受管句柄。"
           }
         ],
         "returnType": "int"
@@ -1055,7 +3905,7 @@
       "demoInvocation": "FBro字典_是否只读(1)"
     },
     {
-      "index": 43,
+      "index": 137,
       "name": "FBro字典_是否同一对象",
       "aliases": [
         "FBroHsDictionaryValue_IsSame"
@@ -1071,11 +3921,13 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro字典_创建”创建或“FBro值_取字典”“FBro字典_取字典”等返回的 Dictionary 受管句柄。"
           },
           {
             "name": "另一字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "参与比较的另一个 Dictionary 受管句柄。"
           }
         ],
         "returnType": "int"
@@ -1083,7 +3935,7 @@
       "demoInvocation": "FBro字典_是否同一对象(1, 1)"
     },
     {
-      "index": 44,
+      "index": 138,
       "name": "FBro字典_是否相等",
       "aliases": [
         "FBroHsDictionaryValue_IsEqual"
@@ -1099,11 +3951,13 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro字典_创建”创建或“FBro值_取字典”“FBro字典_取字典”等返回的 Dictionary 受管句柄。"
           },
           {
             "name": "另一字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "参与比较的另一个 Dictionary 受管句柄。"
           }
         ],
         "returnType": "int"
@@ -1111,7 +3965,7 @@
       "demoInvocation": "FBro字典_是否相等(1, 1)"
     },
     {
-      "index": 45,
+      "index": 139,
       "name": "FBro字典_复制",
       "aliases": [
         "FBroHsDictionaryValue_Copy"
@@ -1127,11 +3981,13 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro字典_创建”创建或“FBro值_取字典”“FBro字典_取字典”等返回的 Dictionary 受管句柄。"
           },
           {
             "name": "排除空子项",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=复制时跳过值为空的子项。"
           }
         ],
         "returnType": "longLong"
@@ -1139,7 +3995,7 @@
       "demoInvocation": "FBro字典_复制(1, 真)"
     },
     {
-      "index": 46,
+      "index": 140,
       "name": "FBro字典_取数量",
       "aliases": [
         "FBroHsDictionaryValue_GetSize"
@@ -1155,7 +4011,8 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro字典_创建”创建或“FBro值_取字典”“FBro字典_取字典”等返回的 Dictionary 受管句柄。"
           }
         ],
         "returnType": "int"
@@ -1163,7 +4020,7 @@
       "demoInvocation": "FBro字典_取数量(1)"
     },
     {
-      "index": 47,
+      "index": 141,
       "name": "FBro字典_清空",
       "aliases": [
         "FBroHsDictionaryValue_Clear"
@@ -1179,7 +4036,8 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro字典_创建”创建或“FBro值_取字典”“FBro字典_取字典”等返回的 Dictionary 受管句柄。"
           }
         ],
         "returnType": "int"
@@ -1187,7 +4045,7 @@
       "demoInvocation": "FBro字典_清空(1)"
     },
     {
-      "index": 48,
+      "index": 142,
       "name": "FBro字典_是否存在键",
       "aliases": [
         "FBroHsDictionaryValue_HasKey"
@@ -1203,11 +4061,13 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro字典_创建”创建或“FBro值_取字典”“FBro字典_取字典”等返回的 Dictionary 受管句柄。"
           },
           {
             "name": "键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "字典键名；键不存在时读取类命令返回默认值（0、假或空文本）。"
           }
         ],
         "returnType": "int",
@@ -1216,7 +4076,7 @@
       "demoInvocation": "FBro字典_是否存在键(1, \"演示参数2\")"
     },
     {
-      "index": 49,
+      "index": 143,
       "name": "FBro字典_删除",
       "aliases": [
         "FBroHsDictionaryValue_Remove"
@@ -1232,11 +4092,13 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro字典_创建”创建或“FBro值_取字典”“FBro字典_取字典”等返回的 Dictionary 受管句柄。"
           },
           {
             "name": "键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "字典键名；键不存在时读取类命令返回默认值（0、假或空文本）。"
           }
         ],
         "returnType": "int",
@@ -1245,7 +4107,7 @@
       "demoInvocation": "FBro字典_删除(1, \"演示参数2\")"
     },
     {
-      "index": 50,
+      "index": 144,
       "name": "FBro字典_取类型",
       "aliases": [
         "FBroHsDictionaryValue_GetType"
@@ -1261,11 +4123,13 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro字典_创建”创建或“FBro值_取字典”“FBro字典_取字典”等返回的 Dictionary 受管句柄。"
           },
           {
             "name": "键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "字典键名；键不存在时读取类命令返回默认值（0、假或空文本）。"
           }
         ],
         "returnType": "int",
@@ -1274,7 +4138,7 @@
       "demoInvocation": "FBro字典_取类型(1, \"演示参数2\")"
     },
     {
-      "index": 51,
+      "index": 145,
       "name": "FBro字典_取逻辑",
       "aliases": [
         "FBroHsDictionaryValue_GetBool"
@@ -1290,11 +4154,13 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro字典_创建”创建或“FBro值_取字典”“FBro字典_取字典”等返回的 Dictionary 受管句柄。"
           },
           {
             "name": "键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "字典键名；键不存在时读取类命令返回默认值（0、假或空文本）。"
           }
         ],
         "returnType": "int",
@@ -1303,7 +4169,7 @@
       "demoInvocation": "FBro字典_取逻辑(1, \"演示参数2\")"
     },
     {
-      "index": 52,
+      "index": 146,
       "name": "FBro字典_取整数",
       "aliases": [
         "FBroHsDictionaryValue_GetInt"
@@ -1319,11 +4185,13 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro字典_创建”创建或“FBro值_取字典”“FBro字典_取字典”等返回的 Dictionary 受管句柄。"
           },
           {
             "name": "键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "字典键名；键不存在时读取类命令返回默认值（0、假或空文本）。"
           }
         ],
         "returnType": "int",
@@ -1332,7 +4200,7 @@
       "demoInvocation": "FBro字典_取整数(1, \"演示参数2\")"
     },
     {
-      "index": 53,
+      "index": 147,
       "name": "FBro字典_取小数",
       "aliases": [
         "FBroHsDictionaryValue_GetDouble"
@@ -1348,11 +4216,13 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro字典_创建”创建或“FBro值_取字典”“FBro字典_取字典”等返回的 Dictionary 受管句柄。"
           },
           {
             "name": "键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "字典键名；键不存在时读取类命令返回默认值（0、假或空文本）。"
           }
         ],
         "returnType": "double",
@@ -1361,7 +4231,7 @@
       "demoInvocation": "FBro字典_取小数(1, \"演示参数2\")"
     },
     {
-      "index": 54,
+      "index": 148,
       "name": "FBro字典_取文本",
       "aliases": [
         "FBroHsDictionaryValue_GetString"
@@ -1377,11 +4247,13 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro字典_创建”创建或“FBro值_取字典”“FBro字典_取字典”等返回的 Dictionary 受管句柄。"
           },
           {
             "name": "键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "字典键名；键不存在时读取类命令返回默认值（0、假或空文本）。"
           }
         ],
         "returnType": "wideString",
@@ -1390,7 +4262,7 @@
       "demoInvocation": "FBro字典_取文本(1, \"演示参数2\")"
     },
     {
-      "index": 55,
+      "index": 149,
       "name": "FBro字典_取键列表JSON",
       "aliases": [
         "FBroHsDictionaryValue_GetKeys"
@@ -1406,7 +4278,8 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro字典_创建”创建或“FBro值_取字典”“FBro字典_取字典”等返回的 Dictionary 受管句柄。"
           }
         ],
         "returnType": "wideString"
@@ -1414,7 +4287,7 @@
       "demoInvocation": "FBro字典_取键列表JSON(1)"
     },
     {
-      "index": 56,
+      "index": 150,
       "name": "FBro字典_取值对象",
       "aliases": [
         "FBroHsDictionaryValue_GetValue"
@@ -1430,11 +4303,13 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro字典_创建”创建或“FBro值_取字典”“FBro字典_取字典”等返回的 Dictionary 受管句柄。"
           },
           {
             "name": "键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "字典键名；键不存在时读取类命令返回默认值（0、假或空文本）。"
           }
         ],
         "returnType": "longLong",
@@ -1443,7 +4318,7 @@
       "demoInvocation": "FBro字典_取值对象(1, \"演示参数2\")"
     },
     {
-      "index": 57,
+      "index": 151,
       "name": "FBro字典_取二进制",
       "aliases": [
         "FBroHsDictionaryValue_GetBinary"
@@ -1459,11 +4334,13 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro字典_创建”创建或“FBro值_取字典”“FBro字典_取字典”等返回的 Dictionary 受管句柄。"
           },
           {
             "name": "键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "字典键名；键不存在时读取类命令返回默认值（0、假或空文本）。"
           }
         ],
         "returnType": "longLong",
@@ -1472,7 +4349,7 @@
       "demoInvocation": "FBro字典_取二进制(1, \"演示参数2\")"
     },
     {
-      "index": 58,
+      "index": 152,
       "name": "FBro字典_取字典",
       "aliases": [
         "FBroHsDictionaryValue_GetDictionary"
@@ -1488,11 +4365,13 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro字典_创建”创建或“FBro值_取字典”“FBro字典_取字典”等返回的 Dictionary 受管句柄。"
           },
           {
             "name": "键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "字典键名；键不存在时读取类命令返回默认值（0、假或空文本）。"
           }
         ],
         "returnType": "longLong",
@@ -1501,7 +4380,7 @@
       "demoInvocation": "FBro字典_取字典(1, \"演示参数2\")"
     },
     {
-      "index": 59,
+      "index": 153,
       "name": "FBro字典_取列表",
       "aliases": [
         "FBroHsDictionaryValue_GetList"
@@ -1517,11 +4396,13 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro字典_创建”创建或“FBro值_取字典”“FBro字典_取字典”等返回的 Dictionary 受管句柄。"
           },
           {
             "name": "键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "字典键名；键不存在时读取类命令返回默认值（0、假或空文本）。"
           }
         ],
         "returnType": "longLong",
@@ -1530,7 +4411,7 @@
       "demoInvocation": "FBro字典_取列表(1, \"演示参数2\")"
     },
     {
-      "index": 60,
+      "index": 154,
       "name": "FBro字典_设为空",
       "aliases": [
         "FBroHsDictionaryValue_SetNull"
@@ -1546,11 +4427,13 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro字典_创建”创建或“FBro值_取字典”“FBro字典_取字典”等返回的 Dictionary 受管句柄。"
           },
           {
             "name": "键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "字典键名；键不存在时读取类命令返回默认值（0、假或空文本）。"
           }
         ],
         "returnType": "int",
@@ -1559,7 +4442,7 @@
       "demoInvocation": "FBro字典_设为空(1, \"演示参数2\")"
     },
     {
-      "index": 61,
+      "index": 155,
       "name": "FBro字典_设置逻辑",
       "aliases": [
         "FBroHsDictionaryValue_SetBool"
@@ -1575,15 +4458,18 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro字典_创建”创建或“FBro值_取字典”“FBro字典_取字典”等返回的 Dictionary 受管句柄。"
           },
           {
             "name": "键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "字典键名；键不存在时读取类命令返回默认值（0、假或空文本）。"
           },
           {
             "name": "值",
-            "type": "bool"
+            "type": "bool",
+            "description": "要写入的值。"
           }
         ],
         "returnType": "int",
@@ -1592,7 +4478,7 @@
       "demoInvocation": "FBro字典_设置逻辑(1, \"演示参数2\", 真)"
     },
     {
-      "index": 62,
+      "index": 156,
       "name": "FBro字典_设置整数",
       "aliases": [
         "FBroHsDictionaryValue_SetInt"
@@ -1608,15 +4494,18 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro字典_创建”创建或“FBro值_取字典”“FBro字典_取字典”等返回的 Dictionary 受管句柄。"
           },
           {
             "name": "键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "字典键名；键不存在时读取类命令返回默认值（0、假或空文本）。"
           },
           {
             "name": "值",
-            "type": "int"
+            "type": "int",
+            "description": "要写入的值。"
           }
         ],
         "returnType": "int",
@@ -1625,7 +4514,7 @@
       "demoInvocation": "FBro字典_设置整数(1, \"演示参数2\", 1)"
     },
     {
-      "index": 63,
+      "index": 157,
       "name": "FBro字典_设置小数",
       "aliases": [
         "FBroHsDictionaryValue_SetDouble"
@@ -1641,15 +4530,18 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro字典_创建”创建或“FBro值_取字典”“FBro字典_取字典”等返回的 Dictionary 受管句柄。"
           },
           {
             "name": "键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "字典键名；键不存在时读取类命令返回默认值（0、假或空文本）。"
           },
           {
             "name": "值",
-            "type": "double"
+            "type": "double",
+            "description": "要写入的值。"
           }
         ],
         "returnType": "int",
@@ -1658,7 +4550,7 @@
       "demoInvocation": "FBro字典_设置小数(1, \"演示参数2\", 1.0)"
     },
     {
-      "index": 64,
+      "index": 158,
       "name": "FBro字典_设置文本",
       "aliases": [
         "FBroHsDictionaryValue_SetString"
@@ -1674,15 +4566,18 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro字典_创建”创建或“FBro值_取字典”“FBro字典_取字典”等返回的 Dictionary 受管句柄。"
           },
           {
             "name": "键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "字典键名；键不存在时读取类命令返回默认值（0、假或空文本）。"
           },
           {
             "name": "值",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要写入的值。"
           }
         ],
         "returnType": "int",
@@ -1691,7 +4586,7 @@
       "demoInvocation": "FBro字典_设置文本(1, \"演示参数2\", \"演示参数3\")"
     },
     {
-      "index": 65,
+      "index": 159,
       "name": "FBro字典_设置值对象",
       "aliases": [
         "FBroHsDictionaryValue_SetValue"
@@ -1707,15 +4602,18 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro字典_创建”创建或“FBro值_取字典”“FBro字典_取字典”等返回的 Dictionary 受管句柄。"
           },
           {
             "name": "键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "字典键名；键不存在时读取类命令返回默认值（0、假或空文本）。"
           },
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro值_创建”创建或“FBro任务_取对象”“FBro字典_取值对象”等返回的 Value 受管句柄。"
           }
         ],
         "returnType": "int",
@@ -1724,7 +4622,7 @@
       "demoInvocation": "FBro字典_设置值对象(1, \"演示参数2\", 1)"
     },
     {
-      "index": 66,
+      "index": 160,
       "name": "FBro字典_设置二进制",
       "aliases": [
         "FBroHsDictionaryValue_SetBinary"
@@ -1740,15 +4638,18 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro字典_创建”创建或“FBro值_取字典”“FBro字典_取字典”等返回的 Dictionary 受管句柄。"
           },
           {
             "name": "键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "字典键名；键不存在时读取类命令返回默认值（0、假或空文本）。"
           },
           {
             "name": "缓冲句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro缓冲_从文本”“FBro任务_取缓冲”等返回的受管缓冲句柄；释放后再用返回负错误码。"
           }
         ],
         "returnType": "int",
@@ -1757,7 +4658,7 @@
       "demoInvocation": "FBro字典_设置二进制(1, \"演示参数2\", 1)"
     },
     {
-      "index": 67,
+      "index": 161,
       "name": "FBro字典_设置字典",
       "aliases": [
         "FBroHsDictionaryValue_SetDictionary"
@@ -1773,15 +4674,18 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro字典_创建”创建或“FBro值_取字典”“FBro字典_取字典”等返回的 Dictionary 受管句柄。"
           },
           {
             "name": "键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "字典键名；键不存在时读取类命令返回默认值（0、假或空文本）。"
           },
           {
             "name": "子字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "要交给该键管理的子 Dictionary 受管句柄。"
           }
         ],
         "returnType": "int",
@@ -1790,7 +4694,7 @@
       "demoInvocation": "FBro字典_设置字典(1, \"演示参数2\", 1)"
     },
     {
-      "index": 68,
+      "index": 162,
       "name": "FBro字典_设置列表",
       "aliases": [
         "FBroHsDictionaryValue_SetList"
@@ -1806,15 +4710,18 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro字典_创建”创建或“FBro值_取字典”“FBro字典_取字典”等返回的 Dictionary 受管句柄。"
           },
           {
             "name": "键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "字典键名；键不存在时读取类命令返回默认值（0、假或空文本）。"
           },
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro列表_创建”创建或“FBro消息_取参数列表”“FBro值_取列表”等返回的 List 受管句柄。"
           }
         ],
         "returnType": "int",
@@ -1823,7 +4730,7 @@
       "demoInvocation": "FBro字典_设置列表(1, \"演示参数2\", 1)"
     },
     {
-      "index": 69,
+      "index": 163,
       "name": "FBro列表_创建",
       "aliases": [
         "FBroHsListValue_Create"
@@ -1842,7 +4749,7 @@
       "demoInvocation": "FBro列表_创建()"
     },
     {
-      "index": 70,
+      "index": 164,
       "name": "FBro列表_是否有效",
       "aliases": [
         "FBroHsListValue_IsValid"
@@ -1858,7 +4765,8 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro列表_创建”创建或“FBro消息_取参数列表”“FBro值_取列表”等返回的 List 受管句柄。"
           }
         ],
         "returnType": "int"
@@ -1866,7 +4774,7 @@
       "demoInvocation": "FBro列表_是否有效(1)"
     },
     {
-      "index": 71,
+      "index": 165,
       "name": "FBro列表_是否被拥有",
       "aliases": [
         "FBroHsListValue_IsOwned"
@@ -1882,7 +4790,8 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro列表_创建”创建或“FBro消息_取参数列表”“FBro值_取列表”等返回的 List 受管句柄。"
           }
         ],
         "returnType": "int"
@@ -1890,7 +4799,7 @@
       "demoInvocation": "FBro列表_是否被拥有(1)"
     },
     {
-      "index": 72,
+      "index": 166,
       "name": "FBro列表_是否只读",
       "aliases": [
         "FBroHsListValue_IsReadOnly"
@@ -1906,7 +4815,8 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro列表_创建”创建或“FBro消息_取参数列表”“FBro值_取列表”等返回的 List 受管句柄。"
           }
         ],
         "returnType": "int"
@@ -1914,7 +4824,7 @@
       "demoInvocation": "FBro列表_是否只读(1)"
     },
     {
-      "index": 73,
+      "index": 167,
       "name": "FBro列表_是否同一对象",
       "aliases": [
         "FBroHsListValue_IsSame"
@@ -1930,11 +4840,13 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro列表_创建”创建或“FBro消息_取参数列表”“FBro值_取列表”等返回的 List 受管句柄。"
           },
           {
             "name": "另一列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "参与比较的另一个 List 受管句柄。"
           }
         ],
         "returnType": "int"
@@ -1942,7 +4854,7 @@
       "demoInvocation": "FBro列表_是否同一对象(1, 1)"
     },
     {
-      "index": 74,
+      "index": 168,
       "name": "FBro列表_是否相等",
       "aliases": [
         "FBroHsListValue_IsEqual"
@@ -1958,11 +4870,13 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro列表_创建”创建或“FBro消息_取参数列表”“FBro值_取列表”等返回的 List 受管句柄。"
           },
           {
             "name": "另一列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "参与比较的另一个 List 受管句柄。"
           }
         ],
         "returnType": "int"
@@ -1970,7 +4884,7 @@
       "demoInvocation": "FBro列表_是否相等(1, 1)"
     },
     {
-      "index": 75,
+      "index": 169,
       "name": "FBro列表_复制",
       "aliases": [
         "FBroHsListValue_Copy"
@@ -1986,7 +4900,8 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro列表_创建”创建或“FBro消息_取参数列表”“FBro值_取列表”等返回的 List 受管句柄。"
           }
         ],
         "returnType": "longLong"
@@ -1994,7 +4909,7 @@
       "demoInvocation": "FBro列表_复制(1)"
     },
     {
-      "index": 76,
+      "index": 170,
       "name": "FBro列表_设置数量",
       "aliases": [
         "FBroHsListValue_SetSize"
@@ -2010,11 +4925,13 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro列表_创建”创建或“FBro消息_取参数列表”“FBro值_取列表”等返回的 List 受管句柄。"
           },
           {
             "name": "数量",
-            "type": "int"
+            "type": "int",
+            "description": "新列表长度；扩大的位置填充空值。"
           }
         ],
         "returnType": "int"
@@ -2022,7 +4939,7 @@
       "demoInvocation": "FBro列表_设置数量(1, 1)"
     },
     {
-      "index": 77,
+      "index": 171,
       "name": "FBro列表_取数量",
       "aliases": [
         "FBroHsListValue_GetSize"
@@ -2038,7 +4955,8 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro列表_创建”创建或“FBro消息_取参数列表”“FBro值_取列表”等返回的 List 受管句柄。"
           }
         ],
         "returnType": "int"
@@ -2046,7 +4964,7 @@
       "demoInvocation": "FBro列表_取数量(1)"
     },
     {
-      "index": 78,
+      "index": 172,
       "name": "FBro列表_清空",
       "aliases": [
         "FBroHsListValue_Clear"
@@ -2062,7 +4980,8 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro列表_创建”创建或“FBro消息_取参数列表”“FBro值_取列表”等返回的 List 受管句柄。"
           }
         ],
         "returnType": "int"
@@ -2070,7 +4989,7 @@
       "demoInvocation": "FBro列表_清空(1)"
     },
     {
-      "index": 79,
+      "index": 173,
       "name": "FBro列表_删除",
       "aliases": [
         "FBroHsListValue_Remove"
@@ -2086,11 +5005,13 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro列表_创建”创建或“FBro消息_取参数列表”“FBro值_取列表”等返回的 List 受管句柄。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "元素下标，从 0 起；负数按无效参数拒绝，证书链越界返回 0。"
           }
         ],
         "returnType": "int"
@@ -2098,7 +5019,7 @@
       "demoInvocation": "FBro列表_删除(1, 1)"
     },
     {
-      "index": 80,
+      "index": 174,
       "name": "FBro列表_取类型",
       "aliases": [
         "FBroHsListValue_GetType"
@@ -2114,11 +5035,13 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro列表_创建”创建或“FBro消息_取参数列表”“FBro值_取列表”等返回的 List 受管句柄。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "元素下标，从 0 起；负数按无效参数拒绝，证书链越界返回 0。"
           }
         ],
         "returnType": "int"
@@ -2126,7 +5049,7 @@
       "demoInvocation": "FBro列表_取类型(1, 1)"
     },
     {
-      "index": 81,
+      "index": 175,
       "name": "FBro列表_取逻辑",
       "aliases": [
         "FBroHsListValue_GetBool"
@@ -2142,11 +5065,13 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro列表_创建”创建或“FBro消息_取参数列表”“FBro值_取列表”等返回的 List 受管句柄。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "元素下标，从 0 起；负数按无效参数拒绝，证书链越界返回 0。"
           }
         ],
         "returnType": "int"
@@ -2154,7 +5079,7 @@
       "demoInvocation": "FBro列表_取逻辑(1, 1)"
     },
     {
-      "index": 82,
+      "index": 176,
       "name": "FBro列表_取整数",
       "aliases": [
         "FBroHsListValue_GetInt"
@@ -2170,11 +5095,13 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro列表_创建”创建或“FBro消息_取参数列表”“FBro值_取列表”等返回的 List 受管句柄。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "元素下标，从 0 起；负数按无效参数拒绝，证书链越界返回 0。"
           }
         ],
         "returnType": "int"
@@ -2182,7 +5109,7 @@
       "demoInvocation": "FBro列表_取整数(1, 1)"
     },
     {
-      "index": 83,
+      "index": 177,
       "name": "FBro列表_取小数",
       "aliases": [
         "FBroHsListValue_GetDouble"
@@ -2198,11 +5125,13 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro列表_创建”创建或“FBro消息_取参数列表”“FBro值_取列表”等返回的 List 受管句柄。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "元素下标，从 0 起；负数按无效参数拒绝，证书链越界返回 0。"
           }
         ],
         "returnType": "double"
@@ -2210,7 +5139,7 @@
       "demoInvocation": "FBro列表_取小数(1, 1)"
     },
     {
-      "index": 84,
+      "index": 178,
       "name": "FBro列表_取文本",
       "aliases": [
         "FBroHsListValue_GetString"
@@ -2226,11 +5155,13 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro列表_创建”创建或“FBro消息_取参数列表”“FBro值_取列表”等返回的 List 受管句柄。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "元素下标，从 0 起；负数按无效参数拒绝，证书链越界返回 0。"
           }
         ],
         "returnType": "wideString"
@@ -2238,7 +5169,7 @@
       "demoInvocation": "FBro列表_取文本(1, 1)"
     },
     {
-      "index": 85,
+      "index": 179,
       "name": "FBro列表_取值对象",
       "aliases": [
         "FBroHsListValue_GetValue"
@@ -2254,11 +5185,13 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro列表_创建”创建或“FBro消息_取参数列表”“FBro值_取列表”等返回的 List 受管句柄。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "元素下标，从 0 起；负数按无效参数拒绝，证书链越界返回 0。"
           }
         ],
         "returnType": "longLong"
@@ -2266,7 +5199,7 @@
       "demoInvocation": "FBro列表_取值对象(1, 1)"
     },
     {
-      "index": 86,
+      "index": 180,
       "name": "FBro列表_取二进制",
       "aliases": [
         "FBroHsListValue_GetBinary"
@@ -2282,11 +5215,13 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro列表_创建”创建或“FBro消息_取参数列表”“FBro值_取列表”等返回的 List 受管句柄。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "元素下标，从 0 起；负数按无效参数拒绝，证书链越界返回 0。"
           }
         ],
         "returnType": "longLong"
@@ -2294,7 +5229,7 @@
       "demoInvocation": "FBro列表_取二进制(1, 1)"
     },
     {
-      "index": 87,
+      "index": 181,
       "name": "FBro列表_取字典",
       "aliases": [
         "FBroHsListValue_GetDictionary"
@@ -2310,11 +5245,13 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro列表_创建”创建或“FBro消息_取参数列表”“FBro值_取列表”等返回的 List 受管句柄。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "元素下标，从 0 起；负数按无效参数拒绝，证书链越界返回 0。"
           }
         ],
         "returnType": "longLong"
@@ -2322,7 +5259,7 @@
       "demoInvocation": "FBro列表_取字典(1, 1)"
     },
     {
-      "index": 88,
+      "index": 182,
       "name": "FBro列表_取列表",
       "aliases": [
         "FBroHsListValue_GetList"
@@ -2338,11 +5275,13 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro列表_创建”创建或“FBro消息_取参数列表”“FBro值_取列表”等返回的 List 受管句柄。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "元素下标，从 0 起；负数按无效参数拒绝，证书链越界返回 0。"
           }
         ],
         "returnType": "longLong"
@@ -2350,7 +5289,7 @@
       "demoInvocation": "FBro列表_取列表(1, 1)"
     },
     {
-      "index": 89,
+      "index": 183,
       "name": "FBro列表_设为空",
       "aliases": [
         "FBroHsListValue_SetNull"
@@ -2366,11 +5305,13 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro列表_创建”创建或“FBro消息_取参数列表”“FBro值_取列表”等返回的 List 受管句柄。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "元素下标，从 0 起；负数按无效参数拒绝，证书链越界返回 0。"
           }
         ],
         "returnType": "int"
@@ -2378,7 +5319,7 @@
       "demoInvocation": "FBro列表_设为空(1, 1)"
     },
     {
-      "index": 90,
+      "index": 184,
       "name": "FBro列表_设置逻辑",
       "aliases": [
         "FBroHsListValue_SetBool"
@@ -2394,15 +5335,18 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro列表_创建”创建或“FBro消息_取参数列表”“FBro值_取列表”等返回的 List 受管句柄。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "元素下标，从 0 起；负数按无效参数拒绝，证书链越界返回 0。"
           },
           {
             "name": "值",
-            "type": "bool"
+            "type": "bool",
+            "description": "要写入的值。"
           }
         ],
         "returnType": "int"
@@ -2410,7 +5354,7 @@
       "demoInvocation": "FBro列表_设置逻辑(1, 1, 真)"
     },
     {
-      "index": 91,
+      "index": 185,
       "name": "FBro列表_设置整数",
       "aliases": [
         "FBroHsListValue_SetInt"
@@ -2426,15 +5370,18 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro列表_创建”创建或“FBro消息_取参数列表”“FBro值_取列表”等返回的 List 受管句柄。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "元素下标，从 0 起；负数按无效参数拒绝，证书链越界返回 0。"
           },
           {
             "name": "值",
-            "type": "int"
+            "type": "int",
+            "description": "要写入的值。"
           }
         ],
         "returnType": "int"
@@ -2442,7 +5389,7 @@
       "demoInvocation": "FBro列表_设置整数(1, 1, 1)"
     },
     {
-      "index": 92,
+      "index": 186,
       "name": "FBro列表_设置小数",
       "aliases": [
         "FBroHsListValue_SetDouble"
@@ -2458,15 +5405,18 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro列表_创建”创建或“FBro消息_取参数列表”“FBro值_取列表”等返回的 List 受管句柄。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "元素下标，从 0 起；负数按无效参数拒绝，证书链越界返回 0。"
           },
           {
             "name": "值",
-            "type": "double"
+            "type": "double",
+            "description": "要写入的值。"
           }
         ],
         "returnType": "int"
@@ -2474,7 +5424,7 @@
       "demoInvocation": "FBro列表_设置小数(1, 1, 1.0)"
     },
     {
-      "index": 93,
+      "index": 187,
       "name": "FBro列表_设置文本",
       "aliases": [
         "FBroHsListValue_SetString"
@@ -2490,15 +5440,18 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro列表_创建”创建或“FBro消息_取参数列表”“FBro值_取列表”等返回的 List 受管句柄。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "元素下标，从 0 起；负数按无效参数拒绝，证书链越界返回 0。"
           },
           {
             "name": "值",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要写入的值。"
           }
         ],
         "returnType": "int",
@@ -2507,7 +5460,7 @@
       "demoInvocation": "FBro列表_设置文本(1, 1, \"演示参数3\")"
     },
     {
-      "index": 94,
+      "index": 188,
       "name": "FBro列表_设置值对象",
       "aliases": [
         "FBroHsListValue_SetValue"
@@ -2523,15 +5476,18 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro列表_创建”创建或“FBro消息_取参数列表”“FBro值_取列表”等返回的 List 受管句柄。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "元素下标，从 0 起；负数按无效参数拒绝，证书链越界返回 0。"
           },
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro值_创建”创建或“FBro任务_取对象”“FBro字典_取值对象”等返回的 Value 受管句柄。"
           }
         ],
         "returnType": "int"
@@ -2539,7 +5495,7 @@
       "demoInvocation": "FBro列表_设置值对象(1, 1, 1)"
     },
     {
-      "index": 95,
+      "index": 189,
       "name": "FBro列表_设置二进制",
       "aliases": [
         "FBroHsListValue_SetBinary"
@@ -2555,15 +5511,18 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro列表_创建”创建或“FBro消息_取参数列表”“FBro值_取列表”等返回的 List 受管句柄。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "元素下标，从 0 起；负数按无效参数拒绝，证书链越界返回 0。"
           },
           {
             "name": "缓冲句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro缓冲_从文本”“FBro任务_取缓冲”等返回的受管缓冲句柄；释放后再用返回负错误码。"
           }
         ],
         "returnType": "int"
@@ -2571,7 +5530,7 @@
       "demoInvocation": "FBro列表_设置二进制(1, 1, 1)"
     },
     {
-      "index": 96,
+      "index": 190,
       "name": "FBro列表_设置字典",
       "aliases": [
         "FBroHsListValue_SetDictionary"
@@ -2587,15 +5546,18 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro列表_创建”创建或“FBro消息_取参数列表”“FBro值_取列表”等返回的 List 受管句柄。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "元素下标，从 0 起；负数按无效参数拒绝，证书链越界返回 0。"
           },
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro字典_创建”创建或“FBro值_取字典”“FBro字典_取字典”等返回的 Dictionary 受管句柄。"
           }
         ],
         "returnType": "int"
@@ -2603,7 +5565,7 @@
       "demoInvocation": "FBro列表_设置字典(1, 1, 1)"
     },
     {
-      "index": 97,
+      "index": 191,
       "name": "FBro列表_设置列表",
       "aliases": [
         "FBroHsListValue_SetList"
@@ -2619,15 +5581,18 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro列表_创建”创建或“FBro消息_取参数列表”“FBro值_取列表”等返回的 List 受管句柄。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "元素下标，从 0 起；负数按无效参数拒绝，证书链越界返回 0。"
           },
           {
             "name": "子列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "要交给该下标管理的子 List 受管句柄。"
           }
         ],
         "returnType": "int"
@@ -2635,7 +5600,7 @@
       "demoInvocation": "FBro列表_设置列表(1, 1, 1)"
     },
     {
-      "index": 98,
+      "index": 192,
       "name": "FBro流_从文件创建",
       "aliases": [
         "FBroStream_CreateForFile"
@@ -2651,7 +5616,8 @@
         "parameters": [
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "保存目标文件的完整路径。"
           }
         ],
         "returnType": "longLong",
@@ -2660,7 +5626,7 @@
       "demoInvocation": "FBro流_从文件创建(\"module-demo-temp.txt\")"
     },
     {
-      "index": 99,
+      "index": 193,
       "name": "FBro流_从缓冲创建",
       "aliases": [
         "FBroStream_CreateForData"
@@ -2676,7 +5642,8 @@
         "parameters": [
           {
             "name": "缓冲句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro缓冲_从文本”“FBro任务_取缓冲”等返回的受管缓冲句柄；释放后再用返回负错误码。"
           }
         ],
         "returnType": "longLong"
@@ -2684,7 +5651,7 @@
       "demoInvocation": "FBro流_从缓冲创建(1)"
     },
     {
-      "index": 100,
+      "index": 194,
       "name": "FBro流_读取",
       "aliases": [
         "FBroStream_Read"
@@ -2700,15 +5667,18 @@
         "parameters": [
           {
             "name": "流句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro流_从文件创建”“FBro流_从缓冲创建”返回的只读流句柄。"
           },
           {
             "name": "元素大小",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "单个元素的字节数，如 1=字节。"
           },
           {
             "name": "元素数量",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "最多读取的元素个数；单次总读取上限 256 MiB。"
           }
         ],
         "returnType": "longLong"
@@ -2716,7 +5686,7 @@
       "demoInvocation": "FBro流_读取(1, 1, 1)"
     },
     {
-      "index": 101,
+      "index": 195,
       "name": "FBro流_定位",
       "aliases": [
         "FBroStream_Seek"
@@ -2732,15 +5702,18 @@
         "parameters": [
           {
             "name": "流句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro流_从文件创建”“FBro流_从缓冲创建”返回的只读流句柄。"
           },
           {
             "name": "偏移",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "目标字节偏移，配合基准参数使用。"
           },
           {
             "name": "基准",
-            "type": "int"
+            "type": "int",
+            "description": "定位基准：0 开头、1 当前位置、2 结尾。"
           }
         ],
         "returnType": "int"
@@ -2748,7 +5721,7 @@
       "demoInvocation": "FBro流_定位(1, 1, 1)"
     },
     {
-      "index": 102,
+      "index": 196,
       "name": "FBro流_取位置",
       "aliases": [
         "FBroStream_Tell"
@@ -2764,7 +5737,8 @@
         "parameters": [
           {
             "name": "流句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro流_从文件创建”“FBro流_从缓冲创建”返回的只读流句柄。"
           }
         ],
         "returnType": "longLong"
@@ -2772,7 +5746,7 @@
       "demoInvocation": "FBro流_取位置(1)"
     },
     {
-      "index": 103,
+      "index": 197,
       "name": "FBro流_是否结束",
       "aliases": [
         "FBroStream_Eof"
@@ -2788,7 +5762,8 @@
         "parameters": [
           {
             "name": "流句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro流_从文件创建”“FBro流_从缓冲创建”返回的只读流句柄。"
           }
         ],
         "returnType": "int"
@@ -2796,7 +5771,7 @@
       "demoInvocation": "FBro流_是否结束(1)"
     },
     {
-      "index": 104,
+      "index": 198,
       "name": "FBro流_是否可能阻塞",
       "aliases": [
         "FBroStream_MayBlock"
@@ -2812,7 +5787,8 @@
         "parameters": [
           {
             "name": "流句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro流_从文件创建”“FBro流_从缓冲创建”返回的只读流句柄。"
           }
         ],
         "returnType": "int"
@@ -2820,7 +5796,7 @@
       "demoInvocation": "FBro流_是否可能阻塞(1)"
     },
     {
-      "index": 105,
+      "index": 199,
       "name": "FBro图像_异步下载",
       "aliases": [
         "FBroHsBrowserHost_DownloadImage"
@@ -2838,29 +5814,36 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "完整 URL（含协议）。"
           },
           {
             "name": "作为图标",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=按图标用途下载（浏览器优先选择图标尺寸资源）。"
           },
           {
             "name": "最大尺寸",
-            "type": "int"
+            "type": "int",
+            "description": "返回图像的最大尺寸（像素），超出会被缩放。"
           },
           {
             "name": "绕过缓存",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=绕过本地缓存重新下载。"
           }
         ],
         "returnType": "longLong",
@@ -2869,7 +5852,63 @@
       "demoInvocation": "FBro图像_异步下载(演示FBroBrowser控件, \"https://example.com\", 真, 1, 真)"
     },
     {
-      "index": 106,
+      "index": 200,
+      "name": "FBro图像_下载",
+      "aliases": [
+        "LB_FBro_DownloadImageSync"
+      ],
+      "signature": "FBro图像_下载(控件名, 地址, 作为图标, 最大尺寸, 绕过缓存)",
+      "description": "同步下载图像并直接返回图像句柄（60 秒超时，失败返回 0）；用完调用 FBro对象_释放。",
+      "insertText": "FBro图像_下载($1, \"$2\", 假, $4, 假)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro图像_下载",
+        "runtimeName": "FBro图像_下载",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual",
+              "resource"
+            ],
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "地址",
+            "type": "wideString",
+            "description": "完整 URL（含协议）。"
+          },
+          {
+            "name": "作为图标",
+            "type": "bool",
+            "description": "真=按图标用途下载（浏览器优先选择图标尺寸资源）。"
+          },
+          {
+            "name": "最大尺寸",
+            "type": "int",
+            "description": "返回图像的最大尺寸（像素），超出会被缩放。"
+          },
+          {
+            "name": "绕过缓存",
+            "type": "bool",
+            "description": "真=绕过本地缓存重新下载。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro图像_下载(演示FBroBrowser控件, \"https://example.com\", 真, 1, 真)"
+    },
+    {
+      "index": 201,
       "name": "FBro图像_是否为空",
       "aliases": [
         "FBroHsImage_IsEmpty"
@@ -2885,7 +5924,8 @@
         "parameters": [
           {
             "name": "图像句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro图像_下载”“FBro拖放数据_取图像”等返回的受管图像句柄。"
           }
         ],
         "returnType": "int"
@@ -2893,7 +5933,7 @@
       "demoInvocation": "FBro图像_是否为空(1)"
     },
     {
-      "index": 107,
+      "index": 202,
       "name": "FBro图像_取宽度",
       "aliases": [
         "FBroHsImage_GetWidth"
@@ -2909,7 +5949,8 @@
         "parameters": [
           {
             "name": "图像句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro图像_下载”“FBro拖放数据_取图像”等返回的受管图像句柄。"
           }
         ],
         "returnType": "int"
@@ -2917,7 +5958,7 @@
       "demoInvocation": "FBro图像_取宽度(1)"
     },
     {
-      "index": 108,
+      "index": 203,
       "name": "FBro图像_取高度",
       "aliases": [
         "FBroHsImage_GetHeight"
@@ -2933,7 +5974,8 @@
         "parameters": [
           {
             "name": "图像句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro图像_下载”“FBro拖放数据_取图像”等返回的受管图像句柄。"
           }
         ],
         "returnType": "int"
@@ -2941,7 +5983,7 @@
       "demoInvocation": "FBro图像_取高度(1)"
     },
     {
-      "index": 109,
+      "index": 204,
       "name": "FBro图像_取表示信息JSON",
       "aliases": [
         "FBroHsImage_GetRepresentationInfo"
@@ -2957,11 +5999,13 @@
         "parameters": [
           {
             "name": "图像句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro图像_下载”“FBro拖放数据_取图像”等返回的受管图像句柄。"
           },
           {
             "name": "缩放因子",
-            "type": "double"
+            "type": "double",
+            "description": "目标缩放因子，如 1.0、1.5、2.0，用于匹配对应 DPI 的图像表示。"
           }
         ],
         "returnType": "wideString"
@@ -2969,7 +6013,7 @@
       "demoInvocation": "FBro图像_取表示信息JSON(1, 1.0)"
     },
     {
-      "index": 110,
+      "index": 205,
       "name": "FBro图像_转位图缓冲",
       "aliases": [
         "FBroHsImage_GetAsBitmap"
@@ -2985,19 +6029,23 @@
         "parameters": [
           {
             "name": "图像句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro图像_下载”“FBro拖放数据_取图像”等返回的受管图像句柄。"
           },
           {
             "name": "缩放因子",
-            "type": "double"
+            "type": "double",
+            "description": "目标缩放因子，如 1.0、1.5、2.0，用于匹配对应 DPI 的图像表示。"
           },
           {
             "name": "颜色类型",
-            "type": "int"
+            "type": "int",
+            "description": "位图像素颜色类型常量（RGBA 等），决定输出缓冲的像素布局。"
           },
           {
             "name": "透明类型",
-            "type": "int"
+            "type": "int",
+            "description": "图像透明类型常量，决定输出位图透明通道的处理方式。"
           }
         ],
         "returnType": "longLong"
@@ -3005,7 +6053,7 @@
       "demoInvocation": "FBro图像_转位图缓冲(1, 1.0, 1, 1)"
     },
     {
-      "index": 111,
+      "index": 206,
       "name": "FBro图像_转JPEG缓冲",
       "aliases": [
         "FBroHsImage_GetAsJPEG"
@@ -3021,15 +6069,18 @@
         "parameters": [
           {
             "name": "图像句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro图像_下载”“FBro拖放数据_取图像”等返回的受管图像句柄。"
           },
           {
             "name": "缩放因子",
-            "type": "double"
+            "type": "double",
+            "description": "目标缩放因子，如 1.0、1.5、2.0，用于匹配对应 DPI 的图像表示。"
           },
           {
             "name": "质量",
-            "type": "int"
+            "type": "int",
+            "description": "JPEG 编码质量 0~100。"
           }
         ],
         "returnType": "longLong"
@@ -3037,7 +6088,7 @@
       "demoInvocation": "FBro图像_转JPEG缓冲(1, 1.0, 1)"
     },
     {
-      "index": 112,
+      "index": 207,
       "name": "FBro图像_转PNG缓冲",
       "aliases": [
         "FBroHsImage_GetAsPNG"
@@ -3053,15 +6104,18 @@
         "parameters": [
           {
             "name": "图像句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro图像_下载”“FBro拖放数据_取图像”等返回的受管图像句柄。"
           },
           {
             "name": "缩放因子",
-            "type": "double"
+            "type": "double",
+            "description": "目标缩放因子，如 1.0、1.5、2.0，用于匹配对应 DPI 的图像表示。"
           },
           {
             "name": "保留透明",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=保留 PNG 透明通道。"
           }
         ],
         "returnType": "longLong"
@@ -3069,7 +6123,7 @@
       "demoInvocation": "FBro图像_转PNG缓冲(1, 1.0, 真)"
     },
     {
-      "index": 113,
+      "index": 208,
       "name": "FBro证书_异步取当前",
       "aliases": [
         "LB_FBro_GetCurrentCertificateAsync"
@@ -3087,13 +6141,16 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "longLong",
@@ -3102,7 +6159,7 @@
       "demoInvocation": "FBro证书_异步取当前(演示FBroBrowser控件)"
     },
     {
-      "index": 114,
+      "index": 209,
       "name": "FBro证书_取主体",
       "aliases": [
         "FBroHsX509Certificate_GetSubject"
@@ -3118,7 +6175,8 @@
         "parameters": [
           {
             "name": "证书句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "证书异步任务或证书错误事件返回的受管证书句柄。"
           }
         ],
         "returnType": "longLong"
@@ -3126,7 +6184,7 @@
       "demoInvocation": "FBro证书_取主体(1)"
     },
     {
-      "index": 115,
+      "index": 210,
       "name": "FBro证书_取颁发者",
       "aliases": [
         "FBroHsX509Certificate_GetIssuer"
@@ -3142,7 +6200,8 @@
         "parameters": [
           {
             "name": "证书句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "证书异步任务或证书错误事件返回的受管证书句柄。"
           }
         ],
         "returnType": "longLong"
@@ -3150,7 +6209,7 @@
       "demoInvocation": "FBro证书_取颁发者(1)"
     },
     {
-      "index": 116,
+      "index": 211,
       "name": "FBro证书_取序列号缓冲",
       "aliases": [
         "FBroHsX509Certificate_GetSerialNumber"
@@ -3166,7 +6225,8 @@
         "parameters": [
           {
             "name": "证书句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "证书异步任务或证书错误事件返回的受管证书句柄。"
           }
         ],
         "returnType": "longLong"
@@ -3174,7 +6234,7 @@
       "demoInvocation": "FBro证书_取序列号缓冲(1)"
     },
     {
-      "index": 117,
+      "index": 212,
       "name": "FBro证书_取DER缓冲",
       "aliases": [
         "FBroHsX509Certificate_GetDEREncoded"
@@ -3190,7 +6250,8 @@
         "parameters": [
           {
             "name": "证书句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "证书异步任务或证书错误事件返回的受管证书句柄。"
           }
         ],
         "returnType": "longLong"
@@ -3198,7 +6259,7 @@
       "demoInvocation": "FBro证书_取DER缓冲(1)"
     },
     {
-      "index": 118,
+      "index": 213,
       "name": "FBro证书_取PEM缓冲",
       "aliases": [
         "FBroHsX509Certificate_GetPEMEncoded"
@@ -3214,7 +6275,8 @@
         "parameters": [
           {
             "name": "证书句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "证书异步任务或证书错误事件返回的受管证书句柄。"
           }
         ],
         "returnType": "longLong"
@@ -3222,7 +6284,7 @@
       "demoInvocation": "FBro证书_取PEM缓冲(1)"
     },
     {
-      "index": 119,
+      "index": 214,
       "name": "FBro证书_取生效时间",
       "aliases": [
         "FBroHsX509Certificate_GetValidStart"
@@ -3238,7 +6300,8 @@
         "parameters": [
           {
             "name": "证书句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "证书异步任务或证书错误事件返回的受管证书句柄。"
           }
         ],
         "returnType": "longLong"
@@ -3246,7 +6309,7 @@
       "demoInvocation": "FBro证书_取生效时间(1)"
     },
     {
-      "index": 120,
+      "index": 215,
       "name": "FBro证书_取失效时间",
       "aliases": [
         "FBroHsX509Certificate_GetValidExpiry"
@@ -3262,7 +6325,8 @@
         "parameters": [
           {
             "name": "证书句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "证书异步任务或证书错误事件返回的受管证书句柄。"
           }
         ],
         "returnType": "longLong"
@@ -3270,7 +6334,7 @@
       "demoInvocation": "FBro证书_取失效时间(1)"
     },
     {
-      "index": 121,
+      "index": 216,
       "name": "FBro证书_取颁发链数量",
       "aliases": [
         "FBroHsX509Certificate_GetIssuerChainSize"
@@ -3286,7 +6350,8 @@
         "parameters": [
           {
             "name": "证书句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "证书异步任务或证书错误事件返回的受管证书句柄。"
           }
         ],
         "returnType": "int"
@@ -3294,7 +6359,7 @@
       "demoInvocation": "FBro证书_取颁发链数量(1)"
     },
     {
-      "index": 122,
+      "index": 217,
       "name": "FBro证书_取DER颁发链项",
       "aliases": [
         "FBroHsX509Certificate_GetDEREncodedIssuerChain"
@@ -3310,11 +6375,13 @@
         "parameters": [
           {
             "name": "证书句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "证书异步任务或证书错误事件返回的受管证书句柄。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "元素下标，从 0 起；负数按无效参数拒绝，证书链越界返回 0。"
           }
         ],
         "returnType": "longLong"
@@ -3322,7 +6389,7 @@
       "demoInvocation": "FBro证书_取DER颁发链项(1, 1)"
     },
     {
-      "index": 123,
+      "index": 218,
       "name": "FBro证书_取PEM颁发链项",
       "aliases": [
         "FBroHsX509Certificate_GetPEMEncodedIssuerChain"
@@ -3338,11 +6405,13 @@
         "parameters": [
           {
             "name": "证书句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "证书异步任务或证书错误事件返回的受管证书句柄。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "元素下标，从 0 起；负数按无效参数拒绝，证书链越界返回 0。"
           }
         ],
         "returnType": "longLong"
@@ -3350,7 +6419,7 @@
       "demoInvocation": "FBro证书_取PEM颁发链项(1, 1)"
     },
     {
-      "index": 124,
+      "index": 219,
       "name": "FBro证书主体_取显示名",
       "aliases": [
         "FBroHsX509CertPrincipal_GetDisplayName"
@@ -3366,7 +6435,8 @@
         "parameters": [
           {
             "name": "主体句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro证书_取主体”“FBro证书_取颁发者”返回的 Principal 受管句柄。"
           }
         ],
         "returnType": "wideString"
@@ -3374,7 +6444,7 @@
       "demoInvocation": "FBro证书主体_取显示名(1)"
     },
     {
-      "index": 125,
+      "index": 220,
       "name": "FBro证书主体_取通用名",
       "aliases": [
         "FBroHsX509CertPrincipal_GetCommonName"
@@ -3390,7 +6460,8 @@
         "parameters": [
           {
             "name": "主体句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro证书_取主体”“FBro证书_取颁发者”返回的 Principal 受管句柄。"
           }
         ],
         "returnType": "wideString"
@@ -3398,7 +6469,7 @@
       "demoInvocation": "FBro证书主体_取通用名(1)"
     },
     {
-      "index": 126,
+      "index": 221,
       "name": "FBro证书主体_取地区名",
       "aliases": [
         "FBroHsX509CertPrincipal_GetLocalityName"
@@ -3414,7 +6485,8 @@
         "parameters": [
           {
             "name": "主体句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro证书_取主体”“FBro证书_取颁发者”返回的 Principal 受管句柄。"
           }
         ],
         "returnType": "wideString"
@@ -3422,7 +6494,7 @@
       "demoInvocation": "FBro证书主体_取地区名(1)"
     },
     {
-      "index": 127,
+      "index": 222,
       "name": "FBro证书主体_取省州名",
       "aliases": [
         "FBroHsX509CertPrincipal_GetStateOrProvinceName"
@@ -3438,7 +6510,8 @@
         "parameters": [
           {
             "name": "主体句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro证书_取主体”“FBro证书_取颁发者”返回的 Principal 受管句柄。"
           }
         ],
         "returnType": "wideString"
@@ -3446,7 +6519,7 @@
       "demoInvocation": "FBro证书主体_取省州名(1)"
     },
     {
-      "index": 128,
+      "index": 223,
       "name": "FBro证书主体_取国家名",
       "aliases": [
         "FBroHsX509CertPrincipal_GetCountryName"
@@ -3462,7 +6535,8 @@
         "parameters": [
           {
             "name": "主体句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro证书_取主体”“FBro证书_取颁发者”返回的 Principal 受管句柄。"
           }
         ],
         "returnType": "wideString"
@@ -3470,7 +6544,7 @@
       "demoInvocation": "FBro证书主体_取国家名(1)"
     },
     {
-      "index": 129,
+      "index": 224,
       "name": "FBro证书主体_取组织JSON",
       "aliases": [
         "FBroHsX509CertPrincipal_GetOrganizationNames"
@@ -3486,7 +6560,8 @@
         "parameters": [
           {
             "name": "主体句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro证书_取主体”“FBro证书_取颁发者”返回的 Principal 受管句柄。"
           }
         ],
         "returnType": "wideString"
@@ -3494,7 +6569,7 @@
       "demoInvocation": "FBro证书主体_取组织JSON(1)"
     },
     {
-      "index": 130,
+      "index": 225,
       "name": "FBro证书主体_取组织单位JSON",
       "aliases": [
         "FBroHsX509CertPrincipal_GetOrganizationUnitNames"
@@ -3510,7 +6585,8 @@
         "parameters": [
           {
             "name": "主体句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro证书_取主体”“FBro证书_取颁发者”返回的 Principal 受管句柄。"
           }
         ],
         "returnType": "wideString"
@@ -3518,7 +6594,7 @@
       "demoInvocation": "FBro证书主体_取组织单位JSON(1)"
     },
     {
-      "index": 131,
+      "index": 226,
       "name": "FBro拖放数据_是否有图像",
       "aliases": [
         "FBroHsDragData_HasImage"
@@ -3534,7 +6610,8 @@
         "parameters": [
           {
             "name": "拖放数据句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "DragEnter 事件携带的受管拖放数据句柄。"
           }
         ],
         "returnType": "int"
@@ -3542,7 +6619,7 @@
       "demoInvocation": "FBro拖放数据_是否有图像(1)"
     },
     {
-      "index": 132,
+      "index": 227,
       "name": "FBro拖放数据_取图像",
       "aliases": [
         "FBroHsDragData_GetImage"
@@ -3558,7 +6635,8 @@
         "parameters": [
           {
             "name": "拖放数据句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "DragEnter 事件携带的受管拖放数据句柄。"
           }
         ],
         "returnType": "longLong"

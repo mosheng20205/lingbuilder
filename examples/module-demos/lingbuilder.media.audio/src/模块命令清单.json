@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.868Z",
+  "generatedAt": "2026-10-19T03:18:58.768Z",
   "module": {
     "id": "lingbuilder.media.audio",
     "name": "基础音频模块",
     "version": "1.0.0",
     "description": "使用 Windows 多媒体 API 异步播放 WAV 文件、系统声音并控制主音量。"
   },
-  "commandCount": 5,
+  "commandCount": 17,
   "commands": [
     {
       "index": 1,
@@ -22,11 +22,13 @@
         "parameters": [
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "WAV 文件路径；文件不存在或格式不被 PlaySound 支持时返回假。"
           },
           {
             "name": "循环",
-            "type": "bool"
+            "type": "bool",
+            "description": "传真的播放结束后从头循环，需要 音频_停止 才会停止。"
           }
         ],
         "returnType": "bool",
@@ -92,12 +94,230 @@
         "parameters": [
           {
             "name": "音量",
-            "type": "int"
+            "type": "int",
+            "description": "目标音量百分比，0 到 100；超出范围会被夹到端点，左右声道同时设置。"
           }
         ],
         "returnType": "bool"
       },
       "demoInvocation": "音频_设置主音量(1)"
+    },
+    {
+      "index": 6,
+      "name": "音频_置静音",
+      "signature": "音频_置静音(静音)",
+      "description": "设置系统默认输出设备的静音状态。",
+      "insertText": "音频_置静音(假)",
+      "returnType": "空",
+      "binding": {
+        "command": "音频_置静音",
+        "runtimeName": "音频_置静音",
+        "parameters": [
+          {
+            "name": "静音",
+            "type": "bool",
+            "description": "真静音系统默认输出设备，假解除静音。"
+          }
+        ],
+        "returnType": "void"
+      },
+      "demoInvocation": "音频_置静音(真)"
+    },
+    {
+      "index": 7,
+      "name": "音频_取静音",
+      "signature": "音频_取静音()",
+      "description": "返回系统默认输出设备是否处于静音状态。",
+      "insertText": "音频_取静音()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "音频_取静音",
+        "runtimeName": "音频_取静音",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "音频_取静音()"
+    },
+    {
+      "index": 8,
+      "name": "音频_播放MP3",
+      "signature": "音频_播放MP3(路径, 循环)",
+      "description": "异步播放 MP3 音频文件（同一时间只有一个 MP3 播放通道，再次播放会替换当前曲目）。",
+      "insertText": "音频_播放MP3(\"$1\", 假)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "音频_播放MP3",
+        "runtimeName": "音频_播放MP3",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString",
+            "description": "MP3/音频文件路径；由 MCI 按扩展名自动选择解码器，也支持 WAV 等可解码格式。"
+          },
+          {
+            "name": "循环",
+            "type": "bool",
+            "description": "传真时播放结束后从头循环，需要 音频_停止MP3 才会停止。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "音频_播放MP3(\"module-demo-temp.txt\", 真)"
+    },
+    {
+      "index": 9,
+      "name": "音频_暂停MP3",
+      "signature": "音频_暂停MP3()",
+      "description": "暂停当前 MP3 播放。",
+      "insertText": "音频_暂停MP3()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "音频_暂停MP3",
+        "runtimeName": "音频_暂停MP3",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "音频_暂停MP3()"
+    },
+    {
+      "index": 10,
+      "name": "音频_继续MP3",
+      "signature": "音频_继续MP3()",
+      "description": "继续被暂停的 MP3 播放。",
+      "insertText": "音频_继续MP3()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "音频_继续MP3",
+        "runtimeName": "音频_继续MP3",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "音频_继续MP3()"
+    },
+    {
+      "index": 11,
+      "name": "音频_停止MP3",
+      "signature": "音频_停止MP3()",
+      "description": "停止当前 MP3 播放（播放位置归零，文件保持打开以便查询状态）。",
+      "insertText": "音频_停止MP3()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "音频_停止MP3",
+        "runtimeName": "音频_停止MP3",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "音频_停止MP3()"
+    },
+    {
+      "index": 12,
+      "name": "音频_取MP3状态",
+      "signature": "音频_取MP3状态()",
+      "description": "返回 MP3 当前状态文本：播放中、已暂停或已停止。",
+      "insertText": "音频_取MP3状态()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "音频_取MP3状态",
+        "runtimeName": "音频_取MP3状态",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "音频_取MP3状态()"
+    },
+    {
+      "index": 13,
+      "name": "音频_取MP3长度",
+      "signature": "音频_取MP3长度()",
+      "description": "返回当前 MP3 总时长（毫秒）；未打开文件返回 0。",
+      "insertText": "音频_取MP3长度()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "音频_取MP3长度",
+        "runtimeName": "音频_取MP3长度",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "音频_取MP3长度()"
+    },
+    {
+      "index": 14,
+      "name": "音频_取MP3位置",
+      "signature": "音频_取MP3位置()",
+      "description": "返回当前 MP3 播放位置（毫秒）。",
+      "insertText": "音频_取MP3位置()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "音频_取MP3位置",
+        "runtimeName": "音频_取MP3位置",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "音频_取MP3位置()"
+    },
+    {
+      "index": 15,
+      "name": "音频_跳转MP3",
+      "signature": "音频_跳转MP3(位置毫秒)",
+      "description": "把 MP3 播放位置跳到指定毫秒并继续播放。",
+      "insertText": "音频_跳转MP3(0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "音频_跳转MP3",
+        "runtimeName": "音频_跳转MP3",
+        "parameters": [
+          {
+            "name": "位置毫秒",
+            "type": "int",
+            "description": "要跳转到的位置（毫秒），从 0 起。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "音频_跳转MP3(1)"
+    },
+    {
+      "index": 16,
+      "name": "音频_播放MIDI",
+      "signature": "音频_播放MIDI(路径, 循环)",
+      "description": "异步播放 MIDI 音乐（同一时间只有一个 MIDI 通道）。",
+      "insertText": "音频_播放MIDI(\"$1\", 假)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "音频_播放MIDI",
+        "runtimeName": "音频_播放MIDI",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString",
+            "description": "MIDI 文件路径。"
+          },
+          {
+            "name": "循环",
+            "type": "bool",
+            "description": "传真时播放结束后从头循环。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "音频_播放MIDI(\"module-demo-temp.txt\", 真)"
+    },
+    {
+      "index": 17,
+      "name": "音频_停止MIDI",
+      "signature": "音频_停止MIDI()",
+      "description": "停止当前 MIDI 播放。",
+      "insertText": "音频_停止MIDI()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "音频_停止MIDI",
+        "runtimeName": "音频_停止MIDI",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "音频_停止MIDI()"
     }
   ]
 }

@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.832Z",
+  "generatedAt": "2026-10-19T03:18:58.752Z",
   "module": {
     "id": "lingbuilder.fs.core",
     "name": "文件目录模块",
-    "version": "1.0.0",
-    "description": "提供 UTF-8 文本文件和常用文件目录操作，所有路径均使用 Unicode。"
+    "version": "1.3.0",
+    "description": "提供 UTF-8 文本文件、常用文件目录操作、句柄式文件流读写、文件目录枚举和文件时间读取，所有路径均使用 Unicode。"
   },
-  "commandCount": 11,
+  "commandCount": 42,
   "commands": [
     {
       "index": 1,
@@ -22,7 +22,8 @@
         "parameters": [
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要判断的 Unicode 路径；只有普通文件返回真，目录、不存在或非法路径都返回假。"
           }
         ],
         "returnType": "bool",
@@ -44,7 +45,8 @@
         "parameters": [
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要判断的 Unicode 路径；只有真实目录返回真，文件和不存在路径返回假。"
           }
         ],
         "returnType": "bool",
@@ -55,9 +57,9 @@
     {
       "index": 3,
       "name": "文件_读取文本",
-      "signature": "文件_读取文本(路径)",
-      "description": "按 UTF-8 读取完整文本；失败返回空文本。",
-      "insertText": "文件_读取文本(\"$1\")",
+      "signature": "文件_读取文本(路径, 编码名称)",
+      "description": "按指定编码读取完整文本，缺省 UTF-8；失败返回空文本。",
+      "insertText": "文件_读取文本(\"$1\", \"$2\")",
       "returnType": "文本型",
       "binding": {
         "command": "文件_读取文本",
@@ -65,13 +67,21 @@
         "parameters": [
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要读取的文件路径；打不开时返回空文本。"
+          },
+          {
+            "name": "编码名称",
+            "type": "wideString",
+            "optional": true,
+            "defaultValue": "UTF-8",
+            "description": "省略或传 \"UTF-8\" 时按 UTF-8 严格解码（开头 BOM 自动剥离，不做其它编码猜测），解码失败返回空文本；GBK 等中文文件必须显式传 GBK、GB18030 或 ANSI，也可传 AUTO 按「BOM → 严格 UTF-8 → GB18030」三级自动识别。"
           }
         ],
         "returnType": "wideString",
         "encoding": "wide"
       },
-      "demoInvocation": "文件_读取文本(\"module-demo-temp.txt\")"
+      "demoInvocation": "文件_读取文本(\"module-demo-temp.txt\", \"演示参数2\")"
     },
     {
       "index": 4,
@@ -86,11 +96,13 @@
         "parameters": [
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要写入的文件路径；所在目录必须已存在，打不开文件时返回假。"
           },
           {
             "name": "内容",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要写入的文本，按 UTF-8 编码落盘且不附加 BOM；空文本写入空内容。"
           }
         ],
         "returnType": "bool",
@@ -111,11 +123,13 @@
         "parameters": [
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要追加的文件路径；所在目录必须已存在，文件不存在时会自动新建。"
           },
           {
             "name": "内容",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "追加到文件末尾的文本，按 UTF-8 编码且不附加 BOM。"
           }
         ],
         "returnType": "bool",
@@ -136,15 +150,18 @@
         "parameters": [
           {
             "name": "来源",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要复制的源文件路径，必须是已存在的普通文件。"
           },
           {
             "name": "目标",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "复制得到的目标路径。"
           },
           {
             "name": "允许覆盖",
-            "type": "bool"
+            "type": "bool",
+            "description": "传真时已存在的目标会被覆盖，传假时目标已存在则操作失败返回假。"
           }
         ],
         "returnType": "bool",
@@ -165,15 +182,18 @@
         "parameters": [
           {
             "name": "来源",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要移动或重命名的源路径，文件和目录都可以。"
           },
           {
             "name": "目标",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "移动后的目标路径；跨卷移动可能失败返回假。"
           },
           {
             "name": "允许覆盖",
-            "type": "bool"
+            "type": "bool",
+            "description": "传真时已存在的目标会被覆盖，传假时目标已存在则操作失败返回假。"
           }
         ],
         "returnType": "bool",
@@ -194,7 +214,8 @@
         "parameters": [
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要删除的文件路径；只有普通文件会被删除，目录返回假。"
           }
         ],
         "returnType": "bool",
@@ -215,7 +236,8 @@
         "parameters": [
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要统计的文件路径；路径不存在或不是文件时返回 -1。"
           }
         ],
         "returnType": "longLong",
@@ -236,7 +258,8 @@
         "parameters": [
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要创建的目录路径；缺失的父目录会逐级一起创建，目录已存在也算成功返回真。"
           }
         ],
         "returnType": "bool",
@@ -257,13 +280,846 @@
         "parameters": [
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要删除的目录路径；目录内仍有条目时返回假，不会递归删除内容。"
           }
         ],
         "returnType": "bool",
         "encoding": "wide"
       },
       "demoInvocation": "目录_删除空目录(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 12,
+      "name": "目录_删除树",
+      "signature": "目录_删除树(路径)",
+      "description": "递归删除整个目录树（目录自身及全部子目录和文件）；这是危险操作，调用前请确认路径。",
+      "insertText": "目录_删除树(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "目录_删除树",
+        "runtimeName": "目录_删除树",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString",
+            "description": "要删除的目录路径；目录自身与其下全部内容一起删除，删除后不可恢复。路径为空、盘符根（如 C:\\）或网络共享根时拒绝执行返回假，目录不存在也返回假。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "目录_删除树(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 13,
+      "name": "文件_打开",
+      "signature": "文件_打开(路径, 打开方式, 共享方式)",
+      "description": "打开一个普通文件供句柄式读写，成功返回文件号，失败返回 0。",
+      "insertText": "文件_打开(\"$1\", 0, 0)",
+      "returnType": "文件号",
+      "binding": {
+        "command": "文件_打开",
+        "runtimeName": "文件_打开",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString",
+            "description": "要打开的文件路径；路径为空或打不开时返回 0。"
+          },
+          {
+            "name": "打开方式",
+            "type": "int",
+            "optional": true,
+            "defaultValue": 3,
+            "description": "对文件的操作方式，对齐易语言编号：1 读入（不存在则失败）、2 写出（不存在则失败）、3 读写（不存在则失败）、4 重写（清空后写入，不存在则新建）、5 改写（不存在则新建，保留已有内容）、6 改读（读写，不存在则新建）；省略默认 3。"
+          },
+          {
+            "name": "共享方式",
+            "type": "int",
+            "optional": true,
+            "defaultValue": 1,
+            "description": "限制其它进程操作此文件的方式：1 无限制、2 禁止其它进程写、3 禁止其它进程读、4 禁止其它进程读写；省略默认 1。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide",
+        "example": "局部 文件号 号\n号 = 文件_打开(\"data.txt\", 6, 1)\n文件_关闭(号)"
+      },
+      "demoInvocation": "文件_打开(\"module-demo-temp.txt\", 1, 1)"
+    },
+    {
+      "index": 14,
+      "name": "文件_关闭",
+      "signature": "文件_关闭(文件号)",
+      "description": "关闭被打开的文件并释放文件号；句柄无效时不产生任何效果。",
+      "insertText": "文件_关闭($1)",
+      "returnType": "空",
+      "binding": {
+        "command": "文件_关闭",
+        "runtimeName": "文件_关闭",
+        "parameters": [
+          {
+            "name": "文件号",
+            "type": "longLong",
+            "description": "文件_打开 返回的文件号；句柄无效或文件已关闭时命令按说明返回失败值。"
+          }
+        ],
+        "returnType": "void",
+        "example": "局部 文件号 号\n号 = 文件_打开(\"data.txt\", 3, 1)\n文件_关闭(号)"
+      },
+      "demoInvocation": "文件_关闭(1)"
+    },
+    {
+      "index": 15,
+      "name": "文件_关闭全部",
+      "signature": "文件_关闭全部()",
+      "description": "关闭当前进程内所有被打开的文件。程序退出前调用可以确保数据落盘。",
+      "insertText": "文件_关闭全部()",
+      "returnType": "空",
+      "binding": {
+        "command": "文件_关闭全部",
+        "runtimeName": "文件_关闭全部",
+        "parameters": [],
+        "returnType": "void",
+        "example": "文件_关闭全部()"
+      },
+      "demoInvocation": "文件_关闭全部()"
+    },
+    {
+      "index": 16,
+      "name": "文件_移动读写位置",
+      "signature": "文件_移动读写位置(文件号, 移动距离, 起始位置)",
+      "description": "在打开的文件中设置下一次读写的位置；成功返回真，文件号无效或基准位置非法返回假。",
+      "insertText": "文件_移动读写位置($1, 0, 1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "文件_移动读写位置",
+        "runtimeName": "文件_移动读写位置",
+        "parameters": [
+          {
+            "name": "文件号",
+            "type": "longLong",
+            "description": "文件_打开 返回的文件号；句柄无效或文件已关闭时命令按说明返回失败值。"
+          },
+          {
+            "name": "移动距离",
+            "type": "longLong",
+            "description": "相对于起始位置的移动字节数，可为负表示向文件首方向移动。"
+          },
+          {
+            "name": "起始位置",
+            "type": "int",
+            "optional": true,
+            "defaultValue": 1,
+            "description": "移动的基准位置：1 文件首、2 文件尾、3 现行位置；省略默认 1。"
+          }
+        ],
+        "returnType": "bool",
+        "example": "局部 文件号 号\n号 = 文件_打开(\"data.txt\", 3, 1)\n文件_移动读写位置(号, 0, 2)"
+      },
+      "demoInvocation": "文件_移动读写位置(1, 1, 1)"
+    },
+    {
+      "index": 17,
+      "name": "文件_移到文件首",
+      "signature": "文件_移到文件首(文件号)",
+      "description": "把读写位置移到文件首；成功返回真。",
+      "insertText": "文件_移到文件首($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "文件_移到文件首",
+        "runtimeName": "文件_移到文件首",
+        "parameters": [
+          {
+            "name": "文件号",
+            "type": "longLong",
+            "description": "文件_打开 返回的文件号；句柄无效或文件已关闭时命令按说明返回失败值。"
+          }
+        ],
+        "returnType": "bool",
+        "example": "局部 文件号 号\n号 = 文件_打开(\"data.txt\", 3, 1)\n文件_移到文件首(号)"
+      },
+      "demoInvocation": "文件_移到文件首(1)"
+    },
+    {
+      "index": 18,
+      "name": "文件_移到文件尾",
+      "signature": "文件_移到文件尾(文件号)",
+      "description": "把读写位置移到文件尾；成功返回真。",
+      "insertText": "文件_移到文件尾($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "文件_移到文件尾",
+        "runtimeName": "文件_移到文件尾",
+        "parameters": [
+          {
+            "name": "文件号",
+            "type": "longLong",
+            "description": "文件_打开 返回的文件号；句柄无效或文件已关闭时命令按说明返回失败值。"
+          }
+        ],
+        "returnType": "bool",
+        "example": "局部 文件号 号\n号 = 文件_打开(\"data.txt\", 6, 1)\n文件_移到文件尾(号)"
+      },
+      "demoInvocation": "文件_移到文件尾(1)"
+    },
+    {
+      "index": 19,
+      "name": "文件_读入字节集",
+      "signature": "文件_读入字节集(文件号, 长度)",
+      "description": "从文件当前读写位置读取字节集；失败或已到文件尾返回空字节集。",
+      "insertText": "文件_读入字节集($1, 4)",
+      "returnType": "字节集",
+      "binding": {
+        "command": "文件_读入字节集",
+        "runtimeName": "文件_读入字节集",
+        "parameters": [
+          {
+            "name": "文件号",
+            "type": "longLong",
+            "description": "文件_打开 返回的文件号；句柄无效或文件已关闭时命令按说明返回失败值。"
+          },
+          {
+            "name": "长度",
+            "type": "int",
+            "description": "要读取的字节数；剩余内容不足时只返回剩余部分，到文件尾后返回空字节集。"
+          }
+        ],
+        "returnType": "bytes",
+        "example": "局部 文件号 号\n号 = 文件_打开(\"data.bin\", 1, 1)"
+      },
+      "demoInvocation": "文件_读入字节集(1, 1)"
+    },
+    {
+      "index": 20,
+      "name": "文件_写出字节集",
+      "signature": "文件_写出字节集(文件号, 数据)",
+      "description": "把字节集写到文件当前读写位置；成功返回真，以只读方式打开的文件返回假。",
+      "insertText": "文件_写出字节集($1, $2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "文件_写出字节集",
+        "runtimeName": "文件_写出字节集",
+        "parameters": [
+          {
+            "name": "文件号",
+            "type": "longLong",
+            "description": "文件_打开 返回的文件号；句柄无效或文件已关闭时命令按说明返回失败值。"
+          },
+          {
+            "name": "数据",
+            "type": "bytes",
+            "description": "要写出的字节集，在当前读写位置写入，空字节集不写任何内容。"
+          }
+        ],
+        "returnType": "bool",
+        "example": "局部 文件号 号\n号 = 文件_打开(\"data.bin\", 6, 1)\n文件_移到文件尾(号)"
+      },
+      "demoInvocation": "文件_写出字节集(1, {})"
+    },
+    {
+      "index": 21,
+      "name": "文件_读入文本",
+      "signature": "文件_读入文本(文件号, 长度)",
+      "description": "从文件当前读写位置读取文本（内容按 UTF-8 解码）；失败返回空文本。",
+      "insertText": "文件_读入文本($1, -1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "文件_读入文本",
+        "runtimeName": "文件_读入文本",
+        "parameters": [
+          {
+            "name": "文件号",
+            "type": "longLong",
+            "description": "文件_打开 返回的文件号；句柄无效或文件已关闭时命令按说明返回失败值。"
+          },
+          {
+            "name": "长度",
+            "type": "longLong",
+            "optional": true,
+            "defaultValue": -1,
+            "description": "要读取的字节数；小于 0 表示读取到文件末尾，实际读到的内容可能少于请求数量。省略或小于 0 表示读取到文件末尾。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "局部 文件号 号\n号 = 文件_打开(\"data.txt\", 1, 1)\n文件_移到文件首(号)"
+      },
+      "demoInvocation": "文件_读入文本(1, 1)"
+    },
+    {
+      "index": 22,
+      "name": "文件_写出文本",
+      "signature": "文件_写出文本(文件号, 文本)",
+      "description": "把文本写到文件当前读写位置；成功返回真，以只读方式打开的文件返回假。",
+      "insertText": "文件_写出文本($1, \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "文件_写出文本",
+        "runtimeName": "文件_写出文本",
+        "parameters": [
+          {
+            "name": "文件号",
+            "type": "longLong",
+            "description": "文件_打开 返回的文件号；句柄无效或文件已关闭时命令按说明返回失败值。"
+          },
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要写出的文本，按 UTF-8 编码写入当前读写位置，不自动追加换行。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "局部 文件号 号\n号 = 文件_打开(\"data.txt\", 6, 1)\n文件_移到文件尾(号)"
+      },
+      "demoInvocation": "文件_写出文本(1, \"演示参数2\")"
+    },
+    {
+      "index": 23,
+      "name": "文件_读入一行",
+      "signature": "文件_读入一行(文件号)",
+      "description": "从文件当前读写位置读取一行文本，行尾回车换行符被抛弃（按 UTF-8 解码）；已到文件尾返回空文本。",
+      "insertText": "文件_读入一行($1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "文件_读入一行",
+        "runtimeName": "文件_读入一行",
+        "parameters": [
+          {
+            "name": "文件号",
+            "type": "longLong",
+            "description": "文件_打开 返回的文件号；句柄无效或文件已关闭时命令按说明返回失败值。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "局部 文件号 号\n号 = 文件_打开(\"data.txt\", 1, 1)\n文件_移到文件首(号)"
+      },
+      "demoInvocation": "文件_读入一行(1)"
+    },
+    {
+      "index": 24,
+      "name": "文件_写文本行",
+      "signature": "文件_写文本行(文件号, 文本)",
+      "description": "把一行文本写到文件当前读写位置并自动换行；成功返回真。",
+      "insertText": "文件_写文本行($1, \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "文件_写文本行",
+        "runtimeName": "文件_写文本行",
+        "parameters": [
+          {
+            "name": "文件号",
+            "type": "longLong",
+            "description": "文件_打开 返回的文件号；句柄无效或文件已关闭时命令按说明返回失败值。"
+          },
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要写出的整行文本，行尾自动补回车换行符（CRLF）。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "局部 文件号 号\n号 = 文件_打开(\"log.txt\", 6, 1)\n文件_移到文件尾(号)"
+      },
+      "demoInvocation": "文件_写文本行(1, \"演示参数2\")"
+    },
+    {
+      "index": 25,
+      "name": "文件_读入数据",
+      "signature": "文件_读入数据(文件号, 变量)",
+      "description": "从文件当前读写位置按 文件_写出数据 的格式依次读出多个值到变量；成功返回真，数据不足或类型不匹配返回假。",
+      "insertText": "文件_读入数据($1, $0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "文件_读入数据",
+        "runtimeName": "文件_读入数据",
+        "parameters": [
+          {
+            "name": "文件号",
+            "type": "longLong",
+            "description": "文件_打开 返回的文件号；句柄无效或文件已关闭时命令按说明返回失败值。"
+          },
+          {
+            "name": "变量",
+            "type": "lingValue",
+            "variadic": true,
+            "byRef": true,
+            "description": "一个或多个接收数据的变量，按书写顺序依次读取；支持整数型、长整数型、小数型、逻辑型、文本型（UTF-8 加 0 结尾）和字节集（4 字节长度前缀）格式，必须与 文件_写出数据 的写出顺序一致。"
+          }
+        ],
+        "returnType": "bool",
+        "example": "局部 文件号 号\n号 = 文件_打开(\"data.bin\", 1, 1)"
+      },
+      "demoInvocation": "文件_读入数据(1)"
+    },
+    {
+      "index": 26,
+      "name": "文件_写出数据",
+      "signature": "文件_写出数据(文件号, 数据)",
+      "description": "把多个值按固定二进制格式写到文件当前读写位置，供 文件_读入数据 读回；成功返回真。",
+      "insertText": "文件_写出数据($1, $0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "文件_写出数据",
+        "runtimeName": "文件_写出数据",
+        "parameters": [
+          {
+            "name": "文件号",
+            "type": "longLong",
+            "description": "文件_打开 返回的文件号；句柄无效或文件已关闭时命令按说明返回失败值。"
+          },
+          {
+            "name": "数据",
+            "type": "lingValue",
+            "variadic": true,
+            "description": "一个或多个要写出的值：整数 4 字节、长整数 8 字节、小数 8 字节、逻辑值 1 字节（均小端），文本按 UTF-8 加 0 结尾，字节集为 4 字节长度前缀加数据，数组按元素顺序展开。"
+          }
+        ],
+        "returnType": "bool",
+        "example": "局部 文件号 号\n号 = 文件_打开(\"data.bin\", 6, 1)"
+      },
+      "demoInvocation": "文件_写出数据(1)"
+    },
+    {
+      "index": 27,
+      "name": "文件_是否在文件尾",
+      "signature": "文件_是否在文件尾(文件号)",
+      "description": "判断文件当前读写位置是否已处于数据尾部；是返回真，无效文件号也返回真。",
+      "insertText": "文件_是否在文件尾($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "文件_是否在文件尾",
+        "runtimeName": "文件_是否在文件尾",
+        "parameters": [
+          {
+            "name": "文件号",
+            "type": "longLong",
+            "description": "文件_打开 返回的文件号；句柄无效或文件已关闭时命令按说明返回失败值。"
+          }
+        ],
+        "returnType": "bool",
+        "example": "局部 文件号 号\n号 = 文件_打开(\"data.txt\", 1, 1)\n文件_移到文件尾(号)"
+      },
+      "demoInvocation": "文件_是否在文件尾(1)"
+    },
+    {
+      "index": 28,
+      "name": "文件_取读写位置",
+      "signature": "文件_取读写位置(文件号)",
+      "description": "返回文件当前读写位置（从 0 起）；文件号无效返回 -1。",
+      "insertText": "文件_取读写位置($1)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "文件_取读写位置",
+        "runtimeName": "文件_取读写位置",
+        "parameters": [
+          {
+            "name": "文件号",
+            "type": "longLong",
+            "description": "文件_打开 返回的文件号；句柄无效或文件已关闭时命令按说明返回失败值。"
+          }
+        ],
+        "returnType": "longLong",
+        "example": "局部 文件号 号\n号 = 文件_打开(\"data.txt\", 3, 1)"
+      },
+      "demoInvocation": "文件_取读写位置(1)"
+    },
+    {
+      "index": 29,
+      "name": "文件_取长度",
+      "signature": "文件_取长度(文件号)",
+      "description": "返回打开文件的字节长度；文件号无效返回 -1。与按路径取大小的 文件_取大小 不同，本命令作用于已打开的文件。",
+      "insertText": "文件_取长度($1)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "文件_取长度",
+        "runtimeName": "文件_取长度",
+        "parameters": [
+          {
+            "name": "文件号",
+            "type": "longLong",
+            "description": "文件_打开 返回的文件号；句柄无效或文件已关闭时命令按说明返回失败值。"
+          }
+        ],
+        "returnType": "longLong",
+        "example": "局部 文件号 号\n号 = 文件_打开(\"data.txt\", 3, 1)"
+      },
+      "demoInvocation": "文件_取长度(1)"
+    },
+    {
+      "index": 30,
+      "name": "文件_插入字节集",
+      "signature": "文件_插入字节集(文件号, 数据)",
+      "description": "在文件当前读写位置插入字节集（要求以可写方式打开）；插入后读写位置回到插入内容首部，成功返回真。",
+      "insertText": "文件_插入字节集($1, $2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "文件_插入字节集",
+        "runtimeName": "文件_插入字节集",
+        "parameters": [
+          {
+            "name": "文件号",
+            "type": "longLong",
+            "description": "文件_打开 返回的文件号；句柄无效或文件已关闭时命令按说明返回失败值。"
+          },
+          {
+            "name": "数据",
+            "type": "bytes",
+            "description": "要插入的字节集，插入点之后的原有内容整体后移。"
+          }
+        ],
+        "returnType": "bool",
+        "example": "局部 文件号 号\n号 = 文件_打开(\"data.bin\", 6, 1)\n文件_移到文件首(号)"
+      },
+      "demoInvocation": "文件_插入字节集(1, {})"
+    },
+    {
+      "index": 31,
+      "name": "文件_插入文本",
+      "signature": "文件_插入文本(文件号, 文本)",
+      "description": "在文件当前读写位置插入文本（要求以可写方式打开）；插入后读写位置回到插入内容首部，成功返回真。",
+      "insertText": "文件_插入文本($1, \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "文件_插入文本",
+        "runtimeName": "文件_插入文本",
+        "parameters": [
+          {
+            "name": "文件号",
+            "type": "longLong",
+            "description": "文件_打开 返回的文件号；句柄无效或文件已关闭时命令按说明返回失败值。"
+          },
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要插入的文本，按 UTF-8 编码插入，插入点之后的原有内容整体后移。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "局部 文件号 号\n号 = 文件_打开(\"data.txt\", 6, 1)\n文件_移到文件首(号)"
+      },
+      "demoInvocation": "文件_插入文本(1, \"演示参数2\")"
+    },
+    {
+      "index": 32,
+      "name": "文件_插入文本行",
+      "signature": "文件_插入文本行(文件号, 文本)",
+      "description": "在文件当前读写位置插入一行文本（要求以可写方式打开）；插入后读写位置回到插入内容首部，成功返回真。",
+      "insertText": "文件_插入文本行($1, \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "文件_插入文本行",
+        "runtimeName": "文件_插入文本行",
+        "parameters": [
+          {
+            "name": "文件号",
+            "type": "longLong",
+            "description": "文件_打开 返回的文件号；句柄无效或文件已关闭时命令按说明返回失败值。"
+          },
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要插入的整行文本，行尾自动补回车换行符，插入点之后的原有内容整体后移。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "局部 文件号 号\n号 = 文件_打开(\"data.txt\", 6, 1)\n文件_移到文件首(号)"
+      },
+      "demoInvocation": "文件_插入文本行(1, \"演示参数2\")"
+    },
+    {
+      "index": 33,
+      "name": "文件_删除数据",
+      "signature": "文件_删除数据(文件号, 字节数)",
+      "description": "在文件当前读写位置删除一段数据，后续内容顺序前移（要求以可写方式打开）；成功返回真。",
+      "insertText": "文件_删除数据($1, 4)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "文件_删除数据",
+        "runtimeName": "文件_删除数据",
+        "parameters": [
+          {
+            "name": "文件号",
+            "type": "longLong",
+            "description": "文件_打开 返回的文件号；句柄无效或文件已关闭时命令按说明返回失败值。"
+          },
+          {
+            "name": "字节数",
+            "type": "longLong",
+            "description": "从当前读写位置起删除的字节数；超出文件剩余内容时删除到文件尾，不能为负。"
+          }
+        ],
+        "returnType": "bool",
+        "example": "局部 文件号 号\n号 = 文件_打开(\"data.txt\", 6, 1)\n文件_移到文件首(号)"
+      },
+      "demoInvocation": "文件_删除数据(1, 1)"
+    },
+    {
+      "index": 34,
+      "name": "文件_锁定",
+      "signature": "文件_锁定(文件号, 位置, 长度, 重试毫秒)",
+      "description": "拒绝其它进程读写文件指定区域，用于多进程共享文件；成功返回真。",
+      "insertText": "文件_锁定($1, 0, 16, 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "文件_锁定",
+        "runtimeName": "文件_锁定",
+        "parameters": [
+          {
+            "name": "文件号",
+            "type": "longLong",
+            "description": "文件_打开 返回的文件号；句柄无效或文件已关闭时命令按说明返回失败值。"
+          },
+          {
+            "name": "位置",
+            "type": "longLong",
+            "description": "加锁区域的起始字节位置，从 0 起；不能为负。"
+          },
+          {
+            "name": "长度",
+            "type": "longLong",
+            "description": "加锁区域的字节长度；不能为负。"
+          },
+          {
+            "name": "重试毫秒",
+            "type": "int",
+            "optional": true,
+            "defaultValue": 0,
+            "description": "加锁失败后的重试毫秒数；0 表示失败立即返回（省略时同为 0），-1 表示一直重试直到成功，其它正值在时限内每 10 毫秒重试一次。"
+          }
+        ],
+        "returnType": "bool",
+        "example": "局部 文件号 号\n号 = 文件_打开(\"data.txt\", 6, 1)"
+      },
+      "demoInvocation": "文件_锁定(1, 1, 1, 1)"
+    },
+    {
+      "index": 35,
+      "name": "文件_解锁",
+      "signature": "文件_解锁(文件号, 位置, 长度)",
+      "description": "解除 文件_锁定 加上的区域锁；参数必须与加锁时完全一致才会成功。",
+      "insertText": "文件_解锁($1, 0, 16)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "文件_解锁",
+        "runtimeName": "文件_解锁",
+        "parameters": [
+          {
+            "name": "文件号",
+            "type": "longLong",
+            "description": "文件_打开 返回的文件号；句柄无效或文件已关闭时命令按说明返回失败值。"
+          },
+          {
+            "name": "位置",
+            "type": "longLong",
+            "description": "解锁区域的起始字节位置；必须与 文件_锁定 时完全一致。"
+          },
+          {
+            "name": "长度",
+            "type": "longLong",
+            "description": "解锁区域的字节长度；必须与 文件_锁定 时完全一致。"
+          }
+        ],
+        "returnType": "bool",
+        "example": "局部 文件号 号\n号 = 文件_打开(\"data.txt\", 6, 1)"
+      },
+      "demoInvocation": "文件_解锁(1, 1, 1)"
+    },
+    {
+      "index": 36,
+      "name": "文件_枚举",
+      "signature": "文件_枚举(目录, 通配符, 含子目录, 结果数组)",
+      "description": "枚举目录下的文件（含隐藏、系统文件），返回命中数量。",
+      "insertText": "文件_枚举(\"$1\", \"*.txt\", 真, $4)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "文件_枚举",
+        "runtimeName": "文件_枚举",
+        "parameters": [
+          {
+            "name": "目录",
+            "type": "wideString",
+            "description": "要枚举的目录路径；目录不存在时返回 0。"
+          },
+          {
+            "name": "通配符",
+            "type": "wideString",
+            "description": "文件名匹配模式，支持 * 和 ? 通配符，例如 \"*.txt\"；空文本匹配全部文件。只按文件名匹配，不含目录前缀。"
+          },
+          {
+            "name": "含子目录",
+            "type": "bool",
+            "description": "传真时递归枚举全部子目录下的匹配文件，传假只枚举当前一层。"
+          },
+          {
+            "name": "结果数组",
+            "type": "array",
+            "description": "接收匹配文件完整路径的文本数组变量，调用前会先清空原有内容；结果不保证排序。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "局部 文本型 名单[]\n文件_枚举(\"日志目录\", \"*.txt\", 真, 名单)"
+      },
+      "demoInvocation": "文件_枚举(\".\", \"演示参数2\", 真, 0)"
+    },
+    {
+      "index": 37,
+      "name": "目录_枚举",
+      "signature": "目录_枚举(目录, 含子目录, 结果数组)",
+      "description": "枚举目录下的子目录，返回命中数量。",
+      "insertText": "目录_枚举(\"$1\", 假, $3)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "目录_枚举",
+        "runtimeName": "目录_枚举",
+        "parameters": [
+          {
+            "name": "目录",
+            "type": "wideString",
+            "description": "要枚举的目录路径；目录不存在时返回 0。"
+          },
+          {
+            "name": "含子目录",
+            "type": "bool",
+            "description": "传真时递归枚举全部下级子目录，传假只枚举当前一层的直接子目录。"
+          },
+          {
+            "name": "结果数组",
+            "type": "array",
+            "description": "接收子目录完整路径的文本数组变量，调用前会先清空原有内容；结果不保证排序。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "局部 文本型 名单[]\n目录_枚举(\"工作目录\", 假, 名单)"
+      },
+      "demoInvocation": "目录_枚举(\".\", 真, 0)"
+    },
+    {
+      "index": 38,
+      "name": "文件_取修改时间",
+      "signature": "文件_取修改时间(路径)",
+      "description": "返回文件最后修改时间（本地时区）；失败返回 0。",
+      "insertText": "文件_取修改时间(\"$1\")",
+      "returnType": "日期时间",
+      "binding": {
+        "command": "文件_取修改时间",
+        "runtimeName": "文件_取修改时间",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString",
+            "description": "要读取时间的文件路径；目录、不存在或不可访问时返回 0，原因用 文件_取错误 读取。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide",
+        "example": "局部 日期时间 改动时间\n改动时间 = 文件_取修改时间(\"配置.json\")"
+      },
+      "demoInvocation": "文件_取修改时间(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 39,
+      "name": "文件_取创建时间",
+      "signature": "文件_取创建时间(路径)",
+      "description": "返回文件创建时间（本地时区）；失败返回 0。",
+      "insertText": "文件_取创建时间(\"$1\")",
+      "returnType": "日期时间",
+      "binding": {
+        "command": "文件_取创建时间",
+        "runtimeName": "文件_取创建时间",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString",
+            "description": "要读取时间的文件路径；目录、不存在或不可访问时返回 0，原因用 文件_取错误 读取。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide",
+        "example": "局部 日期时间 建立时间\n建立时间 = 文件_取创建时间(\"配置.json\")"
+      },
+      "demoInvocation": "文件_取创建时间(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 40,
+      "name": "文件_取访问时间",
+      "signature": "文件_取访问时间(路径)",
+      "description": "返回文件最后访问时间（本地时区）；失败返回 0。",
+      "insertText": "文件_取访问时间(\"$1\")",
+      "returnType": "日期时间",
+      "binding": {
+        "command": "文件_取访问时间",
+        "runtimeName": "文件_取访问时间",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString",
+            "description": "要读取时间的文件路径；目录、不存在或不可访问时返回 0，原因用 文件_取错误 读取。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide",
+        "example": "局部 日期时间 访问时间\n访问时间 = 文件_取访问时间(\"配置.json\")"
+      },
+      "demoInvocation": "文件_取访问时间(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 41,
+      "name": "文件_取最新文件",
+      "signature": "文件_取最新文件(目录, 通配符, 结果数组)",
+      "description": "枚举目录下匹配通配符的文件，挑出最后修改时间最新的一个写入结果数组，返回写入数量（1 成功、0 失败）。",
+      "insertText": "文件_取最新文件(\"$1\", \"*.*\", $3)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "文件_取最新文件",
+        "runtimeName": "文件_取最新文件",
+        "parameters": [
+          {
+            "name": "目录",
+            "type": "wideString",
+            "description": "要枚举的目录路径（只枚举本层，不含子目录）；目录不存在时返回 0。"
+          },
+          {
+            "name": "通配符",
+            "type": "wideString",
+            "description": "文件名匹配模式，支持 * 和 ? 通配符，例如 \"*.json\" 或 \"Cookies\"；空文本匹配全部文件。只按文件名匹配。"
+          },
+          {
+            "name": "结果数组",
+            "type": "array",
+            "description": "接收最新文件完整路径的文本数组变量，只会写入 1 条（先清空原有内容），便于直接用 数组_取成员 或 枚举循环首 读取。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "局部 文本型 命中[]\n如果真 (文件_取最新文件(\"缓存目录\", \"*.json\", 命中) = 1)\n    调试输出(数组_取成员(命中, 0))\n结束如果"
+      },
+      "demoInvocation": "文件_取最新文件(\".\", \"演示参数2\", 0)"
+    },
+    {
+      "index": 42,
+      "name": "文件_取错误",
+      "signature": "文件_取错误()",
+      "description": "返回最近一次文件时间命令（文件_取修改时间/创建时间/访问时间/最新文件）失败的中文原因；成功调用会清空它。",
+      "insertText": "文件_取错误()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "文件_取错误",
+        "runtimeName": "文件_取错误",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "局部 文本型 名单[]\n如果真 (文件_取最新文件(\"不存在的目录\", \"*.*\", 名单) = 0)\n    调试输出(文件_取错误())\n结束如果"
+      },
+      "demoInvocation": "文件_取错误()"
     }
   ]
 }

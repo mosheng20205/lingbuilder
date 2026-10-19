@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.807Z",
+  "generatedAt": "2026-10-19T03:18:58.736Z",
   "module": {
     "id": "lingbuilder.fbro.events",
     "name": "FBro事件模块",
     "version": "2.1.0",
     "description": "提供 UTF-16 JSON 事件包、同步决策与动态处理器绑定。"
   },
-  "commandCount": 12,
+  "commandCount": 13,
   "commands": [
     {
       "index": 1,
@@ -27,13 +27,16 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "wideString",
@@ -59,17 +62,21 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "字段名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要读取的事件字段名，取值见各事件说明（如 url、downloadItem、menuHandle）。"
           }
         ],
         "returnType": "wideString",
@@ -84,7 +91,7 @@
         "LB_FBro_SetEventResult"
       ],
       "signature": "FBro_设置事件结果(控件名, 动作)",
-      "description": "设置同步事件动作；未设置时使用事件目录默认动作。",
+      "description": "设置同步事件动作；未设置时使用事件清单默认动作。",
       "insertText": "FBro_设置事件结果($1, $2)",
       "returnType": "整数型",
       "binding": {
@@ -95,17 +102,21 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "动作",
-            "type": "int"
+            "type": "int",
+            "description": "同步事件动作码：0 默认、1 继续、2 取消、3 已处理、4 延迟决定；未设置时使用事件清单默认动作。"
           }
         ],
         "returnType": "int",
@@ -131,17 +142,21 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "同步事件返回给调用方的文本内容。"
           }
         ],
         "returnType": "int",
@@ -167,17 +182,21 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "响应JSON",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "UTF-16 JSON 响应内容；作为事件或延续的结果交回浏览器，字段结构见对应事件说明。"
           }
         ],
         "returnType": "int",
@@ -204,13 +223,16 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "longLong",
@@ -237,13 +259,16 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "longLong",
@@ -258,9 +283,9 @@
         "LB_FBro_GetEventObjectField"
       ],
       "signature": "FBro_取事件对象字段(控件名, 字段名)",
-      "description": "读取事件包中复制后的对象字段或受管句柄字段。",
+      "description": "读取事件包中复制后的对象字段或受管句柄字段（64 位句柄值，右键菜单/下载/响应/WS 客户端句柄都经此取得）。",
       "insertText": "FBro_取事件对象字段($1, \"$2\")",
-      "returnType": "文本型",
+      "returnType": "长整数型",
       "visibility": "advanced",
       "binding": {
         "command": "FBro_取事件对象字段",
@@ -270,20 +295,24 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "字段名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要读取的事件字段名，取值见各事件说明（如 url、downloadItem、menuHandle）。"
           }
         ],
-        "returnType": "wideString",
+        "returnType": "longLong",
         "encoding": "wide"
       },
       "demoInvocation": "FBro_取事件对象字段(演示FBroBrowser控件, \"演示参数2\")"
@@ -305,11 +334,13 @@
         "parameters": [
           {
             "name": "延续句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro_取事件延续”取得的受管延续句柄，一次延迟决策事件对应一个；完成或取消后即失效，重复操作返回稳定错误码。"
           },
           {
             "name": "响应JSON",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "UTF-16 JSON 响应内容；作为事件或延续的结果交回浏览器，字段结构见对应事件说明。"
           }
         ],
         "returnType": "int",
@@ -334,7 +365,8 @@
         "parameters": [
           {
             "name": "延续句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro_取事件延续”取得的受管延续句柄，一次延迟决策事件对应一个；完成或取消后即失效，重复操作返回稳定错误码。"
           }
         ],
         "returnType": "int"
@@ -359,21 +391,26 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "事件名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "FBro 事件名，须与事件清单名称一致（如 OnBeforeDownload）；名称不匹配时绑定或采样设置不生效。"
           },
           {
             "name": "每秒次数",
-            "type": "int"
+            "type": "int",
+            "description": "该事件每秒最大投递次数；0 表示暂停投递。"
           }
         ],
         "returnType": "int",
@@ -399,17 +436,21 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "事件名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "FBro 事件名，须与事件清单名称一致（如 OnBeforeDownload）；名称不匹配时绑定或采样设置不生效。"
           },
           {
             "name": "处理器",
@@ -422,6 +463,52 @@
         "example": "FBro_绑定事件(FBro浏览器1, \"BeforePopup\", &$1)"
       },
       "demoInvocation": "FBro_绑定事件(演示FBroBrowser控件, \"演示事件\", &模块演示回调)"
+    },
+    {
+      "index": 13,
+      "name": "FBro_读资源响应正文",
+      "aliases": [
+        "LB_FBro_ResourceBodyBegin"
+      ],
+      "signature": "FBro_读资源响应正文(控件名, 最大字节数, 完成处理器)",
+      "description": "在“资源响应到达”处理器执行期间，为当前资源安装有界正文捕获；完成后触发“资源响应正文到达”，通过 FBro_取事件字段读取 url、status_code、mime_type、received_bytes、truncated、error、body_text 和 body_base64。不会重新发起请求。",
+      "insertText": "FBro_读资源响应正文($1, 1048576, &$2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_读资源响应正文",
+        "runtimeName": "FBro_读资源响应正文",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual",
+              "resource"
+            ],
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "最大字节数",
+            "type": "longLong",
+            "description": "允许捕获的响应正文最大字节数；超出部分截断，事件字段 truncated 为 1。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；只能在“资源响应到达”处理器中调用。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "FBro_读资源响应正文($1, 1048576, &$2)"
+      },
+      "demoInvocation": "FBro_读资源响应正文(演示FBroBrowser控件, 1, &模块演示回调)"
     }
   ]
 }

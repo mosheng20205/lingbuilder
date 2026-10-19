@@ -3,7 +3,7 @@
 - 模块 ID：`lingbuilder.fbro.session`
 - 版本：`2.1.0`
 - 类型：LingBuilder 内置模块
-- 命令数：10
+- 命令数：14
 - 设计器控件数：0
 - 分组数：1
 
@@ -31,3 +31,7 @@
 | 8 | `FBro会话_异步刷新Cookie存储` | `FBro会话_异步刷新Cookie存储(控件名)` | longLong | 异步请求 FBro 将 Cookie 写入持久化存储。 |
 | 9 | `FBro会话_异步清理缓存` | `FBro会话_异步清理缓存(控件名, 来源, 移除标志, 配额标志)` | longLong | 异步清理当前浏览器实例指定来源的缓存数据。 |
 | 10 | `FBro会话_异步清理全局缓存` | `FBro会话_异步清理全局缓存(来源, 移除标志, 配额标志)` | longLong | 异步清理所有 FBro 实例共享的全局缓存数据。 |
+| 11 | `FBro会话_是否全局上下文` | `FBro会话_是否全局上下文(控件名)` | int | 判断指定浏览器使用的 RequestContext 是否为全局上下文；独立 Profile 返回 0。 |
+| 12 | `FBro会话_取上下文缓存路径` | `FBro会话_取上下文缓存路径(控件名)` | wideString | 返回 RequestContext 缓存路径 JSON（global 与 cachePath 字段）；全局上下文同样返回其真实路径。 |
+| 13 | `FBro会话_创建上下文` | `FBro会话_创建上下文(设置JSON)` | longLong | 运行时创建独立 RequestContext（设置 JSON：cachePath、persistSessionCookies、acceptLanguageList、cookieableSchemesList、cookieableSchemesExcludeDefaults）；任务结果包含 context 句柄，可传给 FBro会话_使用上下文重建。 |
+| 14 | `FBro会话_使用上下文重建` | `FBro会话_使用上下文重建(控件名, 上下文句柄)` | int | 让浏览器改用指定 RequestContext 原地重建：先关闭旧浏览器，关闭完成后自动以新上下文重启（指纹多 profile 场景）。 |

@@ -15,7 +15,7 @@
 
 ## 模块说明
 
-CEF3（Chromium Embedded Framework）内核 SDK 离线载体模块（x64）：内含头文件、libcef.lib、预编译 /MD libcef_dll_wrapper.lib、全部运行时 DLL（含 v8_context_snapshot.bin、GPU/软渲染组件）与资源文件。安装后 CEF3浏览器模块（lingbuilder.cef3.browser）构建时自动从本模块发现 SDK，用户免下载、免 CMake、免编译。本模块只承载二进制资产，不提供中文命令或设计器控件，无需为项目单独启用。
+CEF3（Chromium Embedded Framework）内核 SDK 离线载体模块（x64）：内含头文件、libcef.lib、预编译 /MD libcef_dll_wrapper.lib、全部运行时 DLL（含 v8_context_snapshot.bin、GPU/软渲染组件）、资源文件及 LingBuilderCefBridge v3 C ABI。安装后 CEF3浏览器模块（lingbuilder.cef3.browser）构建时自动从本模块发现 SDK，用户免下载、免 CMake、免编译。本模块只承载二进制资产，不提供中文命令或设计器控件，无需为项目单独启用。
 
 ## 命令清单
 

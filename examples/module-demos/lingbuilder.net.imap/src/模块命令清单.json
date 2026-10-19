@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-25T22:05:22.328Z",
+  "generatedAt": "2026-10-19T03:18:58.779Z",
   "module": {
     "id": "lingbuilder.net.imap",
     "name": "IMAP邮件接收模块",

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:36.024Z",
+  "generatedAt": "2026-10-19T03:18:58.903Z",
   "module": {
     "id": "lingbuilder.win32.menu",
     "name": "Win32菜单模块",
@@ -52,15 +52,18 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "handle"
+            "type": "handle",
+            "description": "菜单_创建 或 菜单_创建弹出菜单 返回的菜单句柄；已销毁或仍挂在窗口上的菜单不要重复使用。"
           },
           {
             "name": "命令ID",
-            "type": "int"
+            "type": "int",
+            "description": "菜单项被点击时由 WM_COMMAND 收到的命令 ID，同一菜单内应唯一。"
           },
           {
             "name": "标题",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "菜单项显示的文本。"
           }
         ],
         "returnType": "bool",
@@ -81,15 +84,18 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "handle"
+            "type": "handle",
+            "description": "菜单_创建 或 菜单_创建弹出菜单 返回的菜单句柄；已销毁或仍挂在窗口上的菜单不要重复使用。"
           },
           {
             "name": "子菜单句柄",
-            "type": "handle"
+            "type": "handle",
+            "description": "作为子菜单挂载的弹出菜单句柄；挂载后不要单独销毁它。"
           },
           {
             "name": "标题",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "父菜单上显示的子菜单标题。"
           }
         ],
         "returnType": "bool",
@@ -110,7 +116,8 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "handle"
+            "type": "handle",
+            "description": "菜单_创建 或 菜单_创建弹出菜单 返回的菜单句柄；已销毁或仍挂在窗口上的菜单不要重复使用。"
           }
         ],
         "returnType": "bool"
@@ -130,11 +137,13 @@
         "parameters": [
           {
             "name": "窗口句柄",
-            "type": "handle"
+            "type": "handle",
+            "description": "接收菜单命令或托盘回调消息的窗口句柄。"
           },
           {
             "name": "菜单句柄",
-            "type": "handle"
+            "type": "handle",
+            "description": "菜单_创建弹出菜单 返回的弹出菜单句柄。传 0 表示移除窗口现有菜单。"
           }
         ],
         "returnType": "bool"
@@ -154,19 +163,23 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "handle"
+            "type": "handle",
+            "description": "菜单_创建弹出菜单 返回的弹出菜单句柄。"
           },
           {
             "name": "窗口句柄",
-            "type": "handle"
+            "type": "handle",
+            "description": "接收菜单命令或托盘回调消息的窗口句柄。用于确定菜单所属线程。"
           },
           {
             "name": "横坐标",
-            "type": "int"
+            "type": "int",
+            "description": "菜单左上角的屏幕横坐标，物理像素。"
           },
           {
             "name": "纵坐标",
-            "type": "int"
+            "type": "int",
+            "description": "菜单左上角的屏幕纵坐标，物理像素。"
           }
         ],
         "returnType": "int"
@@ -186,7 +199,8 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "handle"
+            "type": "handle",
+            "description": "菜单_创建 或 菜单_创建弹出菜单 返回的菜单句柄；已销毁或仍挂在窗口上的菜单不要重复使用。仍挂在窗口上的菜单不能销毁。"
           }
         ],
         "returnType": "bool"

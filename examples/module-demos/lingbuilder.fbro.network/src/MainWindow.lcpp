@@ -7,12 +7,12 @@
 类 MainWindow : 公开 窗口
     事件 _MainWindow_创建完毕()
         控件_设置选择项(命令分组选项卡, 0)
-        控件_设置文本(演示状态, "FBro高级网络模块：2 条命令，默认处于安全预览模式。")
+        控件_设置文本(演示状态, "FBro高级网络模块：23 条命令，默认处于安全预览模式。")
         调试输出("已加载模块演示：lingbuilder.fbro.network")
     结束
 
     事件 _运行第01组_被单击()
-        控件_设置文本(演示状态, "命令 1–2：FBro网络_设置代理 至 FBro网络_设置代理认证；源码内含完整签名、参数、返回值与调用。")
+        控件_设置文本(演示状态, "命令 1–12：FBro网络_设置代理 至 FBro页面_客户端发送缓冲；源码内含完整签名、参数、返回值与调用。")
         如果 (控件_取勾选(允许实际执行))
             // 命令ID：FBro网络_设置代理
             // [1] FBro网络_设置代理(控件名, 代理地址)
@@ -24,8 +24,120 @@
             // 功能：设置代理与认证信息。
             // 参数：控件名:controlRef，代理地址:wideString，用户名:wideString，密码:wideString；返回：int；可见性：advanced
             FBro网络_设置代理认证(演示FBroBrowser控件, "https://example.com", "演示参数3", "演示参数4")
+            // 命令ID：FBro服务器_创建
+            // [3] FBro服务器_创建(控件名, 监听地址, 端口, 最大连接数)
+            // 功能：在指定浏览器实例上创建内嵌 HTTP/WebSocket 服务器；任务结果包含 server 句柄与 address，服务器事件派发给该浏览器实例。
+            // 参数：控件名:controlRef，监听地址:wideString，端口:int，最大连接数:int；返回：longLong；可见性：advanced
+            FBro服务器_创建(演示FBroBrowser控件, "https://example.com", 1, 1)
+            // 命令ID：FBro服务器_发送WebSocket文本
+            // [4] FBro服务器_发送WebSocket文本(服务器句柄, 连接ID, 文本)
+            // 功能：向指定连接发送 WebSocket 文本帧（UTF-8）；自动投递到服务器 IO 线程。
+            // 参数：服务器句柄:longLong，连接ID:int，文本:wideString；返回：int；可见性：advanced
+            FBro服务器_发送WebSocket文本(1, 1, "演示参数3")
+            // 命令ID：FBro服务器_发送WebSocket缓冲
+            // [5] FBro服务器_发送WebSocket缓冲(服务器句柄, 连接ID, 缓冲句柄)
+            // 功能：向指定连接发送 WebSocket 二进制帧（受管缓冲）。
+            // 参数：服务器句柄:longLong，连接ID:int，缓冲句柄:longLong；返回：int；可见性：advanced
+            FBro服务器_发送WebSocket缓冲(1, 1, 1)
+            // 命令ID：FBro服务器_取地址
+            // [6] FBro服务器_取地址(服务器句柄)
+            // 功能：返回服务器监听地址。
+            // 参数：服务器句柄:longLong；返回：wideString；可见性：advanced
+            FBro服务器_取地址(1)
+            // 命令ID：FBro服务器_是否存在连接
+            // [7] FBro服务器_是否存在连接(服务器句柄, 连接ID)
+            // 功能：判断指定连接是否仍然有效。
+            // 参数：服务器句柄:longLong，连接ID:int；返回：int；可见性：advanced
+            FBro服务器_是否存在连接(1, 1)
+            // 命令ID：FBro服务器_关闭
+            // [8] FBro服务器_关闭(服务器句柄)
+            // 功能：关闭内嵌服务器并释放监听。
+            // 参数：服务器句柄:longLong；返回：int；可见性：advanced
+            FBro服务器_关闭(1)
+            // 命令ID：FBro页面_发送文本
+            // [9] FBro页面_发送文本(控件名, 通道名, 文本)
+            // 功能：按通道名把文本推送给页面内 WebSocket 拦截挂钩脚本（UTF-8 传输）；用于篡改/回发工作流。
+            // 参数：控件名:controlRef，通道名:wideString，文本:wideString；返回：int；可见性：advanced
+            FBro页面_发送文本(演示FBroBrowser控件, "演示参数2", "演示参数3")
+            // 命令ID：FBro页面_发送缓冲
+            // [10] FBro页面_发送缓冲(控件名, 通道名, 缓冲句柄)
+            // 功能：按通道名把受管缓冲字节推送给页面内拦截挂钩脚本。
+            // 参数：控件名:controlRef，通道名:wideString，缓冲句柄:longLong；返回：int；可见性：advanced
+            FBro页面_发送缓冲(演示FBroBrowser控件, "演示参数2", 1)
+            // 命令ID：FBro页面_客户端发送文本
+            // [11] FBro页面_客户端发送文本(控件名, 通道名, 文本)
+            // 功能：按通道名把文本经客户端拦截通道推送给页面挂钩脚本。
+            // 参数：控件名:controlRef，通道名:wideString，文本:wideString；返回：int；可见性：advanced
+            FBro页面_客户端发送文本(演示FBroBrowser控件, "演示参数2", "演示参数3")
+            // 命令ID：FBro页面_客户端发送缓冲
+            // [12] FBro页面_客户端发送缓冲(控件名, 通道名, 缓冲句柄)
+            // 功能：按通道名把受管缓冲字节经客户端拦截通道推送给页面挂钩脚本。
+            // 参数：控件名:controlRef，通道名:wideString，缓冲句柄:longLong；返回：int；可见性：advanced
+            FBro页面_客户端发送缓冲(演示FBroBrowser控件, "演示参数2", 1)
         如果结束
-        调试输出("已查看 命令 1–2：FBro网络_设置代理 至 FBro网络_设置代理认证；勾选允许实际执行后会使用演示参数调用。")
+        调试输出("已查看 命令 1–12：FBro网络_设置代理 至 FBro页面_客户端发送缓冲；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第02组_被单击()
+        控件_设置文本(演示状态, "命令 13–23：FBroWS客户端_是否空 至 FBro网络_实例发起请求；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
+            // 命令ID：FBroWS客户端_是否空
+            // [13] FBroWS客户端_是否空(WS客户端句柄)
+            // 功能：判断拦截事件下发的 WebSocket 客户端句柄是否为空。
+            // 参数：WS客户端句柄:longLong；返回：int；可见性：advanced
+            FBroWS客户端_是否空(1)
+            // 命令ID：FBroWS客户端_取地址
+            // [14] FBroWS客户端_取地址(WS客户端句柄)
+            // 功能：读取被拦截 WebSocket 客户端的连接地址。
+            // 参数：WS客户端句柄:longLong；返回：wideString；可见性：advanced
+            FBroWS客户端_取地址(1)
+            // 命令ID：FBroWS客户端_取协议
+            // [15] FBroWS客户端_取协议(WS客户端句柄)
+            // 功能：读取被拦截 WebSocket 客户端的子协议。
+            // 参数：WS客户端句柄:longLong；返回：wideString；可见性：advanced
+            FBroWS客户端_取协议(1)
+            // 命令ID：FBroWS客户端_取扩展
+            // [16] FBroWS客户端_取扩展(WS客户端句柄)
+            // 功能：读取被拦截 WebSocket 客户端的扩展协商结果。
+            // 参数：WS客户端句柄:longLong；返回：wideString；可见性：advanced
+            FBroWS客户端_取扩展(1)
+            // 命令ID：FBroWS客户端_发送文本
+            // [17] FBroWS客户端_发送文本(WS客户端句柄, 文本)
+            // 功能：通过被拦截的 WebSocket 客户端发送文本帧。
+            // 参数：WS客户端句柄:longLong，文本:wideString；返回：int；可见性：advanced
+            FBroWS客户端_发送文本(1, "演示参数2")
+            // 命令ID：FBroWS客户端_发送缓冲
+            // [18] FBroWS客户端_发送缓冲(WS客户端句柄, 缓冲句柄)
+            // 功能：通过被拦截的 WebSocket 客户端发送二进制帧（受管缓冲）。
+            // 参数：WS客户端句柄:longLong，缓冲句柄:longLong；返回：int；可见性：advanced
+            FBroWS客户端_发送缓冲(1, 1)
+            // 命令ID：FBro异步请求_取响应对象
+            // [19] FBro异步请求_取响应对象(URL请求句柄)
+            // 功能：取得 URL 请求的响应对象句柄；必须在请求完成（FBro异步请求_发起 的任务进入完成）之后调用，请求未完成或无响应返回 0。响应头/状态码用 FBro响应_取状态码、FBro响应_取协议头、FBro响应_取协议头映射JSON 读取，用完 FBro对象_释放。受管句柄判空只能 <> 0，禁止 > 0（按长整数打印恒为负数）。
+            // 参数：URL请求句柄:longLong；返回：longLong；可见性：advanced
+            FBro异步请求_取响应对象(1)
+            // 命令ID：FBro异步请求_取消
+            // [20] FBro异步请求_取消(URL请求句柄)
+            // 功能：取消进行中的 URL 请求（Chromium 网络栈中断）；已完成请求无副作用。取消后下载数据事件停止投递。
+            // 参数：URL请求句柄:longLong；返回：int；可见性：advanced
+            FBro异步请求_取消(1)
+            // 命令ID：FBro网络_取下载数据事件
+            // [21] FBro网络_取下载数据事件(任务ID)
+            // 功能：领取（或预约）纯协议请求的下一个下载块事件；参数是 FBro异步请求_发起 返回的任务句柄。返回事件任务句柄：任务结果为 {"kind":"downloadData","size":N}，用 FBro网络_取下载块 取回字节（一次性）。事件未到达时任务保持进行中（预约）；请求完成后队列已排空时领取立即得到失败任务（FBro任务_取状态=3），排空循环以「状态 <> 2」收尾即可。
+            // 参数：任务ID:longLong；返回：longLong；可见性：advanced
+            FBro网络_取下载数据事件(1)
+            // 命令ID：FBro网络_取下载块
+            // [22] FBro网络_取下载块(任务ID)
+            // 功能：从 FBro网络_取下载数据事件 返回的事件任务取回受管字节缓冲（一次性，重复提取返回 0）；返回 0 表示任务未成功或缓冲已提取。配合 FBro缓冲_转十六进制 拼接收集、FBro缓冲_保存文件 落盘。块按原始字节交付（Chromium 不自动解压，务必先设 Accept-Encoding: identity）；多块正文先拼接十六进制再一次性解码，禁止逐块转文本（块边界会切开 UTF-8 字符）。
+            // 参数：任务ID:longLong；返回：longLong；可见性：advanced
+            FBro网络_取下载块(1)
+            // 命令ID：FBro网络_实例发起请求
+            // [23] FBro网络_实例发起请求(实例句柄, 请求句柄)
+            // 功能：在 FBro_后台创建 返回的实例句柄上异步发起受管 URL 请求（控制台/纯代码无控件场景用；窗口项目带控件的用 FBro异步请求_发起）；返回任务句柄即完成事件，任务结果 JSON 含 urlRequest/status/error/cached，FBro任务_取对象 直取 URL 请求句柄。请求头务必先设 Accept-Encoding: identity；多步流程先声明（不带初始化）后按序赋值。实例句柄无效返回 0。
+            // 参数：实例句柄:longLong，请求句柄:longLong；返回：longLong；可见性：advanced
+            FBro网络_实例发起请求(1, 1)
+        如果结束
+        调试输出("已查看 命令 13–23：FBroWS客户端_是否空 至 FBro网络_实例发起请求；勾选允许实际执行后会使用演示参数调用。")
     结束
 
 结束类

@@ -1,107 +1,747 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.697Z",
+  "generatedAt": "2026-10-19T03:18:58.646Z",
   "module": {
     "id": "lingbuilder.advanced.com",
     "name": "COM自动化模块",
-    "version": "1.0.0",
-    "description": "通过 ProgID 创建 IDispatch 自动化对象，支持文本属性和无参方法。"
+    "version": "2.0.0",
+    "description": "句柄制 COM 自动化：注册或免注册创建 IDispatch 对象、OCX 控件窗口宿主、事件挂接与映射、类型化属性和带参方法调用、接口信息查看。纯 C++ 运行时，同时支持 32 位和 64 位目标。"
   },
-  "commandCount": 6,
+  "commandCount": 27,
   "commands": [
     {
       "index": 1,
       "name": "COM_创建对象",
       "signature": "COM_创建对象(ProgID)",
-      "description": "创建一个 COM 自动化对象。",
+      "description": "通过 ProgID 创建 COM 自动化对象，返回 COM 对象句柄，0 表示失败。",
       "insertText": "COM_创建对象(\"$1\")",
-      "returnType": "逻辑型",
+      "returnType": "长整数型",
       "binding": {
         "command": "COM_创建对象",
         "runtimeName": "COM_创建对象",
         "parameters": [
           {
             "name": "ProgID",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "如 \"WScript.Shell\" 或 \"Shell.Application\"。"
           }
         ],
-        "returnType": "bool",
-        "encoding": "wide"
+        "returnType": "longLong",
+        "encoding": "wide",
+        "example": "COM_创建对象(\"Shell.Application\")"
       },
       "demoInvocation": "COM_创建对象(\"演示参数1\")"
     },
     {
       "index": 2,
+      "name": "COM_创建对象免注册",
+      "signature": "COM_创建对象免注册(CLSID, 组件DLL路径)",
+      "description": "加载组件 DLL 并通过 DllGetClassObject 免注册创建 COM 对象；组件位数必须与程序位数一致。",
+      "insertText": "COM_创建对象免注册(\"$1\", \"$2\")",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "COM_创建对象免注册",
+        "runtimeName": "COM_创建对象免注册",
+        "parameters": [
+          {
+            "name": "CLSID",
+            "type": "wideString",
+            "description": "\"{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}\" 形式。"
+          },
+          {
+            "name": "组件DLL路径",
+            "type": "wideString",
+            "description": "组件 DLL 完整路径。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide",
+        "example": "COM_创建对象免注册(\"{0D43FE01-F093-11CF-8940-00A0C9054228}\", \"C:\\Windows\\System32\\scrrun.dll\")"
+      },
+      "demoInvocation": "COM_创建对象免注册(\"演示参数1\", \"module-demo-temp.txt\")"
+    },
+    {
+      "index": 3,
+      "name": "COM_注册组件",
+      "signature": "COM_注册组件(组件DLL路径)",
+      "description": "加载组件 DLL 并调用 DllRegisterServer 把 OCX/DLL 注册到系统（需要管理员权限时由系统返回失败）。",
+      "insertText": "COM_注册组件(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "COM_注册组件",
+        "runtimeName": "COM_注册组件",
+        "parameters": [
+          {
+            "name": "组件DLL路径",
+            "type": "wideString",
+            "description": "组件完整路径。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "COM_注册组件(COM_取组件路径(\"FoxitReader_AX_Pro.ocx\"))"
+      },
+      "demoInvocation": "COM_注册组件(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 4,
+      "name": "COM_注销组件",
+      "signature": "COM_注销组件(组件DLL路径)",
+      "description": "加载组件 DLL 并调用 DllUnregisterServer 从系统注销；程序退出前注销随程序携带的组件即可实现绿色免安装。",
+      "insertText": "COM_注销组件(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "COM_注销组件",
+        "runtimeName": "COM_注销组件",
+        "parameters": [
+          {
+            "name": "组件DLL路径",
+            "type": "wideString",
+            "description": "组件完整路径。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "COM_注销组件(COM_取组件路径(\"FoxitReader_AX_Pro.ocx\"))"
+      },
+      "demoInvocation": "COM_注销组件(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 5,
+      "name": "COM_取组件路径",
+      "signature": "COM_取组件路径(文件名)",
+      "description": "返回当前 exe 所在目录与文件名拼接的完整路径，用于随程序携带的组件定位。",
+      "insertText": "COM_取组件路径(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "COM_取组件路径",
+        "runtimeName": "COM_取组件路径",
+        "parameters": [
+          {
+            "name": "文件名",
+            "type": "wideString",
+            "description": "如 \"FoxitReader_AX_Pro.ocx\"。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "文本型 组件 = COM_取组件路径(\"FoxitReader_AX_Pro.ocx\")"
+      },
+      "demoInvocation": "COM_取组件路径(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 6,
+      "name": "COM_创建OCX组件",
+      "signature": "COM_创建OCX组件(父窗口, 类标识, 左边, 顶边, 宽度, 高度, [边框])",
+      "description": "在父窗口内以 AtlAxWin 宿主一个 ActiveX/OCX 控件，返回 OCX 宿主窗口句柄；对象用 COM_取OCX对象 取回。边框：0 无边框，1 凹入式，2 凸出式，3 浅凹入式，4 镜框式，5 单线边框。",
+      "insertText": "COM_创建OCX组件($1, \"$2\", 12, 64, 620, 380, 1)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "COM_创建OCX组件",
+        "runtimeName": "COM_创建OCX组件",
+        "parameters": [
+          {
+            "name": "父窗口",
+            "type": "controlRef",
+            "description": "裸控件名或 当前窗口。",
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "nativeHandle"
+          },
+          {
+            "name": "类标识",
+            "type": "wideString",
+            "description": "控件 CLSID（带花括号）或 ProgID。"
+          },
+          {
+            "name": "左边",
+            "type": "int",
+            "description": "控件在父窗口客户区内的左边位置，物理像素。"
+          },
+          {
+            "name": "顶边",
+            "type": "int",
+            "description": "控件在父窗口客户区内的上边位置，物理像素。"
+          },
+          {
+            "name": "宽度",
+            "type": "int",
+            "description": "控件初始宽度，物理像素。"
+          },
+          {
+            "name": "高度",
+            "type": "int",
+            "description": "控件初始高度，物理像素。"
+          },
+          {
+            "name": "边框",
+            "type": "int",
+            "optional": true,
+            "defaultValue": 0,
+            "description": "缺省 0 表示无边框。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide",
+        "example": "COM_创建OCX组件(当前窗口, \"{8856F961-340A-11D0-A96B-00C04FD705A2}\", 12, 64, 620, 380, 1)"
+      },
+      "demoInvocation": "COM_创建OCX组件(演示状态, \"演示参数2\", 1, 1, 1, 1, 1)"
+    },
+    {
+      "index": 7,
+      "name": "COM_取OCX对象",
+      "signature": "COM_取OCX对象(OCX窗口句柄)",
+      "description": "取 OCX 宿主窗口内的 COM 对象句柄。",
+      "insertText": "COM_取OCX对象($1)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "COM_取OCX对象",
+        "runtimeName": "COM_取OCX对象",
+        "parameters": [
+          {
+            "name": "OCX窗口句柄",
+            "type": "longLong",
+            "description": "COM_创建OCX组件 返回的宿主窗口句柄；宿主窗口被销毁后失效。"
+          }
+        ],
+        "returnType": "longLong",
+        "example": "浏览器 = COM_取OCX对象(浏览器窗口)"
+      },
+      "demoInvocation": "COM_取OCX对象(1)"
+    },
+    {
+      "index": 8,
       "name": "COM_取文本属性",
-      "signature": "COM_取文本属性(属性名)",
+      "signature": "COM_取文本属性(对象, 属性名)",
       "description": "读取文本或可转文本属性。",
-      "insertText": "COM_取文本属性(\"$1\")",
+      "insertText": "COM_取文本属性($1, \"$2\")",
       "returnType": "文本型",
       "binding": {
         "command": "COM_取文本属性",
         "runtimeName": "COM_取文本属性",
         "parameters": [
           {
+            "name": "对象",
+            "type": "longLong",
+            "description": "COM_创建对象、COM_取OCX对象、COM_取对象属性 或 COM_调用对象方法 返回的 COM 对象句柄；用满后交给 COM_关闭 释放。"
+          },
+          {
             "name": "属性名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "组件暴露的属性或方法名称，按 IDispatch 名称匹配；不确定的名称先用 COM_取接口信息 查看。返回的属性会尽量转成文本。"
           }
         ],
         "returnType": "wideString",
-        "encoding": "wide"
+        "encoding": "wide",
+        "example": "COM_取文本属性(浏览器, \"LocationName\")"
       },
-      "demoInvocation": "COM_取文本属性(\"演示参数1\")"
+      "demoInvocation": "COM_取文本属性(1, \"演示参数2\")"
     },
     {
-      "index": 3,
+      "index": 9,
+      "name": "COM_取数值属性",
+      "signature": "COM_取数值属性(对象, 属性名)",
+      "description": "读取数值属性，返回双精度小数。",
+      "insertText": "COM_取数值属性($1, \"$2\")",
+      "returnType": "双精度小数型",
+      "binding": {
+        "command": "COM_取数值属性",
+        "runtimeName": "COM_取数值属性",
+        "parameters": [
+          {
+            "name": "对象",
+            "type": "longLong",
+            "description": "COM_创建对象、COM_取OCX对象、COM_取对象属性 或 COM_调用对象方法 返回的 COM 对象句柄；用满后交给 COM_关闭 释放。"
+          },
+          {
+            "name": "属性名",
+            "type": "wideString",
+            "description": "组件暴露的属性或方法名称，按 IDispatch 名称匹配；不确定的名称先用 COM_取接口信息 查看。属性不是数值类型时转换失败返回 0。"
+          }
+        ],
+        "returnType": "double",
+        "encoding": "wide",
+        "example": "COM_取数值属性(浏览器, \"Top\")"
+      },
+      "demoInvocation": "COM_取数值属性(1, \"演示参数2\")"
+    },
+    {
+      "index": 10,
+      "name": "COM_取逻辑属性",
+      "signature": "COM_取逻辑属性(对象, 属性名)",
+      "description": "读取逻辑属性。",
+      "insertText": "COM_取逻辑属性($1, \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "COM_取逻辑属性",
+        "runtimeName": "COM_取逻辑属性",
+        "parameters": [
+          {
+            "name": "对象",
+            "type": "longLong",
+            "description": "COM_创建对象、COM_取OCX对象、COM_取对象属性 或 COM_调用对象方法 返回的 COM 对象句柄；用满后交给 COM_关闭 释放。"
+          },
+          {
+            "name": "属性名",
+            "type": "wideString",
+            "description": "组件暴露的属性或方法名称，按 IDispatch 名称匹配；不确定的名称先用 COM_取接口信息 查看。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "COM_取逻辑属性(浏览器, \"Busy\")"
+      },
+      "demoInvocation": "COM_取逻辑属性(1, \"演示参数2\")"
+    },
+    {
+      "index": 11,
+      "name": "COM_取对象属性",
+      "signature": "COM_取对象属性(对象, 属性名)",
+      "description": "读取对象类型属性并返回新的 COM 对象句柄，用 COM_关闭 释放。",
+      "insertText": "COM_取对象属性($1, \"$2\")",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "COM_取对象属性",
+        "runtimeName": "COM_取对象属性",
+        "parameters": [
+          {
+            "name": "对象",
+            "type": "longLong",
+            "description": "COM_创建对象、COM_取OCX对象、COM_取对象属性 或 COM_调用对象方法 返回的 COM 对象句柄；用满后交给 COM_关闭 释放。"
+          },
+          {
+            "name": "属性名",
+            "type": "wideString",
+            "description": "要读取的子对象属性名；返回的新句柄需要单独 COM_关闭。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide",
+        "example": "文档 = COM_取对象属性(浏览器, \"Document\")"
+      },
+      "demoInvocation": "COM_取对象属性(1, \"演示参数2\")"
+    },
+    {
+      "index": 12,
       "name": "COM_置文本属性",
-      "signature": "COM_置文本属性(属性名, 值)",
-      "description": "设置 BSTR 文本属性。",
-      "insertText": "COM_置文本属性(\"$1\", \"$2\")",
+      "signature": "COM_置文本属性(对象, 属性名, 值)",
+      "description": "写入属性；值按文本传入（VT_BSTR），目标属性为数值或逻辑时由组件自动转换类型，只读属性写入失败。",
+      "insertText": "COM_置文本属性($1, \"$2\", \"$3\")",
       "returnType": "逻辑型",
       "binding": {
         "command": "COM_置文本属性",
         "runtimeName": "COM_置文本属性",
         "parameters": [
           {
+            "name": "对象",
+            "type": "longLong",
+            "description": "COM_创建对象、COM_取OCX对象、COM_取对象属性 或 COM_调用对象方法 返回的 COM 对象句柄；用满后交给 COM_关闭 释放。"
+          },
+          {
             "name": "属性名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要写入的属性名；只读属性写入失败。"
           },
           {
             "name": "值",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "以文本形式提交的属性值，目标属性为数值或逻辑类型时由组件自行转换。"
           }
         ],
         "returnType": "bool",
-        "encoding": "wide"
+        "encoding": "wide",
+        "example": "COM_置文本属性(对象, \"Language\", \"VBScript\")"
       },
-      "demoInvocation": "COM_置文本属性(\"演示参数1\", \"演示参数2\")"
+      "demoInvocation": "COM_置文本属性(1, \"演示参数2\", \"演示参数3\")"
     },
     {
-      "index": 4,
-      "name": "COM_调用无参方法",
-      "signature": "COM_调用无参方法(方法名)",
-      "description": "调用无参数方法。",
-      "insertText": "COM_调用无参方法(\"$1\")",
+      "index": 13,
+      "name": "COM_调用方法",
+      "signature": "COM_调用方法(对象, 方法名, 参数...)",
+      "description": "调用 COM 方法，参数按值传入；成功返回真。",
+      "insertText": "COM_调用方法($1, \"$2\", $0)",
       "returnType": "逻辑型",
       "binding": {
-        "command": "COM_调用无参方法",
-        "runtimeName": "COM_调用无参方法",
+        "command": "COM_调用方法",
+        "runtimeName": "COM_调用方法",
         "parameters": [
           {
+            "name": "对象",
+            "type": "longLong",
+            "description": "COM_创建对象、COM_取OCX对象、COM_取对象属性 或 COM_调用对象方法 返回的 COM 对象句柄；用满后交给 COM_关闭 释放。"
+          },
+          {
             "name": "方法名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "组件暴露的属性或方法名称，按 IDispatch 名称匹配；不确定的名称先用 COM_取接口信息 查看。返回值被丢弃，只判断是否成功。"
+          },
+          {
+            "name": "参数",
+            "type": "lingValue",
+            "variadic": true,
+            "description": "按值传入 COM 方法；支持整数、长整数、小数、逻辑值和文本。"
           }
         ],
         "returnType": "bool",
-        "encoding": "wide"
+        "encoding": "wide",
+        "example": "COM_调用方法(浏览器, \"Navigate2\", \"https://www.lingbuilder.com\")"
       },
-      "demoInvocation": "COM_调用无参方法(\"演示参数1\")"
+      "demoInvocation": "COM_调用方法(1, \"演示参数2\")"
     },
     {
-      "index": 5,
+      "index": 14,
+      "name": "COM_调用文本方法",
+      "signature": "COM_调用文本方法(对象, 方法名, 参数...)",
+      "description": "调用 COM 方法并把返回值转为文本。",
+      "insertText": "COM_调用文本方法($1, \"$2\", $0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "COM_调用文本方法",
+        "runtimeName": "COM_调用文本方法",
+        "parameters": [
+          {
+            "name": "对象",
+            "type": "longLong",
+            "description": "COM_创建对象、COM_取OCX对象、COM_取对象属性 或 COM_调用对象方法 返回的 COM 对象句柄；用满后交给 COM_关闭 释放。"
+          },
+          {
+            "name": "方法名",
+            "type": "wideString",
+            "description": "组件暴露的属性或方法名称，按 IDispatch 名称匹配；不确定的名称先用 COM_取接口信息 查看。返回值按组件转换规则转成文本。"
+          },
+          {
+            "name": "参数",
+            "type": "lingValue",
+            "variadic": true,
+            "description": "按值传入 COM 方法；支持整数、长整数、小数、逻辑值和文本。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "COM_调用文本方法(对象, \"BuildPath\", \"C:\", \"a.txt\")"
+      },
+      "demoInvocation": "COM_调用文本方法(1, \"演示参数2\")"
+    },
+    {
+      "index": 15,
+      "name": "COM_调用数值方法",
+      "signature": "COM_调用数值方法(对象, 方法名, 参数...)",
+      "description": "调用 COM 方法并把返回值转为双精度小数。",
+      "insertText": "COM_调用数值方法($1, \"$2\", $0)",
+      "returnType": "双精度小数型",
+      "binding": {
+        "command": "COM_调用数值方法",
+        "runtimeName": "COM_调用数值方法",
+        "parameters": [
+          {
+            "name": "对象",
+            "type": "longLong",
+            "description": "COM_创建对象、COM_取OCX对象、COM_取对象属性 或 COM_调用对象方法 返回的 COM 对象句柄；用满后交给 COM_关闭 释放。"
+          },
+          {
+            "name": "方法名",
+            "type": "wideString",
+            "description": "组件暴露的属性或方法名称，按 IDispatch 名称匹配；不确定的名称先用 COM_取接口信息 查看。返回值转成双精度小数，不可转换时返回 0。"
+          },
+          {
+            "name": "参数",
+            "type": "lingValue",
+            "variadic": true,
+            "description": "按值传入 COM 方法；支持整数、长整数、小数、逻辑值和文本。"
+          }
+        ],
+        "returnType": "double",
+        "encoding": "wide",
+        "example": "COM_调用数值方法(对象, \"GetSpecialFolderSize\", 0)"
+      },
+      "demoInvocation": "COM_调用数值方法(1, \"演示参数2\")"
+    },
+    {
+      "index": 16,
+      "name": "COM_调用逻辑方法",
+      "signature": "COM_调用逻辑方法(对象, 方法名, 参数...)",
+      "description": "调用 COM 方法并把返回值转为逻辑值。",
+      "insertText": "COM_调用逻辑方法($1, \"$2\", $0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "COM_调用逻辑方法",
+        "runtimeName": "COM_调用逻辑方法",
+        "parameters": [
+          {
+            "name": "对象",
+            "type": "longLong",
+            "description": "COM_创建对象、COM_取OCX对象、COM_取对象属性 或 COM_调用对象方法 返回的 COM 对象句柄；用满后交给 COM_关闭 释放。"
+          },
+          {
+            "name": "方法名",
+            "type": "wideString",
+            "description": "组件暴露的属性或方法名称，按 IDispatch 名称匹配；不确定的名称先用 COM_取接口信息 查看。返回值转成逻辑值。"
+          },
+          {
+            "name": "参数",
+            "type": "lingValue",
+            "variadic": true,
+            "description": "按值传入 COM 方法；支持整数、长整数、小数、逻辑值和文本。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "COM_调用逻辑方法(对象, \"FolderExists\", \"C:\\Windows\")"
+      },
+      "demoInvocation": "COM_调用逻辑方法(1, \"演示参数2\")"
+    },
+    {
+      "index": 17,
+      "name": "COM_调用对象方法",
+      "signature": "COM_调用对象方法(对象, 方法名, 参数...)",
+      "description": "调用返回对象的 COM 方法，返回新的 COM 对象句柄。",
+      "insertText": "COM_调用对象方法($1, \"$2\", $0)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "COM_调用对象方法",
+        "runtimeName": "COM_调用对象方法",
+        "parameters": [
+          {
+            "name": "对象",
+            "type": "longLong",
+            "description": "COM_创建对象、COM_取OCX对象、COM_取对象属性 或 COM_调用对象方法 返回的 COM 对象句柄；用满后交给 COM_关闭 释放。"
+          },
+          {
+            "name": "方法名",
+            "type": "wideString",
+            "description": "要调用的方法名；返回对象类型的方法才适用，取到的新句柄需要单独 COM_关闭。"
+          },
+          {
+            "name": "参数",
+            "type": "lingValue",
+            "variadic": true,
+            "description": "按值传入 COM 方法；支持整数、长整数、小数、逻辑值和文本。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide",
+        "example": "文件夹 = COM_调用对象方法(文件系统, \"GetFolder\", \"C:\\Windows\")"
+      },
+      "demoInvocation": "COM_调用对象方法(1, \"演示参数2\")"
+    },
+    {
+      "index": 18,
+      "name": "COM_挂接事件",
+      "signature": "COM_挂接事件(对象)",
+      "description": "挂接对象的全部事件连接点，返回事件句柄（非 0）；失败返回 0 并可用 COM_取错误 查看原因。",
+      "insertText": "COM_挂接事件($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "COM_挂接事件",
+        "runtimeName": "COM_挂接事件",
+        "parameters": [
+          {
+            "name": "对象",
+            "type": "longLong",
+            "description": "COM_创建对象、COM_取OCX对象、COM_取对象属性 或 COM_调用对象方法 返回的 COM 对象句柄；用满后交给 COM_关闭 释放。对象必须支持 IConnectionPointContainer。"
+          }
+        ],
+        "returnType": "int",
+        "example": "事件句柄 = COM_挂接事件(浏览器)"
+      },
+      "demoInvocation": "COM_挂接事件(1)"
+    },
+    {
+      "index": 19,
+      "name": "COM_映射事件",
+      "signature": "COM_映射事件(对象, 事件ID, &处理器, [用户数据])",
+      "description": "把 COM 事件 ID 映射到当前类的处理器；处理器签名：空 处理器(整数型 用户数据, 文本型 参数文本)，事件参数按制表符拼接，对象参数为 [COM对象] 占位。",
+      "insertText": "COM_映射事件($1, 102, &$3, 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "COM_映射事件",
+        "runtimeName": "COM_映射事件",
+        "parameters": [
+          {
+            "name": "对象",
+            "type": "longLong",
+            "description": "COM_创建对象、COM_取OCX对象、COM_取对象属性 或 COM_调用对象方法 返回的 COM 对象句柄；用满后交给 COM_关闭 释放。"
+          },
+          {
+            "name": "事件ID",
+            "type": "int",
+            "description": "DISPID，可用 COM_取接口信息 查看。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；事件到达窗口线程时回调，签名：空 处理器(整数型 用户数据, 文本型 参数文本)。",
+            "handlerSignature": {
+              "parameterTypes": [
+                "整数型",
+                "文本型"
+              ],
+              "returnType": "空"
+            }
+          },
+          {
+            "name": "用户数据",
+            "type": "int",
+            "optional": true,
+            "defaultValue": 0,
+            "description": "原样传给处理器的自定义整数，用于在一个对象的多个映射之间区分来源。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "COM_映射事件(浏览器, 102, &网页_状态文本改变, 0)"
+      },
+      "demoInvocation": "COM_映射事件(1, 1, &模块演示回调_整数型_文本型_空, 1)"
+    },
+    {
+      "index": 20,
+      "name": "COM_取消挂接事件",
+      "signature": "COM_取消挂接事件(对象, 事件句柄)",
+      "description": "取消事件挂接并清除该对象的全部事件映射。",
+      "insertText": "COM_取消挂接事件($1, $2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "COM_取消挂接事件",
+        "runtimeName": "COM_取消挂接事件",
+        "parameters": [
+          {
+            "name": "对象",
+            "type": "longLong",
+            "description": "COM_创建对象、COM_取OCX对象、COM_取对象属性 或 COM_调用对象方法 返回的 COM 对象句柄；用满后交给 COM_关闭 释放。"
+          },
+          {
+            "name": "事件句柄",
+            "type": "int",
+            "description": "COM_挂接事件 返回的事件句柄；关闭对象时也会自动取消。"
+          }
+        ],
+        "returnType": "bool",
+        "example": "COM_取消挂接事件(浏览器, 事件句柄)"
+      },
+      "demoInvocation": "COM_取消挂接事件(1, 1)"
+    },
+    {
+      "index": 21,
+      "name": "COM_取事件对象参数",
+      "signature": "COM_取事件对象参数(序号)",
+      "description": "仅在事件处理器内有效：把第 N 个（从 0 开始）对象类型事件参数包装为新的 COM 对象句柄。",
+      "insertText": "COM_取事件对象参数($1)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "COM_取事件对象参数",
+        "runtimeName": "COM_取事件对象参数",
+        "parameters": [
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "要包装的事件参数序号，从 0 起，只在事件处理器执行期间有效。"
+          }
+        ],
+        "returnType": "longLong",
+        "example": "发件对象 = COM_取事件对象参数(0)"
+      },
+      "demoInvocation": "COM_取事件对象参数(1)"
+    },
+    {
+      "index": 22,
+      "name": "COM_启用OCX消息转发",
+      "signature": "COM_启用OCX消息转发()",
+      "description": "安装当前线程消息钩子，把键盘和鼠标消息转发给 OCX 宿主窗口（WM_FORWARDMSG）。",
+      "insertText": "COM_启用OCX消息转发()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "COM_启用OCX消息转发",
+        "runtimeName": "COM_启用OCX消息转发",
+        "parameters": [],
+        "returnType": "bool",
+        "example": "COM_启用OCX消息转发()"
+      },
+      "demoInvocation": "COM_启用OCX消息转发()"
+    },
+    {
+      "index": 23,
+      "name": "COM_移除OCX消息转发",
+      "signature": "COM_移除OCX消息转发()",
+      "description": "移除 OCX 消息转发钩子。",
+      "insertText": "COM_移除OCX消息转发()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "COM_移除OCX消息转发",
+        "runtimeName": "COM_移除OCX消息转发",
+        "parameters": [],
+        "returnType": "bool",
+        "example": "COM_移除OCX消息转发()"
+      },
+      "demoInvocation": "COM_移除OCX消息转发()"
+    },
+    {
+      "index": 24,
+      "name": "COM_取接口信息",
+      "signature": "COM_取接口信息(对象)",
+      "description": "通过 ITypeInfo 返回接口摘要文本：类型名、GUID 和属性、方法（含 DISPID）、事件清单，用于确定映射事件的事件 ID。",
+      "insertText": "COM_取接口信息($1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "COM_取接口信息",
+        "runtimeName": "COM_取接口信息",
+        "parameters": [
+          {
+            "name": "对象",
+            "type": "longLong",
+            "description": "COM_创建对象、COM_取OCX对象、COM_取对象属性 或 COM_调用对象方法 返回的 COM 对象句柄；用满后交给 COM_关闭 释放。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "调试输出(COM_取接口信息(浏览器))"
+      },
+      "demoInvocation": "COM_取接口信息(1)"
+    },
+    {
+      "index": 25,
+      "name": "COM_关闭",
+      "signature": "COM_关闭(对象)",
+      "description": "释放一个 COM 对象（含其 OCX 宿主窗口与事件挂接）。",
+      "insertText": "COM_关闭($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "COM_关闭",
+        "runtimeName": "COM_关闭",
+        "parameters": [
+          {
+            "name": "对象",
+            "type": "longLong",
+            "description": "COM_创建对象、COM_取OCX对象、COM_取对象属性 或 COM_调用对象方法 返回的 COM 对象句柄；用满后交给 COM_关闭 释放。同时释放其 OCX 宿主窗口与事件挂接。"
+          }
+        ],
+        "returnType": "bool",
+        "example": "COM_关闭(浏览器)"
+      },
+      "demoInvocation": "COM_关闭(1)"
+    },
+    {
+      "index": 26,
+      "name": "COM_关闭全部",
+      "signature": "COM_关闭全部()",
+      "description": "释放当前程序创建的全部 COM 对象；窗口销毁时自动调用。",
+      "insertText": "COM_关闭全部()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "COM_关闭全部",
+        "runtimeName": "COM_关闭全部",
+        "parameters": [],
+        "returnType": "bool",
+        "example": "COM_关闭全部()"
+      },
+      "demoInvocation": "COM_关闭全部()"
+    },
+    {
+      "index": 27,
       "name": "COM_取错误",
       "signature": "COM_取错误()",
-      "description": "返回最近 COM 错误。",
+      "description": "返回最近一次 COM 操作的中文错误文本。",
       "insertText": "COM_取错误()",
       "returnType": "文本型",
       "binding": {
@@ -109,24 +749,10 @@
         "runtimeName": "COM_取错误",
         "parameters": [],
         "returnType": "wideString",
-        "encoding": "wide"
+        "encoding": "wide",
+        "example": "调试输出(COM_取错误())"
       },
       "demoInvocation": "COM_取错误()"
-    },
-    {
-      "index": 6,
-      "name": "COM_关闭",
-      "signature": "COM_关闭()",
-      "description": "释放当前自动化对象。",
-      "insertText": "COM_关闭()",
-      "returnType": "空",
-      "binding": {
-        "command": "COM_关闭",
-        "runtimeName": "COM_关闭",
-        "parameters": [],
-        "returnType": "void"
-      },
-      "demoInvocation": "COM_关闭()"
     }
   ]
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.848Z",
+  "generatedAt": "2026-10-19T03:18:58.759Z",
   "module": {
     "id": "lingbuilder.image.core",
     "name": "图像基础模块",
@@ -22,7 +22,8 @@
         "parameters": [
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "图片文件的完整路径；GDI+ 打不开或文件损坏时按说明返回 0、空文本或假。"
           }
         ],
         "returnType": "int",
@@ -43,7 +44,8 @@
         "parameters": [
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "图片文件的完整路径；GDI+ 打不开或文件损坏时按说明返回 0、空文本或假。"
           }
         ],
         "returnType": "int",
@@ -64,15 +66,18 @@
         "parameters": [
           {
             "name": "来源",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "图片文件的完整路径；GDI+ 打不开或文件损坏时按说明返回 0、空文本或假。"
           },
           {
             "name": "目标",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "输出图片路径；保存格式按扩展名识别 png、jpg、jpeg、bmp、gif、tif、tiff，无法识别时按 PNG 保存。"
           },
           {
             "name": "格式",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "目标编码名，支持 png、jpg、jpeg、bmp、gif、tif、tiff；空文本或不识别时按 PNG 保存。"
           }
         ],
         "returnType": "bool",
@@ -93,19 +98,23 @@
         "parameters": [
           {
             "name": "来源",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "图片文件的完整路径；GDI+ 打不开或文件损坏时按说明返回 0、空文本或假。"
           },
           {
             "name": "目标",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "输出图片路径；保存格式按扩展名识别 png、jpg、jpeg、bmp、gif、tif、tiff，无法识别时按 PNG 保存。"
           },
           {
             "name": "宽度",
-            "type": "int"
+            "type": "int",
+            "description": "缩放后的目标宽度，像素；小于等于 0 返回假。"
           },
           {
             "name": "高度",
-            "type": "int"
+            "type": "int",
+            "description": "缩放后的目标高度，像素；小于等于 0 返回假。"
           }
         ],
         "returnType": "bool",
@@ -126,27 +135,33 @@
         "parameters": [
           {
             "name": "来源",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "图片文件的完整路径；GDI+ 打不开或文件损坏时按说明返回 0、空文本或假。"
           },
           {
             "name": "目标",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "输出图片路径；保存格式按扩展名识别 png、jpg、jpeg、bmp、gif、tif、tiff，无法识别时按 PNG 保存。"
           },
           {
             "name": "横坐标",
-            "type": "int"
+            "type": "int",
+            "description": "裁剪起点列坐标，从 0 起；与宽度之和越过图片宽度时返回假。"
           },
           {
             "name": "纵坐标",
-            "type": "int"
+            "type": "int",
+            "description": "裁剪起点行坐标，从 0 起；与高度之和越过图片高度时返回假。"
           },
           {
             "name": "宽度",
-            "type": "int"
+            "type": "int",
+            "description": "裁剪区域宽度，像素；小于等于 0 返回假。"
           },
           {
             "name": "高度",
-            "type": "int"
+            "type": "int",
+            "description": "裁剪区域高度，像素；小于等于 0 返回假。"
           }
         ],
         "returnType": "bool",
@@ -167,15 +182,18 @@
         "parameters": [
           {
             "name": "来源",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "图片文件的完整路径；GDI+ 打不开或文件损坏时按说明返回 0、空文本或假。"
           },
           {
             "name": "目标",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "输出图片路径；保存格式按扩展名识别 png、jpg、jpeg、bmp、gif、tif、tiff，无法识别时按 PNG 保存。"
           },
           {
             "name": "顺时针",
-            "type": "bool"
+            "type": "bool",
+            "description": "传真顺时针旋转 90 度，传假逆时针旋转 90 度。"
           }
         ],
         "returnType": "bool",

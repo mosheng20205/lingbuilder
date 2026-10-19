@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.883Z",
+  "generatedAt": "2026-10-19T03:18:58.780Z",
   "module": {
     "id": "lingbuilder.net.mail",
     "name": "SMTP邮件模块",
     "version": "1.0.0",
     "description": "提供普通 SMTP 或局域网调试服务发送；当前版本不支持 TLS，遇到要求 STARTTLS 的服务会明确失败。"
   },
-  "commandCount": 2,
+  "commandCount": 4,
   "commands": [
     {
       "index": 1,
@@ -22,35 +22,43 @@
         "parameters": [
           {
             "name": "主机",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "SMTP 服务器主机名或 IP，同时尝试 IPv4 与 IPv6。"
           },
           {
             "name": "端口",
-            "type": "int"
+            "type": "int",
+            "description": "SMTP 端口，1 到 65535；本模块不启用 TLS，服务端强制 STARTTLS 时会失败。"
           },
           {
             "name": "用户名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "登录账号；空文本表示跳过 AUTH LOGIN 匿名发送。"
           },
           {
             "name": "密码",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "登录密码，随 AUTH LOGIN 以 Base64 明文传输，仅在可信内网或回环服务上使用。"
           },
           {
             "name": "发件人",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "MAIL FROM 使用的发件地址，不写尖括号。"
           },
           {
             "name": "收件人",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "RCPT TO 使用的单个收件地址；需要多个收件人时自行循环发送。"
           },
           {
             "name": "主题",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "邮件主题，按 UTF-8 Base64 编码为编码字形式写入标题头。"
           },
           {
             "name": "正文",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "纯文本正文，按 UTF-8 以 8bit 传输；每步服务响应等待超时固定 30 秒。"
           }
         ],
         "returnType": "bool",
@@ -60,6 +68,63 @@
     },
     {
       "index": 2,
+      "name": "SMTP_发送HTML邮件",
+      "signature": "SMTP_发送HTML邮件(主机, 端口, 用户名, 密码, 发件人, 收件人, 主题, HTML正文)",
+      "description": "发送正文为 HTML 格式的邮件（Content-Type: text/html），收件端以富文本呈现。",
+      "insertText": "SMTP_发送HTML邮件(\"$1\", 0, \"$3\", \"$4\", \"$5\", \"$6\", \"$7\", \"$8\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "SMTP_发送HTML邮件",
+        "runtimeName": "SMTP_发送HTML邮件",
+        "parameters": [
+          {
+            "name": "主机",
+            "type": "wideString",
+            "description": "SMTP 服务器主机名或 IP。"
+          },
+          {
+            "name": "端口",
+            "type": "int",
+            "description": "SMTP 端口，1 到 65535；本模块不启用 TLS。"
+          },
+          {
+            "name": "用户名",
+            "type": "wideString",
+            "description": "登录账号；空文本跳过认证。"
+          },
+          {
+            "name": "密码",
+            "type": "wideString",
+            "description": "登录密码。"
+          },
+          {
+            "name": "发件人",
+            "type": "wideString",
+            "description": "发件地址，不写尖括号。"
+          },
+          {
+            "name": "收件人",
+            "type": "wideString",
+            "description": "收件地址，不写尖括号。"
+          },
+          {
+            "name": "主题",
+            "type": "wideString",
+            "description": "邮件主题，按 UTF-8 Base64 编码字写入。"
+          },
+          {
+            "name": "HTML正文",
+            "type": "wideString",
+            "description": "完整 HTML 文档或片段，按 UTF-8 传输。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "SMTP_发送HTML邮件(\"演示参数1\", 1, \"演示参数3\", \"演示参数4\", \"演示参数5\", \"演示参数6\", \"演示参数7\", \"演示参数8\")"
+    },
+    {
+      "index": 3,
       "name": "SMTP_取错误",
       "signature": "SMTP_取错误()",
       "description": "返回最近 SMTP 错误或服务端响应。",
@@ -73,6 +138,73 @@
         "encoding": "wide"
       },
       "demoInvocation": "SMTP_取错误()"
+    },
+    {
+      "index": 4,
+      "name": "SMTP_发送附件邮件",
+      "signature": "SMTP_发送附件邮件(主机, 端口, 用户名, 密码, 发件人, 收件人, 主题, 正文, 是否HTML, 附件列表)",
+      "description": "发送带附件的邮件（multipart/mixed，正文可选纯文本或 HTML），全部附件上传成功才返回真。",
+      "insertText": "SMTP_发送附件邮件(\"$1\", 0, \"$3\", \"$4\", \"$5\", \"$6\", \"$7\", \"$8\", 假, 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "SMTP_发送附件邮件",
+        "runtimeName": "SMTP_发送附件邮件",
+        "parameters": [
+          {
+            "name": "主机",
+            "type": "wideString",
+            "description": "SMTP 服务器主机名或 IP。"
+          },
+          {
+            "name": "端口",
+            "type": "int",
+            "description": "SMTP 端口，1 到 65535；本模块不启用 TLS。"
+          },
+          {
+            "name": "用户名",
+            "type": "wideString",
+            "description": "登录账号；空文本跳过认证。"
+          },
+          {
+            "name": "密码",
+            "type": "wideString",
+            "description": "登录密码。"
+          },
+          {
+            "name": "发件人",
+            "type": "wideString",
+            "description": "发件地址，不写尖括号。"
+          },
+          {
+            "name": "收件人",
+            "type": "wideString",
+            "description": "收件地址，不写尖括号。"
+          },
+          {
+            "name": "主题",
+            "type": "wideString",
+            "description": "邮件主题，按 UTF-8 Base64 编码字写入。"
+          },
+          {
+            "name": "正文",
+            "type": "wideString",
+            "description": "邮件正文；按 是否HTML 参数决定按纯文本或 HTML 解析。"
+          },
+          {
+            "name": "是否HTML",
+            "type": "bool",
+            "description": "真时正文按 text/html 传输，假时按 text/plain。"
+          },
+          {
+            "name": "附件列表",
+            "type": "array",
+            "description": "附件完整路径的文本型数组；每个文件按 Base64 编码为独立附件部分，路径中不能含有英文双引号。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "SMTP_发送附件邮件(\"演示参数1\", 1, \"演示参数3\", \"演示参数4\", \"演示参数5\", \"演示参数6\", \"演示参数7\", \"演示参数8\", 真, 0)"
     }
   ]
 }

@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T16:08:40.601Z",
+  "generatedAt": "2026-10-19T03:18:58.733Z",
   "module": {
     "id": "lingbuilder.fbro.browser",
     "name": "FBro指纹浏览器模块",
-    "version": "2.2.0",
+    "version": "2.12.0",
     "description": "通过隔离的 C ABI 桥接层使用 FBro/FBrowser CEF 135 x64，支持进程内、独立进程嵌入和独立顶层窗口三种宿主模式。"
   },
-  "commandCount": 51,
+  "commandCount": 142,
   "commands": [
     {
       "index": 1,
@@ -28,12 +28,15 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           }
         ],
@@ -60,17 +63,21 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           },
           {
             "name": "地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "完整 URL 或本地文件路径。"
           }
         ],
         "returnType": "int",
@@ -97,12 +104,15 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           }
         ],
@@ -129,17 +139,21 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           },
           {
             "name": "地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "完整 URL 或本地文件路径。"
           }
         ],
         "returnType": "int",
@@ -165,12 +179,15 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           }
         ],
@@ -197,12 +214,15 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           }
         ],
@@ -229,12 +249,15 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           }
         ],
@@ -261,12 +284,15 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           }
         ],
@@ -293,12 +319,15 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           }
         ],
@@ -325,12 +354,15 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           }
         ],
@@ -357,12 +389,15 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           }
         ],
@@ -389,12 +424,15 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           }
         ],
@@ -421,17 +459,21 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           },
           {
             "name": "级别",
-            "type": "double"
+            "type": "double",
+            "description": "CEF 缩放级别（对数刻度，0 表示 100%，每 ±1 约增减 20%）。"
           }
         ],
         "returnType": "int",
@@ -457,12 +499,15 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           }
         ],
@@ -489,17 +534,21 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           },
           {
             "name": "是否静音",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=静音。"
           }
         ],
         "returnType": "int",
@@ -525,17 +574,21 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           },
           {
             "name": "是否聚焦",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=把焦点移入浏览器。"
           }
         ],
         "returnType": "int",
@@ -545,6 +598,346 @@
     },
     {
       "index": 17,
+      "name": "FBro_发送鼠标单击事件",
+      "aliases": [
+        "LB_FBro_SendMouseClickEvent"
+      ],
+      "signature": "FBro_发送鼠标单击事件(控件名, 按钮类型, 横坐标, 纵坐标, 修饰键, 是否抬起, 单击次数)",
+      "description": "在浏览器内指定坐标合成一次真实鼠标点击（走内核输入管线，等效真实用户点击）。按钮类型 0=左键 1=中键 2=右键；双击传单击次数 2。",
+      "insertText": "FBro_发送鼠标单击事件($1, 0, 120, 240, 0, 假, 1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_发送鼠标单击事件",
+        "runtimeName": "FBro_发送鼠标单击事件",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
+            ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "按钮类型",
+            "type": "int",
+            "description": "鼠标按钮：0 左键、1 中键、2 右键。"
+          },
+          {
+            "name": "横坐标",
+            "type": "int",
+            "description": "X 坐标，相对浏览器或窗口客户区。"
+          },
+          {
+            "name": "纵坐标",
+            "type": "int",
+            "description": "Y 坐标，相对浏览器或窗口客户区。"
+          },
+          {
+            "name": "修饰键",
+            "type": "longLong",
+            "description": "CEF 事件标志位掩码（EVENTFLAG_* 组合），0 表示无修饰键。"
+          },
+          {
+            "name": "是否抬起",
+            "type": "bool",
+            "description": "真=发送抬起事件，假=按下事件。"
+          },
+          {
+            "name": "单击次数",
+            "type": "int",
+            "description": "连击次数：1 单击、2 双击，依此类推。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_发送鼠标单击事件(演示FBroBrowser控件, 1, 1, 1, 1, 真, 1)"
+    },
+    {
+      "index": 18,
+      "name": "FBro_发送鼠标移动事件",
+      "aliases": [
+        "LB_FBro_SendMouseMoveEvent"
+      ],
+      "signature": "FBro_发送鼠标移动事件(控件名, 横坐标, 纵坐标, 修饰键, 是否离开)",
+      "description": "在浏览器内合成鼠标移动事件；是否离开为真表示鼠标移出浏览器视图。",
+      "insertText": "FBro_发送鼠标移动事件($1, 120, 240, 0, 假)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_发送鼠标移动事件",
+        "runtimeName": "FBro_发送鼠标移动事件",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
+            ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "横坐标",
+            "type": "int",
+            "description": "X 坐标，相对浏览器或窗口客户区。"
+          },
+          {
+            "name": "纵坐标",
+            "type": "int",
+            "description": "Y 坐标，相对浏览器或窗口客户区。"
+          },
+          {
+            "name": "修饰键",
+            "type": "longLong",
+            "description": "CEF 事件标志位掩码（EVENTFLAG_* 组合），0 表示无修饰键。"
+          },
+          {
+            "name": "是否离开",
+            "type": "bool",
+            "description": "真=鼠标离开事件。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_发送鼠标移动事件(演示FBroBrowser控件, 1, 1, 1, 真)"
+    },
+    {
+      "index": 19,
+      "name": "FBro_发送鼠标滚轮事件",
+      "aliases": [
+        "LB_FBro_SendMouseWheelEvent"
+      ],
+      "signature": "FBro_发送鼠标滚轮事件(控件名, 横坐标, 纵坐标, 修饰键, 横向增量, 纵向增量)",
+      "description": "在浏览器内合成鼠标滚轮滚动；增量正值向上/向左，负值向下/向右。",
+      "insertText": "FBro_发送鼠标滚轮事件($1, 120, 240, 0, 0, 120)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_发送鼠标滚轮事件",
+        "runtimeName": "FBro_发送鼠标滚轮事件",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
+            ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "横坐标",
+            "type": "int",
+            "description": "X 坐标，相对浏览器或窗口客户区。"
+          },
+          {
+            "name": "纵坐标",
+            "type": "int",
+            "description": "Y 坐标，相对浏览器或窗口客户区。"
+          },
+          {
+            "name": "修饰键",
+            "type": "longLong",
+            "description": "CEF 事件标志位掩码（EVENTFLAG_* 组合），0 表示无修饰键。"
+          },
+          {
+            "name": "横向增量",
+            "type": "int",
+            "description": "滚轮横向滚动增量。"
+          },
+          {
+            "name": "纵向增量",
+            "type": "int",
+            "description": "滚轮纵向滚动增量。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_发送鼠标滚轮事件(演示FBroBrowser控件, 1, 1, 1, 1, 1)"
+    },
+    {
+      "index": 20,
+      "name": "FBro_发送按键事件",
+      "aliases": [
+        "LB_FBro_SendKeyEvent"
+      ],
+      "signature": "FBro_发送按键事件(控件名, 事件类型, 修饰键, Windows键码, 原生键码, 是否系统键, 字符编码, 未修改字符编码, 焦点在可编辑字段)",
+      "description": "向浏览器合成按键事件（真实输入管线，可触发 isTrusted 按键）。事件类型 0=原始按下 1=按下 2=释放 3=字符输入；字符编码低 8 位为低字节、高 8 位为高字节。",
+      "insertText": "FBro_发送按键事件($1, 3, 0, 0, 0, 假, 65, 65, 假)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_发送按键事件",
+        "runtimeName": "FBro_发送按键事件",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
+            ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "事件类型",
+            "type": "int",
+            "description": "按键事件类型：0 原始按下、1 按下、2 松开、3 字符。"
+          },
+          {
+            "name": "修饰键",
+            "type": "longLong",
+            "description": "CEF 事件标志位掩码（EVENTFLAG_* 组合），0 表示无修饰键。"
+          },
+          {
+            "name": "Windows键码",
+            "type": "int",
+            "description": "Windows 虚拟键码（VK_*），如 65=A。"
+          },
+          {
+            "name": "原生键码",
+            "type": "int",
+            "description": "平台原生键码/扫描码。"
+          },
+          {
+            "name": "是否系统键",
+            "type": "bool",
+            "description": "真=系统键事件（如 Alt 组合）。"
+          },
+          {
+            "name": "字符编码",
+            "type": "int",
+            "description": "字符的 UTF-16 代码单元。"
+          },
+          {
+            "name": "未修改字符编码",
+            "type": "int",
+            "description": "未经修饰键修改的字符 UTF-16 代码单元。"
+          },
+          {
+            "name": "焦点在可编辑字段",
+            "type": "bool",
+            "description": "真=当前焦点位于可编辑字段。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_发送按键事件(演示FBroBrowser控件, 1, 1, 1, 1, 真, 1, 1, 真)"
+    },
+    {
+      "index": 21,
+      "name": "FBro_发送触摸事件",
+      "aliases": [
+        "LB_FBro_SendTouchEvent"
+      ],
+      "signature": "FBro_发送触摸事件(控件名, 事件类型, 修饰键, 指针类型, 触点ID, 横坐标, 纵坐标, 半径X, 半径Y, 旋转角度, 压力)",
+      "description": "向浏览器合成触摸事件（触点型输入）。压力范围 0~1；旋转角度单位为弧度。",
+      "insertText": "FBro_发送触摸事件($1, 1, 0, 0, 0, 120.0, 240.0, 4.0, 4.0, 0.0, 0.5)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_发送触摸事件",
+        "runtimeName": "FBro_发送触摸事件",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
+            ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "事件类型",
+            "type": "int",
+            "description": "触摸事件类型：0 松开、1 按下、2 移动、3 取消。"
+          },
+          {
+            "name": "修饰键",
+            "type": "longLong",
+            "description": "CEF 事件标志位掩码（EVENTFLAG_* 组合），0 表示无修饰键。"
+          },
+          {
+            "name": "指针类型",
+            "type": "int",
+            "description": "指针类型：0 触摸、1 鼠标、2 笔、3 橡皮擦、4 未知。"
+          },
+          {
+            "name": "触点ID",
+            "type": "int",
+            "description": "触点编号，多指触控时用于区分触点。"
+          },
+          {
+            "name": "横坐标",
+            "type": "double",
+            "description": "X 坐标，相对浏览器或窗口客户区。"
+          },
+          {
+            "name": "纵坐标",
+            "type": "double",
+            "description": "Y 坐标，相对浏览器或窗口客户区。"
+          },
+          {
+            "name": "半径X",
+            "type": "double",
+            "description": "触点 X 方向半径。"
+          },
+          {
+            "name": "半径Y",
+            "type": "double",
+            "description": "触点 Y 方向半径。"
+          },
+          {
+            "name": "旋转角度",
+            "type": "double",
+            "description": "触点旋转角度（弧度）。"
+          },
+          {
+            "name": "压力",
+            "type": "double",
+            "description": "触点压力 0.0~1.0。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_发送触摸事件(演示FBroBrowser控件, 1, 1, 1, 1, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0)"
+    },
+    {
+      "index": 22,
       "name": "FBro_查找",
       "aliases": [
         "LB_FBro_Find"
@@ -561,29 +954,36 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           },
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要写入或查找的文本内容。"
           },
           {
             "name": "向前",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=按正方向查找下一处。"
           },
           {
             "name": "区分大小写",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=区分大小写。"
           },
           {
             "name": "查找下一个",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=从当前位置查找下一个匹配，假=从头查找。"
           }
         ],
         "returnType": "int",
@@ -592,7 +992,7 @@
       "demoInvocation": "FBro_查找(演示FBroBrowser控件, \"演示参数2\", 真, 真, 真)"
     },
     {
-      "index": 18,
+      "index": 23,
       "name": "FBro_停止查找",
       "aliases": [
         "LB_FBro_StopFinding"
@@ -609,17 +1009,21 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           },
           {
             "name": "清除选择",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=停止查找时清除当前选区。"
           }
         ],
         "returnType": "int",
@@ -628,7 +1032,7 @@
       "demoInvocation": "FBro_停止查找(演示FBroBrowser控件, 真)"
     },
     {
-      "index": 19,
+      "index": 24,
       "name": "FBro_是否打开开发者工具",
       "aliases": [
         "LB_FBro_HasDevTools"
@@ -645,12 +1049,15 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           }
         ],
@@ -660,7 +1067,7 @@
       "demoInvocation": "FBro_是否打开开发者工具(演示FBroBrowser控件)"
     },
     {
-      "index": 20,
+      "index": 25,
       "name": "FBro_关闭开发者工具",
       "aliases": [
         "LB_FBro_CloseDevTools"
@@ -677,12 +1084,15 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           }
         ],
@@ -692,7 +1102,7 @@
       "demoInvocation": "FBro_关闭开发者工具(演示FBroBrowser控件)"
     },
     {
-      "index": 21,
+      "index": 26,
       "name": "FBro_强制刷新",
       "aliases": [
         "LB_FBro_ReloadIgnoreCache"
@@ -709,12 +1119,15 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           }
         ],
@@ -724,7 +1137,7 @@
       "demoInvocation": "FBro_强制刷新(演示FBroBrowser控件)"
     },
     {
-      "index": 22,
+      "index": 27,
       "name": "FBro_取浏览器标识",
       "aliases": [
         "LB_FBro_GetIdentifier"
@@ -741,12 +1154,15 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           }
         ],
@@ -756,7 +1172,7 @@
       "demoInvocation": "FBro_取浏览器标识(演示FBroBrowser控件)"
     },
     {
-      "index": 23,
+      "index": 28,
       "name": "FBro_是否同一实例",
       "aliases": [
         "LB_FBro_IsSame"
@@ -773,24 +1189,30 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           },
           {
             "name": "另一控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           }
         ],
@@ -800,7 +1222,7 @@
       "demoInvocation": "FBro_是否同一实例(演示FBroBrowser控件, 演示FBroBrowser控件)"
     },
     {
-      "index": 24,
+      "index": 29,
       "name": "FBro_是否弹出窗口",
       "aliases": [
         "LB_FBro_IsPopup"
@@ -817,12 +1239,15 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           }
         ],
@@ -832,7 +1257,42 @@
       "demoInvocation": "FBro_是否弹出窗口(演示FBroBrowser控件)"
     },
     {
-      "index": 25,
+      "index": 30,
+      "name": "FBro_取主浏览器",
+      "aliases": [
+        "LB_FBro_BrowserHostGetMainBrowser"
+      ],
+      "signature": "FBro_取主浏览器(控件名)",
+      "description": "返回弹出窗口所属主浏览器的已登记实例句柄（长整数）；本实例即主浏览器时返回自身句柄，未知浏览器返回 0。",
+      "insertText": "FBro_取主浏览器($1)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "FBro_取主浏览器",
+        "runtimeName": "FBro_取主浏览器",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
+            ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_取主浏览器(演示FBroBrowser控件)"
+    },
+    {
+      "index": 31,
       "name": "FBro_是否有文档",
       "aliases": [
         "LB_FBro_HasDocument"
@@ -849,12 +1309,15 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           }
         ],
@@ -864,7 +1327,7 @@
       "demoInvocation": "FBro_是否有文档(演示FBroBrowser控件)"
     },
     {
-      "index": 26,
+      "index": 32,
       "name": "FBro_尝试关闭",
       "aliases": [
         "LB_FBro_TryCloseBrowser"
@@ -881,12 +1344,15 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           }
         ],
@@ -896,7 +1362,7 @@
       "demoInvocation": "FBro_尝试关闭(演示FBroBrowser控件)"
     },
     {
-      "index": 27,
+      "index": 33,
       "name": "FBro_设置宿主焦点",
       "aliases": [
         "LB_FBro_SetFocus"
@@ -913,17 +1379,21 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           },
           {
             "name": "是否聚焦",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=把焦点移入浏览器。"
           }
         ],
         "returnType": "int",
@@ -932,7 +1402,7 @@
       "demoInvocation": "FBro_设置宿主焦点(演示FBroBrowser控件, 真)"
     },
     {
-      "index": 28,
+      "index": 34,
       "name": "FBro_是否有视图",
       "aliases": [
         "LB_FBro_HasView"
@@ -949,12 +1419,15 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           }
         ],
@@ -964,7 +1437,7 @@
       "demoInvocation": "FBro_是否有视图(演示FBroBrowser控件)"
     },
     {
-      "index": 29,
+      "index": 35,
       "name": "FBro_设置自动调整大小",
       "aliases": [
         "LB_FBro_SetAutoResizeEnabled"
@@ -981,33 +1454,41 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           },
           {
             "name": "启用",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=开启，假=关闭。"
           },
           {
             "name": "最小高度",
-            "type": "int"
+            "type": "int",
+            "description": "自动调整的最小高度（像素）。"
           },
           {
             "name": "最小宽度",
-            "type": "int"
+            "type": "int",
+            "description": "自动调整的最小宽度（像素）。"
           },
           {
             "name": "最大高度",
-            "type": "int"
+            "type": "int",
+            "description": "自动调整的最大高度（像素）。"
           },
           {
             "name": "最大宽度",
-            "type": "int"
+            "type": "int",
+            "description": "自动调整的最大宽度（像素）。"
           }
         ],
         "returnType": "int",
@@ -1016,7 +1497,7 @@
       "demoInvocation": "FBro_设置自动调整大小(演示FBroBrowser控件, 真, 1, 1, 1, 1)"
     },
     {
-      "index": 30,
+      "index": 36,
       "name": "FBro_执行JS",
       "aliases": [
         "LB_FBro_ExecuteJs"
@@ -1033,17 +1514,21 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           },
           {
             "name": "脚本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "JavaScript 源码文本。"
           }
         ],
         "returnType": "wideString",
@@ -1052,7 +1537,7 @@
       "demoInvocation": "FBro_执行JS(演示FBroBrowser控件, \"演示参数2\")"
     },
     {
-      "index": 31,
+      "index": 37,
       "name": "FBro_取标题",
       "aliases": [
         "LB_FBro_GetTitle"
@@ -1069,12 +1554,15 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           }
         ],
@@ -1084,7 +1572,7 @@
       "demoInvocation": "FBro_取标题(演示FBroBrowser控件)"
     },
     {
-      "index": 32,
+      "index": 38,
       "name": "FBro_取地址",
       "aliases": [
         "LB_FBro_GetUrl"
@@ -1101,12 +1589,15 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           }
         ],
@@ -1116,7 +1607,7 @@
       "demoInvocation": "FBro_取地址(演示FBroBrowser控件)"
     },
     {
-      "index": 33,
+      "index": 39,
       "name": "FBro_设置代理",
       "aliases": [
         "LB_FBro_SetProxy"
@@ -1133,17 +1624,21 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           },
           {
             "name": "代理地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "代理地址，如 \"http://127.0.0.1:7890\" 或 \"socks5://127.0.0.1:1080\"。"
           }
         ],
         "returnType": "int",
@@ -1152,7 +1647,7 @@
       "demoInvocation": "FBro_设置代理(演示FBroBrowser控件, \"https://example.com\")"
     },
     {
-      "index": 34,
+      "index": 40,
       "name": "FBro_设置缓存目录",
       "aliases": [
         "LB_FBro_SetProfileDirectory"
@@ -1169,17 +1664,21 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           },
           {
             "name": "目录",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "缓存目录路径。"
           }
         ],
         "returnType": "int",
@@ -1188,7 +1687,7 @@
       "demoInvocation": "FBro_设置缓存目录(演示FBroBrowser控件, \".\")"
     },
     {
-      "index": 35,
+      "index": 41,
       "name": "FBro_设置UserAgent",
       "aliases": [
         "LB_FBro_SetUserAgent"
@@ -1205,17 +1704,21 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           },
           {
             "name": "UserAgent",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要设置的 User-Agent 字符串。"
           }
         ],
         "returnType": "int",
@@ -1224,7 +1727,7 @@
       "demoInvocation": "FBro_设置UserAgent(演示FBroBrowser控件, \"演示参数2\")"
     },
     {
-      "index": 36,
+      "index": 42,
       "name": "FBro_取Cookie",
       "aliases": [
         "LB_FBro_GetCookies"
@@ -1241,17 +1744,21 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           },
           {
             "name": "地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "完整 URL 或本地文件路径。"
           }
         ],
         "returnType": "wideString",
@@ -1260,7 +1767,7 @@
       "demoInvocation": "FBro_取Cookie(演示FBroBrowser控件, \"https://example.com\")"
     },
     {
-      "index": 37,
+      "index": 43,
       "name": "FBro_清空Cookie",
       "aliases": [
         "LB_FBro_ClearCookies"
@@ -1277,17 +1784,21 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           },
           {
             "name": "地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "完整 URL 或本地文件路径。"
           }
         ],
         "returnType": "int",
@@ -1296,7 +1807,242 @@
       "demoInvocation": "FBro_清空Cookie(演示FBroBrowser控件, \"https://example.com\")"
     },
     {
-      "index": 38,
+      "index": 44,
+      "name": "FBro_替换资源响应内容",
+      "signature": "FBro_替换资源响应内容(控件名, 地址, 内容)",
+      "description": "按地址精确匹配，把匹配资源的响应整体替换为 UTF-8 文本内容（类型 text/html）。需 FBro VIP 授权且浏览器已创建；重复调用同地址以最后一次为准，不清空其它规则。",
+      "insertText": "FBro_替换资源响应内容($1, \"https://www.example.com/target\", \"<h1>已替换</h1>\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_替换资源响应内容",
+        "runtimeName": "FBro_替换资源响应内容",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
+            ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "地址",
+            "type": "wideString",
+            "description": "URL 匹配规则；命中规则的响应会被整体替换。"
+          },
+          {
+            "name": "内容",
+            "type": "wideString",
+            "description": "替换后的响应内容文本。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_替换资源响应内容(演示FBroBrowser控件, \"https://example.com\", \"演示参数3\")"
+    },
+    {
+      "index": 45,
+      "name": "FBro_替换资源响应文件",
+      "signature": "FBro_替换资源响应文件(控件名, 地址, 文件路径)",
+      "description": "按地址精确匹配，把匹配资源的响应整体替换为本地文件内容，MIME 按扩展名推断（html/css/js/json/图片等，缺省 application/octet-stream）。需 FBro VIP 授权且浏览器已创建；支持绝对路径或程序目录相对路径。",
+      "insertText": "FBro_替换资源响应文件($1, \"https://www.example.com/target\", \"替换页.html\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_替换资源响应文件",
+        "runtimeName": "FBro_替换资源响应文件",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
+            ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "地址",
+            "type": "wideString",
+            "description": "URL 匹配规则；命中规则的响应会被文件内容整体替换。"
+          },
+          {
+            "name": "文件路径",
+            "type": "wideString",
+            "description": "替换用的本地文件路径；文件内容作为命中规则的响应整体返回。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_替换资源响应文件(演示FBroBrowser控件, \"https://example.com\", \"module-demo-temp.txt\")"
+    },
+    {
+      "index": 46,
+      "name": "FBro_清除资源响应替换",
+      "signature": "FBro_清除资源响应替换(控件名, 地址)",
+      "description": "删除指定地址的响应替换规则，恢复原始响应。",
+      "insertText": "FBro_清除资源响应替换($1, \"https://www.example.com/target\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_清除资源响应替换",
+        "runtimeName": "FBro_清除资源响应替换",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
+            ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "地址",
+            "type": "wideString",
+            "description": "要清除替换规则的 URL 匹配规则。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_清除资源响应替换(演示FBroBrowser控件, \"https://example.com\")"
+    },
+    {
+      "index": 47,
+      "name": "FBro_清空资源响应替换",
+      "signature": "FBro_清空资源响应替换(控件名)",
+      "description": "清空该浏览器的全部响应替换规则。",
+      "insertText": "FBro_清空资源响应替换($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_清空资源响应替换",
+        "runtimeName": "FBro_清空资源响应替换",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
+            ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_清空资源响应替换(演示FBroBrowser控件)"
+    },
+    {
+      "index": 48,
+      "name": "FBro_替换资源响应文本",
+      "aliases": [
+        "LB_FBro_ResourceReplaceSet"
+      ],
+      "signature": "FBro_替换资源响应文本(控件名, 查找内容, 替换内容)",
+      "description": "为指定浏览器配置响应正文查找替换：之后加载的资源正文按 UTF-8 字节匹配“查找内容”，命中处流式改写为“替换内容”（空文本表示删除）。二进制安全、不重新发起请求，对整只浏览器全部资源生效；重复调用以最后一次为准，正在加载的资源不受影响。无需 FBro VIP 授权。只修改响应正文，不改变响应头和状态码。",
+      "insertText": "FBro_替换资源响应文本($1, \"原始文本\", \"替换文本\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_替换资源响应文本",
+        "runtimeName": "FBro_替换资源响应文本",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
+            ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "查找内容",
+            "type": "wideString",
+            "description": "按 UTF-8 字节匹配的查找文本，不能为空。"
+          },
+          {
+            "name": "替换内容",
+            "type": "wideString",
+            "description": "替换后的文本；空文本表示删除查找内容。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "FBro_替换资源响应文本(FBro浏览器1, \"原始价格\", \"会员价格\")\nFBro_导航(FBro浏览器1, 地址)"
+      },
+      "demoInvocation": "FBro_替换资源响应文本(演示FBroBrowser控件, \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 49,
+      "name": "FBro_清除资源响应文本替换",
+      "aliases": [
+        "LB_FBro_ResourceReplaceClear"
+      ],
+      "signature": "FBro_清除资源响应文本替换(控件名)",
+      "description": "移除指定 FBro 浏览器当前的响应正文查找替换配置，之后加载的资源恢复原始正文；已加载页面不受影响。无需 FBro VIP 授权。",
+      "insertText": "FBro_清除资源响应文本替换($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_清除资源响应文本替换",
+        "runtimeName": "FBro_清除资源响应文本替换",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
+            ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "FBro_清除资源响应文本替换(FBro浏览器1)"
+      },
+      "demoInvocation": "FBro_清除资源响应文本替换(演示FBroBrowser控件)"
+    },
+    {
+      "index": 50,
       "name": "FBro指纹_应用配置",
       "aliases": [
         "LB_FBro_ApplyFingerprintJson"
@@ -1313,17 +2059,21 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           },
           {
             "name": "JSON",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "完整指纹配置 JSON 文本。"
           }
         ],
         "returnType": "int",
@@ -1332,7 +2082,7 @@
       "demoInvocation": "FBro指纹_应用配置(演示FBroBrowser控件, \"{}\")"
     },
     {
-      "index": 39,
+      "index": 51,
       "name": "FBro指纹_取调用次数",
       "aliases": [
         "LB_FBro_GetFingerprintCallCount"
@@ -1349,12 +2099,15 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           }
         ],
@@ -1364,7 +2117,7 @@
       "demoInvocation": "FBro指纹_取调用次数(演示FBroBrowser控件)"
     },
     {
-      "index": 40,
+      "index": 52,
       "name": "FBro指纹_清空调用次数",
       "aliases": [
         "LB_FBro_ClearFingerprintCallCount"
@@ -1381,12 +2134,15 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           }
         ],
@@ -1396,7 +2152,7 @@
       "demoInvocation": "FBro指纹_清空调用次数(演示FBroBrowser控件)"
     },
     {
-      "index": 41,
+      "index": 53,
       "name": "FBro_取最近事件",
       "aliases": [
         "LB_FBro_GetLastEvent"
@@ -1413,12 +2169,15 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           }
         ],
@@ -1428,7 +2187,7 @@
       "demoInvocation": "FBro_取最近事件(演示FBroBrowser控件)"
     },
     {
-      "index": 42,
+      "index": 54,
       "name": "FBro_取最近错误",
       "aliases": [
         "LB_FBro_GetLastError"
@@ -1445,12 +2204,15 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           }
         ],
@@ -1460,7 +2222,7 @@
       "demoInvocation": "FBro_取最近错误(演示FBroBrowser控件)"
     },
     {
-      "index": 43,
+      "index": 55,
       "name": "FBro_取进程状态",
       "signature": "FBro_取进程状态(控件名)",
       "description": "返回独立进程实例状态；进程内模式返回“进程内”。",
@@ -1474,12 +2236,15 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           }
         ],
@@ -1489,7 +2254,7 @@
       "demoInvocation": "FBro_取进程状态(演示FBroBrowser控件)"
     },
     {
-      "index": 44,
+      "index": 56,
       "name": "FBro_取进程ID",
       "signature": "FBro_取进程ID(控件名)",
       "description": "返回独立 FBro Host 的进程 ID；进程内模式返回 0。",
@@ -1503,12 +2268,15 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           }
         ],
@@ -1518,10 +2286,10 @@
       "demoInvocation": "FBro_取进程ID(演示FBroBrowser控件)"
     },
     {
-      "index": 45,
+      "index": 57,
       "name": "FBro_取调试端口",
       "signature": "FBro_取调试端口(控件名)",
-      "description": "返回独立 FBro Host 的本机 CDP 调试端口；未启用开发者工具或进程内模式返回 0。",
+      "description": "返回本机 CDP 调试端口：独立进程返回 Host 端口；进程内模式在初始化时按控件 enableDevTools 属性决定是否预留回环端口（任一进程内控件启用即开启）。返回 0 表示尚未初始化、未启用开发者工具或端口预留失败。",
       "insertText": "FBro_取调试端口($1)",
       "returnType": "整数型",
       "binding": {
@@ -1532,12 +2300,15 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           }
         ],
@@ -1547,7 +2318,7 @@
       "demoInvocation": "FBro_取调试端口(演示FBroBrowser控件)"
     },
     {
-      "index": 46,
+      "index": 58,
       "name": "FBro_重启进程",
       "signature": "FBro_重启进程(控件名)",
       "description": "关闭并重新启动独立 FBro Host，保留该控件的配置与独立 Profile。",
@@ -1561,12 +2332,15 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           }
         ],
@@ -1576,7 +2350,7 @@
       "demoInvocation": "FBro_重启进程(演示FBroBrowser控件)"
     },
     {
-      "index": 47,
+      "index": 59,
       "name": "FBro_显示",
       "signature": "FBro_显示(控件名)",
       "description": "显示独立浏览器窗口或嵌入宿主。",
@@ -1590,12 +2364,15 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           }
         ],
@@ -1605,7 +2382,7 @@
       "demoInvocation": "FBro_显示(演示FBroBrowser控件)"
     },
     {
-      "index": 48,
+      "index": 60,
       "name": "FBro_隐藏",
       "signature": "FBro_隐藏(控件名)",
       "description": "隐藏独立浏览器窗口或嵌入宿主。",
@@ -1619,12 +2396,15 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           }
         ],
@@ -1634,7 +2414,7 @@
       "demoInvocation": "FBro_隐藏(演示FBroBrowser控件)"
     },
     {
-      "index": 49,
+      "index": 61,
       "name": "FBro_是否显示",
       "signature": "FBro_是否显示(控件名)",
       "description": "返回 FBro 嵌入宿主当前是否可见；可用于过滤后台实例事件。",
@@ -1648,12 +2428,15 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           }
         ],
@@ -1663,7 +2446,7 @@
       "demoInvocation": "FBro_是否显示(演示FBroBrowser控件)"
     },
     {
-      "index": 50,
+      "index": 62,
       "name": "FBro_调整大小",
       "signature": "FBro_调整大小(控件名, 宽度, 高度)",
       "description": "调整独立浏览器客户区大小。",
@@ -1677,21 +2460,26 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           },
           {
             "name": "宽度",
-            "type": "int"
+            "type": "int",
+            "description": "宽度（像素）。"
           },
           {
             "name": "高度",
-            "type": "int"
+            "type": "int",
+            "description": "高度（像素）。"
           }
         ],
         "returnType": "int",
@@ -1700,7 +2488,7 @@
       "demoInvocation": "FBro_调整大小(演示FBroBrowser控件, 1, 1)"
     },
     {
-      "index": 51,
+      "index": 63,
       "name": "FBro_截图到文件",
       "signature": "FBro_截图到文件(控件名, 路径, 格式, 质量)",
       "description": "同步保存当前页面截图；格式为 png/jpeg/webp，质量范围 1-100。",
@@ -1714,31 +2502,1963 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
-            "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
             "runtimeRepresentation": "wideName"
           },
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "截图保存路径。"
           },
           {
             "name": "格式",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "图像格式 \"png\" 或 \"jpeg\"。"
           },
           {
             "name": "质量",
-            "type": "int"
+            "type": "int",
+            "description": "JPEG 压缩质量 0~100；png 忽略。"
           }
         ],
         "returnType": "int",
         "encoding": "wide"
       },
       "demoInvocation": "FBro_截图到文件(演示FBroBrowser控件, \"module-demo-temp.txt\", \"演示参数3\", 1)"
+    },
+    {
+      "index": 64,
+      "name": "FBro_取窗口句柄",
+      "aliases": [
+        "LB_FBro_GetWindowHandle"
+      ],
+      "signature": "FBro_取窗口句柄(控件名)",
+      "description": "返回浏览器底层窗口 HWND（长整数）；窗口尚未创建时返回 0。",
+      "insertText": "FBro_取窗口句柄($1)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "FBro_取窗口句柄",
+        "runtimeName": "FBro_取窗口句柄",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
+            ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_取窗口句柄(演示FBroBrowser控件)"
+    },
+    {
+      "index": 65,
+      "name": "FBro_取打开者窗口句柄",
+      "aliases": [
+        "LB_FBro_GetOpenerWindowHandle"
+      ],
+      "signature": "FBro_取打开者窗口句柄(控件名)",
+      "description": "返回创建该浏览器的打开者窗口 HWND；无打开者时返回 0。",
+      "insertText": "FBro_取打开者窗口句柄($1)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "FBro_取打开者窗口句柄",
+        "runtimeName": "FBro_取打开者窗口句柄",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
+            ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_取打开者窗口句柄(演示FBroBrowser控件)"
+    },
+    {
+      "index": 66,
+      "name": "FBro_取父窗口句柄",
+      "aliases": [
+        "LB_FBro_GetParentWindowHandle"
+      ],
+      "signature": "FBro_取父窗口句柄(控件名)",
+      "description": "返回浏览器窗口的父窗口 HWND。",
+      "insertText": "FBro_取父窗口句柄($1)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "FBro_取父窗口句柄",
+        "runtimeName": "FBro_取父窗口句柄",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
+            ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_取父窗口句柄(演示FBroBrowser控件)"
+    },
+    {
+      "index": 67,
+      "name": "FBro_取运行时样式",
+      "aliases": [
+        "LB_FBro_GetRuntimeStyle"
+      ],
+      "signature": "FBro_取运行时样式(控件名)",
+      "description": "返回官方运行时样式（0=Alloy，1=Chrome）。",
+      "insertText": "FBro_取运行时样式($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_取运行时样式",
+        "runtimeName": "FBro_取运行时样式",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
+            ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_取运行时样式(演示FBroBrowser控件)"
+    },
+    {
+      "index": 68,
+      "name": "FBro_取SDK版本JSON",
+      "aliases": [
+        "LB_FBro_GetSdkVersionJson"
+      ],
+      "signature": "FBro_取SDK版本JSON()",
+      "description": "返回官方 SDK 版本 JSON（main/edit/debug 三个整数字段）。",
+      "insertText": "FBro_取SDK版本JSON()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "FBro_取SDK版本JSON",
+        "runtimeName": "FBro_取SDK版本JSON",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_取SDK版本JSON()"
+    },
+    {
+      "index": 69,
+      "name": "FBro_取实例数量",
+      "aliases": [
+        "LB_FBro_GetInstanceCount"
+      ],
+      "signature": "FBro_取实例数量()",
+      "description": "返回桥接层当前存活的 FBro 浏览器实例数量。",
+      "insertText": "FBro_取实例数量()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_取实例数量",
+        "runtimeName": "FBro_取实例数量",
+        "parameters": [],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_取实例数量()"
+    },
+    {
+      "index": 70,
+      "name": "FBro_取实例句柄列表JSON",
+      "aliases": [
+        "LB_FBro_GetInstanceHandlesJson"
+      ],
+      "signature": "FBro_取实例句柄列表JSON()",
+      "description": "返回桥接层当前存活实例句柄的 JSON 数组，如 [1,2]。",
+      "insertText": "FBro_取实例句柄列表JSON()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "FBro_取实例句柄列表JSON",
+        "runtimeName": "FBro_取实例句柄列表JSON",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_取实例句柄列表JSON()"
+    },
+    {
+      "index": 71,
+      "name": "FBro_取实例标记列表JSON",
+      "aliases": [
+        "LB_FBro_GetInstanceFlagsJson"
+      ],
+      "signature": "FBro_取实例标记列表JSON()",
+      "description": "返回桥接层当前存活实例创建标记的 JSON 字符串数组；进程内实例标记即实例句柄字符串。",
+      "insertText": "FBro_取实例标记列表JSON()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "FBro_取实例标记列表JSON",
+        "runtimeName": "FBro_取实例标记列表JSON",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_取实例标记列表JSON()"
+    },
+    {
+      "index": 72,
+      "name": "FBro_是否存活",
+      "aliases": [
+        "LB_FBro_IsInstanceAlive"
+      ],
+      "signature": "FBro_是否存活(控件名)",
+      "description": "返回指定控件对应的底层浏览器是否仍然存活（未创建或已关闭返回 0）。",
+      "insertText": "FBro_是否存活($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_是否存活",
+        "runtimeName": "FBro_是否存活",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
+            ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_是否存活(演示FBroBrowser控件)"
+    },
+    {
+      "index": 73,
+      "name": "FBro_显示开发者工具窗口",
+      "aliases": [
+        "LB_FBro_ShowDevToolsWindowAsync"
+      ],
+      "signature": "FBro_显示开发者工具窗口(控件名, 标题, X, Y, 宽度, 高度)",
+      "description": "打开官方 DevTools 顶层窗口（异步任务）；位置尺寸用默认值可全传 0。返回任务句柄，用 FBro任务_* 读取。",
+      "insertText": "FBro_显示开发者工具窗口($1, \"开发者工具\", 0, 0, 0, 0)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "FBro_显示开发者工具窗口",
+        "runtimeName": "FBro_显示开发者工具窗口",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
+            ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "标题",
+            "type": "wideString",
+            "description": "对话框或窗口标题文本。"
+          },
+          {
+            "name": "横坐标",
+            "type": "int",
+            "description": "X 坐标，相对浏览器或窗口客户区。"
+          },
+          {
+            "name": "纵坐标",
+            "type": "int",
+            "description": "Y 坐标，相对浏览器或窗口客户区。"
+          },
+          {
+            "name": "宽度",
+            "type": "int",
+            "description": "宽度（像素）。"
+          },
+          {
+            "name": "高度",
+            "type": "int",
+            "description": "高度（像素）。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_显示开发者工具窗口(演示FBroBrowser控件, \"演示参数2\", 1, 1, 1, 1)"
+    },
+    {
+      "index": 74,
+      "name": "FBro_移动浏览器窗口",
+      "aliases": [
+        "LB_FBro_MoveBrowserWindowAsync"
+      ],
+      "signature": "FBro_移动浏览器窗口(控件名, X, Y, 宽度, 高度)",
+      "description": "在 UI 线程移动浏览器底层窗口（异步任务）；嵌入模式下通常改用设计器布局。返回任务句柄，用 FBro任务_* 读取。",
+      "insertText": "FBro_移动浏览器窗口($1, 100, 100, 960, 640)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "FBro_移动浏览器窗口",
+        "runtimeName": "FBro_移动浏览器窗口",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
+            ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "横坐标",
+            "type": "int",
+            "description": "X 坐标，相对浏览器或窗口客户区。"
+          },
+          {
+            "name": "纵坐标",
+            "type": "int",
+            "description": "Y 坐标，相对浏览器或窗口客户区。"
+          },
+          {
+            "name": "宽度",
+            "type": "int",
+            "description": "宽度（像素）。"
+          },
+          {
+            "name": "高度",
+            "type": "int",
+            "description": "高度（像素）。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_移动浏览器窗口(演示FBroBrowser控件, 1, 1, 1, 1)"
+    },
+    {
+      "index": 75,
+      "name": "FBro_取创建标记",
+      "aliases": [
+        "LB_FBro_GetBrowserFlag"
+      ],
+      "signature": "FBro_取创建标记(控件名)",
+      "description": "返回浏览器创建时传入的官方标记字符串。",
+      "insertText": "FBro_取创建标记($1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "FBro_取创建标记",
+        "runtimeName": "FBro_取创建标记",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
+            ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_取创建标记(演示FBroBrowser控件)"
+    },
+    {
+      "index": 76,
+      "name": "FBro_取附加信息JSON",
+      "aliases": [
+        "LB_FBro_GetBrowserExtraInfoJson"
+      ],
+      "signature": "FBro_取附加信息JSON(控件名)",
+      "description": "返回浏览器创建期附加信息字典的 UTF-16 JSON；未设置时返回 {}。",
+      "insertText": "FBro_取附加信息JSON($1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "FBro_取附加信息JSON",
+        "runtimeName": "FBro_取附加信息JSON",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
+            ],
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_取附加信息JSON(演示FBroBrowser控件)"
+    },
+    {
+      "index": 77,
+      "name": "FBro_后台创建",
+      "aliases": [
+        "LB_FBro_CreateBackground"
+      ],
+      "signature": "FBro_后台创建(地址, 缓存目录, 附加信息JSON)",
+      "description": "创建无窗口承载的后台浏览器实例并返回实例句柄；事件照常分发，可用 FBro事件_* 与句柄命令操作。附加信息 JSON 传空跳过。",
+      "insertText": "FBro_后台创建(\"https://www.baidu.com\", \"\", \"\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_后台创建",
+        "runtimeName": "FBro_后台创建",
+        "parameters": [
+          {
+            "name": "地址",
+            "type": "wideString",
+            "description": "完整 URL 或本地文件路径。"
+          },
+          {
+            "name": "缓存目录",
+            "type": "wideString",
+            "description": "实例专用缓存目录路径。"
+          },
+          {
+            "name": "附加信息JSON",
+            "type": "wideString",
+            "description": "实例附加信息 JSON 文本。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_后台创建(\"https://example.com\", \".\", \"{}\")"
+    },
+    {
+      "index": 78,
+      "name": "FBro_取启动命令行",
+      "aliases": [
+        "LB_FBro_GetStartupCommandLine"
+      ],
+      "signature": "FBro_取启动命令行()",
+      "description": "返回初始化时按控件启动开关构建的官方命令行文本；未启用任何开关时为空。",
+      "insertText": "FBro_取启动命令行()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "FBro_取启动命令行",
+        "runtimeName": "FBro_取启动命令行",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_取启动命令行()"
+    },
+    {
+      "index": 79,
+      "name": "FBro_设置启动开关JSON",
+      "aliases": [
+        "LB_FBro_SetStartupSwitches"
+      ],
+      "signature": "FBro_设置启动开关JSON(开关JSON)",
+      "description": "声明进程级 CEF 启动命令行开关：开关只在浏览器初始化前的 OnBeforeCommandLineProcessing 应用一次，因此本命令必须写成调用处的字面 JSON 文本，生成器把它烘焙进初始化代码（与 FBro_启用无头模式 同范式）；运行期调用不改变进程状态，返回 1 表示本次声明已烘焙生效、0 表示未烘焙。可用键（值只能是 true/false）：disableGpu、disableGpuCache、disableGpuBlockList、enableMediaStream、enableSpeechInput、enableAutoplay、headless、enableCrossFrame（官方跨域模式，跨框架/跨域操作）、disableProxy；白名单外的键或非法 JSON 会在生成前中文阻断，禁止借本命令传任意 Chromium 开关。设计器 FBroBrowser 控件的同名启动开关属性是同一份配置的图形入口，两者冲突时以本命令的字面声明为准。作用范围红线：9 个键**仅进程内模式生效**（独立进程 Host 由零参数启动、开关未透传），且开关是进程级的——放开后本进程所有进程内实例都受影响，跨域只在受控内网或自有页面使用；跨内核选型见「跨域/同源策略放开三内核选型」：CEF3 有逐条跨域白名单命令，EdgeView 用创建期属性/环境变量开关。",
+      "insertText": "FBro_设置启动开关JSON(\"{\\\"enableCrossFrame\\\":true}\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_设置启动开关JSON",
+        "runtimeName": "FBro_设置启动开关JSON",
+        "parameters": [
+          {
+            "name": "开关JSON",
+            "type": "wideString",
+            "description": "单层 JSON 文本，键限启动开关白名单、值只能是 true 或 false，例如 {\"enableCrossFrame\":true}；必须是调用处的字面文本，生成期烘焙进初始化。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_设置启动开关JSON(\"{}\")"
+    },
+    {
+      "index": 80,
+      "name": "FBro_启用无头模式",
+      "aliases": [],
+      "signature": "FBro_启用无头模式()",
+      "description": "声明本程序以无头模式启动：该开关是 CEF 进程级启动命令行开关，生成器在生成期烘焙进初始化代码（必须在 CEF 初始化前生效，运行期调用点不改变进程状态），返回 1 表示已烘焙无头模式、0 表示未启用。无头模式下本进程所有进程内浏览器均无窗口渲染，禁止与可见 FBroBrowser 控件混用；无窗口创建浏览器请用 FBro_后台创建。",
+      "insertText": "FBro_启用无头模式()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_启用无头模式",
+        "runtimeName": "FBro_启用无头模式",
+        "parameters": [],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_启用无头模式()"
+    },
+    {
+      "index": 81,
+      "name": "FBro_实例导航",
+      "signature": "FBro_实例导航(实例句柄, 地址)",
+      "description": "让 FBro_后台创建 返回的后台实例句柄直接导航，返回桥接成功码；不依赖控件名与消息泵，控制台无头场景可用。",
+      "insertText": "FBro_实例导航($1, \"https://www.baidu.com\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_实例导航",
+        "runtimeName": "FBro_实例导航",
+        "parameters": [
+          {
+            "name": "实例句柄",
+            "type": "longLong",
+            "description": "FBro_后台创建 返回的后台浏览器实例句柄（长整数）；实例关闭或进程退出后失效。"
+          },
+          {
+            "name": "地址",
+            "type": "wideString",
+            "description": "完整 URL 或本地文件路径。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_实例导航(1, \"https://example.com\")"
+    },
+    {
+      "index": 82,
+      "name": "FBro_实例等待加载超时",
+      "signature": "FBro_实例等待加载超时(实例句柄, 超时毫秒)",
+      "description": "轮询等待后台实例加载完成，成功返回 1、超时或句柄无效返回 0；控制台等无消息循环场景同样可用，超时上限 600000 毫秒。",
+      "insertText": "FBro_实例等待加载超时($1, 15000)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_实例等待加载超时",
+        "runtimeName": "FBro_实例等待加载超时",
+        "parameters": [
+          {
+            "name": "实例句柄",
+            "type": "longLong",
+            "description": "FBro_后台创建 返回的后台浏览器实例句柄（长整数）；实例关闭或进程退出后失效。"
+          },
+          {
+            "name": "超时毫秒",
+            "type": "int",
+            "description": "最长等待毫秒数，超时返回 0。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_实例等待加载超时(1, 1)"
+    },
+    {
+      "index": 83,
+      "name": "FBro_实例执行JS",
+      "signature": "FBro_实例执行JS(实例句柄, 脚本)",
+      "description": "在后台实例句柄上同步执行 JavaScript 并返回 UTF-16 结果文本；建议先 FBro_实例等待加载超时 再取 document.title、location.href 等。",
+      "insertText": "FBro_实例执行JS($1, \"document.title\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "FBro_实例执行JS",
+        "runtimeName": "FBro_实例执行JS",
+        "parameters": [
+          {
+            "name": "实例句柄",
+            "type": "longLong",
+            "description": "FBro_后台创建 返回的后台浏览器实例句柄（长整数）；实例关闭或进程退出后失效。"
+          },
+          {
+            "name": "脚本",
+            "type": "wideString",
+            "description": "JavaScript 源码文本。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_实例执行JS(1, \"演示参数2\")"
+    },
+    {
+      "index": 84,
+      "name": "FBro_实例取Cookie",
+      "signature": "FBro_实例取Cookie(实例句柄, 地址)",
+      "description": "读取后台实例/弹窗句柄上指定地址（域名）的全部 Cookie（含 HttpOnly，如扫码登录后的 sessionid）；同步返回头串（k=v; k=v 形态，可直接交给 Cookie 格式解析）。句柄无效返回空文本。扫码登录收割登录态的标准入口（后台实例没有控件名，FBro_取Cookie 用不了）。",
+      "insertText": "FBro_实例取Cookie($1, \"https://www.douyin.com\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "FBro_实例取Cookie",
+        "runtimeName": "FBro_实例取Cookie",
+        "parameters": [
+          {
+            "name": "实例句柄",
+            "type": "longLong",
+            "description": "FBro_后台创建 返回的后台浏览器实例句柄（长整数）；实例关闭或进程退出后失效。"
+          },
+          {
+            "name": "地址",
+            "type": "wideString",
+            "description": "按此地址（通常给到 https://域名 即可）过滤 Cookie；空文本返回全部。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_实例取Cookie(1, \"https://example.com\")"
+    },
+    {
+      "index": 85,
+      "name": "FBro_实例是否存活",
+      "signature": "FBro_实例是否存活(实例句柄)",
+      "description": "返回后台实例句柄是否仍存活；已关闭或句柄无效返回 0。",
+      "insertText": "FBro_实例是否存活($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_实例是否存活",
+        "runtimeName": "FBro_实例是否存活",
+        "parameters": [
+          {
+            "name": "实例句柄",
+            "type": "longLong",
+            "description": "FBro_后台创建 返回的后台浏览器实例句柄（长整数）；实例关闭或进程退出后失效。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_实例是否存活(1)"
+    },
+    {
+      "index": 86,
+      "name": "FBro_实例设置代理",
+      "signature": "FBro_实例设置代理(实例句柄, 代理地址)",
+      "description": "为后台实例/弹窗句柄设置代理（http://host:port 或 socks5://host:port，传空清除），浏览器就绪后调用生效。建议在 FBro_后台创建 之后、FBro_实例打开原生UI 弹出主页之前调用；弹窗与来源实例是两个浏览器，需要各自设置一次。",
+      "insertText": "FBro_实例设置代理($1, \"http://127.0.0.1:7890\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_实例设置代理",
+        "runtimeName": "FBro_实例设置代理",
+        "parameters": [
+          {
+            "name": "实例句柄",
+            "type": "longLong",
+            "description": "FBro_后台创建 返回的后台浏览器实例句柄（长整数）；实例关闭或进程退出后失效。"
+          },
+          {
+            "name": "代理地址",
+            "type": "wideString",
+            "description": "http://host:port 或 socks5://host:port；传空文本清除代理。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_实例设置代理(1, \"https://example.com\")"
+    },
+    {
+      "index": 87,
+      "name": "FBro_实例关闭",
+      "signature": "FBro_实例关闭(实例句柄)",
+      "description": "关闭并销毁 FBro_后台创建 建立的后台实例；这是进程内最后一个浏览器时桥接层会随之收尾。",
+      "insertText": "FBro_实例关闭($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_实例关闭",
+        "runtimeName": "FBro_实例关闭",
+        "parameters": [
+          {
+            "name": "实例句柄",
+            "type": "longLong",
+            "description": "FBro_后台创建 返回的后台浏览器实例句柄（长整数）；实例关闭或进程退出后失效。"
+          }
+        ],
+        "returnType": "void",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_实例关闭(1)"
+    },
+    {
+      "index": 88,
+      "name": "FBro_实例绑定事件",
+      "signature": "FBro_实例绑定事件(实例句柄, 事件名, &处理器)",
+      "description": "窗口程序为后台实例句柄绑定中文事件处理器（事件经属窗消息泵派发）；控制台程序没有消息泵，处理器不会触发，请改用 FBro_实例等待加载超时 与 FBro_实例执行JS 同步读取。",
+      "insertText": "FBro_实例绑定事件($1, \"LoadEnd\", &$2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_实例绑定事件",
+        "runtimeName": "FBro_实例绑定事件",
+        "parameters": [
+          {
+            "name": "实例句柄",
+            "type": "longLong",
+            "description": "FBro_后台创建 返回的后台浏览器实例句柄（长整数）；实例关闭或进程退出后失效。"
+          },
+          {
+            "name": "事件名",
+            "type": "wideString",
+            "description": "中文事件名，如 \"导航完成\"，取值见事件清单。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_实例绑定事件(1, \"演示事件\", &模块演示回调)"
+    },
+    {
+      "index": 89,
+      "name": "FBro_实例取最近事件",
+      "signature": "FBro_实例取最近事件(实例句柄)",
+      "description": "返回后台实例句柄最近一次已派发事件的事件名；无事件记录返回空文本。",
+      "insertText": "FBro_实例取最近事件($1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "FBro_实例取最近事件",
+        "runtimeName": "FBro_实例取最近事件",
+        "parameters": [
+          {
+            "name": "实例句柄",
+            "type": "longLong",
+            "description": "FBro_后台创建 返回的后台浏览器实例句柄（长整数）；实例关闭或进程退出后失效。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_实例取最近事件(1)"
+    },
+    {
+      "index": 90,
+      "name": "FBro_实例取事件数据",
+      "signature": "FBro_实例取事件数据(实例句柄)",
+      "description": "返回后台实例句柄最近一次事件的 data 文本（标题、地址、错误说明等随事件而定）；无事件记录返回空文本。",
+      "insertText": "FBro_实例取事件数据($1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "FBro_实例取事件数据",
+        "runtimeName": "FBro_实例取事件数据",
+        "parameters": [
+          {
+            "name": "实例句柄",
+            "type": "longLong",
+            "description": "FBro_后台创建 返回的后台浏览器实例句柄（长整数）；实例关闭或进程退出后失效。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_实例取事件数据(1)"
+    },
+    {
+      "index": 91,
+      "name": "FBro_启用JS扩展",
+      "aliases": [
+        "LB_FBro_EnableJsQuery"
+      ],
+      "signature": "FBro_启用JS扩展(查询函数名, 取消函数名)",
+      "description": "注册页面调用原生函数通道，可多次调用注册多条通道（如 cefQuery 与 cefQuerytest），全部通道共用同一个 OnQuery 处理器。页面执行 查询函数名(请求文本) 触发 OnQuery 事件：用 FBro_取事件字段 读 request，用 FBro事件_完成延续 回传 {\"success\":true,\"result\":\"...\"} 或 {\"success\":false,\"error\":\"...\"}。必须在首个浏览器初始化前调用；窗口程序建议改用 FBroBrowser 控件属性 jsQueryFunctions（格式 cefQuery,cefQueryCancel;cefQuerytest,cefQueryCanceltest）在生成期自动注册。",
+      "insertText": "FBro_启用JS扩展(\"cefQuery\", \"cefQueryCancel\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_启用JS扩展",
+        "runtimeName": "FBro_启用JS扩展",
+        "parameters": [
+          {
+            "name": "查询函数名",
+            "type": "wideString",
+            "description": "页面发起 cefQuery 查询使用的全局函数名。"
+          },
+          {
+            "name": "取消函数名",
+            "type": "wideString",
+            "description": "页面取消查询使用的全局函数名。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_启用JS扩展(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 92,
+      "name": "浏览器管理器_初始化",
+      "signature": "浏览器管理器_初始化(页面选项卡, 实例列表, 工作区键)",
+      "description": "绑定普通 Win32 隐藏表头选项卡和列表框，恢复独立实例并为每个实例启动一个 FBro Host。",
+      "insertText": "浏览器管理器_初始化($1, $2, \"$3\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "浏览器管理器_初始化",
+        "runtimeName": "浏览器管理器_初始化",
+        "parameters": [
+          {
+            "name": "页面选项卡",
+            "type": "controlRef",
+            "controlTypes": [
+              "TabControl"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "nativeHandle",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 TabControl；生成 C++ 时解析为真实控件句柄。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "实例列表",
+            "type": "controlRef",
+            "controlTypes": [
+              "ListBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "nativeHandle",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 ListBox；生成 C++ 时解析为真实控件句柄。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "工作区键",
+            "type": "wideString",
+            "description": "浏览器管理器的工作区标识键，用于实例列表持久化。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "浏览器管理器_初始化(浏览器页面, 浏览器实例列表, \"win32-fbro-multi-browser-manager\")"
+      },
+      "demoInvocation": "浏览器管理器_初始化(命令分组选项卡, 演示ListBox控件, \"演示参数3\")"
+    },
+    {
+      "index": 93,
+      "name": "浏览器管理器_绑定地址栏",
+      "signature": "浏览器管理器_绑定地址栏(地址控件)",
+      "description": "绑定当前窗口文本框；网页地址事件和实例切换会直接同步真实当前地址。",
+      "insertText": "浏览器管理器_绑定地址栏($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器管理器_绑定地址栏",
+        "runtimeName": "浏览器管理器_绑定地址栏",
+        "parameters": [
+          {
+            "name": "地址控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "TextBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "nativeHandle",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 TextBox；生成 C++ 时解析为真实控件句柄。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "浏览器管理器_绑定地址栏(地址输入)"
+      },
+      "demoInvocation": "浏览器管理器_绑定地址栏(演示TextBox控件)"
+    },
+    {
+      "index": 94,
+      "name": "浏览器管理器_绑定下载视图",
+      "signature": "浏览器管理器_绑定下载视图(详情控件, 进度条)",
+      "description": "绑定只读文本框或标签及原生进度条；下载事件到达和实例切换时实时显示当前实例的文件、目录、百分比与完成状态。",
+      "insertText": "浏览器管理器_绑定下载视图($1, $2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器管理器_绑定下载视图",
+        "runtimeName": "浏览器管理器_绑定下载视图",
+        "parameters": [
+          {
+            "name": "详情控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "TextBox",
+              "Label"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "nativeHandle",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 TextBox、Label；生成 C++ 时解析为真实控件句柄。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "进度条",
+            "type": "controlRef",
+            "controlTypes": [
+              "ProgressBar"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "nativeHandle",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 ProgressBar；生成 C++ 时解析为真实控件句柄。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "浏览器管理器_绑定下载视图(实例详情, 下载进度)"
+      },
+      "demoInvocation": "浏览器管理器_绑定下载视图(演示TextBox控件, 演示ProgressBar控件)"
+    },
+    {
+      "index": 95,
+      "name": "浏览器管理器_新增实例",
+      "signature": "浏览器管理器_新增实例(名称, 地址)",
+      "description": "生成稳定 ID、独立页面 HWND 和独立 Profile，并启动新的嵌入式 FBro Host。",
+      "insertText": "浏览器管理器_新增实例(\"浏览器 $1\", \"https://www.baidu.com\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器管理器_新增实例",
+        "runtimeName": "浏览器管理器_新增实例",
+        "parameters": [
+          {
+            "name": "名称",
+            "type": "wideString",
+            "description": "实例显示名称。"
+          },
+          {
+            "name": "地址",
+            "type": "wideString",
+            "description": "完整 URL 或本地文件路径。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器管理器_新增实例(\"演示参数1\", \"https://example.com\")"
+    },
+    {
+      "index": 96,
+      "name": "浏览器管理器_切换索引",
+      "signature": "浏览器管理器_切换索引(索引)",
+      "description": "按左侧列表索引切换实例；先显示并聚焦目标页面，再隐藏其它页面。",
+      "insertText": "浏览器管理器_切换索引($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器管理器_切换索引",
+        "runtimeName": "浏览器管理器_切换索引",
+        "parameters": [
+          {
+            "name": "索引",
+            "type": "int",
+            "description": "项目下标，从 0 起。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器管理器_切换索引(1)"
+    },
+    {
+      "index": 97,
+      "name": "浏览器管理器_重命名当前",
+      "signature": "浏览器管理器_重命名当前(名称)",
+      "description": "重命名当前实例，不改变稳定 ID、Profile 或登录状态。",
+      "insertText": "浏览器管理器_重命名当前(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器管理器_重命名当前",
+        "runtimeName": "浏览器管理器_重命名当前",
+        "parameters": [
+          {
+            "name": "名称",
+            "type": "wideString",
+            "description": "实例显示名称。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器管理器_重命名当前(\"演示参数1\")"
+    },
+    {
+      "index": 98,
+      "name": "浏览器管理器_删除当前",
+      "signature": "浏览器管理器_删除当前(清除数据)",
+      "description": "删除当前实例并可选二次确认清除受管 Profile；始终保留至少一个实例。",
+      "insertText": "浏览器管理器_删除当前($1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器管理器_删除当前",
+        "runtimeName": "浏览器管理器_删除当前",
+        "parameters": [
+          {
+            "name": "清除数据",
+            "type": "bool",
+            "description": "真=同时清除实例的缓存数据。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器管理器_删除当前(真)"
+    },
+    {
+      "index": 99,
+      "name": "浏览器管理器_导航",
+      "signature": "浏览器管理器_导航(地址)",
+      "description": "让当前独立 Host 导航并持久化最后地址，不限制协议；chrome://extensions/ 在嵌入式 Alloy 模式中显示 LingBuilder 的真实扩展检查页。",
+      "insertText": "浏览器管理器_导航(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器管理器_导航",
+        "runtimeName": "浏览器管理器_导航",
+        "parameters": [
+          {
+            "name": "地址",
+            "type": "wideString",
+            "description": "完整 URL 或本地文件路径。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器管理器_导航(\"https://example.com\")"
+    },
+    {
+      "index": 100,
+      "name": "浏览器管理器_后退",
+      "signature": "浏览器管理器_后退()",
+      "description": "当前实例后退。",
+      "insertText": "浏览器管理器_后退()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器管理器_后退",
+        "runtimeName": "浏览器管理器_后退",
+        "parameters": [],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器管理器_后退()"
+    },
+    {
+      "index": 101,
+      "name": "浏览器管理器_前进",
+      "signature": "浏览器管理器_前进()",
+      "description": "当前实例前进。",
+      "insertText": "浏览器管理器_前进()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器管理器_前进",
+        "runtimeName": "浏览器管理器_前进",
+        "parameters": [],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器管理器_前进()"
+    },
+    {
+      "index": 102,
+      "name": "浏览器管理器_刷新",
+      "signature": "浏览器管理器_刷新()",
+      "description": "刷新当前实例。",
+      "insertText": "浏览器管理器_刷新()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器管理器_刷新",
+        "runtimeName": "浏览器管理器_刷新",
+        "parameters": [],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器管理器_刷新()"
+    },
+    {
+      "index": 103,
+      "name": "浏览器管理器_停止",
+      "signature": "浏览器管理器_停止()",
+      "description": "停止当前实例加载。",
+      "insertText": "浏览器管理器_停止()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器管理器_停止",
+        "runtimeName": "浏览器管理器_停止",
+        "parameters": [],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器管理器_停止()"
+    },
+    {
+      "index": 104,
+      "name": "浏览器管理器_强制刷新",
+      "signature": "浏览器管理器_强制刷新()",
+      "description": "忽略缓存刷新当前实例。",
+      "insertText": "浏览器管理器_强制刷新()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器管理器_强制刷新",
+        "runtimeName": "浏览器管理器_强制刷新",
+        "parameters": [],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器管理器_强制刷新()"
+    },
+    {
+      "index": 105,
+      "name": "浏览器管理器_打开当前缓存目录",
+      "signature": "浏览器管理器_打开当前缓存目录()",
+      "description": "打开通过规范路径和重解析点边界校验的当前 Profile。",
+      "insertText": "浏览器管理器_打开当前缓存目录()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器管理器_打开当前缓存目录",
+        "runtimeName": "浏览器管理器_打开当前缓存目录",
+        "parameters": [],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器管理器_打开当前缓存目录()"
+    },
+    {
+      "index": 106,
+      "name": "浏览器管理器_打开当前下载目录",
+      "signature": "浏览器管理器_打开当前下载目录()",
+      "description": "验证最近下载目录真实存在后，在 Windows 文件资源管理器中打开。",
+      "insertText": "浏览器管理器_打开当前下载目录()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器管理器_打开当前下载目录",
+        "runtimeName": "浏览器管理器_打开当前下载目录",
+        "parameters": [],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器管理器_打开当前下载目录()"
+    },
+    {
+      "index": 107,
+      "name": "浏览器管理器_清理当前缓存",
+      "signature": "浏览器管理器_清理当前缓存(包含Cookie)",
+      "description": "调用当前 FBro Host 清理真实缓存；包含 Cookie 时同时清理登录和插件存储。",
+      "insertText": "浏览器管理器_清理当前缓存($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "浏览器管理器_清理当前缓存",
+        "runtimeName": "浏览器管理器_清理当前缓存",
+        "parameters": [
+          {
+            "name": "包含Cookie",
+            "type": "bool",
+            "description": "真=清理时同时删除 Cookie。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器管理器_清理当前缓存(真)"
+    },
+    {
+      "index": 108,
+      "name": "浏览器管理器_导出Cookie",
+      "signature": "浏览器管理器_导出Cookie(文件, 全部网站)",
+      "description": "预览数量和敏感信息警告后，从当前 Host 的 CookieManager 原子导出结构化 JSON。",
+      "insertText": "浏览器管理器_导出Cookie(\"cookies.lingbuilder.json\", $1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器管理器_导出Cookie",
+        "runtimeName": "浏览器管理器_导出Cookie",
+        "parameters": [
+          {
+            "name": "文件",
+            "type": "wideString",
+            "description": "导出或导入 Cookie 的文件路径。"
+          },
+          {
+            "name": "全部网站",
+            "type": "bool",
+            "description": "真=导出全部网站的 Cookie。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器管理器_导出Cookie(\"module-demo-temp.txt\", 真)"
+    },
+    {
+      "index": 109,
+      "name": "浏览器管理器_导入Cookie",
+      "signature": "浏览器管理器_导入Cookie(文件, 覆盖冲突)",
+      "description": "预览有效、无效、过期、域名和冲突统计后写入当前 Host，并刷新页面。",
+      "insertText": "浏览器管理器_导入Cookie(\"cookies.lingbuilder.json\", $1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器管理器_导入Cookie",
+        "runtimeName": "浏览器管理器_导入Cookie",
+        "parameters": [
+          {
+            "name": "文件",
+            "type": "wideString",
+            "description": "导出或导入 Cookie 的文件路径。"
+          },
+          {
+            "name": "覆盖冲突",
+            "type": "bool",
+            "description": "真=导入时覆盖同名 Cookie。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器管理器_导入Cookie(\"module-demo-temp.txt\", 真)"
+    },
+    {
+      "index": 110,
+      "name": "浏览器管理器_取当前稳定ID",
+      "signature": "浏览器管理器_取当前稳定ID()",
+      "description": "返回当前实例稳定 ID。",
+      "insertText": "浏览器管理器_取当前稳定ID()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器管理器_取当前稳定ID",
+        "runtimeName": "浏览器管理器_取当前稳定ID",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器管理器_取当前稳定ID()"
+    },
+    {
+      "index": 111,
+      "name": "浏览器管理器_取当前名称",
+      "signature": "浏览器管理器_取当前名称()",
+      "description": "返回当前实例显示名称。",
+      "insertText": "浏览器管理器_取当前名称()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器管理器_取当前名称",
+        "runtimeName": "浏览器管理器_取当前名称",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器管理器_取当前名称()"
+    },
+    {
+      "index": 112,
+      "name": "浏览器管理器_取当前地址",
+      "signature": "浏览器管理器_取当前地址()",
+      "description": "返回当前实例最后地址。",
+      "insertText": "浏览器管理器_取当前地址()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器管理器_取当前地址",
+        "runtimeName": "浏览器管理器_取当前地址",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器管理器_取当前地址()"
+    },
+    {
+      "index": 113,
+      "name": "浏览器管理器_取当前插件状态",
+      "signature": "浏览器管理器_取当前插件状态()",
+      "description": "返回当前实例扩展登记及豆包页面 DOM 生效检查状态。",
+      "insertText": "浏览器管理器_取当前插件状态()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器管理器_取当前插件状态",
+        "runtimeName": "浏览器管理器_取当前插件状态",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器管理器_取当前插件状态()"
+    },
+    {
+      "index": 114,
+      "name": "浏览器管理器_取当前插件错误",
+      "signature": "浏览器管理器_取当前插件错误()",
+      "description": "返回当前实例插件清单或加载错误。",
+      "insertText": "浏览器管理器_取当前插件错误()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器管理器_取当前插件错误",
+        "runtimeName": "浏览器管理器_取当前插件错误",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器管理器_取当前插件错误()"
+    },
+    {
+      "index": 115,
+      "name": "浏览器管理器_取当前下载状态",
+      "signature": "浏览器管理器_取当前下载状态()",
+      "description": "返回当前实例最近下载的准备、进度、完成或取消状态。",
+      "insertText": "浏览器管理器_取当前下载状态()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器管理器_取当前下载状态",
+        "runtimeName": "浏览器管理器_取当前下载状态",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器管理器_取当前下载状态()"
+    },
+    {
+      "index": 116,
+      "name": "浏览器管理器_取当前下载文件",
+      "signature": "浏览器管理器_取当前下载文件()",
+      "description": "返回当前实例最近下载的文件名。",
+      "insertText": "浏览器管理器_取当前下载文件()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器管理器_取当前下载文件",
+        "runtimeName": "浏览器管理器_取当前下载文件",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器管理器_取当前下载文件()"
+    },
+    {
+      "index": 117,
+      "name": "浏览器管理器_取当前下载完整路径",
+      "signature": "浏览器管理器_取当前下载完整路径()",
+      "description": "返回 FBro 报告的当前实例最近下载完整路径。",
+      "insertText": "浏览器管理器_取当前下载完整路径()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器管理器_取当前下载完整路径",
+        "runtimeName": "浏览器管理器_取当前下载完整路径",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器管理器_取当前下载完整路径()"
+    },
+    {
+      "index": 118,
+      "name": "浏览器管理器_取当前下载目录",
+      "signature": "浏览器管理器_取当前下载目录()",
+      "description": "返回从最近下载完整路径解析出的目录。",
+      "insertText": "浏览器管理器_取当前下载目录()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器管理器_取当前下载目录",
+        "runtimeName": "浏览器管理器_取当前下载目录",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器管理器_取当前下载目录()"
+    },
+    {
+      "index": 119,
+      "name": "浏览器管理器_取当前错误",
+      "signature": "浏览器管理器_取当前错误()",
+      "description": "返回当前实例最近的 Host 错误。",
+      "insertText": "浏览器管理器_取当前错误()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器管理器_取当前错误",
+        "runtimeName": "浏览器管理器_取当前错误",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器管理器_取当前错误()"
+    },
+    {
+      "index": 120,
+      "name": "浏览器管理器_取持久化诊断",
+      "signature": "浏览器管理器_取持久化诊断()",
+      "description": "返回损坏恢复、重复实例或原子写入诊断。",
+      "insertText": "浏览器管理器_取持久化诊断()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器管理器_取持久化诊断",
+        "runtimeName": "浏览器管理器_取持久化诊断",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器管理器_取持久化诊断()"
+    },
+    {
+      "index": 121,
+      "name": "浏览器管理器_取当前缓存目录",
+      "signature": "浏览器管理器_取当前缓存目录()",
+      "description": "返回当前实例由稳定 ID 派生的本机 Profile 目录。",
+      "insertText": "浏览器管理器_取当前缓存目录()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器管理器_取当前缓存目录",
+        "runtimeName": "浏览器管理器_取当前缓存目录",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器管理器_取当前缓存目录()"
+    },
+    {
+      "index": 122,
+      "name": "浏览器管理器_取当前进程状态",
+      "signature": "浏览器管理器_取当前进程状态()",
+      "description": "返回当前独立 Host 状态。",
+      "insertText": "浏览器管理器_取当前进程状态()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器管理器_取当前进程状态",
+        "runtimeName": "浏览器管理器_取当前进程状态",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器管理器_取当前进程状态()"
+    },
+    {
+      "index": 123,
+      "name": "浏览器管理器_取当前进程ID",
+      "signature": "浏览器管理器_取当前进程ID()",
+      "description": "返回当前独立 Host PID。",
+      "insertText": "浏览器管理器_取当前进程ID()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "浏览器管理器_取当前进程ID",
+        "runtimeName": "浏览器管理器_取当前进程ID",
+        "parameters": [],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器管理器_取当前进程ID()"
+    },
+    {
+      "index": 124,
+      "name": "浏览器管理器_取当前页面句柄",
+      "signature": "浏览器管理器_取当前页面句柄()",
+      "description": "返回当前实例独立页面 HWND，仅用于诊断生命周期。",
+      "insertText": "浏览器管理器_取当前页面句柄()",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "浏览器管理器_取当前页面句柄",
+        "runtimeName": "浏览器管理器_取当前页面句柄",
+        "parameters": [],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器管理器_取当前页面句柄()"
+    },
+    {
+      "index": 125,
+      "name": "浏览器管理器_取实例数量",
+      "signature": "浏览器管理器_取实例数量()",
+      "description": "返回当前实例数量。",
+      "insertText": "浏览器管理器_取实例数量()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "浏览器管理器_取实例数量",
+        "runtimeName": "浏览器管理器_取实例数量",
+        "parameters": [],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器管理器_取实例数量()"
+    },
+    {
+      "index": 126,
+      "name": "浏览器管理器_取实例顺序JSON",
+      "signature": "浏览器管理器_取实例顺序JSON()",
+      "description": "返回稳定 ID 顺序 JSON。",
+      "insertText": "浏览器管理器_取实例顺序JSON()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器管理器_取实例顺序JSON",
+        "runtimeName": "浏览器管理器_取实例顺序JSON",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器管理器_取实例顺序JSON()"
+    },
+    {
+      "index": 127,
+      "name": "浏览器管理器_取运行快照JSON",
+      "signature": "浏览器管理器_取运行快照JSON()",
+      "description": "返回不含 Cookie 的 ID、Profile、页面 HWND、PID 和插件状态诊断快照。",
+      "insertText": "浏览器管理器_取运行快照JSON()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "浏览器管理器_取运行快照JSON",
+        "runtimeName": "浏览器管理器_取运行快照JSON",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "浏览器管理器_取运行快照JSON()"
+    },
+    {
+      "index": 128,
+      "name": "FBro_创建区域",
+      "signature": "FBro_创建区域(实例编号, 左, 顶, 宽, 高, 地址, 缓存目录, 代理地址, 用户代理)",
+      "description": "在普通 Win32 宿主窗口客户区的指定矩形内动态内嵌一个独立进程 FBro 浏览器（不依赖 new_emoji），每个实例编号拥有独立 Profile/缓存/代理/UA，可多次调用创建任意数量区域。返回 1 表示成功、0 表示失败。实例编号需唯一；左/顶/宽/高为逻辑坐标（按 DPI 自动缩放）；缓存目录留空时自动按编号派生；代理地址与用户代理留空表示使用默认。",
+      "insertText": "FBro_创建区域($1, $2, $3, $4, $5, \"https://www.baidu.com\", \"\", \"\", \"\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_创建区域",
+        "runtimeName": "FBro_创建区域",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "区域实例唯一编号，重复编号会拒绝创建。"
+          },
+          {
+            "name": "左",
+            "type": "int",
+            "description": "承载矩形相对宿主窗口客户区的逻辑横坐标，按 DPI 自动缩放。"
+          },
+          {
+            "name": "顶",
+            "type": "int",
+            "description": "承载矩形相对宿主窗口客户区的逻辑纵坐标，按 DPI 自动缩放。"
+          },
+          {
+            "name": "宽",
+            "type": "int",
+            "description": "承载矩形逻辑宽度，必须大于 0。"
+          },
+          {
+            "name": "高",
+            "type": "int",
+            "description": "承载矩形逻辑高度，必须大于 0。"
+          },
+          {
+            "name": "地址",
+            "type": "wideString",
+            "description": "初始导航地址，留空按 about:blank。"
+          },
+          {
+            "name": "缓存目录",
+            "type": "wideString",
+            "description": "独立 Profile/缓存目录，留空按实例编号自动派生。"
+          },
+          {
+            "name": "代理地址",
+            "type": "wideString",
+            "description": "该实例独立代理，留空表示不使用代理。"
+          },
+          {
+            "name": "用户代理",
+            "type": "wideString",
+            "description": "该实例独立 UA，留空表示使用默认。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_创建区域(1, 1, 1, 1, 1, \"https://example.com\", \".\", \"https://example.com\", \"演示参数9\")"
+    },
+    {
+      "index": 129,
+      "name": "FBro_取区域实例JSON",
+      "signature": "FBro_取区域实例JSON()",
+      "description": "返回由 FBro_创建区域 建出的全部动态内嵌区域实例的紧凑 JSON（实例编号、地址、矩形与运行状态），用于枚举当前内嵌浏览器。",
+      "insertText": "FBro_取区域实例JSON()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "FBro_取区域实例JSON",
+        "runtimeName": "FBro_取区域实例JSON",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_取区域实例JSON()"
+    },
+    {
+      "index": 130,
+      "name": "FBro_关闭全部区域",
+      "signature": "FBro_关闭全部区域()",
+      "description": "关闭并销毁全部由 FBro_创建区域 建出的动态内嵌区域实例，返回关闭数量。",
+      "insertText": "FBro_关闭全部区域()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_关闭全部区域",
+        "runtimeName": "FBro_关闭全部区域",
+        "parameters": [],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_关闭全部区域()"
+    },
+    {
+      "index": 131,
+      "name": "FBro_区域是否存活",
+      "signature": "FBro_区域是否存活(实例编号)",
+      "description": "返回指定区域实例是否仍在运行（承载窗有效且独立进程就绪）；未创建或已关闭返回 0。",
+      "insertText": "FBro_区域是否存活($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_区域是否存活",
+        "runtimeName": "FBro_区域是否存活",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "FBro_创建区域 时传入的区域实例编号。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_区域是否存活(1)"
+    },
+    {
+      "index": 132,
+      "name": "FBro_区域导航",
+      "signature": "FBro_区域导航(实例编号, 地址)",
+      "description": "让指定区域实例单独导航到新地址，不影响其他区域；实例未创建或已关闭返回 0。",
+      "insertText": "FBro_区域导航($1, \"https://www.baidu.com\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_区域导航",
+        "runtimeName": "FBro_区域导航",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "FBro_创建区域 时传入的区域实例编号。"
+          },
+          {
+            "name": "地址",
+            "type": "wideString",
+            "description": "完整 URL 或本地文件路径。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_区域导航(1, \"https://example.com\")"
+    },
+    {
+      "index": 133,
+      "name": "FBro_区域后退",
+      "signature": "FBro_区域后退(实例编号)",
+      "description": "让指定区域实例后退一页，不影响其他区域。",
+      "insertText": "FBro_区域后退($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_区域后退",
+        "runtimeName": "FBro_区域后退",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "FBro_创建区域 时传入的区域实例编号。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_区域后退(1)"
+    },
+    {
+      "index": 134,
+      "name": "FBro_区域前进",
+      "signature": "FBro_区域前进(实例编号)",
+      "description": "让指定区域实例前进一页，不影响其他区域。",
+      "insertText": "FBro_区域前进($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_区域前进",
+        "runtimeName": "FBro_区域前进",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "FBro_创建区域 时传入的区域实例编号。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_区域前进(1)"
+    },
+    {
+      "index": 135,
+      "name": "FBro_区域刷新",
+      "signature": "FBro_区域刷新(实例编号)",
+      "description": "重新加载指定区域实例的当前页面，不影响其他区域。",
+      "insertText": "FBro_区域刷新($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_区域刷新",
+        "runtimeName": "FBro_区域刷新",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "FBro_创建区域 时传入的区域实例编号。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_区域刷新(1)"
+    },
+    {
+      "index": 136,
+      "name": "FBro_区域停止",
+      "signature": "FBro_区域停止(实例编号)",
+      "description": "停止指定区域实例正在进行的加载，不影响其他区域。",
+      "insertText": "FBro_区域停止($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_区域停止",
+        "runtimeName": "FBro_区域停止",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "FBro_创建区域 时传入的区域实例编号。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_区域停止(1)"
+    },
+    {
+      "index": 137,
+      "name": "FBro_区域执行JS",
+      "signature": "FBro_区域执行JS(实例编号, 脚本)",
+      "description": "在指定区域实例内执行 JavaScript 并返回结果值文本（受页面同源策略限制）；实例未创建或执行失败返回空文本。",
+      "insertText": "FBro_区域执行JS($1, \"document.title\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "FBro_区域执行JS",
+        "runtimeName": "FBro_区域执行JS",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "FBro_创建区域 时传入的区域实例编号。"
+          },
+          {
+            "name": "脚本",
+            "type": "wideString",
+            "description": "要执行的 JavaScript 代码。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_区域执行JS(1, \"演示参数2\")"
+    },
+    {
+      "index": 138,
+      "name": "FBro_区域取标题",
+      "signature": "FBro_区域取标题(实例编号)",
+      "description": "返回指定区域实例当前页面的标题；实例未创建或尚未加载返回空文本。",
+      "insertText": "FBro_区域取标题($1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "FBro_区域取标题",
+        "runtimeName": "FBro_区域取标题",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "FBro_创建区域 时传入的区域实例编号。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_区域取标题(1)"
+    },
+    {
+      "index": 139,
+      "name": "FBro_区域取地址",
+      "signature": "FBro_区域取地址(实例编号)",
+      "description": "返回指定区域实例当前页面的地址；实例未创建返回空文本。",
+      "insertText": "FBro_区域取地址($1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "FBro_区域取地址",
+        "runtimeName": "FBro_区域取地址",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "FBro_创建区域 时传入的区域实例编号。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_区域取地址(1)"
+    },
+    {
+      "index": 140,
+      "name": "FBro_区域调整",
+      "signature": "FBro_区域调整(实例编号, 左, 顶, 宽, 高)",
+      "description": "按实例编号移动并缩放区域承载矩形（窗口内逻辑坐标，按 DPI 自动缩放，随窗口缩放语义与 FBro_创建区域 一致）；宽高必须大于 0，返回 1 成功、0 实例不存在。",
+      "insertText": "FBro_区域调整($1, $2, $3, $4, $5)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_区域调整",
+        "runtimeName": "FBro_区域调整",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "FBro_创建区域 时传入的区域实例编号。"
+          },
+          {
+            "name": "左",
+            "type": "int",
+            "description": "承载矩形相对宿主窗口客户区的逻辑横坐标，按 DPI 自动缩放。"
+          },
+          {
+            "name": "顶",
+            "type": "int",
+            "description": "承载矩形相对宿主窗口客户区的逻辑纵坐标，按 DPI 自动缩放。"
+          },
+          {
+            "name": "宽",
+            "type": "int",
+            "description": "承载矩形逻辑宽度，必须大于 0。"
+          },
+          {
+            "name": "高",
+            "type": "int",
+            "description": "承载矩形逻辑高度，必须大于 0。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_区域调整(1, 1, 1, 1, 1)"
+    },
+    {
+      "index": 141,
+      "name": "FBro_关闭区域",
+      "signature": "FBro_关闭区域(实例编号)",
+      "description": "单独关闭并销毁指定区域实例（独立进程优雅退出后销毁承载窗），不影响其他区域；返回 1 表示已关闭、0 表示实例不存在。",
+      "insertText": "FBro_关闭区域($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_关闭区域",
+        "runtimeName": "FBro_关闭区域",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "FBro_创建区域 时传入的区域实例编号。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_关闭区域(1)"
+    },
+    {
+      "index": 142,
+      "name": "FBro_实例打开原生UI",
+      "signature": "FBro_实例打开原生UI(实例句柄, 地址)",
+      "description": "以 FBro_后台创建 返回的后台实例句柄为会话来源，弹出 Chrome Runtime 独立顶层浏览器（谷歌原生 UI，不嵌入 LingBuilder 窗口，不需要任何设计器控件）；返回弹窗句柄（长整数型），可用 FBro_实例导航 / FBro_实例关闭 继续操作；弹窗与来源实例共用缓存目录=同一指纹档案；实例句柄无效或已关闭返回 0。",
+      "insertText": "FBro_实例打开原生UI($1, \"https://www.baidu.com\")",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "FBro_实例打开原生UI",
+        "runtimeName": "FBro_实例打开原生UI",
+        "parameters": [
+          {
+            "name": "实例句柄",
+            "type": "longLong",
+            "description": "FBro_后台创建 返回的后台浏览器实例句柄；无效或已关闭返回 0。"
+          },
+          {
+            "name": "地址",
+            "type": "wideString",
+            "description": "弹窗加载的初始地址，留空按 about:blank。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_实例打开原生UI(1, \"https://example.com\")"
     }
   ]
 }

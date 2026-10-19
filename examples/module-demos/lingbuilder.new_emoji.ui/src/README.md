@@ -3,7 +3,7 @@
 - 模块 ID：`lingbuilder.new_emoji.ui`
 - 版本：`2.0.0`
 - 类型：外置/资产模块
-- 命令数：4019
+- 命令数：4024
 - 设计器控件数：93
 - 分组数：12
 
@@ -1349,7 +1349,7 @@
 | 1326 | `NE标签页_取活动名称` | `NE标签页_取活动名称(hwnd, element_id, buffer, buffer_size)` | int | 底层直调 EU_GetTabsActiveName：取活动名称。文本参数为 UTF-8 字节指针＋长度成对传入。 |
 | 1327 | `NE标签页_取项内容` | `NE标签页_取项内容(hwnd, element_id, item_index, buffer, buffer_size)` | int | 底层直调 EU_GetTabsItemContent：取项内容。文本参数为 UTF-8 字节指针＋长度成对传入。 |
 | 1328 | `NE标签页_取完整状态` | `NE标签页_取完整状态(hwnd, element_id, active_index, item_count, tab_type, closable, addable, scroll_offset, max_scroll_offset, hover_index, press_index, hover_part, press_part, last_closed_index, last_added_index, close_count, add_count, select_count, scroll_count, last_action)` | int | 底层直调 EU_GetTabsFullState：取完整状态。 |
-| 1329 | `NE标签页_取完整状态扩展` | `NE标签页_取完整状态扩展(hwnd, element_id, active_index, item_count, tab_type, closable, addable, scroll_offset, max_scroll_offset, hover_index, press_index, hover_part, press_part, last_closed_index, last_added_index, close_count, add_count, select_count, scroll_count, last_action, tab_position, editable, content_visible, active_disabled, active_closable)` | int | 底层直调 EU_GetTabsFullStateEx：取完整状态扩展。 |
+| 1329 | `NE标签页_取完整状态扩展` | `NE标签页_取完整状态扩展(hwnd, element_id, active_index, item_count, tab_type, closable, addable, scroll_offset, max_scroll_offset, hover_index, press_index, hover_part, press_part, last_closed_index, last_added_index, close_count, add_count, select_count, scroll_count, last_action, tab_position, editable, content_visible, active_disabled, active_closable), header_content_width` | int | 底层直调 EU_GetTabsFullStateEx：取完整状态扩展；header_content_width 带回标签条内容总占用宽（逻辑像素，chrome 模式含新建按钮区）。 |
 | 1330 | `NE标签页_设置变化回调` | `NE标签页_设置变化回调(hwnd, element_id, cb)` | void | 底层直调 EU_SetTabsChangeCallback：设置变化回调。处理器实参必须写 &处理器名。 |
 | 1331 | `NE标签页_设置关闭回调` | `NE标签页_设置关闭回调(hwnd, element_id, cb)` | void | 底层直调 EU_SetTabsCloseCallback：设置关闭回调。处理器实参必须写 &处理器名。 |
 | 1332 | `NE标签页_设置添加回调` | `NE标签页_设置添加回调(hwnd, element_id, cb)` | void | 底层直调 EU_SetTabsAddCallback：设置添加回调。处理器实参必须写 &处理器名。 |
@@ -4040,3 +4040,8 @@
 | 4017 | `NE浏览器视口_解绑获得焦点` | `NE浏览器视口_解绑获得焦点(控件)` | bool | 移除NE浏览器视口实例由代码绑定的“获得焦点”处理器。 |
 | 4018 | `NE浏览器视口_绑定失去焦点` | `NE浏览器视口_绑定失去焦点(控件, 处理器)` | bool | 为NE浏览器视口实例绑定“失去焦点”处理器，处理器必须使用 &名称。 |
 | 4019 | `NE浏览器视口_解绑失去焦点` | `NE浏览器视口_解绑失去焦点(控件)` | bool | 移除NE浏览器视口实例由代码绑定的“失去焦点”处理器。 |
+| 4020 | `NE标签页_取项矩形直调` | `NE标签页_取项矩形直调(hwnd, element_id, item_index, x, y, w, h)` | int | NE标签页_取项矩形 的底层直调版本：按索引读回单个标签的实测矩形（x/y/w/h 出参，逻辑像素、相对标签条元素左上角），与绘制/命中同一套宽度，成功返回 1。hwnd 传 当前窗口；一般请用高层封装 NE标签页_取项矩形。 |
+| 4021 | `NE标签页_取头部内容宽度直调` | `NE标签页_取头部内容宽度直调(hwnd, element_id, out_width)` | int | NE标签页_取标签条内容宽 的底层直调版本：读回标签条内容总占用宽（out_width 出参，逻辑像素；chrome 模式新建按钮可见时计入其区域），成功返回 1。hwnd 传 当前窗口；一般请用高层封装 NE标签页_取标签条内容宽。 |
+| 4022 | `NE标签页_取项矩形` | `NE标签页_取项矩形(控件, 索引)` | wideString | 读回单个标签的实测矩形，返回 JSON 文本 {"x":…,"y":…,"w":…,"h":…}。单位逻辑像素，坐标相对标签条元素左上角，与绘制/命中使用同一套宽度（chrome 模式按内容自适应）。索引越界或控件不存在返回空文本。用于把「新建标签」等按钮贴到末签右侧等按内容自适应布局，禁止再用 chromeMaxWidth 反推标签宽度。 |
+| 4023 | `NE标签页_取项矩形2` | `NE标签页_取项矩形2(控件, 索引, 横, 纵, 宽, 高)` | int | 读回单个标签的实测矩形（多出参形态）：横/纵/宽/高 按引用写回，返回 1 成功、0 失败（索引越界或控件不存在）。单位逻辑像素，坐标相对标签条元素左上角；与 NE标签页_取项矩形 同源，需要逐项矩形运算（并排布局、滚动定位）时用它免 JSON 解析。 |
+| 4024 | `NE标签页_取标签条内容宽` | `NE标签页_取标签条内容宽(控件)` | int | 读回标签条内容总占用宽（逻辑像素）＝全部标签实测宽度之和（chrome 模式新建按钮可见时含其区域），标签条滚动时返回的仍是内容总宽而非控件宽。返回 -1 表示控件不存在。外层布局用它直接定位新建按钮、收紧标签条控件宽度；DPI 变化或改标题后需重新读取。 |

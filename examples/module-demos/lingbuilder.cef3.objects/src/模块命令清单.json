@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.733Z",
+  "generatedAt": "2026-10-19T03:18:58.682Z",
   "module": {
     "id": "lingbuilder.cef3.objects",
     "name": "CEF3受管对象模块",
-    "version": "3.0.0-alpha.3",
+    "version": "3.0.0-alpha.4",
     "description": "提供任务、缓冲、Value、Dictionary、List、Image、NavigationEntry和证书类型化对象的安全生命周期接口。"
   },
   "commandCount": 183,
@@ -26,7 +26,8 @@
         "parameters": [
           {
             "name": "任务ID",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "异步命令返回的受管任务 ID；用 CEF3任务_释放 回收，释放后再用返回稳定错误码。"
           }
         ],
         "returnType": "int"
@@ -50,7 +51,8 @@
         "parameters": [
           {
             "name": "任务ID",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "异步命令返回的受管任务 ID；用 CEF3任务_释放 回收，释放后再用返回稳定错误码。"
           }
         ],
         "returnType": "wideString"
@@ -74,7 +76,8 @@
         "parameters": [
           {
             "name": "任务ID",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "异步命令返回的受管任务 ID；用 CEF3任务_释放 回收，释放后再用返回稳定错误码。"
           }
         ],
         "returnType": "wideString"
@@ -98,7 +101,8 @@
         "parameters": [
           {
             "name": "任务ID",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "异步命令返回的受管任务 ID；用 CEF3任务_释放 回收，释放后再用返回稳定错误码。"
           }
         ],
         "returnType": "int"
@@ -122,7 +126,8 @@
         "parameters": [
           {
             "name": "任务ID",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "异步命令返回的受管任务 ID；用 CEF3任务_释放 回收，释放后再用返回稳定错误码。"
           }
         ],
         "returnType": "int"
@@ -146,7 +151,8 @@
         "parameters": [
           {
             "name": "十六进制",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "偶数长度的十六进制文本，如 \"89504e47\"。"
           }
         ],
         "returnType": "longLong",
@@ -171,7 +177,8 @@
         "parameters": [
           {
             "name": "缓冲句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3缓冲_从十六进制、CEF3缓冲_从文件 等返回的受管缓冲句柄；释放后再用返回稳定错误码。"
           }
         ],
         "returnType": "longLong"
@@ -195,7 +202,8 @@
         "parameters": [
           {
             "name": "缓冲句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3缓冲_从十六进制、CEF3缓冲_从文件 等返回的受管缓冲句柄；释放后再用返回稳定错误码。"
           }
         ],
         "returnType": "int"
@@ -219,7 +227,8 @@
         "parameters": [
           {
             "name": "缓冲句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3缓冲_从十六进制、CEF3缓冲_从文件 等返回的受管缓冲句柄；释放后再用返回稳定错误码。"
           }
         ],
         "returnType": "int"
@@ -243,11 +252,13 @@
         "parameters": [
           {
             "name": "缓冲句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3缓冲_从十六进制、CEF3缓冲_从文件 等返回的受管缓冲句柄；释放后再用返回稳定错误码。"
           },
           {
             "name": "另一缓冲句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "参与比较的另一个受管缓冲句柄。"
           }
         ],
         "returnType": "int"
@@ -271,11 +282,13 @@
         "parameters": [
           {
             "name": "缓冲句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3缓冲_从十六进制、CEF3缓冲_从文件 等返回的受管缓冲句柄；释放后再用返回稳定错误码。"
           },
           {
             "name": "另一缓冲句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "参与比较的另一个受管缓冲句柄。"
           }
         ],
         "returnType": "int"
@@ -299,7 +312,8 @@
         "parameters": [
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "项目允许文件根目录内的文件路径；越界、空路径或无法打开时返回 0 或失败。"
           }
         ],
         "returnType": "longLong",
@@ -324,7 +338,8 @@
         "parameters": [
           {
             "name": "缓冲句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3缓冲_从十六进制、CEF3缓冲_从文件 等返回的受管缓冲句柄；释放后再用返回稳定错误码。"
           }
         ],
         "returnType": "longLong"
@@ -348,7 +363,8 @@
         "parameters": [
           {
             "name": "缓冲句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3缓冲_从十六进制、CEF3缓冲_从文件 等返回的受管缓冲句柄；释放后再用返回稳定错误码。"
           }
         ],
         "returnType": "wideString"
@@ -372,11 +388,13 @@
         "parameters": [
           {
             "name": "缓冲句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3缓冲_从十六进制、CEF3缓冲_从文件 等返回的受管缓冲句柄；释放后再用返回稳定错误码。"
           },
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "项目允许文件根目录内的文件路径；越界、空路径或无法打开时返回 0 或失败。"
           }
         ],
         "returnType": "int",
@@ -401,7 +419,8 @@
         "parameters": [
           {
             "name": "缓冲句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3缓冲_从十六进制、CEF3缓冲_从文件 等返回的受管缓冲句柄；释放后再用返回稳定错误码。"
           }
         ],
         "returnType": "int"
@@ -444,7 +463,8 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3值_创建 等返回的 CEF 值受管句柄；类型不符或已释放返回稳定错误码。"
           }
         ],
         "returnType": "longLong"
@@ -468,7 +488,8 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3值_创建 等返回的 CEF 值受管句柄；类型不符或已释放返回稳定错误码。"
           }
         ],
         "returnType": "int"
@@ -492,7 +513,8 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3值_创建 等返回的 CEF 值受管句柄；类型不符或已释放返回稳定错误码。"
           }
         ],
         "returnType": "int"
@@ -516,7 +538,8 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3值_创建 等返回的 CEF 值受管句柄；类型不符或已释放返回稳定错误码。"
           }
         ],
         "returnType": "int"
@@ -540,11 +563,13 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3值_创建 等返回的 CEF 值受管句柄；类型不符或已释放返回稳定错误码。"
           },
           {
             "name": "另一值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "参与比较的另一个 CEF 值受管句柄。"
           }
         ],
         "returnType": "int"
@@ -568,11 +593,13 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3值_创建 等返回的 CEF 值受管句柄；类型不符或已释放返回稳定错误码。"
           },
           {
             "name": "另一值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "参与比较的另一个 CEF 值受管句柄。"
           }
         ],
         "returnType": "int"
@@ -596,7 +623,8 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3值_创建 等返回的 CEF 值受管句柄；类型不符或已释放返回稳定错误码。"
           }
         ],
         "returnType": "int"
@@ -620,7 +648,8 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3值_创建 等返回的 CEF 值受管句柄；类型不符或已释放返回稳定错误码。"
           }
         ],
         "returnType": "int"
@@ -644,11 +673,13 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3值_创建 等返回的 CEF 值受管句柄；类型不符或已释放返回稳定错误码。"
           },
           {
             "name": "值",
-            "type": "bool"
+            "type": "bool",
+            "description": "要写入的值。"
           }
         ],
         "returnType": "int"
@@ -672,11 +703,13 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3值_创建 等返回的 CEF 值受管句柄；类型不符或已释放返回稳定错误码。"
           },
           {
             "name": "值",
-            "type": "int"
+            "type": "int",
+            "description": "要写入的值。"
           }
         ],
         "returnType": "int"
@@ -700,11 +733,13 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3值_创建 等返回的 CEF 值受管句柄；类型不符或已释放返回稳定错误码。"
           },
           {
             "name": "值",
-            "type": "double"
+            "type": "double",
+            "description": "要写入的值。"
           }
         ],
         "returnType": "int"
@@ -728,11 +763,13 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3值_创建 等返回的 CEF 值受管句柄；类型不符或已释放返回稳定错误码。"
           },
           {
             "name": "值",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要写入的值。"
           }
         ],
         "returnType": "int",
@@ -757,11 +794,13 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3值_创建 等返回的 CEF 值受管句柄；类型不符或已释放返回稳定错误码。"
           },
           {
             "name": "缓冲句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3缓冲_从十六进制、CEF3缓冲_从文件 等返回的受管缓冲句柄；释放后再用返回稳定错误码。"
           }
         ],
         "returnType": "int"
@@ -785,11 +824,13 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3值_创建 等返回的 CEF 值受管句柄；类型不符或已释放返回稳定错误码。"
           },
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3字典_创建 等返回的 CEF 字典受管句柄。"
           }
         ],
         "returnType": "int"
@@ -813,11 +854,13 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3值_创建 等返回的 CEF 值受管句柄；类型不符或已释放返回稳定错误码。"
           },
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3列表_创建 等返回的 CEF 列表受管句柄。"
           }
         ],
         "returnType": "int"
@@ -841,7 +884,8 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3值_创建 等返回的 CEF 值受管句柄；类型不符或已释放返回稳定错误码。"
           }
         ],
         "returnType": "int"
@@ -865,7 +909,8 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3值_创建 等返回的 CEF 值受管句柄；类型不符或已释放返回稳定错误码。"
           }
         ],
         "returnType": "int"
@@ -889,7 +934,8 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3值_创建 等返回的 CEF 值受管句柄；类型不符或已释放返回稳定错误码。"
           }
         ],
         "returnType": "double"
@@ -913,7 +959,8 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3值_创建 等返回的 CEF 值受管句柄；类型不符或已释放返回稳定错误码。"
           }
         ],
         "returnType": "wideString"
@@ -937,7 +984,8 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3值_创建 等返回的 CEF 值受管句柄；类型不符或已释放返回稳定错误码。"
           }
         ],
         "returnType": "longLong"
@@ -961,7 +1009,8 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3值_创建 等返回的 CEF 值受管句柄；类型不符或已释放返回稳定错误码。"
           }
         ],
         "returnType": "longLong"
@@ -985,7 +1034,8 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3值_创建 等返回的 CEF 值受管句柄；类型不符或已释放返回稳定错误码。"
           }
         ],
         "returnType": "longLong"
@@ -1009,7 +1059,8 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3值_创建 等返回的 CEF 值受管句柄；类型不符或已释放返回稳定错误码。"
           }
         ],
         "returnType": "wideString"
@@ -1033,7 +1084,8 @@
         "parameters": [
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3值_创建 等返回的 CEF 值受管句柄；类型不符或已释放返回稳定错误码。"
           }
         ],
         "returnType": "int"
@@ -1076,11 +1128,13 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3字典_创建 等返回的 CEF 字典受管句柄。"
           },
           {
             "name": "排除空子项",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=复制时跳过值为空的子项。"
           }
         ],
         "returnType": "longLong"
@@ -1104,7 +1158,8 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3字典_创建 等返回的 CEF 字典受管句柄。"
           }
         ],
         "returnType": "int"
@@ -1128,7 +1183,8 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3字典_创建 等返回的 CEF 字典受管句柄。"
           }
         ],
         "returnType": "int"
@@ -1152,7 +1208,8 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3字典_创建 等返回的 CEF 字典受管句柄。"
           }
         ],
         "returnType": "int"
@@ -1176,11 +1233,13 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3字典_创建 等返回的 CEF 字典受管句柄。"
           },
           {
             "name": "另一字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "参与比较的另一个 CEF 字典受管句柄。"
           }
         ],
         "returnType": "int"
@@ -1204,11 +1263,13 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3字典_创建 等返回的 CEF 字典受管句柄。"
           },
           {
             "name": "另一字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "参与比较的另一个 CEF 字典受管句柄。"
           }
         ],
         "returnType": "int"
@@ -1232,7 +1293,8 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3字典_创建 等返回的 CEF 字典受管句柄。"
           }
         ],
         "returnType": "longLong"
@@ -1256,11 +1318,13 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3字典_创建 等返回的 CEF 字典受管句柄。"
           },
           {
             "name": "键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "字典键名；键不存在时按各命令说明返回默认值。"
           }
         ],
         "returnType": "int",
@@ -1285,7 +1349,8 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3字典_创建 等返回的 CEF 字典受管句柄。"
           }
         ],
         "returnType": "wideString"
@@ -1309,11 +1374,13 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3字典_创建 等返回的 CEF 字典受管句柄。"
           },
           {
             "name": "键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "字典键名；键不存在时按各命令说明返回默认值。"
           }
         ],
         "returnType": "int",
@@ -1338,15 +1405,18 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3字典_创建 等返回的 CEF 字典受管句柄。"
           },
           {
             "name": "键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "字典键名；键不存在时按各命令说明返回默认值。"
           },
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3值_创建 等返回的 CEF 值受管句柄；类型不符或已释放返回稳定错误码。"
           }
         ],
         "returnType": "int",
@@ -1371,11 +1441,13 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3字典_创建 等返回的 CEF 字典受管句柄。"
           },
           {
             "name": "键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "字典键名；键不存在时按各命令说明返回默认值。"
           }
         ],
         "returnType": "longLong",
@@ -1400,11 +1472,13 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3字典_创建 等返回的 CEF 字典受管句柄。"
           },
           {
             "name": "键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "字典键名；键不存在时按各命令说明返回默认值。"
           }
         ],
         "returnType": "int",
@@ -1429,7 +1503,8 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3字典_创建 等返回的 CEF 字典受管句柄。"
           }
         ],
         "returnType": "int"
@@ -1453,7 +1528,8 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3字典_创建 等返回的 CEF 字典受管句柄。"
           }
         ],
         "returnType": "wideString"
@@ -1477,7 +1553,8 @@
         "parameters": [
           {
             "name": "字典句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3字典_创建 等返回的 CEF 字典受管句柄。"
           }
         ],
         "returnType": "int"
@@ -1520,7 +1597,8 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3列表_创建 等返回的 CEF 列表受管句柄。"
           }
         ],
         "returnType": "longLong"
@@ -1544,7 +1622,8 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3列表_创建 等返回的 CEF 列表受管句柄。"
           }
         ],
         "returnType": "int"
@@ -1568,7 +1647,8 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3列表_创建 等返回的 CEF 列表受管句柄。"
           }
         ],
         "returnType": "int"
@@ -1592,7 +1672,8 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3列表_创建 等返回的 CEF 列表受管句柄。"
           }
         ],
         "returnType": "int"
@@ -1616,11 +1697,13 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3列表_创建 等返回的 CEF 列表受管句柄。"
           },
           {
             "name": "另一列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "参与比较的另一个 CEF 列表受管句柄。"
           }
         ],
         "returnType": "int"
@@ -1644,11 +1727,13 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3列表_创建 等返回的 CEF 列表受管句柄。"
           },
           {
             "name": "另一列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "参与比较的另一个 CEF 列表受管句柄。"
           }
         ],
         "returnType": "int"
@@ -1672,7 +1757,8 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3列表_创建 等返回的 CEF 列表受管句柄。"
           }
         ],
         "returnType": "longLong"
@@ -1696,11 +1782,13 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3列表_创建 等返回的 CEF 列表受管句柄。"
           },
           {
             "name": "数量",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "新列表长度；扩大的位置填充空值。"
           }
         ],
         "returnType": "int"
@@ -1724,11 +1812,13 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3列表_创建 等返回的 CEF 列表受管句柄。"
           },
           {
             "name": "索引",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "菜单或列表项目下标，从 0 起；菜单设置颜色、字体时允许 -1 表示项目默认。"
           }
         ],
         "returnType": "int"
@@ -1752,15 +1842,18 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3列表_创建 等返回的 CEF 列表受管句柄。"
           },
           {
             "name": "索引",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "菜单或列表项目下标，从 0 起；菜单设置颜色、字体时允许 -1 表示项目默认。"
           },
           {
             "name": "值句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3值_创建 等返回的 CEF 值受管句柄；类型不符或已释放返回稳定错误码。"
           }
         ],
         "returnType": "int"
@@ -1784,11 +1877,13 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3列表_创建 等返回的 CEF 列表受管句柄。"
           },
           {
             "name": "索引",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "菜单或列表项目下标，从 0 起；菜单设置颜色、字体时允许 -1 表示项目默认。"
           }
         ],
         "returnType": "longLong"
@@ -1812,11 +1907,13 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3列表_创建 等返回的 CEF 列表受管句柄。"
           },
           {
             "name": "索引",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "菜单或列表项目下标，从 0 起；菜单设置颜色、字体时允许 -1 表示项目默认。"
           }
         ],
         "returnType": "int"
@@ -1840,7 +1937,8 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3列表_创建 等返回的 CEF 列表受管句柄。"
           }
         ],
         "returnType": "int"
@@ -1864,7 +1962,8 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3列表_创建 等返回的 CEF 列表受管句柄。"
           }
         ],
         "returnType": "wideString"
@@ -1888,7 +1987,8 @@
         "parameters": [
           {
             "name": "列表句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3列表_创建 等返回的 CEF 列表受管句柄。"
           }
         ],
         "returnType": "int"
@@ -1931,7 +2031,8 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           }
         ],
         "returnType": "int"
@@ -1955,7 +2056,8 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           }
         ],
         "returnType": "int"
@@ -1979,7 +2081,8 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           }
         ],
         "returnType": "longLong"
@@ -2003,7 +2106,8 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           }
         ],
         "returnType": "int"
@@ -2027,15 +2131,18 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "命令ID",
-            "type": "int"
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
           },
           {
             "name": "标题",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "菜单项标题文本。"
           }
         ],
         "returnType": "int",
@@ -2060,15 +2167,18 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "命令ID",
-            "type": "int"
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
           },
           {
             "name": "标题",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "菜单项标题文本。"
           }
         ],
         "returnType": "int",
@@ -2093,19 +2203,23 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "命令ID",
-            "type": "int"
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
           },
           {
             "name": "标题",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "菜单项标题文本。"
           },
           {
             "name": "组ID",
-            "type": "int"
+            "type": "int",
+            "description": "单选项目分组 ID；同组内的单选项互斥。"
           }
         ],
         "returnType": "int",
@@ -2130,15 +2244,18 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "命令ID",
-            "type": "int"
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
           },
           {
             "name": "标题",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "菜单项标题文本。"
           }
         ],
         "returnType": "longLong",
@@ -2163,11 +2280,13 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "索引",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "菜单或列表项目下标，从 0 起；菜单设置颜色、字体时允许 -1 表示项目默认。"
           }
         ],
         "returnType": "int"
@@ -2191,19 +2310,23 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "索引",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "菜单或列表项目下标，从 0 起；菜单设置颜色、字体时允许 -1 表示项目默认。"
           },
           {
             "name": "命令ID",
-            "type": "int"
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
           },
           {
             "name": "标题",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "菜单项标题文本。"
           }
         ],
         "returnType": "int",
@@ -2228,19 +2351,23 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "索引",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "菜单或列表项目下标，从 0 起；菜单设置颜色、字体时允许 -1 表示项目默认。"
           },
           {
             "name": "命令ID",
-            "type": "int"
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
           },
           {
             "name": "标题",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "菜单项标题文本。"
           }
         ],
         "returnType": "int",
@@ -2265,23 +2392,28 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "索引",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "菜单或列表项目下标，从 0 起；菜单设置颜色、字体时允许 -1 表示项目默认。"
           },
           {
             "name": "命令ID",
-            "type": "int"
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
           },
           {
             "name": "标题",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "菜单项标题文本。"
           },
           {
             "name": "组ID",
-            "type": "int"
+            "type": "int",
+            "description": "单选项目分组 ID；同组内的单选项互斥。"
           }
         ],
         "returnType": "int",
@@ -2306,19 +2438,23 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "索引",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "菜单或列表项目下标，从 0 起；菜单设置颜色、字体时允许 -1 表示项目默认。"
           },
           {
             "name": "命令ID",
-            "type": "int"
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
           },
           {
             "name": "标题",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "菜单项标题文本。"
           }
         ],
         "returnType": "longLong",
@@ -2343,11 +2479,13 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "命令ID",
-            "type": "int"
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
           }
         ],
         "returnType": "int"
@@ -2371,11 +2509,13 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "索引",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "菜单或列表项目下标，从 0 起；菜单设置颜色、字体时允许 -1 表示项目默认。"
           }
         ],
         "returnType": "int"
@@ -2399,11 +2539,13 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "命令ID",
-            "type": "int"
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
           }
         ],
         "returnType": "int"
@@ -2427,11 +2569,13 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "索引",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "菜单或列表项目下标，从 0 起；菜单设置颜色、字体时允许 -1 表示项目默认。"
           }
         ],
         "returnType": "int"
@@ -2455,15 +2599,18 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "索引",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "菜单或列表项目下标，从 0 起；菜单设置颜色、字体时允许 -1 表示项目默认。"
           },
           {
             "name": "命令ID",
-            "type": "int"
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
           }
         ],
         "returnType": "int"
@@ -2487,11 +2634,13 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "命令ID",
-            "type": "int"
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
           }
         ],
         "returnType": "wideString"
@@ -2515,11 +2664,13 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "索引",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "菜单或列表项目下标，从 0 起；菜单设置颜色、字体时允许 -1 表示项目默认。"
           }
         ],
         "returnType": "wideString"
@@ -2543,15 +2694,18 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "命令ID",
-            "type": "int"
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
           },
           {
             "name": "标题",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "菜单项标题文本。"
           }
         ],
         "returnType": "int",
@@ -2576,15 +2730,18 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "索引",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "菜单或列表项目下标，从 0 起；菜单设置颜色、字体时允许 -1 表示项目默认。"
           },
           {
             "name": "标题",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "菜单项标题文本。"
           }
         ],
         "returnType": "int",
@@ -2609,11 +2766,13 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "命令ID",
-            "type": "int"
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
           }
         ],
         "returnType": "int"
@@ -2637,11 +2796,13 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "索引",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "菜单或列表项目下标，从 0 起；菜单设置颜色、字体时允许 -1 表示项目默认。"
           }
         ],
         "returnType": "int"
@@ -2665,11 +2826,13 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "命令ID",
-            "type": "int"
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
           }
         ],
         "returnType": "int"
@@ -2693,11 +2856,13 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "索引",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "菜单或列表项目下标，从 0 起；菜单设置颜色、字体时允许 -1 表示项目默认。"
           }
         ],
         "returnType": "int"
@@ -2721,15 +2886,18 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "命令ID",
-            "type": "int"
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
           },
           {
             "name": "组ID",
-            "type": "int"
+            "type": "int",
+            "description": "单选项目分组 ID；同组内的单选项互斥。"
           }
         ],
         "returnType": "int"
@@ -2753,15 +2921,18 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "索引",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "菜单或列表项目下标，从 0 起；菜单设置颜色、字体时允许 -1 表示项目默认。"
           },
           {
             "name": "组ID",
-            "type": "int"
+            "type": "int",
+            "description": "单选项目分组 ID；同组内的单选项互斥。"
           }
         ],
         "returnType": "int"
@@ -2785,11 +2956,13 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "命令ID",
-            "type": "int"
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
           }
         ],
         "returnType": "longLong"
@@ -2813,11 +2986,13 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "索引",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "菜单或列表项目下标，从 0 起；菜单设置颜色、字体时允许 -1 表示项目默认。"
           }
         ],
         "returnType": "longLong"
@@ -2841,11 +3016,13 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "命令ID",
-            "type": "int"
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
           }
         ],
         "returnType": "int"
@@ -2869,11 +3046,13 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "索引",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "菜单或列表项目下标，从 0 起；菜单设置颜色、字体时允许 -1 表示项目默认。"
           }
         ],
         "returnType": "int"
@@ -2897,15 +3076,18 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "命令ID",
-            "type": "int"
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
           },
           {
             "name": "可见",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=显示，假=隐藏。"
           }
         ],
         "returnType": "int"
@@ -2929,15 +3111,18 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "索引",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "菜单或列表项目下标，从 0 起；菜单设置颜色、字体时允许 -1 表示项目默认。"
           },
           {
             "name": "可见",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=显示，假=隐藏。"
           }
         ],
         "returnType": "int"
@@ -2961,11 +3146,13 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "命令ID",
-            "type": "int"
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
           }
         ],
         "returnType": "int"
@@ -2989,11 +3176,13 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "索引",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "菜单或列表项目下标，从 0 起；菜单设置颜色、字体时允许 -1 表示项目默认。"
           }
         ],
         "returnType": "int"
@@ -3017,15 +3206,18 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "命令ID",
-            "type": "int"
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
           },
           {
             "name": "启用",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=可用，假=置灰。"
           }
         ],
         "returnType": "int"
@@ -3049,15 +3241,18 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "索引",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "菜单或列表项目下标，从 0 起；菜单设置颜色、字体时允许 -1 表示项目默认。"
           },
           {
             "name": "启用",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=可用，假=置灰。"
           }
         ],
         "returnType": "int"
@@ -3081,11 +3276,13 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "命令ID",
-            "type": "int"
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
           }
         ],
         "returnType": "int"
@@ -3109,11 +3306,13 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "索引",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "菜单或列表项目下标，从 0 起；菜单设置颜色、字体时允许 -1 表示项目默认。"
           }
         ],
         "returnType": "int"
@@ -3137,15 +3336,18 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "命令ID",
-            "type": "int"
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
           },
           {
             "name": "勾选",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=勾选，假=取消勾选。"
           }
         ],
         "returnType": "int"
@@ -3169,15 +3371,18 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "索引",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "菜单或列表项目下标，从 0 起；菜单设置颜色、字体时允许 -1 表示项目默认。"
           },
           {
             "name": "勾选",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=勾选，假=取消勾选。"
           }
         ],
         "returnType": "int"
@@ -3201,11 +3406,13 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "命令ID",
-            "type": "int"
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
           }
         ],
         "returnType": "int"
@@ -3229,11 +3436,13 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "索引",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "菜单或列表项目下标，从 0 起；菜单设置颜色、字体时允许 -1 表示项目默认。"
           }
         ],
         "returnType": "int"
@@ -3257,27 +3466,33 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "命令ID",
-            "type": "int"
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
           },
           {
             "name": "键码",
-            "type": "int"
+            "type": "int",
+            "description": "快捷键虚拟键码，如 13=回车、65=字母 A。"
           },
           {
             "name": "Shift",
-            "type": "bool"
+            "type": "bool",
+            "description": "是否按住 Shift 键。"
           },
           {
             "name": "Ctrl",
-            "type": "bool"
+            "type": "bool",
+            "description": "是否按住 Ctrl 键。"
           },
           {
             "name": "Alt",
-            "type": "bool"
+            "type": "bool",
+            "description": "是否按住 Alt 键。"
           }
         ],
         "returnType": "int"
@@ -3301,27 +3516,33 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "索引",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "菜单或列表项目下标，从 0 起；菜单设置颜色、字体时允许 -1 表示项目默认。"
           },
           {
             "name": "键码",
-            "type": "int"
+            "type": "int",
+            "description": "快捷键虚拟键码，如 13=回车、65=字母 A。"
           },
           {
             "name": "Shift",
-            "type": "bool"
+            "type": "bool",
+            "description": "是否按住 Shift 键。"
           },
           {
             "name": "Ctrl",
-            "type": "bool"
+            "type": "bool",
+            "description": "是否按住 Ctrl 键。"
           },
           {
             "name": "Alt",
-            "type": "bool"
+            "type": "bool",
+            "description": "是否按住 Alt 键。"
           }
         ],
         "returnType": "int"
@@ -3345,11 +3566,13 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "命令ID",
-            "type": "int"
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
           }
         ],
         "returnType": "int"
@@ -3373,11 +3596,13 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "索引",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "菜单或列表项目下标，从 0 起；菜单设置颜色、字体时允许 -1 表示项目默认。"
           }
         ],
         "returnType": "int"
@@ -3401,11 +3626,13 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "命令ID",
-            "type": "int"
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
           }
         ],
         "returnType": "wideString"
@@ -3429,11 +3656,13 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "索引",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "菜单或列表项目下标，从 0 起；菜单设置颜色、字体时允许 -1 表示项目默认。"
           }
         ],
         "returnType": "wideString"
@@ -3457,19 +3686,23 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "命令ID",
-            "type": "int"
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
           },
           {
             "name": "颜色类型",
-            "type": "int"
+            "type": "int",
+            "description": "CEF 菜单颜色类型常量，指定设置或读取哪一类颜色（文字、悬停背景等）。"
           },
           {
             "name": "颜色",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "32 位 CEF 颜色值，0xAARRGGBB 布局。"
           }
         ],
         "returnType": "int"
@@ -3493,19 +3726,23 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "菜单或列表项目下标，从 0 起；菜单设置颜色、字体时允许 -1 表示项目默认。"
           },
           {
             "name": "颜色类型",
-            "type": "int"
+            "type": "int",
+            "description": "CEF 菜单颜色类型常量，指定设置或读取哪一类颜色（文字、悬停背景等）。"
           },
           {
             "name": "颜色",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "32 位 CEF 颜色值，0xAARRGGBB 布局。"
           }
         ],
         "returnType": "int"
@@ -3529,15 +3766,18 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "命令ID",
-            "type": "int"
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
           },
           {
             "name": "颜色类型",
-            "type": "int"
+            "type": "int",
+            "description": "CEF 菜单颜色类型常量，指定设置或读取哪一类颜色（文字、悬停背景等）。"
           }
         ],
         "returnType": "longLong"
@@ -3561,15 +3801,18 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "菜单或列表项目下标，从 0 起；菜单设置颜色、字体时允许 -1 表示项目默认。"
           },
           {
             "name": "颜色类型",
-            "type": "int"
+            "type": "int",
+            "description": "CEF 菜单颜色类型常量，指定设置或读取哪一类颜色（文字、悬停背景等）。"
           }
         ],
         "returnType": "longLong"
@@ -3593,15 +3836,18 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "命令ID",
-            "type": "int"
+            "type": "int",
+            "description": "菜单项命令 ID，同一菜单内唯一；添加后用它定位、修改或删除该菜单项。"
           },
           {
             "name": "字体描述",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "CSS 字体列表文本，如 \"Microsoft YaHei, Arial\"。"
           }
         ],
         "returnType": "int",
@@ -3626,15 +3872,18 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "菜单或列表项目下标，从 0 起；菜单设置颜色、字体时允许 -1 表示项目默认。"
           },
           {
             "name": "字体描述",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "CSS 字体列表文本，如 \"Microsoft YaHei, Arial\"。"
           }
         ],
         "returnType": "int",
@@ -3659,7 +3908,8 @@
         "parameters": [
           {
             "name": "菜单句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3菜单_创建 返回的菜单模型受管句柄；用 CEF3菜单_释放 释放。"
           }
         ],
         "returnType": "int"
@@ -3702,7 +3952,8 @@
         "parameters": [
           {
             "name": "图像句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3图像_创建 返回的图像受管句柄。"
           }
         ],
         "returnType": "int"
@@ -3726,11 +3977,13 @@
         "parameters": [
           {
             "name": "图像句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3图像_创建 返回的图像受管句柄。"
           },
           {
             "name": "另一图像句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "参与比较的另一个图像受管句柄。"
           }
         ],
         "returnType": "int"
@@ -3754,31 +4007,38 @@
         "parameters": [
           {
             "name": "图像句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3图像_创建 返回的图像受管句柄。"
           },
           {
             "name": "缩放",
-            "type": "double"
+            "type": "double",
+            "description": "缩放因子（1.0 为标准分辨率），用于匹配对应 DPI 的图像表示。"
           },
           {
             "name": "像素宽度",
-            "type": "int"
+            "type": "int",
+            "description": "位图像素宽度；像素缓冲大小必须等于 宽×高×4。"
           },
           {
             "name": "像素高度",
-            "type": "int"
+            "type": "int",
+            "description": "位图像素高度；像素缓冲大小必须等于 宽×高×4。"
           },
           {
             "name": "颜色类型",
-            "type": "int"
+            "type": "int",
+            "description": "位图像素颜色类型常量（BGRA/RGBA 等），决定像素缓冲布局。"
           },
           {
             "name": "透明类型",
-            "type": "int"
+            "type": "int",
+            "description": "像素透明类型常量，决定透明通道的解释方式。"
           },
           {
             "name": "像素缓冲",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "含原始像素数据的受管缓冲句柄，大小必须为 宽×高×4 字节。"
           }
         ],
         "returnType": "int"
@@ -3802,15 +4062,18 @@
         "parameters": [
           {
             "name": "图像句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3图像_创建 返回的图像受管句柄。"
           },
           {
             "name": "缩放",
-            "type": "double"
+            "type": "double",
+            "description": "缩放因子（1.0 为标准分辨率），用于匹配对应 DPI 的图像表示。"
           },
           {
             "name": "PNG缓冲",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "含 PNG 编码数据的受管缓冲句柄。"
           }
         ],
         "returnType": "int"
@@ -3834,15 +4097,18 @@
         "parameters": [
           {
             "name": "图像句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3图像_创建 返回的图像受管句柄。"
           },
           {
             "name": "缩放",
-            "type": "double"
+            "type": "double",
+            "description": "缩放因子（1.0 为标准分辨率），用于匹配对应 DPI 的图像表示。"
           },
           {
             "name": "JPEG缓冲",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "含 JPEG 编码数据的受管缓冲句柄。"
           }
         ],
         "returnType": "int"
@@ -3866,7 +4132,8 @@
         "parameters": [
           {
             "name": "图像句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3图像_创建 返回的图像受管句柄。"
           }
         ],
         "returnType": "longLong"
@@ -3890,7 +4157,8 @@
         "parameters": [
           {
             "name": "图像句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3图像_创建 返回的图像受管句柄。"
           }
         ],
         "returnType": "longLong"
@@ -3914,11 +4182,13 @@
         "parameters": [
           {
             "name": "图像句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3图像_创建 返回的图像受管句柄。"
           },
           {
             "name": "缩放",
-            "type": "double"
+            "type": "double",
+            "description": "缩放因子（1.0 为标准分辨率），用于匹配对应 DPI 的图像表示。"
           }
         ],
         "returnType": "int"
@@ -3942,11 +4212,13 @@
         "parameters": [
           {
             "name": "图像句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3图像_创建 返回的图像受管句柄。"
           },
           {
             "name": "缩放",
-            "type": "double"
+            "type": "double",
+            "description": "缩放因子（1.0 为标准分辨率），用于匹配对应 DPI 的图像表示。"
           }
         ],
         "returnType": "int"
@@ -3970,11 +4242,13 @@
         "parameters": [
           {
             "name": "图像句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3图像_创建 返回的图像受管句柄。"
           },
           {
             "name": "缩放",
-            "type": "double"
+            "type": "double",
+            "description": "缩放因子（1.0 为标准分辨率），用于匹配对应 DPI 的图像表示。"
           }
         ],
         "returnType": "wideString"
@@ -3998,19 +4272,23 @@
         "parameters": [
           {
             "name": "图像句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3图像_创建 返回的图像受管句柄。"
           },
           {
             "name": "缩放",
-            "type": "double"
+            "type": "double",
+            "description": "缩放因子（1.0 为标准分辨率），用于匹配对应 DPI 的图像表示。"
           },
           {
             "name": "颜色类型",
-            "type": "int"
+            "type": "int",
+            "description": "位图像素颜色类型常量，决定导出缓冲的像素布局。"
           },
           {
             "name": "透明类型",
-            "type": "int"
+            "type": "int",
+            "description": "像素透明类型常量，决定透明通道的解释方式。"
           }
         ],
         "returnType": "longLong"
@@ -4034,15 +4312,18 @@
         "parameters": [
           {
             "name": "图像句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3图像_创建 返回的图像受管句柄。"
           },
           {
             "name": "缩放",
-            "type": "double"
+            "type": "double",
+            "description": "缩放因子（1.0 为标准分辨率），用于匹配对应 DPI 的图像表示。"
           },
           {
             "name": "保留透明",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=保留 PNG 透明通道。"
           }
         ],
         "returnType": "longLong"
@@ -4066,15 +4347,18 @@
         "parameters": [
           {
             "name": "图像句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3图像_创建 返回的图像受管句柄。"
           },
           {
             "name": "缩放",
-            "type": "double"
+            "type": "double",
+            "description": "缩放因子（1.0 为标准分辨率），用于匹配对应 DPI 的图像表示。"
           },
           {
             "name": "质量",
-            "type": "int"
+            "type": "int",
+            "description": "JPEG 编码质量 0~100。"
           }
         ],
         "returnType": "longLong"
@@ -4098,7 +4382,8 @@
         "parameters": [
           {
             "name": "图像句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3图像_创建 返回的图像受管句柄。"
           }
         ],
         "returnType": "int"
@@ -4130,7 +4415,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "longLong",
@@ -4163,11 +4449,13 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "仅当前项",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=只读取当前可见导航项，假=读取全部历史。"
           }
         ],
         "returnType": "longLong",
@@ -4192,7 +4480,8 @@
         "parameters": [
           {
             "name": "导航项句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3导航项_取当前可见 返回的导航项快照受管句柄；用 CEF3导航项_释放 释放。"
           }
         ],
         "returnType": "int"
@@ -4216,7 +4505,8 @@
         "parameters": [
           {
             "name": "导航项句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3导航项_取当前可见 返回的导航项快照受管句柄；用 CEF3导航项_释放 释放。"
           }
         ],
         "returnType": "wideString"
@@ -4240,7 +4530,8 @@
         "parameters": [
           {
             "name": "导航项句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3导航项_取当前可见 返回的导航项快照受管句柄；用 CEF3导航项_释放 释放。"
           }
         ],
         "returnType": "wideString"
@@ -4264,7 +4555,8 @@
         "parameters": [
           {
             "name": "导航项句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3导航项_取当前可见 返回的导航项快照受管句柄；用 CEF3导航项_释放 释放。"
           }
         ],
         "returnType": "wideString"
@@ -4288,7 +4580,8 @@
         "parameters": [
           {
             "name": "导航项句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3导航项_取当前可见 返回的导航项快照受管句柄；用 CEF3导航项_释放 释放。"
           }
         ],
         "returnType": "wideString"
@@ -4312,7 +4605,8 @@
         "parameters": [
           {
             "name": "导航项句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3导航项_取当前可见 返回的导航项快照受管句柄；用 CEF3导航项_释放 释放。"
           }
         ],
         "returnType": "int"
@@ -4336,7 +4630,8 @@
         "parameters": [
           {
             "name": "导航项句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3导航项_取当前可见 返回的导航项快照受管句柄；用 CEF3导航项_释放 释放。"
           }
         ],
         "returnType": "int"
@@ -4360,7 +4655,8 @@
         "parameters": [
           {
             "name": "导航项句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3导航项_取当前可见 返回的导航项快照受管句柄；用 CEF3导航项_释放 释放。"
           }
         ],
         "returnType": "double"
@@ -4384,7 +4680,8 @@
         "parameters": [
           {
             "name": "导航项句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3导航项_取当前可见 返回的导航项快照受管句柄；用 CEF3导航项_释放 释放。"
           }
         ],
         "returnType": "int"
@@ -4408,7 +4705,8 @@
         "parameters": [
           {
             "name": "导航项句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3导航项_取当前可见 返回的导航项快照受管句柄；用 CEF3导航项_释放 释放。"
           }
         ],
         "returnType": "int"
@@ -4440,7 +4738,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "longLong",
@@ -4465,7 +4764,8 @@
         "parameters": [
           {
             "name": "证书句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3证书_取当前 返回的证书不可变快照受管句柄。"
           }
         ],
         "returnType": "int"
@@ -4489,7 +4789,8 @@
         "parameters": [
           {
             "name": "证书句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3证书_取当前 返回的证书不可变快照受管句柄。"
           }
         ],
         "returnType": "longLong"
@@ -4513,7 +4814,8 @@
         "parameters": [
           {
             "name": "证书句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3证书_取当前 返回的证书不可变快照受管句柄。"
           }
         ],
         "returnType": "int"
@@ -4537,7 +4839,8 @@
         "parameters": [
           {
             "name": "证书句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3证书_取当前 返回的证书不可变快照受管句柄。"
           }
         ],
         "returnType": "longLong"
@@ -4561,7 +4864,8 @@
         "parameters": [
           {
             "name": "证书句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3证书_取当前 返回的证书不可变快照受管句柄。"
           }
         ],
         "returnType": "longLong"
@@ -4585,7 +4889,8 @@
         "parameters": [
           {
             "name": "证书句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3证书_取当前 返回的证书不可变快照受管句柄。"
           }
         ],
         "returnType": "longLong"
@@ -4609,7 +4914,8 @@
         "parameters": [
           {
             "name": "证书句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3证书_取当前 返回的证书不可变快照受管句柄。"
           }
         ],
         "returnType": "longLong"
@@ -4633,7 +4939,8 @@
         "parameters": [
           {
             "name": "证书句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3证书_取当前 返回的证书不可变快照受管句柄。"
           }
         ],
         "returnType": "longLong"
@@ -4657,7 +4964,8 @@
         "parameters": [
           {
             "name": "证书句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3证书_取当前 返回的证书不可变快照受管句柄。"
           }
         ],
         "returnType": "longLong"
@@ -4681,7 +4989,8 @@
         "parameters": [
           {
             "name": "证书句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3证书_取当前 返回的证书不可变快照受管句柄。"
           }
         ],
         "returnType": "longLong"
@@ -4705,7 +5014,8 @@
         "parameters": [
           {
             "name": "证书句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3证书_取当前 返回的证书不可变快照受管句柄。"
           }
         ],
         "returnType": "longLong"
@@ -4729,7 +5039,8 @@
         "parameters": [
           {
             "name": "证书句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3证书_取当前 返回的证书不可变快照受管句柄。"
           }
         ],
         "returnType": "longLong"
@@ -4753,11 +5064,13 @@
         "parameters": [
           {
             "name": "证书句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3证书_取当前 返回的证书不可变快照受管句柄。"
           },
           {
             "name": "索引",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "菜单或列表项目下标，从 0 起；菜单设置颜色、字体时允许 -1 表示项目默认。"
           }
         ],
         "returnType": "longLong"
@@ -4781,11 +5094,13 @@
         "parameters": [
           {
             "name": "证书句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3证书_取当前 返回的证书不可变快照受管句柄。"
           },
           {
             "name": "索引",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "菜单或列表项目下标，从 0 起；菜单设置颜色、字体时允许 -1 表示项目默认。"
           }
         ],
         "returnType": "longLong"
@@ -4809,7 +5124,8 @@
         "parameters": [
           {
             "name": "证书句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3证书_取当前 返回的证书不可变快照受管句柄。"
           }
         ],
         "returnType": "int"
@@ -4833,7 +5149,8 @@
         "parameters": [
           {
             "name": "主体句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3证书_取主体/取颁发者 返回的主体快照受管句柄；用 CEF3证书主体_释放 释放。"
           }
         ],
         "returnType": "wideString"
@@ -4857,7 +5174,8 @@
         "parameters": [
           {
             "name": "主体句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3证书_取主体/取颁发者 返回的主体快照受管句柄；用 CEF3证书主体_释放 释放。"
           }
         ],
         "returnType": "wideString"
@@ -4881,7 +5199,8 @@
         "parameters": [
           {
             "name": "主体句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3证书_取主体/取颁发者 返回的主体快照受管句柄；用 CEF3证书主体_释放 释放。"
           }
         ],
         "returnType": "wideString"
@@ -4905,7 +5224,8 @@
         "parameters": [
           {
             "name": "主体句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3证书_取主体/取颁发者 返回的主体快照受管句柄；用 CEF3证书主体_释放 释放。"
           }
         ],
         "returnType": "wideString"
@@ -4929,7 +5249,8 @@
         "parameters": [
           {
             "name": "主体句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3证书_取主体/取颁发者 返回的主体快照受管句柄；用 CEF3证书主体_释放 释放。"
           }
         ],
         "returnType": "wideString"
@@ -4953,7 +5274,8 @@
         "parameters": [
           {
             "name": "主体句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3证书_取主体/取颁发者 返回的主体快照受管句柄；用 CEF3证书主体_释放 释放。"
           }
         ],
         "returnType": "wideString"
@@ -4977,7 +5299,8 @@
         "parameters": [
           {
             "name": "主体句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3证书_取主体/取颁发者 返回的主体快照受管句柄；用 CEF3证书主体_释放 释放。"
           }
         ],
         "returnType": "wideString"
@@ -5001,7 +5324,8 @@
         "parameters": [
           {
             "name": "主体句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3证书_取主体/取颁发者 返回的主体快照受管句柄；用 CEF3证书主体_释放 释放。"
           }
         ],
         "returnType": "int"

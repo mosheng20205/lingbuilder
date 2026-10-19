@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.827Z",
+  "generatedAt": "2026-10-19T03:18:58.748Z",
   "module": {
     "id": "lingbuilder.fbro.vip",
     "name": "FBro VIP 指纹模块",
-    "version": "2.1.0",
+    "version": "2.3.0",
     "description": "提供不泄露授权信息的结构化 VIP 指纹入口。"
   },
-  "commandCount": 198,
+  "commandCount": 200,
   "commands": [
     {
       "index": 1,
@@ -30,14 +30,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -73,14 +75,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -116,14 +120,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -159,14 +165,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -202,14 +210,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -245,14 +255,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -288,14 +300,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -331,14 +345,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -374,14 +390,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -417,14 +435,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -460,14 +480,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -503,14 +525,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -546,14 +570,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -589,14 +615,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -632,14 +660,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -675,14 +705,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -718,14 +750,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -761,14 +795,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -804,14 +840,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -847,14 +885,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -890,14 +930,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -933,14 +975,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -976,14 +1020,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -1019,14 +1065,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -1062,14 +1110,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -1105,14 +1155,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -1148,14 +1200,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -1191,14 +1245,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -1234,14 +1290,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -1277,14 +1335,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -1320,14 +1380,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -1363,14 +1425,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -1406,14 +1470,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -1449,14 +1515,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -1492,14 +1560,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -1535,14 +1605,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -1578,14 +1650,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -1621,14 +1695,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -1664,14 +1740,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -1707,14 +1785,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -1750,14 +1830,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -1793,14 +1875,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -1836,14 +1920,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -1879,14 +1965,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -1922,14 +2010,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -1965,14 +2055,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -2008,14 +2100,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -2051,14 +2145,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -2094,14 +2190,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -2137,14 +2235,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -2180,14 +2280,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -2223,14 +2325,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -2266,14 +2370,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -2309,14 +2415,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -2352,14 +2460,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -2395,14 +2505,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -2438,14 +2550,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -2481,14 +2595,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -2524,14 +2640,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -2567,14 +2685,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -2610,14 +2730,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -2653,14 +2775,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -2696,14 +2820,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -2739,14 +2865,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -2782,14 +2910,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -2825,14 +2955,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -2868,14 +3000,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -2911,14 +3045,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -2954,14 +3090,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -2997,14 +3135,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -3040,14 +3180,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -3083,14 +3225,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -3126,14 +3270,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -3169,14 +3315,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -3212,14 +3360,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -3255,14 +3405,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -3298,14 +3450,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -3341,14 +3495,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -3384,14 +3540,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -3427,14 +3585,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -3470,14 +3630,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -3513,14 +3675,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -3556,14 +3720,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -3599,14 +3765,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -3642,14 +3810,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -3685,14 +3855,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -3728,14 +3900,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -3771,14 +3945,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -3814,14 +3990,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -3857,14 +4035,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -3900,14 +4080,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -3943,14 +4125,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -3986,14 +4170,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -4029,14 +4215,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -4072,14 +4260,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -4115,14 +4305,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -4158,14 +4350,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -4201,14 +4395,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -4244,14 +4440,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -4287,14 +4485,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -4330,14 +4530,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -4373,14 +4575,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -4416,14 +4620,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -4459,14 +4665,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -4502,14 +4710,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -4545,14 +4755,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -4588,14 +4800,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -4631,14 +4845,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -4674,14 +4890,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -4717,14 +4935,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -4760,14 +4980,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -4803,14 +5025,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -4846,14 +5070,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -4889,14 +5115,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -4932,14 +5160,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -4975,14 +5205,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -5018,14 +5250,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -5061,14 +5295,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -5104,14 +5340,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -5147,14 +5385,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -5190,14 +5430,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -5233,14 +5475,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -5276,14 +5520,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -5319,14 +5565,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -5362,14 +5610,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -5405,14 +5655,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -5448,14 +5700,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -5491,14 +5745,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -5534,14 +5790,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -5577,14 +5835,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -5620,14 +5880,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -5663,14 +5925,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -5706,14 +5970,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -5749,14 +6015,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -5792,14 +6060,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -5835,14 +6105,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -5878,14 +6150,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -5921,14 +6195,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -5964,14 +6240,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -6007,14 +6285,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -6050,14 +6330,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -6093,14 +6375,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -6136,14 +6420,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -6179,14 +6465,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -6222,14 +6510,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -6265,14 +6555,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -6308,14 +6600,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -6351,14 +6645,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -6394,14 +6690,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -6437,14 +6735,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -6480,14 +6780,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -6523,14 +6825,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -6566,14 +6870,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -6609,14 +6915,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -6652,14 +6960,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -6695,14 +7005,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -6738,14 +7050,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -6781,14 +7095,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -6824,14 +7140,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -6867,14 +7185,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -6910,14 +7230,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -6953,14 +7275,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -6996,14 +7320,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -7039,14 +7365,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -7082,14 +7410,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -7125,14 +7455,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -7168,14 +7500,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -7211,14 +7545,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -7254,14 +7590,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -7297,14 +7635,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -7340,14 +7680,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -7383,14 +7725,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -7426,14 +7770,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -7469,14 +7815,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -7512,14 +7860,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -7555,14 +7905,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -7598,14 +7950,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -7641,14 +7995,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -7684,14 +8040,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -7727,14 +8085,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -7770,14 +8130,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -7813,14 +8175,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -7856,14 +8220,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -7899,14 +8265,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -7942,14 +8310,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -7985,14 +8355,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -8028,14 +8400,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -8071,14 +8445,16 @@
           {
             "name": "控件名",
             "type": "controlRef",
-            "description": "所属 FBro 浏览器设计器控件名。",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "controlKinds": [
+              "visual",
+              "resource"
             ],
             "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
             "runtimeRepresentation": "wideName"
           },
           {
@@ -8114,17 +8490,21 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "JSON",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "完整指纹配置 JSON 文本，键见模块文档。"
           }
         ],
         "returnType": "int",
@@ -8153,13 +8533,16 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "wideString",
@@ -8209,13 +8592,16 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "wideString",
@@ -8244,13 +8630,16 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "int",
@@ -8279,21 +8668,26 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "命令",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要执行的 VIP 子命令名，取值见对应分类的单项命令文档。"
           },
           {
             "name": "参数JSON",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "子命令参数 JSON 对象文本。"
           }
         ],
         "returnType": "longLong",
@@ -8322,21 +8716,26 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "命令",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要执行的 VIP 子命令名，取值见对应分类的单项命令文档。"
           },
           {
             "name": "参数JSON",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "子命令参数 JSON 对象文本。"
           }
         ],
         "returnType": "longLong",
@@ -8365,21 +8764,26 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "命令",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要执行的 VIP 子命令名，取值见对应分类的单项命令文档。"
           },
           {
             "name": "参数JSON",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "子命令参数 JSON 对象文本。"
           }
         ],
         "returnType": "longLong",
@@ -8408,21 +8812,26 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "命令",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要执行的 VIP 子命令名，取值见对应分类的单项命令文档。"
           },
           {
             "name": "参数JSON",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "子命令参数 JSON 对象文本。"
           }
         ],
         "returnType": "longLong",
@@ -8449,21 +8858,82 @@
         "parameters": [
           {
             "name": "地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "启动代理地址，格式 \"scheme://host:port\"。"
           },
           {
             "name": "用户名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "启动代理认证用户名。"
           },
           {
             "name": "密码",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "启动代理认证密码。"
           }
         ],
         "returnType": "int",
         "encoding": "wide"
       },
       "demoInvocation": "FBroVIP_设置启动代理(\"https://example.com\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 199,
+      "name": "FBroVIP_实例设置新窗口转标签页",
+      "aliases": [
+        "LB_FBro_SetPopupToTab"
+      ],
+      "signature": "FBroVIP_实例设置新窗口转标签页(实例句柄, 开关)",
+      "description": "开启后（开关传 1，传 0 关闭），该实例内的新窗口（target=_blank、window.open）在 Chrome 原生UI 实例中自动转为本窗口新标签页（等价官方 C# OnBeforePopup+AddTabAt 示例），不再走\"当前页加载\"兜底；FBro_实例打开原生UI 弹出的窗口继承来源实例的开关，也可以直接把开关设置在弹窗句柄上。仅进程内实例有效；VIP 控制器不可用时自动回落当前页加载。",
+      "insertText": "FBroVIP_实例设置新窗口转标签页($1, $2)",
+      "returnType": "整数型",
+      "capabilityKind": "single",
+      "binding": {
+        "command": "FBroVIP_实例设置新窗口转标签页",
+        "runtimeName": "FBroVIP_实例设置新窗口转标签页",
+        "parameters": [
+          {
+            "name": "实例句柄",
+            "type": "longLong",
+            "description": "FBro_后台创建 或 FBro_实例打开原生UI 返回的后台/弹窗实例句柄。"
+          },
+          {
+            "name": "开关",
+            "type": "int",
+            "description": "1 开启新窗口转标签页，0 关闭（随实例销毁失效）。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBroVIP_实例设置新窗口转标签页(1, 1)"
+    },
+    {
+      "index": 200,
+      "name": "FBroVIP_实例应用指纹JSON",
+      "signature": "FBroVIP_实例应用指纹JSON(实例句柄, JSON)",
+      "description": "对 FBro_后台创建 / FBro_实例打开原生UI 返回的后台实例或弹窗句柄批量应用完整直接指纹配置，JSON 契约与 FBroVIP_应用指纹JSON 完全一致；指纹设置按浏览器生效，弹窗与来源实例共用缓存目录但是两个浏览器，需要各自应用一次。实例句柄无效返回 -1，浏览器尚未就绪返回 -1（可延迟重试），VIP 授权校验失败返回 -5、VIP 控制器不可用返回 -4。",
+      "insertText": "FBroVIP_实例应用指纹JSON($1, \"{\\\"platform\\\":\\\"Windows\\\",\\\"hardwareConcurrency\\\":8}\")",
+      "returnType": "整数型",
+      "capabilityKind": "single",
+      "binding": {
+        "command": "FBroVIP_实例应用指纹JSON",
+        "runtimeName": "FBroVIP_实例应用指纹JSON",
+        "parameters": [
+          {
+            "name": "实例句柄",
+            "type": "longLong",
+            "description": "FBro_后台创建 或 FBro_实例打开原生UI 返回的后台/弹窗实例句柄。"
+          },
+          {
+            "name": "JSON",
+            "type": "wideString",
+            "description": "完整指纹配置 JSON 文本，键见模块文档。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBroVIP_实例应用指纹JSON(1, \"{}\")"
     }
   ]
 }

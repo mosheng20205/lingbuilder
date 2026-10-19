@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.758Z",
+  "generatedAt": "2026-10-19T03:18:58.702Z",
   "module": {
     "id": "lingbuilder.crypto.asymmetric",
     "name": "非对称密码模块",
@@ -45,7 +45,8 @@
         "parameters": [
           {
             "name": "私钥PEM",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "PKCS#8 格式的 PEM 私钥文本；必须与算法和位数匹配，解析失败返回空文本并记录中文错误。"
           }
         ],
         "returnType": "wideString",
@@ -66,11 +67,13 @@
         "parameters": [
           {
             "name": "明文",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要加密的短文本，按 UTF-8 处理；长度超过密钥的 OAEP 容量时返回空文本并记录错误。"
           },
           {
             "name": "公钥PEM",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "X.509 格式的 PEM 公钥文本；算法必须与密钥类型一致，解析失败返回空文本并记录中文错误。"
           }
         ],
         "returnType": "wideString",
@@ -91,11 +94,13 @@
         "parameters": [
           {
             "name": "Base64密文",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "对应 加密命令 返回的 Base64 密文文本；被改动或密钥不匹配时解密失败返回空文本。"
           },
           {
             "name": "私钥PEM",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "PKCS#8 格式的 PEM 私钥文本；必须与算法和位数匹配，解析失败返回空文本并记录中文错误。"
           }
         ],
         "returnType": "wideString",
@@ -116,11 +121,13 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要签名的原文文本，按 UTF-8 参与摘要。"
           },
           {
             "name": "私钥PEM",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "PKCS#8 格式的 PEM 私钥文本；必须与算法和位数匹配，解析失败返回空文本并记录中文错误。"
           }
         ],
         "returnType": "wideString",
@@ -141,15 +148,18 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "签名时的原文文本，必须与验签内容逐字节一致。"
           },
           {
             "name": "Base64签名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "对应 签名命令 返回的 Base64 签名文本；被改动时验签返回假。"
           },
           {
             "name": "公钥PEM",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "X.509 格式的 PEM 公钥文本；算法必须与密钥类型一致，解析失败返回空文本并记录中文错误。"
           }
         ],
         "returnType": "bool",
@@ -186,7 +196,8 @@
         "parameters": [
           {
             "name": "私钥PEM",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "PKCS#8 格式的 PEM 私钥文本；必须与算法和位数匹配，解析失败返回空文本并记录中文错误。"
           }
         ],
         "returnType": "wideString",
@@ -207,11 +218,13 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要签名的原文文本，按 UTF-8 参与 SHA-256 摘要。"
           },
           {
             "name": "私钥PEM",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "PKCS#8 格式的 PEM 私钥文本；必须与算法和位数匹配，解析失败返回空文本并记录中文错误。"
           }
         ],
         "returnType": "wideString",
@@ -232,15 +245,18 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "签名时的原文文本。"
           },
           {
             "name": "Base64签名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "对应 签名命令 返回的 Base64 签名文本；被改动时验签返回假。"
           },
           {
             "name": "公钥PEM",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "X.509 格式的 PEM 公钥文本；算法必须与密钥类型一致，解析失败返回空文本并记录中文错误。"
           }
         ],
         "returnType": "bool",
@@ -277,7 +293,8 @@
         "parameters": [
           {
             "name": "私钥PEM",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "PKCS#8 格式的 PEM 私钥文本；必须与算法和位数匹配，解析失败返回空文本并记录中文错误。"
           }
         ],
         "returnType": "wideString",
@@ -298,11 +315,13 @@
         "parameters": [
           {
             "name": "明文",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要加密的短文本，按 UTF-8 处理。"
           },
           {
             "name": "公钥PEM",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "X.509 格式的 PEM 公钥文本；算法必须与密钥类型一致，解析失败返回空文本并记录中文错误。"
           }
         ],
         "returnType": "wideString",
@@ -323,11 +342,13 @@
         "parameters": [
           {
             "name": "Base64密文",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "对应 加密命令 返回的 Base64 密文文本；被改动或密钥不匹配时解密失败返回空文本。"
           },
           {
             "name": "私钥PEM",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "PKCS#8 格式的 PEM 私钥文本；必须与算法和位数匹配，解析失败返回空文本并记录中文错误。"
           }
         ],
         "returnType": "wideString",
@@ -348,11 +369,13 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要签名的原文文本，按 UTF-8 参与 SM3 摘要。"
           },
           {
             "name": "私钥PEM",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "PKCS#8 格式的 PEM 私钥文本；必须与算法和位数匹配，解析失败返回空文本并记录中文错误。"
           },
           {
             "name": "用户标识",
@@ -378,19 +401,23 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "签名时的原文文本。"
           },
           {
             "name": "Base64签名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "对应 签名命令 返回的 Base64 签名文本；被改动时验签返回假。"
           },
           {
             "name": "公钥PEM",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "X.509 格式的 PEM 公钥文本；算法必须与密钥类型一致，解析失败返回空文本并记录中文错误。"
           },
           {
             "name": "用户标识",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "签名时使用的同一用户标识，必须与签名时完全一致且不含英文逗号。"
           }
         ],
         "returnType": "bool",
@@ -427,7 +454,8 @@
         "parameters": [
           {
             "name": "私钥PEM",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "PKCS#8 格式的 PEM 私钥文本；必须与算法和位数匹配，解析失败返回空文本并记录中文错误。"
           }
         ],
         "returnType": "wideString",
@@ -448,11 +476,13 @@
         "parameters": [
           {
             "name": "本方私钥PEM",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "PKCS#8 格式的 PEM 私钥文本；必须与算法和位数匹配，解析失败返回空文本并记录中文错误。"
           },
           {
             "name": "对方公钥PEM",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "对方的 X.509 PEM 公钥；曲线必须是 secp256r1。"
           }
         ],
         "returnType": "wideString",
@@ -489,7 +519,8 @@
         "parameters": [
           {
             "name": "私钥PEM",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "PKCS#8 格式的 PEM 私钥文本；必须与算法和位数匹配，解析失败返回空文本并记录中文错误。"
           }
         ],
         "returnType": "wideString",
@@ -510,11 +541,13 @@
         "parameters": [
           {
             "name": "本方私钥PEM",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "PKCS#8 格式的 PEM 私钥文本；必须与算法和位数匹配，解析失败返回空文本并记录中文错误。"
           },
           {
             "name": "对方公钥PEM",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "对方的 X.509 PEM 公钥。"
           }
         ],
         "returnType": "wideString",
@@ -559,7 +592,8 @@
         "parameters": [
           {
             "name": "私钥PEM",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "PKCS#8 格式的 PEM 私钥文本；必须与算法和位数匹配，解析失败返回空文本并记录中文错误。"
           }
         ],
         "returnType": "wideString",
@@ -581,11 +615,13 @@
         "parameters": [
           {
             "name": "明文",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要加密的短文本，按 UTF-8 处理。"
           },
           {
             "name": "公钥PEM",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "X.509 格式的 PEM 公钥文本；算法必须与密钥类型一致，解析失败返回空文本并记录中文错误。"
           }
         ],
         "returnType": "wideString",
@@ -607,11 +643,13 @@
         "parameters": [
           {
             "name": "Base64密文",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "对应 加密命令 返回的 Base64 密文文本；被改动或密钥不匹配时解密失败返回空文本。"
           },
           {
             "name": "私钥PEM",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "PKCS#8 格式的 PEM 私钥文本；必须与算法和位数匹配，解析失败返回空文本并记录中文错误。"
           }
         ],
         "returnType": "wideString",

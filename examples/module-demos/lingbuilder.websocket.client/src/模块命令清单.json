@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:36.001Z",
+  "generatedAt": "2026-10-19T03:18:58.886Z",
   "module": {
     "id": "lingbuilder.websocket.client",
     "name": "WebSocket 客户端模块",
@@ -44,11 +44,13 @@
         "parameters": [
           {
             "name": "连接",
-            "type": "WebSocket连接"
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的受管连接 ID；连接必须处于停止状态，运行中修改配置会被拒绝。"
           },
           {
             "name": "地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "WebSocket 服务地址，必须以 ws:// 或 wss:// 开头且不能含换行；wss:// 由系统 TLS 完成证书校验。"
           }
         ],
         "returnType": "bool",
@@ -73,23 +75,28 @@
         "parameters": [
           {
             "name": "连接",
-            "type": "WebSocket连接"
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的受管连接 ID；连接必须处于停止状态，运行中修改配置会被拒绝。"
           },
           {
             "name": "连接超时毫秒",
-            "type": "int"
+            "type": "int",
+            "description": "握手连接超时毫秒数，1000 到 300000。"
           },
           {
             "name": "接收超时毫秒",
-            "type": "int"
+            "type": "int",
+            "description": "单次接收等待上限毫秒数，1000 到 3600000。"
           },
           {
             "name": "消息上限MB",
-            "type": "int"
+            "type": "int",
+            "description": "单条消息重组后的字节上限，单位 MB，1 到 1024；超限按协议错误断开。"
           },
           {
             "name": "单次发送上限MB",
-            "type": "int"
+            "type": "int",
+            "description": "单条消息允许发送的字节上限，单位 MB，1 到 1024；超限拒绝发送。"
           }
         ],
         "returnType": "bool",
@@ -114,11 +121,13 @@
         "parameters": [
           {
             "name": "连接",
-            "type": "WebSocket连接"
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的受管连接 ID；连接必须处于停止状态，运行中修改配置会被拒绝。"
           },
           {
             "name": "UserAgent",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "握手使用的 User-Agent 文本，不能含换行；空文本时使用 LingBuilder WebSocket Client/2.0。"
           }
         ],
         "returnType": "bool",
@@ -143,11 +152,13 @@
         "parameters": [
           {
             "name": "连接",
-            "type": "WebSocket连接"
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的受管连接 ID；连接必须处于停止状态，运行中修改配置会被拒绝。"
           },
           {
             "name": "请求头",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "每行一条“名称: 值”的原始请求头文本；不得覆盖 Upgrade、Connection、Host、Sec-WebSocket-Key、Sec-WebSocket-Version、Sec-WebSocket-Extensions、Sec-WebSocket-Protocol 和 Origin。"
           }
         ],
         "returnType": "bool",
@@ -172,11 +183,13 @@
         "parameters": [
           {
             "name": "连接",
-            "type": "WebSocket连接"
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的受管连接 ID；连接必须处于停止状态，运行中修改配置会被拒绝。"
           },
           {
             "name": "来源",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "握手 Origin 文本，例如 https://example.com；不能含换行，空文本表示不发送该头。"
           }
         ],
         "returnType": "bool",
@@ -201,11 +214,13 @@
         "parameters": [
           {
             "name": "连接",
-            "type": "WebSocket连接"
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的受管连接 ID；连接必须处于停止状态，运行中修改配置会被拒绝。"
           },
           {
             "name": "子协议列表",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "逗号分隔的子协议 token 优先级列表，越靠前越优先；含非法 token 会被拒绝，服务端返回未请求的子协议时握手失败。"
           }
         ],
         "returnType": "bool",
@@ -230,19 +245,23 @@
         "parameters": [
           {
             "name": "连接",
-            "type": "WebSocket连接"
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的受管连接 ID；连接必须处于停止状态，运行中修改配置会被拒绝。"
           },
           {
             "name": "模式",
-            "type": "int"
+            "type": "int",
+            "description": "代理模式：0 跟随系统设置，1 直连不使用代理，2 固定代理地址。"
           },
           {
             "name": "代理地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "固定代理地址，格式遵循 WinHTTP，例如 127.0.0.1:8888；模式为 2 时不能为空，且不能含换行。"
           },
           {
             "name": "绕过列表",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "不走代理的主机列表，分号分隔，可为空文本但不能含换行。"
           }
         ],
         "returnType": "bool",
@@ -267,15 +286,18 @@
         "parameters": [
           {
             "name": "连接",
-            "type": "WebSocket连接"
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的受管连接 ID；连接必须处于停止状态，运行中修改配置会被拒绝。"
           },
           {
             "name": "用户名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "目标服务器 Basic 验证的用户名，不能含换行。"
           },
           {
             "name": "密码",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "Basic 验证密码，只保存在连接对象内存中，不能含换行。"
           }
         ],
         "returnType": "bool",
@@ -300,15 +322,18 @@
         "parameters": [
           {
             "name": "连接",
-            "type": "WebSocket连接"
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的受管连接 ID；连接必须处于停止状态，运行中修改配置会被拒绝。"
           },
           {
             "name": "用户名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "代理服务器 Basic 验证的用户名，不能含换行。"
           },
           {
             "name": "密码",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "代理 Basic 验证密码，只保存在连接对象内存中，不能含换行。"
           }
         ],
         "returnType": "bool",
@@ -334,19 +359,23 @@
         "parameters": [
           {
             "name": "连接",
-            "type": "WebSocket连接"
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的受管连接 ID；连接必须处于停止状态，运行中修改配置会被拒绝。"
           },
           {
             "name": "验证证书",
-            "type": "bool"
+            "type": "bool",
+            "description": "传真执行完整的证书链与域名校验；传假关闭校验，属于高风险调试能力。"
           },
           {
             "name": "允许自签名",
-            "type": "bool"
+            "type": "bool",
+            "description": "传真时额外接受自签名证书，其余校验保持不变。"
           },
           {
             "name": "证书SHA256",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要固定的服务端证书 SHA-256 指纹，64 位十六进制文本，可含冒号或空格；空文本表示不做指纹固定。"
           }
         ],
         "returnType": "bool",
@@ -371,23 +400,28 @@
         "parameters": [
           {
             "name": "连接",
-            "type": "WebSocket连接"
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的受管连接 ID；连接必须处于停止状态，运行中修改配置会被拒绝。"
           },
           {
             "name": "启用",
-            "type": "bool"
+            "type": "bool",
+            "description": "传真在意外断开后按指数退避自动重连；主动 WS_关闭连接 不会触发重连。"
           },
           {
             "name": "最大次数",
-            "type": "int"
+            "type": "int",
+            "description": "单个启动周期内允许的最大重连次数，1 到 1000，仅在启用时校验。"
           },
           {
             "name": "初始延迟毫秒",
-            "type": "int"
+            "type": "int",
+            "description": "首次重连前的等待毫秒数，100 到 300000。"
           },
           {
             "name": "最大延迟毫秒",
-            "type": "int"
+            "type": "int",
+            "description": "退避延迟上限毫秒数，不得小于初始延迟且不超过 3600000。"
           }
         ],
         "returnType": "bool",
@@ -412,7 +446,8 @@
         "parameters": [
           {
             "name": "连接",
-            "type": "WebSocket连接"
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的受管连接 ID；ID 无效或已销毁时命令返回假。"
           },
           {
             "name": "处理器",
@@ -446,7 +481,8 @@
         "parameters": [
           {
             "name": "连接",
-            "type": "WebSocket连接"
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的受管连接 ID；ID 无效或已销毁时命令返回假。"
           },
           {
             "name": "处理器",
@@ -480,7 +516,8 @@
         "parameters": [
           {
             "name": "连接",
-            "type": "WebSocket连接"
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的受管连接 ID；ID 无效或已销毁时命令返回假。"
           },
           {
             "name": "处理器",
@@ -514,7 +551,8 @@
         "parameters": [
           {
             "name": "连接",
-            "type": "WebSocket连接"
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的受管连接 ID；ID 无效或已销毁时命令返回假。"
           },
           {
             "name": "处理器",
@@ -548,7 +586,8 @@
         "parameters": [
           {
             "name": "连接",
-            "type": "WebSocket连接"
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的受管连接 ID；ID 无效或已销毁时命令返回假。"
           },
           {
             "name": "处理器",
@@ -582,7 +621,8 @@
         "parameters": [
           {
             "name": "连接",
-            "type": "WebSocket连接"
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的受管连接 ID；ID 无效或已销毁时命令返回假。必须已配置地址且尚未启动，重复启动返回假。"
           }
         ],
         "returnType": "bool",
@@ -607,11 +647,13 @@
         "parameters": [
           {
             "name": "连接",
-            "type": "WebSocket连接"
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的受管连接 ID；ID 无效或已销毁时命令返回假。"
           },
           {
             "name": "超时毫秒",
-            "type": "int"
+            "type": "int",
+            "description": "等待进入已连接或失败状态的毫秒数，0 到 3600000；在界面事件里等待会卡住界面。"
           }
         ],
         "returnType": "bool",
@@ -636,15 +678,18 @@
         "parameters": [
           {
             "name": "连接",
-            "type": "WebSocket连接"
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的受管连接 ID；ID 无效或已销毁时命令返回假。"
           },
           {
             "name": "状态码",
-            "type": "int"
+            "type": "int",
+            "description": "RFC 6455 关闭状态码，取 1000 到 4999；保留码 1004、1005、1006、1015 和 1016 到 2999 不允许，常用值是 1000 正常关闭和 1001 离开。"
           },
           {
             "name": "原因",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "关闭原因文本，UTF-8 编码后不得超过 123 字节；空文本表示不带原因。"
           }
         ],
         "returnType": "bool",
@@ -669,7 +714,8 @@
         "parameters": [
           {
             "name": "连接",
-            "type": "WebSocket连接"
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的受管连接 ID；ID 无效或已销毁时命令返回假。强制断开后不会再自动重连。"
           }
         ],
         "returnType": "bool",
@@ -694,7 +740,8 @@
         "parameters": [
           {
             "name": "连接",
-            "type": "WebSocket连接"
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的连接 ID；销毁会先停止后台线程，重复销毁返回假。"
           }
         ],
         "returnType": "bool",
@@ -719,7 +766,8 @@
         "parameters": [
           {
             "name": "连接",
-            "type": "WebSocket连接"
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的受管连接 ID；ID 无效或已销毁时命令返回假。"
           }
         ],
         "returnType": "bool",
@@ -744,7 +792,8 @@
         "parameters": [
           {
             "name": "连接",
-            "type": "WebSocket连接"
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的受管连接 ID；ID 无效或已销毁时命令返回假。"
           }
         ],
         "returnType": "wideString",
@@ -769,7 +818,8 @@
         "parameters": [
           {
             "name": "连接",
-            "type": "WebSocket连接"
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的受管连接 ID；ID 无效或已销毁时命令返回假。"
           }
         ],
         "returnType": "wideString",
@@ -794,7 +844,8 @@
         "parameters": [
           {
             "name": "连接",
-            "type": "WebSocket连接"
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的受管连接 ID；ID 无效或已销毁时命令返回假。"
           }
         ],
         "returnType": "wideString",
@@ -819,7 +870,8 @@
         "parameters": [
           {
             "name": "连接",
-            "type": "WebSocket连接"
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的受管连接 ID；ID 无效或已销毁时命令返回假。"
           }
         ],
         "returnType": "wideString",
@@ -844,7 +896,8 @@
         "parameters": [
           {
             "name": "连接",
-            "type": "WebSocket连接"
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的受管连接 ID；ID 无效或已销毁时命令返回假。"
           }
         ],
         "returnType": "int",
@@ -869,7 +922,8 @@
         "parameters": [
           {
             "name": "连接",
-            "type": "WebSocket连接"
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的受管连接 ID；ID 无效或已销毁时命令返回假。"
           }
         ],
         "returnType": "wideString",
@@ -894,7 +948,8 @@
         "parameters": [
           {
             "name": "连接",
-            "type": "WebSocket连接"
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的受管连接 ID；ID 无效或已销毁时命令返回假。"
           }
         ],
         "returnType": "longLong",
@@ -919,7 +974,8 @@
         "parameters": [
           {
             "name": "连接",
-            "type": "WebSocket连接"
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的受管连接 ID；ID 无效或已销毁时命令返回假。"
           }
         ],
         "returnType": "longLong",
@@ -944,7 +1000,8 @@
         "parameters": [
           {
             "name": "连接",
-            "type": "WebSocket连接"
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的受管连接 ID；ID 无效或已销毁时命令返回假。"
           }
         ],
         "returnType": "longLong",
@@ -969,7 +1026,8 @@
         "parameters": [
           {
             "name": "连接",
-            "type": "WebSocket连接"
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的受管连接 ID；ID 无效或已销毁时命令返回假。"
           }
         ],
         "returnType": "longLong",
@@ -994,7 +1052,8 @@
         "parameters": [
           {
             "name": "连接",
-            "type": "WebSocket连接"
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的受管连接 ID；ID 无效或已销毁时命令返回假。"
           }
         ],
         "returnType": "longLong",
@@ -1019,7 +1078,8 @@
         "parameters": [
           {
             "name": "连接",
-            "type": "WebSocket连接"
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的受管连接 ID；ID 无效或已销毁时命令返回假。"
           }
         ],
         "returnType": "int",
@@ -1044,11 +1104,13 @@
         "parameters": [
           {
             "name": "连接",
-            "type": "WebSocket连接"
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的受管连接 ID；ID 无效或已销毁时命令返回假。"
           },
           {
             "name": "内容",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要发送的文本，按 UTF-8 编码为一条完整消息；含未配对代理项或超过单次发送上限时返回假。"
           }
         ],
         "returnType": "bool",
@@ -1073,11 +1135,13 @@
         "parameters": [
           {
             "name": "连接",
-            "type": "WebSocket连接"
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的受管连接 ID；ID 无效或已销毁时命令返回假。"
           },
           {
             "name": "数据",
-            "type": "bytes"
+            "type": "bytes",
+            "description": "要发送的字节集，作为一条完整二进制消息；超过单次发送上限时返回假。"
           }
         ],
         "returnType": "bool",
@@ -1283,7 +1347,8 @@
         "parameters": [
           {
             "name": "地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "旧版默认连接的 ws:// 或 wss:// 地址；同步等待最多 30 秒。"
           }
         ],
         "returnType": "int",
@@ -1309,7 +1374,8 @@
         "parameters": [
           {
             "name": "内容",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要发送的文本，按 UTF-8 编码为一条完整消息；含未配对代理项或超过单次发送上限时返回假。"
           }
         ],
         "returnType": "int",

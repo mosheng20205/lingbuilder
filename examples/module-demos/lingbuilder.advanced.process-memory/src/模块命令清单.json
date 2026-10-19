@@ -1,19 +1,19 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.710Z",
+  "generatedAt": "2026-10-19T03:18:58.661Z",
   "module": {
     "id": "lingbuilder.advanced.process-memory",
     "name": "进程内存模块",
-    "version": "1.0.0",
-    "description": "显式打开目标进程并读写 32 位整数；属于高风险模块，不默认启用。"
+    "version": "1.2.0",
+    "description": "显式打开目标进程，读写整数与字节集、枚举已提交内存区域并做字节集特征扫描；打开失败时区分\"拒绝访问（需要管理员）\"等中文错误。属于高风险模块，默认随新项目启用，可按项目禁用。"
   },
-  "commandCount": 4,
+  "commandCount": 12,
   "commands": [
     {
       "index": 1,
       "name": "进程内存_打开",
       "signature": "进程内存_打开(进程ID, 允许写入)",
-      "description": "打开目标进程句柄。",
+      "description": "打开目标进程句柄；失败返回 0，错误码与中文原因可用 进程内存_取错误码/取错误 读取。",
       "insertText": "进程内存_打开(0, 假)",
       "returnType": "长整数型",
       "binding": {
@@ -22,11 +22,13 @@
         "parameters": [
           {
             "name": "进程ID",
-            "type": "int"
+            "type": "int",
+            "description": "目标进程 ID；句柄按需申请查询、读取和写入权限，受保护进程通常打开失败并可用 进程内存_取错误码 区分原因。"
           },
           {
             "name": "允许写入",
-            "type": "bool"
+            "type": "bool",
+            "description": "传真时额外申请写入权限，是 进程内存_写整数/写字节集 生效的前提。"
           }
         ],
         "returnType": "handle"
@@ -46,15 +48,18 @@
         "parameters": [
           {
             "name": "进程句柄",
-            "type": "handle"
+            "type": "handle",
+            "description": "进程内存_打开 返回的进程句柄；为 0 表示打开失败，读写不会生效。"
           },
           {
             "name": "地址",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "目标进程内的字节地址，该处必须存在可读的 4 个字节。"
           },
           {
             "name": "默认值",
-            "type": "int"
+            "type": "int",
+            "description": "读取失败时返回的兜底整数。"
           }
         ],
         "returnType": "int"
@@ -74,15 +79,18 @@
         "parameters": [
           {
             "name": "进程句柄",
-            "type": "handle"
+            "type": "handle",
+            "description": "进程内存_打开 返回的进程句柄；为 0 表示打开失败，读写不会生效。打开时未允许写入则必定失败。"
           },
           {
             "name": "地址",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "目标进程内的字节地址，该处必须可写满 4 个字节。"
           },
           {
             "name": "数值",
-            "type": "int"
+            "type": "int",
+            "description": "要写入的 32 位整数值。"
           }
         ],
         "returnType": "bool"
@@ -91,6 +99,226 @@
     },
     {
       "index": 4,
+      "name": "进程内存_写字节集",
+      "signature": "进程内存_写字节集(进程句柄, 地址, 数据)",
+      "description": "按地址向目标进程批量写入字节集（WriteProcessMemory 语义）；句柄、长度或地址非法时返回假，中文原因可用 进程内存_取错误 读取。",
+      "insertText": "进程内存_写字节集(0, 0, 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "进程内存_写字节集",
+        "runtimeName": "进程内存_写字节集",
+        "parameters": [
+          {
+            "name": "进程句柄",
+            "type": "handle",
+            "description": "进程内存_打开 返回的进程句柄；为 0 表示打开失败或句柄无效，读写不会生效，可用 进程内存_取错误码/取错误 查看原因。打开时未允许写入则必定失败。"
+          },
+          {
+            "name": "地址",
+            "type": "longLong",
+            "description": "目标进程内的起始字节地址；地址必须落在用户态范围（0 到 0x00007FFFFFFFFFFF）内，否则返回假。"
+          },
+          {
+            "name": "数据",
+            "type": "bytes",
+            "description": "要写入的字节序列，1 到 67108864（64MB 上限）；目标区域不可写或只有部分可写时返回假并可用 进程内存_取错误码 查看原因。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "进程内存_写字节集(0, 1, {})"
+    },
+    {
+      "index": 5,
+      "name": "进程内存_读字节集",
+      "signature": "进程内存_读字节集(进程句柄, 地址, 长度)",
+      "description": "按地址从目标进程批量读取字节集；句柄、长度或地址非法，以及完全读不到时返回空字节集。",
+      "insertText": "进程内存_读字节集(0, 0, 0)",
+      "returnType": "字节集",
+      "binding": {
+        "command": "进程内存_读字节集",
+        "runtimeName": "进程内存_读字节集",
+        "parameters": [
+          {
+            "name": "进程句柄",
+            "type": "handle",
+            "description": "进程内存_打开 返回的进程句柄；为 0 表示打开失败或句柄无效，读写不会生效，可用 进程内存_取错误码/取错误 查看原因。"
+          },
+          {
+            "name": "地址",
+            "type": "longLong",
+            "description": "目标进程内的起始字节地址；地址必须落在用户态范围（0 到 0x00007FFFFFFFFFFF）内，否则返回空字节集。"
+          },
+          {
+            "name": "长度",
+            "type": "int",
+            "description": "要读取的字节数，1 到 67108864（64MB 上限）；目标区域只有部分可读时返回可读前缀并用 进程内存_取错误码 报告 299。"
+          }
+        ],
+        "returnType": "bytes"
+      },
+      "demoInvocation": "进程内存_读字节集(0, 1, 1)"
+    },
+    {
+      "index": 6,
+      "name": "进程内存_读到缓冲区",
+      "signature": "进程内存_读到缓冲区(进程句柄, 地址, 长度)",
+      "description": "读取目标进程内存并直接装入 缓冲区模块 的缓冲区，返回缓冲区句柄；本模块依赖 lingbuilder.std.buffer，启用时自动带上。",
+      "insertText": "进程内存_读到缓冲区(0, 0, 0)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "进程内存_读到缓冲区",
+        "runtimeName": "进程内存_读到缓冲区",
+        "parameters": [
+          {
+            "name": "进程句柄",
+            "type": "handle",
+            "description": "进程内存_打开 返回的进程句柄；为 0 表示打开失败或句柄无效，读写不会生效，可用 进程内存_取错误码/取错误 查看原因。"
+          },
+          {
+            "name": "地址",
+            "type": "longLong",
+            "description": "目标进程内的起始字节地址，范围约束同 进程内存_读字节集。"
+          },
+          {
+            "name": "长度",
+            "type": "int",
+            "description": "要读取的字节数，1 到 67108864；读取失败或结果为空时返回 0。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "进程内存_读到缓冲区(0, 1, 1)"
+    },
+    {
+      "index": 7,
+      "name": "进程内存_枚举区域JSON",
+      "signature": "进程内存_枚举区域JSON(进程句柄, 只列已提交可读区域)",
+      "description": "用 VirtualQueryEx 枚举目标进程内存区域，返回 JSON 数组，每个元素含 baseAddress/regionSize/state/protect/type（十进制数值）。",
+      "insertText": "进程内存_枚举区域JSON(0, 假)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "进程内存_枚举区域JSON",
+        "runtimeName": "进程内存_枚举区域JSON",
+        "parameters": [
+          {
+            "name": "进程句柄",
+            "type": "handle",
+            "description": "进程内存_打开 返回的进程句柄；为 0 表示打开失败或句柄无效，读写不会生效，可用 进程内存_取错误码/取错误 查看原因。"
+          },
+          {
+            "name": "只列已提交可读区域",
+            "type": "bool",
+            "description": "传假时列出全部内存区域（含保留、空闲），传真时只返回 MEM_COMMIT 且页保护可读（排除 PAGE_GUARD/PAGE_NOACCESS）的区域。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "进程内存_枚举区域JSON(0, 真)"
+    },
+    {
+      "index": 8,
+      "name": "进程内存_扫描字节集",
+      "signature": "进程内存_扫描字节集(进程句柄, 特征字节集, 最大命中数, 结果数组)",
+      "description": "在目标进程已提交可读内存中扫描特征字节集（内部自动分块读取），返回命中数量；需要管理员权限的进程要先以管理员身份运行。",
+      "insertText": "进程内存_扫描字节集($1, $2, 100, $3)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "进程内存_扫描字节集",
+        "runtimeName": "进程内存_扫描字节集",
+        "parameters": [
+          {
+            "name": "进程句柄",
+            "type": "handle",
+            "description": "进程内存_打开 返回的进程句柄；为 0 表示打开失败或句柄无效，读写不会生效，可用 进程内存_取错误码/取错误 查看原因。"
+          },
+          {
+            "name": "特征字节集",
+            "type": "bytes",
+            "description": "要搜索的字节序列，不能为空；命中跨 8MB 分块边界由运行时用重叠区自动补齐，无需手工分块。"
+          },
+          {
+            "name": "最大命中数",
+            "type": "int",
+            "description": "找到足够命中即提前返回，1 到 1000000；超出范围按错误处理返回 0。"
+          },
+          {
+            "name": "结果数组",
+            "type": "array",
+            "description": "接收命中地址的长整数型数组变量（元素是十进制地址），调用前会先清空原有内容；命中按地址升序去重。"
+          }
+        ],
+        "returnType": "int",
+        "example": "局部 长整数型 命中[]\n进程内存_扫描字节集(句柄, 特征, 100, 命中)"
+      },
+      "demoInvocation": "进程内存_扫描字节集(0, {}, 1, 0)"
+    },
+    {
+      "index": 9,
+      "name": "进程内存_扫描字节集JSON",
+      "signature": "进程内存_扫描字节集JSON(进程句柄, 特征字节集, 最大命中数)",
+      "description": "同 进程内存_扫描字节集，但把升序去重后的命中地址返回为 JSON 数组文本（如 [819200, 991232]），可直接落盘；失败返回空文本。",
+      "insertText": "进程内存_扫描字节集JSON(0, 0, 0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "进程内存_扫描字节集JSON",
+        "runtimeName": "进程内存_扫描字节集JSON",
+        "parameters": [
+          {
+            "name": "进程句柄",
+            "type": "handle",
+            "description": "进程内存_打开 返回的进程句柄；为 0 表示打开失败或句柄无效，读写不会生效，可用 进程内存_取错误码/取错误 查看原因。"
+          },
+          {
+            "name": "特征字节集",
+            "type": "bytes",
+            "description": "要搜索的字节序列，不能为空。"
+          },
+          {
+            "name": "最大命中数",
+            "type": "int",
+            "description": "命中数上限，1 到 1000000；超出范围返回空文本。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "进程内存_扫描字节集JSON(0, {}, 1)"
+    },
+    {
+      "index": 10,
+      "name": "进程内存_取错误码",
+      "signature": "进程内存_取错误码()",
+      "description": "返回本线程最近一次进程内存操作的 Win32 错误码：5=拒绝访问（通常需要管理员）、87=参数无效、299=部分读取成功；0 表示成功或尚未执行操作。",
+      "insertText": "进程内存_取错误码()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "进程内存_取错误码",
+        "runtimeName": "进程内存_取错误码",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "进程内存_取错误码()"
+    },
+    {
+      "index": 11,
+      "name": "进程内存_取错误",
+      "signature": "进程内存_取错误()",
+      "description": "返回最近一次进程内存操作的中文错误说明（含\"需要以管理员身份运行\"等指引）；没有错误时返回空文本。",
+      "insertText": "进程内存_取错误()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "进程内存_取错误",
+        "runtimeName": "进程内存_取错误",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "进程内存_取错误()"
+    },
+    {
+      "index": 12,
       "name": "进程内存_关闭",
       "signature": "进程内存_关闭(进程句柄)",
       "description": "关闭目标进程句柄。",
@@ -102,7 +330,8 @@
         "parameters": [
           {
             "name": "进程句柄",
-            "type": "handle"
+            "type": "handle",
+            "description": "进程内存_打开 返回的进程句柄；传 0 直接返回假。"
           }
         ],
         "returnType": "bool"

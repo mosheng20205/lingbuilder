@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.858Z",
+  "generatedAt": "2026-10-19T03:18:58.762Z",
   "module": {
     "id": "lingbuilder.input.keyboard",
     "name": "键盘输入模块",
-    "version": "2.0.0",
+    "version": "2.1.0",
     "description": "分类提供全局状态、前台 SendInput 注入、指定 HWND 后台消息和键码转换能力。"
   },
-  "commandCount": 31,
+  "commandCount": 34,
   "commands": [
     {
       "index": 1,
@@ -752,6 +752,72 @@
         "returnType": "bool"
       },
       "demoInvocation": "键盘_组合按键(1, 1)"
+    },
+    {
+      "index": 32,
+      "name": "键盘_注册全局热键",
+      "signature": "键盘_注册全局热键(修饰键组合, 虚拟键码)",
+      "description": "[全局热键｜RegisterHotKey｜不占用实体键盘] 注册系统范围全局热键，返回热键 ID（0 表示失败，例如组合已被其它程序占用）。热键触发时窗口会收到「全局热键被按下」事件；需在窗口创建完成后调用。",
+      "insertText": "键盘_注册全局热键(0, 0)",
+      "returnType": "整数型",
+      "category": "全局热键",
+      "binding": {
+        "command": "键盘_注册全局热键",
+        "runtimeName": "键盘_注册全局热键",
+        "parameters": [
+          {
+            "name": "修饰键组合",
+            "type": "int",
+            "description": "修饰键位掩码：1 Shift、2 Ctrl、4 Alt、8 Win，可相加组合，例如 2+4=6 表示 Ctrl+Alt。"
+          },
+          {
+            "name": "虚拟键码",
+            "type": "int",
+            "description": "热键主键的 Win32 虚拟键码，有效范围 1～255。"
+          }
+        ],
+        "returnType": "int",
+        "example": "键盘_注册全局热键(6, 71)"
+      },
+      "demoInvocation": "键盘_注册全局热键(1, 1)"
+    },
+    {
+      "index": 33,
+      "name": "键盘_注销全局热键",
+      "signature": "键盘_注销全局热键(热键ID)",
+      "description": "[全局热键｜RegisterHotKey｜不占用实体键盘] 注销一个全局热键；ID 不存在返回假。",
+      "insertText": "键盘_注销全局热键(0)",
+      "returnType": "逻辑型",
+      "category": "全局热键",
+      "binding": {
+        "command": "键盘_注销全局热键",
+        "runtimeName": "键盘_注销全局热键",
+        "parameters": [
+          {
+            "name": "热键ID",
+            "type": "int",
+            "description": "键盘_注册全局热键 返回的热键 ID。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "键盘_注销全局热键(1)"
+    },
+    {
+      "index": 34,
+      "name": "键盘_注销全部热键",
+      "signature": "键盘_注销全部热键()",
+      "description": "[全局热键｜RegisterHotKey｜不占用实体键盘] 注销本进程注册的全部全局热键；进程退出时系统也会自动回收。",
+      "insertText": "键盘_注销全部热键()",
+      "returnType": "空",
+      "category": "全局热键",
+      "binding": {
+        "command": "键盘_注销全部热键",
+        "runtimeName": "键盘_注销全部热键",
+        "parameters": [],
+        "returnType": "void"
+      },
+      "demoInvocation": "键盘_注销全部热键()"
     }
   ]
 }

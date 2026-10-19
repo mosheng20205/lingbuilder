@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.737Z",
+  "generatedAt": "2026-10-19T03:18:58.687Z",
   "module": {
     "id": "lingbuilder.cef3.platform",
     "name": "CEF3平台工具模块",
-    "version": "3.0.0-alpha.3",
+    "version": "3.0.0-alpha.4",
     "description": "提供CEF版本与平台工具能力。"
   },
-  "commandCount": 72,
+  "commandCount": 75,
   "commands": [
     {
       "index": 1,
@@ -26,7 +26,8 @@
         "parameters": [
           {
             "name": "任务句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "异步命令返回的受管任务句柄；用 CEF3任务_取结果 读取结果，用 CEF3任务_释放 回收。"
           }
         ],
         "returnType": "int"
@@ -50,15 +51,18 @@
         "parameters": [
           {
             "name": "任务运行器句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "受管 CEF 任务运行器句柄（由取当前/指定线程任务运行器或线程取任务运行器获得）。"
           },
           {
             "name": "任务句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "异步命令返回的受管任务句柄；用 CEF3任务_取结果 读取结果，用 CEF3任务_释放 回收。"
           },
           {
             "name": "延迟毫秒数",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "延迟执行的毫秒数，0 表示尽快执行。"
           }
         ],
         "returnType": "bool"
@@ -82,11 +86,13 @@
         "parameters": [
           {
             "name": "任务运行器句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "受管 CEF 任务运行器句柄（由取当前/指定线程任务运行器或线程取任务运行器获得）。"
           },
           {
             "name": "任务句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "异步命令返回的受管任务句柄；用 CEF3任务_取结果 读取结果，用 CEF3任务_释放 回收。"
           }
         ],
         "returnType": "bool"
@@ -110,11 +116,13 @@
         "parameters": [
           {
             "name": "CEF线程ID",
-            "type": "int"
+            "type": "int",
+            "description": "CEF 公开线程枚举值（如 UI 线程 TID_UI）。"
           },
           {
             "name": "任务句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "异步命令返回的受管任务句柄；用 CEF3任务_取结果 读取结果，用 CEF3任务_释放 回收。"
           }
         ],
         "returnType": "bool"
@@ -138,15 +146,18 @@
         "parameters": [
           {
             "name": "CEF线程ID",
-            "type": "int"
+            "type": "int",
+            "description": "CEF 公开线程枚举值（如 UI 线程 TID_UI）。"
           },
           {
             "name": "任务句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "异步命令返回的受管任务句柄；用 CEF3任务_取结果 读取结果，用 CEF3任务_释放 回收。"
           },
           {
             "name": "延迟毫秒数",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "延迟执行的毫秒数，0 表示尽快执行。"
           }
         ],
         "returnType": "bool"
@@ -245,7 +256,8 @@
         "parameters": [
           {
             "name": "类别",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "Trace 类别过滤文本，如 \"*\" 或逗号分隔的类别列表。"
           }
         ],
         "returnType": "longLong",
@@ -270,7 +282,8 @@
         "parameters": [
           {
             "name": "输出文件",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "跟踪数据输出文件路径；空文本由 CEF 创建临时文件，路径见任务结果 tracingFile 字段。"
           }
         ],
         "returnType": "longLong",
@@ -295,7 +308,8 @@
         "parameters": [
           {
             "name": "MIME类型",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "小写 MIME 类型，如 \"text/plain\"。"
           }
         ],
         "returnType": "wideString",
@@ -320,7 +334,8 @@
         "parameters": [
           {
             "name": "扩展名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "文件扩展名，可带前导点号。"
           }
         ],
         "returnType": "wideString",
@@ -345,7 +360,8 @@
         "parameters": [
           {
             "name": "允许",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=允许嵌套任务。"
           }
         ],
         "returnType": "int"
@@ -388,7 +404,8 @@
         "parameters": [
           {
             "name": "任务管理器句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3平台_取任务管理器 返回的全局任务管理器受管句柄。"
           }
         ],
         "returnType": "longLong"
@@ -412,7 +429,8 @@
         "parameters": [
           {
             "name": "任务管理器句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3平台_取任务管理器 返回的全局任务管理器受管句柄。"
           }
         ],
         "returnType": "wideString"
@@ -436,11 +454,13 @@
         "parameters": [
           {
             "name": "任务管理器句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3平台_取任务管理器 返回的全局任务管理器受管句柄。"
           },
           {
             "name": "浏览器ID",
-            "type": "int"
+            "type": "int",
+            "description": "目标浏览器的 CEF 浏览器 ID。"
           }
         ],
         "returnType": "longLong"
@@ -464,11 +484,13 @@
         "parameters": [
           {
             "name": "任务管理器句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3平台_取任务管理器 返回的全局任务管理器受管句柄。"
           },
           {
             "name": "任务ID",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "任务管理器返回的任务 ID（取自 CEF3平台_任务管理器取任务ID数组），不是受管异步任务 ID。"
           }
         ],
         "returnType": "bool"
@@ -492,11 +514,13 @@
         "parameters": [
           {
             "name": "任务管理器句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3平台_取任务管理器 返回的全局任务管理器受管句柄。"
           },
           {
             "name": "任务ID",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "任务管理器返回的任务 ID（取自 CEF3平台_任务管理器取任务ID数组），不是受管异步任务 ID。"
           }
         ],
         "returnType": "wideString"
@@ -539,7 +563,8 @@
         "parameters": [
           {
             "name": "CEF线程ID",
-            "type": "int"
+            "type": "int",
+            "description": "CEF 公开线程枚举值（如 UI 线程 TID_UI）。"
           }
         ],
         "returnType": "longLong"
@@ -563,7 +588,8 @@
         "parameters": [
           {
             "name": "任务运行器句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "受管 CEF 任务运行器句柄（由取当前/指定线程任务运行器或线程取任务运行器获得）。"
           }
         ],
         "returnType": "bool"
@@ -587,11 +613,13 @@
         "parameters": [
           {
             "name": "任务运行器句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "受管 CEF 任务运行器句柄（由取当前/指定线程任务运行器或线程取任务运行器获得）。"
           },
           {
             "name": "CEF线程ID",
-            "type": "int"
+            "type": "int",
+            "description": "CEF 公开线程枚举值（如 UI 线程 TID_UI）。"
           }
         ],
         "returnType": "bool"
@@ -615,11 +643,13 @@
         "parameters": [
           {
             "name": "任务运行器句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "受管 CEF 任务运行器句柄（由取当前/指定线程任务运行器或线程取任务运行器获得）。"
           },
           {
             "name": "另一任务运行器句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "参与比较的另一个任务运行器受管句柄。"
           }
         ],
         "returnType": "bool"
@@ -643,23 +673,28 @@
         "parameters": [
           {
             "name": "显示名称",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "线程调试显示名称。"
           },
           {
             "name": "优先级",
-            "type": "int"
+            "type": "int",
+            "description": "线程优先级 0~3。"
           },
           {
             "name": "消息循环类型",
-            "type": "int"
+            "type": "int",
+            "description": "消息循环类型：0 默认、1 UI、2 IO；STA COM 必须使用 UI。"
           },
           {
             "name": "可停止",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=允许 CEF3平台_停止专用线程 停止。"
           },
           {
             "name": "COM初始化模式",
-            "type": "int"
+            "type": "int",
+            "description": "COM 初始化模式：0 无、1 STA、2 MTA；STA 必须使用 UI 消息循环。"
           }
         ],
         "returnType": "longLong",
@@ -684,7 +719,8 @@
         "parameters": [
           {
             "name": "线程句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3平台_创建专用线程 返回的受管线程句柄。"
           }
         ],
         "returnType": "longLong"
@@ -708,7 +744,8 @@
         "parameters": [
           {
             "name": "线程句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3平台_创建专用线程 返回的受管线程句柄。"
           }
         ],
         "returnType": "longLong"
@@ -732,7 +769,8 @@
         "parameters": [
           {
             "name": "线程句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3平台_创建专用线程 返回的受管线程句柄。"
           }
         ],
         "returnType": "bool"
@@ -756,7 +794,8 @@
         "parameters": [
           {
             "name": "线程句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3平台_创建专用线程 返回的受管线程句柄。"
           }
         ],
         "returnType": "int"
@@ -780,7 +819,8 @@
         "parameters": [
           {
             "name": "线程句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3平台_创建专用线程 返回的受管线程句柄。"
           }
         ],
         "returnType": "int"
@@ -804,7 +844,8 @@
         "parameters": [
           {
             "name": "组件句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "组件快照受管句柄（由组件更新器查询接口产生）。"
           }
         ],
         "returnType": "wideString"
@@ -828,7 +869,8 @@
         "parameters": [
           {
             "name": "组件句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "组件快照受管句柄（由组件更新器查询接口产生）。"
           }
         ],
         "returnType": "wideString"
@@ -852,7 +894,8 @@
         "parameters": [
           {
             "name": "组件句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "组件快照受管句柄（由组件更新器查询接口产生）。"
           }
         ],
         "returnType": "int"
@@ -876,7 +919,8 @@
         "parameters": [
           {
             "name": "组件句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "组件快照受管句柄（由组件更新器查询接口产生）。"
           }
         ],
         "returnType": "wideString"
@@ -900,11 +944,13 @@
         "parameters": [
           {
             "name": "组件更新器句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "组件更新器的受管句柄。"
           },
           {
             "name": "组件ID",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "组件唯一标识，可从组件数组查询获得。"
           }
         ],
         "returnType": "longLong",
@@ -929,7 +975,8 @@
         "parameters": [
           {
             "name": "组件更新器句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "组件更新器的受管句柄。"
           }
         ],
         "returnType": "longLong"
@@ -953,7 +1000,8 @@
         "parameters": [
           {
             "name": "组件更新器句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "组件更新器的受管句柄。"
           }
         ],
         "returnType": "CEF3组件数组"
@@ -977,15 +1025,18 @@
         "parameters": [
           {
             "name": "组件更新器句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "组件更新器的受管句柄。"
           },
           {
             "name": "组件ID",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "组件唯一标识，可从组件数组查询获得。"
           },
           {
             "name": "优先级",
-            "type": "int"
+            "type": "int",
+            "description": "线程优先级 0~3。"
           }
         ],
         "returnType": "longLong",
@@ -1010,15 +1061,18 @@
         "parameters": [
           {
             "name": "进程类型",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "目标子进程类型；空文本应用到浏览器及全部子进程。"
           },
           {
             "name": "开关名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "命令行开关名（不带 -- 前缀），CEF 规范化为小写。"
           },
           {
             "name": "开关值",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "开关值文本，允许为空。"
           }
         ],
         "returnType": "int",
@@ -1028,6 +1082,108 @@
     },
     {
       "index": 41,
+      "name": "CEF3平台_添加跨域白名单",
+      "aliases": [
+        "cef_add_cross_origin_whitelist_entry"
+      ],
+      "signature": "CEF3平台_添加跨域白名单(源站点, 目标协议, 目标域名, 允许目标子域)",
+      "description": "把一条跨域访问放行规则加入CEF全局跨域白名单，例如允许 https://a.example.com 以 https 协议访问 b.example.com；成功返回1。白名单是全局的，影响进程内全部浏览器实例，且必须在浏览器已初始化后调用。",
+      "insertText": "CEF3平台_添加跨域白名单(\"https://a.example.com\", \"https\", \"b.example.com\", 1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_添加跨域白名单",
+        "runtimeName": "CEF3平台_添加跨域白名单",
+        "parameters": [
+          {
+            "name": "源站点",
+            "type": "wideString",
+            "description": "放行规则的来源站点，必须含协议且不带路径，如 \"https://a.example.com\"。"
+          },
+          {
+            "name": "目标协议",
+            "type": "wideString",
+            "description": "被访问资源使用的协议，如 \"https\" 或 \"http\"（不带 ://）。"
+          },
+          {
+            "name": "目标域名",
+            "type": "wideString",
+            "description": "被访问资源的域名，如 \"b.example.com\"（不含协议与路径）。"
+          },
+          {
+            "name": "允许目标子域",
+            "type": "bool",
+            "description": "真=同时放行目标域名的全部子域；必须与添加时传的值一致才能删除对应规则。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "CEF3平台_添加跨域白名单(\"https://a.example.com\", \"https\", \"b.example.com\", 1)"
+      },
+      "demoInvocation": "CEF3平台_添加跨域白名单(\"演示参数1\", \"演示参数2\", \"演示参数3\", 真)"
+    },
+    {
+      "index": 42,
+      "name": "CEF3平台_删除跨域白名单",
+      "aliases": [
+        "cef_remove_cross_origin_whitelist_entry"
+      ],
+      "signature": "CEF3平台_删除跨域白名单(源站点, 目标协议, 目标域名, 允许目标子域)",
+      "description": "按添加时使用的同一组参数从CEF全局跨域白名单移除一条放行规则；参数不完全一致时移除失败。",
+      "insertText": "CEF3平台_删除跨域白名单(\"$1\", \"$2\", \"$3\", 假)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_删除跨域白名单",
+        "runtimeName": "CEF3平台_删除跨域白名单",
+        "parameters": [
+          {
+            "name": "源站点",
+            "type": "wideString",
+            "description": "放行规则的来源站点，必须含协议且不带路径，如 \"https://a.example.com\"。"
+          },
+          {
+            "name": "目标协议",
+            "type": "wideString",
+            "description": "被访问资源使用的协议，如 \"https\" 或 \"http\"（不带 ://）。"
+          },
+          {
+            "name": "目标域名",
+            "type": "wideString",
+            "description": "被访问资源的域名，如 \"b.example.com\"（不含协议与路径）。"
+          },
+          {
+            "name": "允许目标子域",
+            "type": "bool",
+            "description": "真=同时放行目标域名的全部子域；必须与添加时传的值一致才能删除对应规则。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3平台_删除跨域白名单(\"演示参数1\", \"演示参数2\", \"演示参数3\", 真)"
+    },
+    {
+      "index": 43,
+      "name": "CEF3平台_清空跨域白名单",
+      "aliases": [
+        "cef_clear_cross_origin_whitelist"
+      ],
+      "signature": "CEF3平台_清空跨域白名单()",
+      "description": "清空CEF全局跨域白名单的全部放行规则，恢复到只允许同源访问。",
+      "insertText": "CEF3平台_清空跨域白名单()",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_清空跨域白名单",
+        "runtimeName": "CEF3平台_清空跨域白名单",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3平台_清空跨域白名单()"
+    },
+    {
+      "index": 44,
       "name": "CEF3平台_创建可等待事件",
       "aliases": [
         "cef_waitable_event_create"
@@ -1043,11 +1199,13 @@
         "parameters": [
           {
             "name": "自动重置",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=触发后自动恢复未触发状态。"
           },
           {
             "name": "初始已触发",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=创建时即为已触发状态。"
           }
         ],
         "returnType": "longLong"
@@ -1055,7 +1213,7 @@
       "demoInvocation": "CEF3平台_创建可等待事件(真, 真)"
     },
     {
-      "index": 42,
+      "index": 45,
       "name": "CEF3平台_可等待事件重置",
       "aliases": [
         "CefWaitableEvent::Reset"
@@ -1071,7 +1229,8 @@
         "parameters": [
           {
             "name": "事件句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3平台_创建可等待事件 返回的受管等待事件句柄。"
           }
         ],
         "returnType": "int"
@@ -1079,7 +1238,7 @@
       "demoInvocation": "CEF3平台_可等待事件重置(1)"
     },
     {
-      "index": 43,
+      "index": 46,
       "name": "CEF3平台_可等待事件触发",
       "aliases": [
         "CefWaitableEvent::Signal"
@@ -1095,7 +1254,8 @@
         "parameters": [
           {
             "name": "事件句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3平台_创建可等待事件 返回的受管等待事件句柄。"
           }
         ],
         "returnType": "int"
@@ -1103,7 +1263,7 @@
       "demoInvocation": "CEF3平台_可等待事件触发(1)"
     },
     {
-      "index": 44,
+      "index": 47,
       "name": "CEF3平台_可等待事件是否已触发",
       "aliases": [
         "CefWaitableEvent::IsSignaled"
@@ -1119,7 +1279,8 @@
         "parameters": [
           {
             "name": "事件句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3平台_创建可等待事件 返回的受管等待事件句柄。"
           }
         ],
         "returnType": "bool"
@@ -1127,7 +1288,7 @@
       "demoInvocation": "CEF3平台_可等待事件是否已触发(1)"
     },
     {
-      "index": 45,
+      "index": 48,
       "name": "CEF3平台_可等待事件限时等待",
       "aliases": [
         "CefWaitableEvent::TimedWait"
@@ -1143,11 +1304,13 @@
         "parameters": [
           {
             "name": "事件句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3平台_创建可等待事件 返回的受管等待事件句柄。"
           },
           {
             "name": "最大毫秒",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "最长等待毫秒数；UI 和 IO 线程禁止调用等待。"
           }
         ],
         "returnType": "bool"
@@ -1155,7 +1318,7 @@
       "demoInvocation": "CEF3平台_可等待事件限时等待(1, 1)"
     },
     {
-      "index": 46,
+      "index": 49,
       "name": "CEF3平台_可等待事件等待",
       "aliases": [
         "CefWaitableEvent::Wait"
@@ -1171,7 +1334,8 @@
         "parameters": [
           {
             "name": "事件句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3平台_创建可等待事件 返回的受管等待事件句柄。"
           }
         ],
         "returnType": "int"
@@ -1179,7 +1343,7 @@
       "demoInvocation": "CEF3平台_可等待事件等待(1)"
     },
     {
-      "index": 47,
+      "index": 50,
       "name": "CEF3命令行_创建",
       "aliases": [
         "CefCommandLine::CreateCommandLine"
@@ -1198,7 +1362,7 @@
       "demoInvocation": "CEF3命令行_创建()"
     },
     {
-      "index": 48,
+      "index": 51,
       "name": "CEF3命令行_是否有效",
       "aliases": [
         "CefCommandLine::IsValid"
@@ -1214,7 +1378,8 @@
         "parameters": [
           {
             "name": "命令行句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3命令行_创建/复制/取全局 返回的受管命令行句柄。"
           }
         ],
         "returnType": "int"
@@ -1222,7 +1387,7 @@
       "demoInvocation": "CEF3命令行_是否有效(1)"
     },
     {
-      "index": 49,
+      "index": 52,
       "name": "CEF3命令行_是否只读",
       "aliases": [
         "CefCommandLine::IsReadOnly"
@@ -1238,7 +1403,8 @@
         "parameters": [
           {
             "name": "命令行句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3命令行_创建/复制/取全局 返回的受管命令行句柄。"
           }
         ],
         "returnType": "int"
@@ -1246,7 +1412,7 @@
       "demoInvocation": "CEF3命令行_是否只读(1)"
     },
     {
-      "index": 50,
+      "index": 53,
       "name": "CEF3命令行_复制",
       "aliases": [
         "CefCommandLine::Copy"
@@ -1262,7 +1428,8 @@
         "parameters": [
           {
             "name": "命令行句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3命令行_创建/复制/取全局 返回的受管命令行句柄。"
           }
         ],
         "returnType": "longLong"
@@ -1270,7 +1437,7 @@
       "demoInvocation": "CEF3命令行_复制(1)"
     },
     {
-      "index": 51,
+      "index": 54,
       "name": "CEF3命令行_从参数数组初始化",
       "aliases": [
         "CefCommandLine::InitFromArgv"
@@ -1286,11 +1453,13 @@
         "parameters": [
           {
             "name": "命令行句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3命令行_创建/复制/取全局 返回的受管命令行句柄。"
           },
           {
             "name": "参数数组",
-            "type": "CEF3文本数组"
+            "type": "CEF3文本数组",
+            "description": "UTF-16 文本数组；首项必须是程序名。"
           }
         ],
         "returnType": "int"
@@ -1298,7 +1467,7 @@
       "demoInvocation": "CEF3命令行_从参数数组初始化(1, 0)"
     },
     {
-      "index": 52,
+      "index": 55,
       "name": "CEF3命令行_从文本初始化",
       "aliases": [
         "CefCommandLine::InitFromString"
@@ -1314,11 +1483,13 @@
         "parameters": [
           {
             "name": "命令行句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3命令行_创建/复制/取全局 返回的受管命令行句柄。"
           },
           {
             "name": "命令行文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "GetCommandLineW 格式的完整命令行文本。"
           }
         ],
         "returnType": "int",
@@ -1327,7 +1498,7 @@
       "demoInvocation": "CEF3命令行_从文本初始化(1, \"演示参数2\")"
     },
     {
-      "index": 53,
+      "index": 56,
       "name": "CEF3命令行_取完整文本",
       "aliases": [
         "CefCommandLine::GetCommandLineString"
@@ -1343,7 +1514,8 @@
         "parameters": [
           {
             "name": "命令行句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3命令行_创建/复制/取全局 返回的受管命令行句柄。"
           }
         ],
         "returnType": "wideString"
@@ -1351,7 +1523,7 @@
       "demoInvocation": "CEF3命令行_取完整文本(1)"
     },
     {
-      "index": 54,
+      "index": 57,
       "name": "CEF3命令行_取程序",
       "aliases": [
         "CefCommandLine::GetProgram"
@@ -1367,7 +1539,8 @@
         "parameters": [
           {
             "name": "命令行句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3命令行_创建/复制/取全局 返回的受管命令行句柄。"
           }
         ],
         "returnType": "wideString"
@@ -1375,7 +1548,7 @@
       "demoInvocation": "CEF3命令行_取程序(1)"
     },
     {
-      "index": 55,
+      "index": 58,
       "name": "CEF3命令行_设置程序",
       "aliases": [
         "CefCommandLine::SetProgram"
@@ -1391,11 +1564,13 @@
         "parameters": [
           {
             "name": "命令行句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3命令行_创建/复制/取全局 返回的受管命令行句柄。"
           },
           {
             "name": "程序",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "可执行程序路径或名称。"
           }
         ],
         "returnType": "int",
@@ -1404,7 +1579,7 @@
       "demoInvocation": "CEF3命令行_设置程序(1, \"演示参数2\")"
     },
     {
-      "index": 56,
+      "index": 59,
       "name": "CEF3命令行_是否有开关",
       "aliases": [
         "CefCommandLine::HasSwitches"
@@ -1420,7 +1595,8 @@
         "parameters": [
           {
             "name": "命令行句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3命令行_创建/复制/取全局 返回的受管命令行句柄。"
           }
         ],
         "returnType": "int"
@@ -1428,7 +1604,7 @@
       "demoInvocation": "CEF3命令行_是否有开关(1)"
     },
     {
-      "index": 57,
+      "index": 60,
       "name": "CEF3命令行_是否有指定开关",
       "aliases": [
         "CefCommandLine::HasSwitch"
@@ -1444,11 +1620,13 @@
         "parameters": [
           {
             "name": "命令行句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3命令行_创建/复制/取全局 返回的受管命令行句柄。"
           },
           {
             "name": "开关名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "命令行开关名（不带 -- 前缀），CEF 规范化为小写。"
           }
         ],
         "returnType": "int",
@@ -1457,7 +1635,7 @@
       "demoInvocation": "CEF3命令行_是否有指定开关(1, \"演示参数2\")"
     },
     {
-      "index": 58,
+      "index": 61,
       "name": "CEF3命令行_添加开关",
       "aliases": [
         "CefCommandLine::AppendSwitch"
@@ -1473,11 +1651,13 @@
         "parameters": [
           {
             "name": "命令行句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3命令行_创建/复制/取全局 返回的受管命令行句柄。"
           },
           {
             "name": "开关名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "命令行开关名（不带 -- 前缀），CEF 规范化为小写。"
           }
         ],
         "returnType": "int",
@@ -1486,7 +1666,7 @@
       "demoInvocation": "CEF3命令行_添加开关(1, \"演示参数2\")"
     },
     {
-      "index": 59,
+      "index": 62,
       "name": "CEF3命令行_添加带值开关",
       "aliases": [
         "CefCommandLine::AppendSwitchWithValue"
@@ -1502,15 +1682,18 @@
         "parameters": [
           {
             "name": "命令行句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3命令行_创建/复制/取全局 返回的受管命令行句柄。"
           },
           {
             "name": "开关名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "命令行开关名（不带 -- 前缀），CEF 规范化为小写。"
           },
           {
             "name": "开关值",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "开关值文本，允许为空。"
           }
         ],
         "returnType": "int",
@@ -1519,7 +1702,7 @@
       "demoInvocation": "CEF3命令行_添加带值开关(1, \"演示参数2\", \"演示参数3\")"
     },
     {
-      "index": 60,
+      "index": 63,
       "name": "CEF3命令行_取开关值",
       "aliases": [
         "CefCommandLine::GetSwitchValue"
@@ -1535,11 +1718,13 @@
         "parameters": [
           {
             "name": "命令行句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3命令行_创建/复制/取全局 返回的受管命令行句柄。"
           },
           {
             "name": "开关名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "命令行开关名（不带 -- 前缀），CEF 规范化为小写。"
           }
         ],
         "returnType": "wideString",
@@ -1548,7 +1733,7 @@
       "demoInvocation": "CEF3命令行_取开关值(1, \"演示参数2\")"
     },
     {
-      "index": 61,
+      "index": 64,
       "name": "CEF3命令行_移除开关",
       "aliases": [
         "CefCommandLine::RemoveSwitch"
@@ -1564,11 +1749,13 @@
         "parameters": [
           {
             "name": "命令行句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3命令行_创建/复制/取全局 返回的受管命令行句柄。"
           },
           {
             "name": "开关名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "命令行开关名（不带 -- 前缀），CEF 规范化为小写。"
           }
         ],
         "returnType": "int",
@@ -1577,7 +1764,7 @@
       "demoInvocation": "CEF3命令行_移除开关(1, \"演示参数2\")"
     },
     {
-      "index": 62,
+      "index": 65,
       "name": "CEF3命令行_是否有参数",
       "aliases": [
         "CefCommandLine::HasArguments"
@@ -1593,7 +1780,8 @@
         "parameters": [
           {
             "name": "命令行句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3命令行_创建/复制/取全局 返回的受管命令行句柄。"
           }
         ],
         "returnType": "int"
@@ -1601,7 +1789,7 @@
       "demoInvocation": "CEF3命令行_是否有参数(1)"
     },
     {
-      "index": 63,
+      "index": 66,
       "name": "CEF3命令行_添加参数",
       "aliases": [
         "CefCommandLine::AppendArgument"
@@ -1617,11 +1805,13 @@
         "parameters": [
           {
             "name": "命令行句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3命令行_创建/复制/取全局 返回的受管命令行句柄。"
           },
           {
             "name": "参数",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要添加的非开关参数文本。"
           }
         ],
         "returnType": "int",
@@ -1630,7 +1820,7 @@
       "demoInvocation": "CEF3命令行_添加参数(1, \"演示参数2\")"
     },
     {
-      "index": 64,
+      "index": 67,
       "name": "CEF3命令行_重置",
       "aliases": [
         "CefCommandLine::Reset"
@@ -1646,7 +1836,8 @@
         "parameters": [
           {
             "name": "命令行句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3命令行_创建/复制/取全局 返回的受管命令行句柄。"
           }
         ],
         "returnType": "int"
@@ -1654,7 +1845,7 @@
       "demoInvocation": "CEF3命令行_重置(1)"
     },
     {
-      "index": 65,
+      "index": 68,
       "name": "CEF3命令行_取参数向量",
       "aliases": [
         "CefCommandLine::GetArgv"
@@ -1670,7 +1861,8 @@
         "parameters": [
           {
             "name": "命令行句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3命令行_创建/复制/取全局 返回的受管命令行句柄。"
           }
         ],
         "returnType": "CEF3文本数组"
@@ -1678,7 +1870,7 @@
       "demoInvocation": "CEF3命令行_取参数向量(1)"
     },
     {
-      "index": 66,
+      "index": 69,
       "name": "CEF3命令行_取参数列表",
       "aliases": [
         "CefCommandLine::GetArguments"
@@ -1694,7 +1886,8 @@
         "parameters": [
           {
             "name": "命令行句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3命令行_创建/复制/取全局 返回的受管命令行句柄。"
           }
         ],
         "returnType": "CEF3文本数组"
@@ -1702,7 +1895,7 @@
       "demoInvocation": "CEF3命令行_取参数列表(1)"
     },
     {
-      "index": 67,
+      "index": 70,
       "name": "CEF3命令行_取开关列表",
       "aliases": [
         "CefCommandLine::GetSwitches"
@@ -1718,7 +1911,8 @@
         "parameters": [
           {
             "name": "命令行句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3命令行_创建/复制/取全局 返回的受管命令行句柄。"
           }
         ],
         "returnType": "CEF3命令行开关数组"
@@ -1726,7 +1920,7 @@
       "demoInvocation": "CEF3命令行_取开关列表(1)"
     },
     {
-      "index": 68,
+      "index": 71,
       "name": "CEF3命令行_前置包装器",
       "aliases": [
         "CefCommandLine::PrependWrapper"
@@ -1742,11 +1936,13 @@
         "parameters": [
           {
             "name": "命令行句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3命令行_创建/复制/取全局 返回的受管命令行句柄。"
           },
           {
             "name": "包装器",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "前置包装命令文本，如 \"gdb --args\"。"
           }
         ],
         "returnType": "int",
@@ -1755,7 +1951,7 @@
       "demoInvocation": "CEF3命令行_前置包装器(1, \"演示参数2\")"
     },
     {
-      "index": 69,
+      "index": 72,
       "name": "CEF3命令行_取全局",
       "aliases": [
         "CefCommandLine::GetGlobalCommandLine"
@@ -1774,7 +1970,7 @@
       "demoInvocation": "CEF3命令行_取全局()"
     },
     {
-      "index": 70,
+      "index": 73,
       "name": "CEF3命令行_释放",
       "aliases": [
         "LB_CEF3_CommandLineRelease"
@@ -1790,7 +1986,8 @@
         "parameters": [
           {
             "name": "命令行句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3命令行_创建/复制/取全局 返回的受管命令行句柄。"
           }
         ],
         "returnType": "int"
@@ -1798,7 +1995,7 @@
       "demoInvocation": "CEF3命令行_释放(1)"
     },
     {
-      "index": 71,
+      "index": 74,
       "name": "CEF3平台_取Chrome实验开关",
       "aliases": [
         "CefPreferenceManager::GetChromeVariationsAsSwitches"
@@ -1817,7 +2014,7 @@
       "demoInvocation": "CEF3平台_取Chrome实验开关()"
     },
     {
-      "index": 72,
+      "index": 75,
       "name": "CEF3平台_取Chrome实验说明",
       "aliases": [
         "CefPreferenceManager::GetChromeVariationsAsStrings"

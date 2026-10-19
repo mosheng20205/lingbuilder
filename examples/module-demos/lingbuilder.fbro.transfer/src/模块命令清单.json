@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.823Z",
+  "generatedAt": "2026-10-19T03:18:58.745Z",
   "module": {
     "id": "lingbuilder.fbro.transfer",
     "name": "FBro传输模块",
     "version": "2.1.0",
     "description": "提供下载与原生打印高层能力。"
   },
-  "commandCount": 5,
+  "commandCount": 22,
   "commands": [
     {
       "index": 1,
@@ -27,17 +27,21 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要下载的资源完整 URL（含协议）；空文本按无效参数拒绝。"
           }
         ],
         "returnType": "int",
@@ -47,6 +51,406 @@
     },
     {
       "index": 2,
+      "name": "FBro下载_是否进行中",
+      "aliases": [
+        "LB_FBro_DownloadItemIsInProgress"
+      ],
+      "signature": "FBro下载_是否进行中(下载句柄)",
+      "description": "判断下载是否仍在进行。",
+      "insertText": "FBro下载_是否进行中($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro下载_是否进行中",
+        "runtimeName": "FBro下载_是否进行中",
+        "parameters": [
+          {
+            "name": "下载句柄",
+            "type": "longLong",
+            "description": "“下载前”“下载更新”事件字段 downloadItem 携带的下载项受管句柄；句柄失效或类型不符时命令返回负错误码。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro下载_是否进行中(1)"
+    },
+    {
+      "index": 3,
+      "name": "FBro下载_是否完成",
+      "aliases": [
+        "LB_FBro_DownloadItemIsComplete"
+      ],
+      "signature": "FBro下载_是否完成(下载句柄)",
+      "description": "判断下载是否已完成。",
+      "insertText": "FBro下载_是否完成($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro下载_是否完成",
+        "runtimeName": "FBro下载_是否完成",
+        "parameters": [
+          {
+            "name": "下载句柄",
+            "type": "longLong",
+            "description": "“下载前”“下载更新”事件字段 downloadItem 携带的下载项受管句柄；句柄失效或类型不符时命令返回负错误码。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro下载_是否完成(1)"
+    },
+    {
+      "index": 4,
+      "name": "FBro下载_是否已取消",
+      "aliases": [
+        "LB_FBro_DownloadItemIsCanceled"
+      ],
+      "signature": "FBro下载_是否已取消(下载句柄)",
+      "description": "判断下载是否已取消。",
+      "insertText": "FBro下载_是否已取消($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro下载_是否已取消",
+        "runtimeName": "FBro下载_是否已取消",
+        "parameters": [
+          {
+            "name": "下载句柄",
+            "type": "longLong",
+            "description": "“下载前”“下载更新”事件字段 downloadItem 携带的下载项受管句柄；句柄失效或类型不符时命令返回负错误码。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro下载_是否已取消(1)"
+    },
+    {
+      "index": 5,
+      "name": "FBro下载_取百分比",
+      "aliases": [
+        "LB_FBro_DownloadItemGetPercentComplete"
+      ],
+      "signature": "FBro下载_取百分比(下载句柄)",
+      "description": "取下载进度百分比（0~100）。",
+      "insertText": "FBro下载_取百分比($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro下载_取百分比",
+        "runtimeName": "FBro下载_取百分比",
+        "parameters": [
+          {
+            "name": "下载句柄",
+            "type": "longLong",
+            "description": "“下载前”“下载更新”事件字段 downloadItem 携带的下载项受管句柄；句柄失效或类型不符时命令返回负错误码。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro下载_取百分比(1)"
+    },
+    {
+      "index": 6,
+      "name": "FBro下载_取下载ID",
+      "aliases": [
+        "LB_FBro_DownloadItemGetDownloadId"
+      ],
+      "signature": "FBro下载_取下载ID(下载句柄)",
+      "description": "取下载项标识。",
+      "insertText": "FBro下载_取下载ID($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro下载_取下载ID",
+        "runtimeName": "FBro下载_取下载ID",
+        "parameters": [
+          {
+            "name": "下载句柄",
+            "type": "longLong",
+            "description": "“下载前”“下载更新”事件字段 downloadItem 携带的下载项受管句柄；句柄失效或类型不符时命令返回负错误码。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro下载_取下载ID(1)"
+    },
+    {
+      "index": 7,
+      "name": "FBro下载_取速度",
+      "aliases": [
+        "LB_FBro_DownloadItemGetCurrentSpeedBytes"
+      ],
+      "signature": "FBro下载_取速度(下载句柄)",
+      "description": "取当前下载速度（字节/秒）。",
+      "insertText": "FBro下载_取速度($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro下载_取速度",
+        "runtimeName": "FBro下载_取速度",
+        "parameters": [
+          {
+            "name": "下载句柄",
+            "type": "longLong",
+            "description": "“下载前”“下载更新”事件字段 downloadItem 携带的下载项受管句柄；句柄失效或类型不符时命令返回负错误码。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro下载_取速度(1)"
+    },
+    {
+      "index": 8,
+      "name": "FBro下载_取总长度",
+      "aliases": [
+        "LB_FBro_DownloadItemGetTotalBytes"
+      ],
+      "signature": "FBro下载_取总长度(下载句柄)",
+      "description": "取下载总字节数（未知为 0 或 -1）。",
+      "insertText": "FBro下载_取总长度($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro下载_取总长度",
+        "runtimeName": "FBro下载_取总长度",
+        "parameters": [
+          {
+            "name": "下载句柄",
+            "type": "longLong",
+            "description": "“下载前”“下载更新”事件字段 downloadItem 携带的下载项受管句柄；句柄失效或类型不符时命令返回负错误码。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro下载_取总长度(1)"
+    },
+    {
+      "index": 9,
+      "name": "FBro下载_取已接收字节",
+      "aliases": [
+        "LB_FBro_DownloadItemGetReceivedBytes"
+      ],
+      "signature": "FBro下载_取已接收字节(下载句柄)",
+      "description": "取已接收字节数。",
+      "insertText": "FBro下载_取已接收字节($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro下载_取已接收字节",
+        "runtimeName": "FBro下载_取已接收字节",
+        "parameters": [
+          {
+            "name": "下载句柄",
+            "type": "longLong",
+            "description": "“下载前”“下载更新”事件字段 downloadItem 携带的下载项受管句柄；句柄失效或类型不符时命令返回负错误码。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro下载_取已接收字节(1)"
+    },
+    {
+      "index": 10,
+      "name": "FBro下载_取开始时间",
+      "aliases": [
+        "LB_FBro_DownloadItemGetStartTime"
+      ],
+      "signature": "FBro下载_取开始时间(下载句柄)",
+      "description": "取开始时间（Unix 时间戳秒）。",
+      "insertText": "FBro下载_取开始时间($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro下载_取开始时间",
+        "runtimeName": "FBro下载_取开始时间",
+        "parameters": [
+          {
+            "name": "下载句柄",
+            "type": "longLong",
+            "description": "“下载前”“下载更新”事件字段 downloadItem 携带的下载项受管句柄；句柄失效或类型不符时命令返回负错误码。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro下载_取开始时间(1)"
+    },
+    {
+      "index": 11,
+      "name": "FBro下载_取结束时间",
+      "aliases": [
+        "LB_FBro_DownloadItemGetEndTime"
+      ],
+      "signature": "FBro下载_取结束时间(下载句柄)",
+      "description": "取结束时间（Unix 时间戳秒，未结束为 0）。",
+      "insertText": "FBro下载_取结束时间($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro下载_取结束时间",
+        "runtimeName": "FBro下载_取结束时间",
+        "parameters": [
+          {
+            "name": "下载句柄",
+            "type": "longLong",
+            "description": "“下载前”“下载更新”事件字段 downloadItem 携带的下载项受管句柄；句柄失效或类型不符时命令返回负错误码。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro下载_取结束时间(1)"
+    },
+    {
+      "index": 12,
+      "name": "FBro下载_取完整路径",
+      "aliases": [
+        "LB_FBro_DownloadItemGetFullPath"
+      ],
+      "signature": "FBro下载_取完整路径(下载句柄)",
+      "description": "取下载文件的完整保存路径。",
+      "insertText": "FBro下载_取完整路径($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro下载_取完整路径",
+        "runtimeName": "FBro下载_取完整路径",
+        "parameters": [
+          {
+            "name": "下载句柄",
+            "type": "longLong",
+            "description": "“下载前”“下载更新”事件字段 downloadItem 携带的下载项受管句柄；句柄失效或类型不符时命令返回负错误码。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro下载_取完整路径(1)"
+    },
+    {
+      "index": 13,
+      "name": "FBro下载_取地址",
+      "aliases": [
+        "LB_FBro_DownloadItemGetDownloadURL"
+      ],
+      "signature": "FBro下载_取地址(下载句柄)",
+      "description": "取下载地址。",
+      "insertText": "FBro下载_取地址($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro下载_取地址",
+        "runtimeName": "FBro下载_取地址",
+        "parameters": [
+          {
+            "name": "下载句柄",
+            "type": "longLong",
+            "description": "“下载前”“下载更新”事件字段 downloadItem 携带的下载项受管句柄；句柄失效或类型不符时命令返回负错误码。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro下载_取地址(1)"
+    },
+    {
+      "index": 14,
+      "name": "FBro下载_取原始地址",
+      "aliases": [
+        "LB_FBro_DownloadItemGetDownloadOriginalUrl"
+      ],
+      "signature": "FBro下载_取原始地址(下载句柄)",
+      "description": "取重定向前的原始下载地址。",
+      "insertText": "FBro下载_取原始地址($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro下载_取原始地址",
+        "runtimeName": "FBro下载_取原始地址",
+        "parameters": [
+          {
+            "name": "下载句柄",
+            "type": "longLong",
+            "description": "“下载前”“下载更新”事件字段 downloadItem 携带的下载项受管句柄；句柄失效或类型不符时命令返回负错误码。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro下载_取原始地址(1)"
+    },
+    {
+      "index": 15,
+      "name": "FBro下载_取建议文件名",
+      "aliases": [
+        "LB_FBro_DownloadItemGetSuggestedFileName"
+      ],
+      "signature": "FBro下载_取建议文件名(下载句柄)",
+      "description": "取服务器建议的文件名。",
+      "insertText": "FBro下载_取建议文件名($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro下载_取建议文件名",
+        "runtimeName": "FBro下载_取建议文件名",
+        "parameters": [
+          {
+            "name": "下载句柄",
+            "type": "longLong",
+            "description": "“下载前”“下载更新”事件字段 downloadItem 携带的下载项受管句柄；句柄失效或类型不符时命令返回负错误码。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro下载_取建议文件名(1)"
+    },
+    {
+      "index": 16,
+      "name": "FBro下载_取MIME类型",
+      "aliases": [
+        "LB_FBro_DownloadItemGetDownloadMimeType"
+      ],
+      "signature": "FBro下载_取MIME类型(下载句柄)",
+      "description": "取下载内容的 MIME 类型。",
+      "insertText": "FBro下载_取MIME类型($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro下载_取MIME类型",
+        "runtimeName": "FBro下载_取MIME类型",
+        "parameters": [
+          {
+            "name": "下载句柄",
+            "type": "longLong",
+            "description": "“下载前”“下载更新”事件字段 downloadItem 携带的下载项受管句柄；句柄失效或类型不符时命令返回负错误码。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro下载_取MIME类型(1)"
+    },
+    {
+      "index": 17,
+      "name": "FBro下载_取内容处置",
+      "aliases": [
+        "LB_FBro_DownloadItemGetContentDisposition"
+      ],
+      "signature": "FBro下载_取内容处置(下载句柄)",
+      "description": "取 Content-Disposition 响应头值。",
+      "insertText": "FBro下载_取内容处置($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro下载_取内容处置",
+        "runtimeName": "FBro下载_取内容处置",
+        "parameters": [
+          {
+            "name": "下载句柄",
+            "type": "longLong",
+            "description": "“下载前”“下载更新”事件字段 downloadItem 携带的下载项受管句柄；句柄失效或类型不符时命令返回负错误码。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro下载_取内容处置(1)"
+    },
+    {
+      "index": 18,
       "name": "FBro传输_打印",
       "aliases": [
         "LB_FBro_Print"
@@ -63,13 +467,16 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "int",
@@ -78,7 +485,7 @@
       "demoInvocation": "FBro传输_打印(演示FBroBrowser控件)"
     },
     {
-      "index": 3,
+      "index": 19,
       "name": "FBro传输_异步生成PDF",
       "aliases": [
         "LB_FBro_PrintToPdfAsync"
@@ -95,21 +502,26 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "输出路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "PDF 保存路径，必须以 .pdf 结尾（大小写不限）；父目录不存在会自动创建，路径非法时不产生任务（返回 0）。"
           },
           {
             "name": "设置JSON",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "PDF 生成设置 JSON 文本；传空文本使用默认设置，JSON 解析失败时不产生任务（返回 0）。"
           }
         ],
         "returnType": "longLong",
@@ -118,7 +530,53 @@
       "demoInvocation": "FBro传输_异步生成PDF(演示FBroBrowser控件, \"module-demo-temp.txt\", \"{}\")"
     },
     {
-      "index": 4,
+      "index": 20,
+      "name": "FBro传输_生成PDF",
+      "aliases": [
+        "LB_FBro_PrintToPdfSync"
+      ],
+      "signature": "FBro传输_生成PDF(控件名, 输出路径, 设置JSON)",
+      "description": "同步生成 PDF 并等待完成（60 秒超时）；设置 JSON 传空文本使用默认，返回 1 表示文件已生成。",
+      "insertText": "FBro传输_生成PDF($1, \"$2\", \"$3\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro传输_生成PDF",
+        "runtimeName": "FBro传输_生成PDF",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual",
+              "resource"
+            ],
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "输出路径",
+            "type": "wideString",
+            "description": "PDF 保存路径，必须以 .pdf 结尾（大小写不限）；父目录不存在会自动创建，路径非法时不产生任务（返回 0）。"
+          },
+          {
+            "name": "设置JSON",
+            "type": "wideString",
+            "description": "PDF 生成设置 JSON 文本；传空文本使用默认设置，JSON 解析失败时不产生任务（返回 0）。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro传输_生成PDF(演示FBroBrowser控件, \"module-demo-temp.txt\", \"{}\")"
+    },
+    {
+      "index": 21,
       "name": "FBro传输_异步打开文件对话框",
       "aliases": [
         "LB_FBro_RunFileDialogAsync"
@@ -135,29 +593,36 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "模式",
-            "type": "int"
+            "type": "int",
+            "description": "对话框模式：0 打开单文件、1 多选打开、2 选择文件夹、3 保存；越界不产生任务（返回 0）。"
           },
           {
             "name": "标题",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "对话框标题文本，可传空。"
           },
           {
             "name": "默认路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "对话框初始目录或默认文件名，可传空文本。"
           },
           {
             "name": "筛选器JSON",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "扩展名筛选器 JSON 字符串数组，如 [\"*.txt\",\"*.png\"]；必须是合法 JSON 数组，否则不产生任务（返回 0）。"
           }
         ],
         "returnType": "longLong",
@@ -166,7 +631,7 @@
       "demoInvocation": "FBro传输_异步打开文件对话框(演示FBroBrowser控件, 1, \"演示参数3\", \"module-demo-temp.txt\", \"{}\")"
     },
     {
-      "index": 5,
+      "index": 22,
       "name": "FBro传输_异步截图",
       "aliases": [
         "LB_FBro_CaptureScreenshotAsync"
@@ -183,49 +648,61 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "格式",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "截图格式 \"png\" 或 \"jpeg\"（大小写不限）；传空按 \"png\"，其他值不产生任务（返回 0）。"
           },
           {
             "name": "质量",
-            "type": "int"
+            "type": "int",
+            "description": "JPEG 压缩质量 0~100；png 格式忽略，越界不产生任务。"
           },
           {
             "name": "横坐标",
-            "type": "int"
+            "type": "int",
+            "description": "截图区域左上角 X（CSS 像素，≥0；负数不产生任务）。"
           },
           {
             "name": "纵坐标",
-            "type": "int"
+            "type": "int",
+            "description": "截图区域左上角 Y（CSS 像素，≥0；负数不产生任务）。"
           },
           {
             "name": "宽度",
-            "type": "int"
+            "type": "int",
+            "description": "截图区域宽度（CSS 像素，≥0）。"
           },
           {
             "name": "高度",
-            "type": "int"
+            "type": "int",
+            "description": "截图区域高度（CSS 像素，≥0）。"
           },
           {
             "name": "缩放",
-            "type": "int"
+            "type": "int",
+            "description": "页面缩放因子 0~8；越界不产生任务。"
           },
           {
             "name": "来自表面",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=等待从渲染表面截取，结果更稳定；假=直接从当前视图截取。"
           },
           {
             "name": "超出视口",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=允许截取视口之外的完整页面内容。"
           }
         ],
         "returnType": "longLong",

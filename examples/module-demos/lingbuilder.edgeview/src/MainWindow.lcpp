@@ -7,13 +7,13 @@
 类 MainWindow : 公开 窗口
     事件 _MainWindow_创建完毕()
         控件_设置选择项(命令分组选项卡, 0)
-        控件_设置文本(演示状态, "EdgeView 浏览器模块：271 条命令，默认处于安全预览模式。")
+        控件_设置文本(演示状态, "EdgeView 浏览器模块：324 条命令，默认处于安全预览模式。")
         调试输出("已加载模块演示：lingbuilder.edgeview")
         打开窗口("Edge 多控件安全示例", "居中")
     结束
 
     事件 _运行第01组_被单击()
-        控件_设置文本(演示状态, "命令 1–23：EdgeView任务_取当前任务ID 至 EdgeView脚本_发送JSON消息；源码内含完整签名、参数、返回值与调用。")
+        控件_设置文本(演示状态, "命令 1–27：EdgeView任务_取当前任务ID 至 EdgeView设置_取网页消息；源码内含完整签名、参数、返回值与调用。")
         如果 (控件_取勾选(允许实际执行))
             // 命令ID：EdgeView任务_取当前任务ID
             // [1] EdgeView任务_取当前任务ID()
@@ -130,13 +130,6 @@
             // 功能：向网页发送 JSON 消息。
             // 参数：控件名:controlRef，JSON:wideString；返回：int；可见性：default
             EdgeView脚本_发送JSON消息(演示EdgeBrowser控件, "{}")
-        如果结束
-        调试输出("已查看 命令 1–23：EdgeView任务_取当前任务ID 至 EdgeView脚本_发送JSON消息；勾选允许实际执行后会使用演示参数调用。")
-    结束
-
-    事件 _运行第02组_被单击()
-        控件_设置文本(演示状态, "命令 24–46：EdgeView设置_置脚本执行 至 EdgeView设置_置捏合缩放；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选(允许实际执行))
             // 命令ID：EdgeView设置_置脚本执行
             // [24] EdgeView设置_置脚本执行(控件名, 启用)
             // 功能：设置 脚本执行。
@@ -157,6 +150,13 @@
             // 功能：取得 网页消息 状态。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView设置_取网页消息(演示EdgeBrowser控件)
+        如果结束
+        调试输出("已查看 命令 1–27：EdgeView任务_取当前任务ID 至 EdgeView设置_取网页消息；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第02组_被单击()
+        控件_设置文本(演示状态, "命令 28–54：EdgeView设置_置脚本对话框 至 EdgeView设置_置静音；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：EdgeView设置_置脚本对话框
             // [28] EdgeView设置_置脚本对话框(控件名, 启用)
             // 功能：设置 脚本对话框。
@@ -252,13 +252,6 @@
             // 功能：设置 捏合缩放。
             // 参数：控件名:controlRef，启用:bool；返回：int；可见性：default
             EdgeView设置_置捏合缩放(演示EdgeBrowser控件, 真)
-        如果结束
-        调试输出("已查看 命令 24–46：EdgeView设置_置脚本执行 至 EdgeView设置_置捏合缩放；勾选允许实际执行后会使用演示参数调用。")
-    结束
-
-    事件 _运行第03组_被单击()
-        控件_设置文本(演示状态, "命令 47–69：EdgeView设置_取捏合缩放 至 EdgeView设置_取允许外部拖放；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选(允许实际执行))
             // 命令ID：EdgeView设置_取捏合缩放
             // [47] EdgeView设置_取捏合缩放(控件名)
             // 功能：取得 捏合缩放 状态。
@@ -299,6 +292,13 @@
             // 功能：设置网页静音状态。
             // 参数：控件名:controlRef，静音:bool；返回：int；可见性：default
             EdgeView设置_置静音(演示EdgeBrowser控件, 真)
+        如果结束
+        调试输出("已查看 命令 28–54：EdgeView设置_置脚本对话框 至 EdgeView设置_置静音；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第03组_被单击()
+        控件_设置文本(演示状态, "命令 55–81：EdgeView设置_取静音 至 EdgeView创建选项_取跨域限制关闭；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：EdgeView设置_取静音
             // [55] EdgeView设置_取静音(控件名)
             // 功能：取得网页静音状态。
@@ -374,13 +374,6 @@
             // 功能：取得是否允许外部拖放。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView设置_取允许外部拖放(演示EdgeBrowser控件)
-        如果结束
-        调试输出("已查看 命令 47–69：EdgeView设置_取捏合缩放 至 EdgeView设置_取允许外部拖放；勾选允许实际执行后会使用演示参数调用。")
-    结束
-
-    事件 _运行第04组_被单击()
-        控件_设置文本(演示状态, "命令 70–92：EdgeView设置_置PDF工具栏隐藏项 至 EdgeView创建选项_置默认背景色；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选(允许实际执行))
             // 命令ID：EdgeView设置_置PDF工具栏隐藏项
             // [70] EdgeView设置_置PDF工具栏隐藏项(控件名, 掩码)
             // 功能：设置 PDF 工具栏隐藏项掩码。
@@ -421,1034 +414,1306 @@
             // 功能：取得创建期独占 UDF 设置。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView创建选项_取独占用户目录(演示EdgeBrowser控件)
+            // 命令ID：EdgeView创建选项_置附加参数
+            // [78] EdgeView创建选项_置附加参数(控件名, 附加浏览器启动参数)
+            // 功能：设置创建期浏览器启动参数，多个用空格分隔；修改后需要重建控件。
+            // 参数：控件名:controlRef，附加浏览器启动参数:wideString；返回：int；可见性：default
+            EdgeView创建选项_置附加参数(演示EdgeBrowser控件, "演示参数2")
+            // 命令ID：EdgeView创建选项_取附加参数
+            // [79] EdgeView创建选项_取附加参数(控件名)
+            // 功能：取本控件创建期附加浏览器启动参数。
+            // 参数：控件名:controlRef；返回：wideString；可见性：default
+            EdgeView创建选项_取附加参数(演示EdgeBrowser控件)
+            // 命令ID：EdgeView创建选项_置跨域限制关闭
+            // [80] EdgeView创建选项_置跨域限制关闭(控件名, 是否关闭跨域)
+            // 功能：设置是否关闭跨域安全策略；真则追加 --disable-web-security 与关闭站点隔离，仅用于受控内网页抓取，修改后需要重建控件。
+            // 参数：控件名:controlRef，是否关闭跨域:bool；返回：int；可见性：default
+            EdgeView创建选项_置跨域限制关闭(演示EdgeBrowser控件, 真)
+            // 命令ID：EdgeView创建选项_取跨域限制关闭
+            // [81] EdgeView创建选项_取跨域限制关闭(控件名)
+            // 功能：取本控件是否关闭跨域安全策略。
+            // 参数：控件名:controlRef；返回：int；可见性：default
+            EdgeView创建选项_取跨域限制关闭(演示EdgeBrowser控件)
+        如果结束
+        调试输出("已查看 命令 55–81：EdgeView设置_取静音 至 EdgeView创建选项_取跨域限制关闭；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第04组_被单击()
+        控件_设置文本(演示状态, "命令 82–108：EdgeView创建选项_置自定义崩溃报告 至 EdgeView会话_置Cookie带属性；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：EdgeView创建选项_置自定义崩溃报告
-            // [78] EdgeView创建选项_置自定义崩溃报告(控件名, 启用)
+            // [82] EdgeView创建选项_置自定义崩溃报告(控件名, 启用)
             // 功能：设置创建期自定义崩溃报告开关。
             // 参数：控件名:controlRef，启用:bool；返回：int；可见性：default
             EdgeView创建选项_置自定义崩溃报告(演示EdgeBrowser控件, 真)
             // 命令ID：EdgeView创建选项_取自定义崩溃报告
-            // [79] EdgeView创建选项_取自定义崩溃报告(控件名)
+            // [83] EdgeView创建选项_取自定义崩溃报告(控件名)
             // 功能：取得创建期自定义崩溃报告开关。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView创建选项_取自定义崩溃报告(演示EdgeBrowser控件)
             // 命令ID：EdgeView创建选项_置跟踪保护
-            // [80] EdgeView创建选项_置跟踪保护(控件名, 启用)
+            // [84] EdgeView创建选项_置跟踪保护(控件名, 启用)
             // 功能：设置创建期跟踪保护开关。
             // 参数：控件名:controlRef，启用:bool；返回：int；可见性：default
             EdgeView创建选项_置跟踪保护(演示EdgeBrowser控件, 真)
             // 命令ID：EdgeView创建选项_取跟踪保护
-            // [81] EdgeView创建选项_取跟踪保护(控件名)
+            // [85] EdgeView创建选项_取跟踪保护(控件名)
             // 功能：取得创建期跟踪保护开关。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView创建选项_取跟踪保护(演示EdgeBrowser控件)
             // 命令ID：EdgeView创建选项_置浏览器扩展
-            // [82] EdgeView创建选项_置浏览器扩展(控件名, 启用)
+            // [86] EdgeView创建选项_置浏览器扩展(控件名, 启用)
             // 功能：设置创建期浏览器扩展开关。
             // 参数：控件名:controlRef，启用:bool；返回：int；可见性：default
             EdgeView创建选项_置浏览器扩展(演示EdgeBrowser控件, 真)
             // 命令ID：EdgeView创建选项_取浏览器扩展
-            // [83] EdgeView创建选项_取浏览器扩展(控件名)
+            // [87] EdgeView创建选项_取浏览器扩展(控件名)
             // 功能：取得创建期浏览器扩展开关。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView创建选项_取浏览器扩展(演示EdgeBrowser控件)
             // 命令ID：EdgeView创建选项_置通道搜索方式
-            // [84] EdgeView创建选项_置通道搜索方式(控件名, 方式)
+            // [88] EdgeView创建选项_置通道搜索方式(控件名, 方式)
             // 功能：设置创建期 Runtime 通道搜索方式。
             // 参数：控件名:controlRef，方式:int；返回：int；可见性：default
             EdgeView创建选项_置通道搜索方式(演示EdgeBrowser控件, 1)
             // 命令ID：EdgeView创建选项_取通道搜索方式
-            // [85] EdgeView创建选项_取通道搜索方式(控件名)
+            // [89] EdgeView创建选项_取通道搜索方式(控件名)
             // 功能：取得创建期 Runtime 通道搜索方式。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView创建选项_取通道搜索方式(演示EdgeBrowser控件)
             // 命令ID：EdgeView创建选项_置发布通道
-            // [86] EdgeView创建选项_置发布通道(控件名, 通道掩码)
+            // [90] EdgeView创建选项_置发布通道(控件名, 通道掩码)
             // 功能：设置创建期允许的 Runtime 发布通道掩码。
             // 参数：控件名:controlRef，通道掩码:int；返回：int；可见性：default
             EdgeView创建选项_置发布通道(演示EdgeBrowser控件, 1)
             // 命令ID：EdgeView创建选项_取发布通道
-            // [87] EdgeView创建选项_取发布通道(控件名)
+            // [91] EdgeView创建选项_取发布通道(控件名)
             // 功能：取得创建期 Runtime 发布通道掩码。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView创建选项_取发布通道(演示EdgeBrowser控件)
             // 命令ID：EdgeView创建选项_置滚动条样式
-            // [88] EdgeView创建选项_置滚动条样式(控件名, 样式)
+            // [92] EdgeView创建选项_置滚动条样式(控件名, 样式)
             // 功能：设置创建期滚动条样式。
             // 参数：控件名:controlRef，样式:int；返回：int；可见性：default
             EdgeView创建选项_置滚动条样式(演示EdgeBrowser控件, 1)
             // 命令ID：EdgeView创建选项_取滚动条样式
-            // [89] EdgeView创建选项_取滚动条样式(控件名)
+            // [93] EdgeView创建选项_取滚动条样式(控件名)
             // 功能：取得创建期滚动条样式。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView创建选项_取滚动条样式(演示EdgeBrowser控件)
             // 命令ID：EdgeView创建选项_置脚本区域
-            // [90] EdgeView创建选项_置脚本区域(控件名, 区域)
+            // [94] EdgeView创建选项_置脚本区域(控件名, 区域)
             // 功能：设置创建期脚本区域；修改后必须重建。
             // 参数：控件名:controlRef，区域:wideString；返回：int；可见性：default
             EdgeView创建选项_置脚本区域(演示EdgeBrowser控件, "演示参数2")
             // 命令ID：EdgeView创建选项_取脚本区域
-            // [91] EdgeView创建选项_取脚本区域(控件名)
+            // [95] EdgeView创建选项_取脚本区域(控件名)
             // 功能：取得创建期脚本区域。
             // 参数：控件名:controlRef；返回：wideString；可见性：default
             EdgeView创建选项_取脚本区域(演示EdgeBrowser控件)
             // 命令ID：EdgeView创建选项_置默认背景色
-            // [92] EdgeView创建选项_置默认背景色(控件名, ARGB)
+            // [96] EdgeView创建选项_置默认背景色(控件名, ARGB)
             // 功能：设置控制器创建期默认背景色。
             // 参数：控件名:controlRef，ARGB:int；返回：int；可见性：default
             EdgeView创建选项_置默认背景色(演示EdgeBrowser控件, 1)
-        如果结束
-        调试输出("已查看 命令 70–92：EdgeView设置_置PDF工具栏隐藏项 至 EdgeView创建选项_置默认背景色；勾选允许实际执行后会使用演示参数调用。")
-    结束
-
-    事件 _运行第05组_被单击()
-        控件_设置文本(演示状态, "命令 93–115：EdgeView创建选项_取默认背景色 至 EdgeView会话_置自动填充；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选(允许实际执行))
             // 命令ID：EdgeView创建选项_取默认背景色
-            // [93] EdgeView创建选项_取默认背景色(控件名)
+            // [97] EdgeView创建选项_取默认背景色(控件名)
             // 功能：取得控制器创建期默认背景色。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView创建选项_取默认背景色(演示EdgeBrowser控件)
             // 命令ID：EdgeView创建选项_置宿主输入处理
-            // [94] EdgeView创建选项_置宿主输入处理(控件名, 启用)
+            // [98] EdgeView创建选项_置宿主输入处理(控件名, 启用)
             // 功能：设置控制器创建期宿主输入处理开关。
             // 参数：控件名:controlRef，启用:bool；返回：int；可见性：default
             EdgeView创建选项_置宿主输入处理(演示EdgeBrowser控件, 真)
             // 命令ID：EdgeView创建选项_取宿主输入处理
-            // [95] EdgeView创建选项_取宿主输入处理(控件名)
+            // [99] EdgeView创建选项_取宿主输入处理(控件名)
             // 功能：取得控制器创建期宿主输入处理开关。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView创建选项_取宿主输入处理(演示EdgeBrowser控件)
             // 命令ID：EdgeView创建选项_添加自定义协议
-            // [96] EdgeView创建选项_添加自定义协议(控件名, 协议名, 含权限部分, 视为安全, 允许来源)
+            // [100] EdgeView创建选项_添加自定义协议(控件名, 协议名, 含权限部分, 视为安全, 允许来源)
             // 功能：添加安全的自定义协议注册；允许来源以分号分隔，修改后必须重建。
             // 参数：控件名:controlRef，协议名:wideString，含权限部分:bool，视为安全:bool，允许来源:wideString；返回：int；可见性：default
             EdgeView创建选项_添加自定义协议(演示EdgeBrowser控件, "演示参数2", 真, 真, "演示参数5")
             // 命令ID：EdgeView创建选项_清除自定义协议
-            // [97] EdgeView创建选项_清除自定义协议(控件名)
+            // [101] EdgeView创建选项_清除自定义协议(控件名)
             // 功能：清除当前控件的创建期自定义协议注册。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView创建选项_清除自定义协议(演示EdgeBrowser控件)
             // 命令ID：EdgeView创建选项_重建控件
-            // [98] EdgeView创建选项_重建控件(控件名)
+            // [102] EdgeView创建选项_重建控件(控件名)
             // 功能：应用创建期选项并显式重建指定 Edge 控件。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView创建选项_重建控件(演示EdgeBrowser控件)
             // 命令ID：EdgeView会话_取ProfileJSON
-            // [99] EdgeView会话_取ProfileJSON(控件名)
+            // [103] EdgeView会话_取ProfileJSON(控件名)
             // 功能：取得 Profile 名称、路径、隐私模式和下载目录 JSON。
             // 参数：控件名:controlRef；返回：wideString；可见性：default
             EdgeView会话_取ProfileJSON(演示EdgeBrowser控件)
             // 命令ID：EdgeView会话_取Cookie异步
-            // [100] EdgeView会话_取Cookie异步(控件名, 地址, 完成处理器)
+            // [104] EdgeView会话_取Cookie异步(控件名, 地址, 完成处理器)
             // 功能：异步取得 Cookie 列表 JSON。
             // 参数：控件名:controlRef，地址:wideString，完成处理器:handler；返回：longLong；可见性：default
             EdgeView会话_取Cookie异步(演示EdgeBrowser控件, "https://example.com", &模块演示回调)
             // 命令ID：EdgeView会话_置Cookie
-            // [101] EdgeView会话_置Cookie(控件名, 名称, 值, 域, 路径)
+            // [105] EdgeView会话_置Cookie(控件名, 名称, 值, 域, 路径)
             // 功能：创建或更新 Cookie。
             // 参数：控件名:controlRef，名称:wideString，值:wideString，域:wideString，路径:wideString；返回：int；可见性：default
             EdgeView会话_置Cookie(演示EdgeBrowser控件, "演示参数2", "演示参数3", "演示参数4", "module-demo-temp.txt")
             // 命令ID：EdgeView会话_删除Cookie
-            // [102] EdgeView会话_删除Cookie(控件名, 名称, 域, 路径)
+            // [106] EdgeView会话_删除Cookie(控件名, 名称, 域, 路径)
             // 功能：按名称、域和路径删除 Cookie。
             // 参数：控件名:controlRef，名称:wideString，域:wideString，路径:wideString；返回：int；可见性：default
             EdgeView会话_删除Cookie(演示EdgeBrowser控件, "演示参数2", "演示参数3", "module-demo-temp.txt")
             // 命令ID：EdgeView会话_删除全部Cookie
-            // [103] EdgeView会话_删除全部Cookie(控件名)
+            // [107] EdgeView会话_删除全部Cookie(控件名)
             // 功能：删除当前 Profile 全部 Cookie。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView会话_删除全部Cookie(演示EdgeBrowser控件)
+            // 命令ID：EdgeView会话_置Cookie带属性
+            // [108] EdgeView会话_置Cookie带属性(控件名, 名称, 值, 域, 路径, 过期时间, 安全, 仅HTTP, 同源策略)
+            // 功能：创建或更新 Cookie，并设置过期时间、Secure、HttpOnly 和 SameSite；成功返回 1。
+            // 参数：控件名:controlRef，名称:wideString，值:wideString，域:wideString，路径:wideString，过期时间:double，安全:bool，仅HTTP:bool，同源策略:int；返回：int；可见性：default
+            EdgeView会话_置Cookie带属性(演示EdgeBrowser控件, "演示参数2", "演示参数3", "演示参数4", "module-demo-temp.txt", 1.0, 真, 真, 1)
+        如果结束
+        调试输出("已查看 命令 82–108：EdgeView创建选项_置自定义崩溃报告 至 EdgeView会话_置Cookie带属性；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第05组_被单击()
+        控件_设置文本(演示状态, "命令 109–135：EdgeView会话_批量置Cookie 至 EdgeView查找_下一项；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
+            // 命令ID：EdgeView会话_批量置Cookie
+            // [109] EdgeView会话_批量置Cookie(控件名, Cookie列表JSON)
+            // 功能：按 Cookie JSON 数组批量注入 Cookie（支持 expires/secure/httpOnly/sameSite 元数据），返回成功注入条数；格式与 EdgeView会话_取Cookie异步 输出兼容。
+            // 参数：控件名:controlRef，Cookie列表JSON:wideString；返回：int；可见性：default
+            EdgeView会话_批量置Cookie(演示EdgeBrowser控件, "{}")
             // 命令ID：EdgeView会话_清理浏览数据异步
-            // [104] EdgeView会话_清理浏览数据异步(控件名, 数据类型掩码, 完成处理器)
+            // [110] EdgeView会话_清理浏览数据异步(控件名, 数据类型掩码, 完成处理器)
             // 功能：按 WebView2 数据类型掩码清理浏览数据。
             // 参数：控件名:controlRef，数据类型掩码:longLong，完成处理器:handler；返回：longLong；可见性：default
             EdgeView会话_清理浏览数据异步(演示EdgeBrowser控件, 1, &模块演示回调)
             // 命令ID：EdgeView会话_清理全部浏览数据异步
-            // [105] EdgeView会话_清理全部浏览数据异步(控件名, 完成处理器)
+            // [111] EdgeView会话_清理全部浏览数据异步(控件名, 完成处理器)
             // 功能：清理当前 Profile 全部浏览数据。
             // 参数：控件名:controlRef，完成处理器:handler；返回：longLong；可见性：default
             EdgeView会话_清理全部浏览数据异步(演示EdgeBrowser控件, &模块演示回调)
             // 命令ID：EdgeView会话_按时间清理浏览数据异步
-            // [106] EdgeView会话_按时间清理浏览数据异步(控件名, 数据类型掩码, 开始时间, 结束时间, 完成处理器)
+            // [112] EdgeView会话_按时间清理浏览数据异步(控件名, 数据类型掩码, 开始时间, 结束时间, 完成处理器)
             // 功能：按 Unix 秒时间范围清理浏览数据。
             // 参数：控件名:controlRef，数据类型掩码:longLong，开始时间:double，结束时间:double，完成处理器:handler；返回：longLong；可见性：default
             EdgeView会话_按时间清理浏览数据异步(演示EdgeBrowser控件, 1, 1.0, 1.0, &模块演示回调)
             // 命令ID：EdgeView会话_置下载目录
-            // [107] EdgeView会话_置下载目录(控件名, 目录)
+            // [113] EdgeView会话_置下载目录(控件名, 目录)
             // 功能：设置 Profile 默认下载目录。
             // 参数：控件名:controlRef，目录:wideString；返回：int；可见性：default
             EdgeView会话_置下载目录(演示EdgeBrowser控件, ".")
             // 命令ID：EdgeView会话_取下载目录
-            // [108] EdgeView会话_取下载目录(控件名)
+            // [114] EdgeView会话_取下载目录(控件名)
             // 功能：取得 Profile 默认下载目录。
             // 参数：控件名:controlRef；返回：wideString；可见性：default
             EdgeView会话_取下载目录(演示EdgeBrowser控件)
             // 命令ID：EdgeView会话_置配色方案
-            // [109] EdgeView会话_置配色方案(控件名, 方案)
+            // [115] EdgeView会话_置配色方案(控件名, 方案)
             // 功能：设置 Profile 首选配色方案。
             // 参数：控件名:controlRef，方案:int；返回：int；可见性：default
             EdgeView会话_置配色方案(演示EdgeBrowser控件, 1)
             // 命令ID：EdgeView会话_取配色方案
-            // [110] EdgeView会话_取配色方案(控件名)
+            // [116] EdgeView会话_取配色方案(控件名)
             // 功能：取得 Profile 首选配色方案。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView会话_取配色方案(演示EdgeBrowser控件)
             // 命令ID：EdgeView会话_置跟踪保护
-            // [111] EdgeView会话_置跟踪保护(控件名, 级别)
+            // [117] EdgeView会话_置跟踪保护(控件名, 级别)
             // 功能：设置 Profile 跟踪保护级别。
             // 参数：控件名:controlRef，级别:int；返回：int；可见性：default
             EdgeView会话_置跟踪保护(演示EdgeBrowser控件, 1)
             // 命令ID：EdgeView会话_取跟踪保护
-            // [112] EdgeView会话_取跟踪保护(控件名)
+            // [118] EdgeView会话_取跟踪保护(控件名)
             // 功能：取得 Profile 跟踪保护级别。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView会话_取跟踪保护(演示EdgeBrowser控件)
             // 命令ID：EdgeView会话_置密码保存
-            // [113] EdgeView会话_置密码保存(控件名, 启用)
+            // [119] EdgeView会话_置密码保存(控件名, 启用)
             // 功能：设置 Profile 密码自动保存。
             // 参数：控件名:controlRef，启用:bool；返回：int；可见性：default
             EdgeView会话_置密码保存(演示EdgeBrowser控件, 真)
             // 命令ID：EdgeView会话_取密码保存
-            // [114] EdgeView会话_取密码保存(控件名)
+            // [120] EdgeView会话_取密码保存(控件名)
             // 功能：取得 Profile 密码自动保存状态。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView会话_取密码保存(演示EdgeBrowser控件)
             // 命令ID：EdgeView会话_置自动填充
-            // [115] EdgeView会话_置自动填充(控件名, 启用)
+            // [121] EdgeView会话_置自动填充(控件名, 启用)
             // 功能：设置 Profile 通用自动填充。
             // 参数：控件名:controlRef，启用:bool；返回：int；可见性：default
             EdgeView会话_置自动填充(演示EdgeBrowser控件, 真)
-        如果结束
-        调试输出("已查看 命令 93–115：EdgeView创建选项_取默认背景色 至 EdgeView会话_置自动填充；勾选允许实际执行后会使用演示参数调用。")
-    结束
-
-    事件 _运行第06组_被单击()
-        控件_设置文本(演示状态, "命令 116–138：EdgeView会话_取自动填充 至 EdgeView打印_取份数；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选(允许实际执行))
             // 命令ID：EdgeView会话_取自动填充
-            // [116] EdgeView会话_取自动填充(控件名)
+            // [122] EdgeView会话_取自动填充(控件名)
             // 功能：取得 Profile 通用自动填充状态。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView会话_取自动填充(演示EdgeBrowser控件)
             // 命令ID：EdgeView会话_删除Profile
-            // [117] EdgeView会话_删除Profile(控件名)
-            // 功能：删除当前 Profile；删除完成事件通过事件目录通知。
+            // [123] EdgeView会话_删除Profile(控件名)
+            // 功能：删除当前 Profile；删除完成通过事件清单中的对应完成事件通知。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView会话_删除Profile(演示EdgeBrowser控件)
             // 命令ID：EdgeView下载_取状态JSON
-            // [118] EdgeView下载_取状态JSON(控件名, 下载ID)
-            // 功能：取得受管下载状态、地址、MIME、进度、可恢复性和中断原因 JSON。
+            // [124] EdgeView下载_取状态JSON(控件名, 下载ID)
+            // 功能：取得受管下载状态、地址、MIME、进度、可恢复性、中断原因、本次请求的 pendingResultFilePath 与 put_ResultFilePath 的 resultFilePathError JSON。在「下载开始」处理器内读到的 path 是决策前的默认落点快照，要确认改路径是否生效必须在事件结束后再读。
             // 参数：控件名:controlRef，下载ID:longLong；返回：wideString；可见性：default
             EdgeView下载_取状态JSON(演示EdgeBrowser控件, 1)
             // 命令ID：EdgeView下载_暂停
-            // [119] EdgeView下载_暂停(控件名, 下载ID)
+            // [125] EdgeView下载_暂停(控件名, 下载ID)
             // 功能：暂停受管下载。
             // 参数：控件名:controlRef，下载ID:longLong；返回：int；可见性：default
             EdgeView下载_暂停(演示EdgeBrowser控件, 1)
             // 命令ID：EdgeView下载_恢复
-            // [120] EdgeView下载_恢复(控件名, 下载ID)
+            // [126] EdgeView下载_恢复(控件名, 下载ID)
             // 功能：恢复受管下载。
             // 参数：控件名:controlRef，下载ID:longLong；返回：int；可见性：default
             EdgeView下载_恢复(演示EdgeBrowser控件, 1)
             // 命令ID：EdgeView下载_取消
-            // [121] EdgeView下载_取消(控件名, 下载ID)
+            // [127] EdgeView下载_取消(控件名, 下载ID)
             // 功能：取消受管下载。
             // 参数：控件名:controlRef，下载ID:longLong；返回：int；可见性：default
             EdgeView下载_取消(演示EdgeBrowser控件, 1)
             // 命令ID：EdgeView下载_显示默认窗口
-            // [122] EdgeView下载_显示默认窗口(控件名)
+            // [128] EdgeView下载_显示默认窗口(控件名)
             // 功能：打开默认下载窗口。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView下载_显示默认窗口(演示EdgeBrowser控件)
             // 命令ID：EdgeView下载_关闭默认窗口
-            // [123] EdgeView下载_关闭默认窗口(控件名)
+            // [129] EdgeView下载_关闭默认窗口(控件名)
             // 功能：关闭默认下载窗口。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView下载_关闭默认窗口(演示EdgeBrowser控件)
             // 命令ID：EdgeView下载_置窗口角对齐
-            // [124] EdgeView下载_置窗口角对齐(控件名, 对齐)
+            // [130] EdgeView下载_置窗口角对齐(控件名, 对齐)
             // 功能：设置默认下载窗口角对齐。
             // 参数：控件名:controlRef，对齐:int；返回：int；可见性：default
             EdgeView下载_置窗口角对齐(演示EdgeBrowser控件, 1)
             // 命令ID：EdgeView下载_取窗口角对齐
-            // [125] EdgeView下载_取窗口角对齐(控件名)
+            // [131] EdgeView下载_取窗口角对齐(控件名)
             // 功能：取得默认下载窗口角对齐。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView下载_取窗口角对齐(演示EdgeBrowser控件)
             // 命令ID：EdgeView下载_置窗口边距
-            // [126] EdgeView下载_置窗口边距(控件名, 横向, 纵向)
+            // [132] EdgeView下载_置窗口边距(控件名, 横向, 纵向)
             // 功能：设置默认下载窗口边距。
             // 参数：控件名:controlRef，横向:int，纵向:int；返回：int；可见性：default
             EdgeView下载_置窗口边距(演示EdgeBrowser控件, 1, 1)
             // 命令ID：EdgeView下载_取窗口边距JSON
-            // [127] EdgeView下载_取窗口边距JSON(控件名)
+            // [133] EdgeView下载_取窗口边距JSON(控件名)
             // 功能：取得默认下载窗口边距 JSON。
             // 参数：控件名:controlRef；返回：wideString；可见性：default
             EdgeView下载_取窗口边距JSON(演示EdgeBrowser控件)
             // 命令ID：EdgeView查找_开始异步
-            // [128] EdgeView查找_开始异步(控件名, 文本, 选项JSON, 完成处理器)
+            // [134] EdgeView查找_开始异步(控件名, 文本, 选项JSON, 完成处理器)
             // 功能：开始页内查找，结果为匹配状态 JSON。
             // 参数：控件名:controlRef，文本:wideString，选项JSON:wideString，完成处理器:handler；返回：longLong；可见性：default
             EdgeView查找_开始异步(演示EdgeBrowser控件, "演示参数2", "{}", &模块演示回调)
             // 命令ID：EdgeView查找_下一项
-            // [129] EdgeView查找_下一项(控件名)
+            // [135] EdgeView查找_下一项(控件名)
             // 功能：移动到下一匹配项。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView查找_下一项(演示EdgeBrowser控件)
+        如果结束
+        调试输出("已查看 命令 109–135：EdgeView会话_批量置Cookie 至 EdgeView查找_下一项；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第06组_被单击()
+        控件_设置文本(演示状态, "命令 136–162：EdgeView查找_上一项 至 EdgeView打印_取下边距；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：EdgeView查找_上一项
-            // [130] EdgeView查找_上一项(控件名)
+            // [136] EdgeView查找_上一项(控件名)
             // 功能：移动到上一匹配项。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView查找_上一项(演示EdgeBrowser控件)
             // 命令ID：EdgeView查找_停止
-            // [131] EdgeView查找_停止(控件名)
+            // [137] EdgeView查找_停止(控件名)
             // 功能：停止页内查找并清除高亮。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView查找_停止(演示EdgeBrowser控件)
             // 命令ID：EdgeView查找_取状态JSON
-            // [132] EdgeView查找_取状态JSON(控件名)
+            // [138] EdgeView查找_取状态JSON(控件名)
             // 功能：取得匹配数量和当前索引 JSON。
             // 参数：控件名:controlRef；返回：wideString；可见性：default
             EdgeView查找_取状态JSON(演示EdgeBrowser控件)
             // 命令ID：EdgeView打印_置方向
-            // [133] EdgeView打印_置方向(控件名, 值)
+            // [139] EdgeView打印_置方向(控件名, 值)
             // 功能：设置打印方向。
             // 参数：控件名:controlRef，值:int；返回：int；可见性：default
             EdgeView打印_置方向(演示EdgeBrowser控件, 1)
             // 命令ID：EdgeView打印_取方向
-            // [134] EdgeView打印_取方向(控件名)
+            // [140] EdgeView打印_取方向(控件名)
             // 功能：取得打印方向。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView打印_取方向(演示EdgeBrowser控件)
             // 命令ID：EdgeView打印_置每面页数
-            // [135] EdgeView打印_置每面页数(控件名, 值)
+            // [141] EdgeView打印_置每面页数(控件名, 值)
             // 功能：设置打印每面页数。
             // 参数：控件名:controlRef，值:int；返回：int；可见性：default
             EdgeView打印_置每面页数(演示EdgeBrowser控件, 1)
             // 命令ID：EdgeView打印_取每面页数
-            // [136] EdgeView打印_取每面页数(控件名)
+            // [142] EdgeView打印_取每面页数(控件名)
             // 功能：取得打印每面页数。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView打印_取每面页数(演示EdgeBrowser控件)
             // 命令ID：EdgeView打印_置份数
-            // [137] EdgeView打印_置份数(控件名, 值)
+            // [143] EdgeView打印_置份数(控件名, 值)
             // 功能：设置打印份数。
             // 参数：控件名:controlRef，值:int；返回：int；可见性：default
             EdgeView打印_置份数(演示EdgeBrowser控件, 1)
             // 命令ID：EdgeView打印_取份数
-            // [138] EdgeView打印_取份数(控件名)
+            // [144] EdgeView打印_取份数(控件名)
             // 功能：取得打印份数。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView打印_取份数(演示EdgeBrowser控件)
-        如果结束
-        调试输出("已查看 命令 116–138：EdgeView会话_取自动填充 至 EdgeView打印_取份数；勾选允许实际执行后会使用演示参数调用。")
-    结束
-
-    事件 _运行第07组_被单击()
-        控件_设置文本(演示状态, "命令 139–161：EdgeView打印_置逐份打印 至 EdgeView打印_置打印背景；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选(允许实际执行))
             // 命令ID：EdgeView打印_置逐份打印
-            // [139] EdgeView打印_置逐份打印(控件名, 值)
+            // [145] EdgeView打印_置逐份打印(控件名, 值)
             // 功能：设置打印逐份打印。
             // 参数：控件名:controlRef，值:int；返回：int；可见性：default
             EdgeView打印_置逐份打印(演示EdgeBrowser控件, 1)
             // 命令ID：EdgeView打印_取逐份打印
-            // [140] EdgeView打印_取逐份打印(控件名)
+            // [146] EdgeView打印_取逐份打印(控件名)
             // 功能：取得打印逐份打印。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView打印_取逐份打印(演示EdgeBrowser控件)
             // 命令ID：EdgeView打印_置颜色模式
-            // [141] EdgeView打印_置颜色模式(控件名, 值)
+            // [147] EdgeView打印_置颜色模式(控件名, 值)
             // 功能：设置打印颜色模式。
             // 参数：控件名:controlRef，值:int；返回：int；可见性：default
             EdgeView打印_置颜色模式(演示EdgeBrowser控件, 1)
             // 命令ID：EdgeView打印_取颜色模式
-            // [142] EdgeView打印_取颜色模式(控件名)
+            // [148] EdgeView打印_取颜色模式(控件名)
             // 功能：取得打印颜色模式。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView打印_取颜色模式(演示EdgeBrowser控件)
             // 命令ID：EdgeView打印_置双面模式
-            // [143] EdgeView打印_置双面模式(控件名, 值)
+            // [149] EdgeView打印_置双面模式(控件名, 值)
             // 功能：设置打印双面模式。
             // 参数：控件名:controlRef，值:int；返回：int；可见性：default
             EdgeView打印_置双面模式(演示EdgeBrowser控件, 1)
             // 命令ID：EdgeView打印_取双面模式
-            // [144] EdgeView打印_取双面模式(控件名)
+            // [150] EdgeView打印_取双面模式(控件名)
             // 功能：取得打印双面模式。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView打印_取双面模式(演示EdgeBrowser控件)
             // 命令ID：EdgeView打印_置纸张类型
-            // [145] EdgeView打印_置纸张类型(控件名, 值)
+            // [151] EdgeView打印_置纸张类型(控件名, 值)
             // 功能：设置打印纸张类型。
             // 参数：控件名:controlRef，值:int；返回：int；可见性：default
             EdgeView打印_置纸张类型(演示EdgeBrowser控件, 1)
             // 命令ID：EdgeView打印_取纸张类型
-            // [146] EdgeView打印_取纸张类型(控件名)
+            // [152] EdgeView打印_取纸张类型(控件名)
             // 功能：取得打印纸张类型。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView打印_取纸张类型(演示EdgeBrowser控件)
             // 命令ID：EdgeView打印_置缩放倍数
-            // [147] EdgeView打印_置缩放倍数(控件名, 值)
+            // [153] EdgeView打印_置缩放倍数(控件名, 值)
             // 功能：设置打印缩放倍数。
             // 参数：控件名:controlRef，值:double；返回：int；可见性：default
             EdgeView打印_置缩放倍数(演示EdgeBrowser控件, 1.0)
             // 命令ID：EdgeView打印_取缩放倍数
-            // [148] EdgeView打印_取缩放倍数(控件名)
+            // [154] EdgeView打印_取缩放倍数(控件名)
             // 功能：取得打印缩放倍数。
             // 参数：控件名:controlRef；返回：double；可见性：default
             EdgeView打印_取缩放倍数(演示EdgeBrowser控件)
             // 命令ID：EdgeView打印_置纸张宽度
-            // [149] EdgeView打印_置纸张宽度(控件名, 值)
+            // [155] EdgeView打印_置纸张宽度(控件名, 值)
             // 功能：设置打印纸张宽度。
             // 参数：控件名:controlRef，值:double；返回：int；可见性：default
             EdgeView打印_置纸张宽度(演示EdgeBrowser控件, 1.0)
             // 命令ID：EdgeView打印_取纸张宽度
-            // [150] EdgeView打印_取纸张宽度(控件名)
+            // [156] EdgeView打印_取纸张宽度(控件名)
             // 功能：取得打印纸张宽度。
             // 参数：控件名:controlRef；返回：double；可见性：default
             EdgeView打印_取纸张宽度(演示EdgeBrowser控件)
             // 命令ID：EdgeView打印_置纸张高度
-            // [151] EdgeView打印_置纸张高度(控件名, 值)
+            // [157] EdgeView打印_置纸张高度(控件名, 值)
             // 功能：设置打印纸张高度。
             // 参数：控件名:controlRef，值:double；返回：int；可见性：default
             EdgeView打印_置纸张高度(演示EdgeBrowser控件, 1.0)
             // 命令ID：EdgeView打印_取纸张高度
-            // [152] EdgeView打印_取纸张高度(控件名)
+            // [158] EdgeView打印_取纸张高度(控件名)
             // 功能：取得打印纸张高度。
             // 参数：控件名:controlRef；返回：double；可见性：default
             EdgeView打印_取纸张高度(演示EdgeBrowser控件)
             // 命令ID：EdgeView打印_置上边距
-            // [153] EdgeView打印_置上边距(控件名, 值)
+            // [159] EdgeView打印_置上边距(控件名, 值)
             // 功能：设置打印上边距。
             // 参数：控件名:controlRef，值:double；返回：int；可见性：default
             EdgeView打印_置上边距(演示EdgeBrowser控件, 1.0)
             // 命令ID：EdgeView打印_取上边距
-            // [154] EdgeView打印_取上边距(控件名)
+            // [160] EdgeView打印_取上边距(控件名)
             // 功能：取得打印上边距。
             // 参数：控件名:controlRef；返回：double；可见性：default
             EdgeView打印_取上边距(演示EdgeBrowser控件)
             // 命令ID：EdgeView打印_置下边距
-            // [155] EdgeView打印_置下边距(控件名, 值)
+            // [161] EdgeView打印_置下边距(控件名, 值)
             // 功能：设置打印下边距。
             // 参数：控件名:controlRef，值:double；返回：int；可见性：default
             EdgeView打印_置下边距(演示EdgeBrowser控件, 1.0)
             // 命令ID：EdgeView打印_取下边距
-            // [156] EdgeView打印_取下边距(控件名)
+            // [162] EdgeView打印_取下边距(控件名)
             // 功能：取得打印下边距。
             // 参数：控件名:controlRef；返回：double；可见性：default
             EdgeView打印_取下边距(演示EdgeBrowser控件)
+        如果结束
+        调试输出("已查看 命令 136–162：EdgeView查找_上一项 至 EdgeView打印_取下边距；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第07组_被单击()
+        控件_设置文本(演示状态, "命令 163–189：EdgeView打印_置左边距 至 EdgeView开发者工具_打开；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：EdgeView打印_置左边距
-            // [157] EdgeView打印_置左边距(控件名, 值)
+            // [163] EdgeView打印_置左边距(控件名, 值)
             // 功能：设置打印左边距。
             // 参数：控件名:controlRef，值:double；返回：int；可见性：default
             EdgeView打印_置左边距(演示EdgeBrowser控件, 1.0)
             // 命令ID：EdgeView打印_取左边距
-            // [158] EdgeView打印_取左边距(控件名)
+            // [164] EdgeView打印_取左边距(控件名)
             // 功能：取得打印左边距。
             // 参数：控件名:controlRef；返回：double；可见性：default
             EdgeView打印_取左边距(演示EdgeBrowser控件)
             // 命令ID：EdgeView打印_置右边距
-            // [159] EdgeView打印_置右边距(控件名, 值)
+            // [165] EdgeView打印_置右边距(控件名, 值)
             // 功能：设置打印右边距。
             // 参数：控件名:controlRef，值:double；返回：int；可见性：default
             EdgeView打印_置右边距(演示EdgeBrowser控件, 1.0)
             // 命令ID：EdgeView打印_取右边距
-            // [160] EdgeView打印_取右边距(控件名)
+            // [166] EdgeView打印_取右边距(控件名)
             // 功能：取得打印右边距。
             // 参数：控件名:controlRef；返回：double；可见性：default
             EdgeView打印_取右边距(演示EdgeBrowser控件)
             // 命令ID：EdgeView打印_置打印背景
-            // [161] EdgeView打印_置打印背景(控件名, 启用)
+            // [167] EdgeView打印_置打印背景(控件名, 启用)
             // 功能：设置是否打印背景。
             // 参数：控件名:controlRef，启用:bool；返回：int；可见性：default
             EdgeView打印_置打印背景(演示EdgeBrowser控件, 真)
-        如果结束
-        调试输出("已查看 命令 139–161：EdgeView打印_置逐份打印 至 EdgeView打印_置打印背景；勾选允许实际执行后会使用演示参数调用。")
-    结束
-
-    事件 _运行第08组_被单击()
-        控件_设置文本(演示状态, "命令 162–184：EdgeView打印_取打印背景 至 EdgeView开发者工具_打开任务管理器；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选(允许实际执行))
             // 命令ID：EdgeView打印_取打印背景
-            // [162] EdgeView打印_取打印背景(控件名)
+            // [168] EdgeView打印_取打印背景(控件名)
             // 功能：取得是否打印背景。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView打印_取打印背景(演示EdgeBrowser控件)
             // 命令ID：EdgeView打印_置仅打印选区
-            // [163] EdgeView打印_置仅打印选区(控件名, 启用)
+            // [169] EdgeView打印_置仅打印选区(控件名, 启用)
             // 功能：设置是否仅打印选区。
             // 参数：控件名:controlRef，启用:bool；返回：int；可见性：default
             EdgeView打印_置仅打印选区(演示EdgeBrowser控件, 真)
             // 命令ID：EdgeView打印_取仅打印选区
-            // [164] EdgeView打印_取仅打印选区(控件名)
+            // [170] EdgeView打印_取仅打印选区(控件名)
             // 功能：取得是否仅打印选区。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView打印_取仅打印选区(演示EdgeBrowser控件)
             // 命令ID：EdgeView打印_置打印页眉页脚
-            // [165] EdgeView打印_置打印页眉页脚(控件名, 启用)
+            // [171] EdgeView打印_置打印页眉页脚(控件名, 启用)
             // 功能：设置是否打印页眉页脚。
             // 参数：控件名:controlRef，启用:bool；返回：int；可见性：default
             EdgeView打印_置打印页眉页脚(演示EdgeBrowser控件, 真)
             // 命令ID：EdgeView打印_取打印页眉页脚
-            // [166] EdgeView打印_取打印页眉页脚(控件名)
+            // [172] EdgeView打印_取打印页眉页脚(控件名)
             // 功能：取得是否打印页眉页脚。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView打印_取打印页眉页脚(演示EdgeBrowser控件)
             // 命令ID：EdgeView打印_置页眉标题
-            // [167] EdgeView打印_置页眉标题(控件名, 文本)
+            // [173] EdgeView打印_置页眉标题(控件名, 文本)
             // 功能：设置打印页眉标题。
             // 参数：控件名:controlRef，文本:wideString；返回：int；可见性：default
             EdgeView打印_置页眉标题(演示EdgeBrowser控件, "演示参数2")
             // 命令ID：EdgeView打印_取页眉标题
-            // [168] EdgeView打印_取页眉标题(控件名)
+            // [174] EdgeView打印_取页眉标题(控件名)
             // 功能：取得打印页眉标题。
             // 参数：控件名:controlRef；返回：wideString；可见性：default
             EdgeView打印_取页眉标题(演示EdgeBrowser控件)
             // 命令ID：EdgeView打印_置页脚地址
-            // [169] EdgeView打印_置页脚地址(控件名, 文本)
+            // [175] EdgeView打印_置页脚地址(控件名, 文本)
             // 功能：设置打印页脚地址。
             // 参数：控件名:controlRef，文本:wideString；返回：int；可见性：default
             EdgeView打印_置页脚地址(演示EdgeBrowser控件, "演示参数2")
             // 命令ID：EdgeView打印_取页脚地址
-            // [170] EdgeView打印_取页脚地址(控件名)
+            // [176] EdgeView打印_取页脚地址(控件名)
             // 功能：取得打印页脚地址。
             // 参数：控件名:controlRef；返回：wideString；可见性：default
             EdgeView打印_取页脚地址(演示EdgeBrowser控件)
             // 命令ID：EdgeView打印_置页面范围
-            // [171] EdgeView打印_置页面范围(控件名, 文本)
+            // [177] EdgeView打印_置页面范围(控件名, 文本)
             // 功能：设置打印页面范围。
             // 参数：控件名:controlRef，文本:wideString；返回：int；可见性：default
             EdgeView打印_置页面范围(演示EdgeBrowser控件, "演示参数2")
             // 命令ID：EdgeView打印_取页面范围
-            // [172] EdgeView打印_取页面范围(控件名)
+            // [178] EdgeView打印_取页面范围(控件名)
             // 功能：取得打印页面范围。
             // 参数：控件名:controlRef；返回：wideString；可见性：default
             EdgeView打印_取页面范围(演示EdgeBrowser控件)
             // 命令ID：EdgeView打印_置打印机名称
-            // [173] EdgeView打印_置打印机名称(控件名, 文本)
+            // [179] EdgeView打印_置打印机名称(控件名, 文本)
             // 功能：设置打印打印机名称。
             // 参数：控件名:controlRef，文本:wideString；返回：int；可见性：default
             EdgeView打印_置打印机名称(演示EdgeBrowser控件, "演示参数2")
             // 命令ID：EdgeView打印_取打印机名称
-            // [174] EdgeView打印_取打印机名称(控件名)
+            // [180] EdgeView打印_取打印机名称(控件名)
             // 功能：取得打印打印机名称。
             // 参数：控件名:controlRef；返回：wideString；可见性：default
             EdgeView打印_取打印机名称(演示EdgeBrowser控件)
             // 命令ID：EdgeView打印_显示界面
-            // [175] EdgeView打印_显示界面(控件名, 界面类型)
+            // [181] EdgeView打印_显示界面(控件名, 界面类型)
             // 功能：显示系统或浏览器打印界面。
             // 参数：控件名:controlRef，界面类型:int；返回：int；可见性：default
             EdgeView打印_显示界面(演示EdgeBrowser控件, 1)
             // 命令ID：EdgeView打印_PDF异步
-            // [176] EdgeView打印_PDF异步(控件名, 文件路径, 设置JSON, 完成处理器)
-            // 功能：把当前页面打印到明确 PDF 文件路径。
+            // [182] EdgeView打印_PDF异步(控件名, 文件路径, 设置JSON, 完成处理器)
+            // 功能：把当前页面导出为 PDF 文件；相对路径先按当前工作目录解析成绝对路径再交给 WebView2，设置JSON 用 WebView2 驼峰键名覆盖本控件的打印设置，空对象表示不改设置。
             // 参数：控件名:controlRef，文件路径:wideString，设置JSON:wideString，完成处理器:handler；返回：longLong；可见性：default
             EdgeView打印_PDF异步(演示EdgeBrowser控件, "module-demo-temp.txt", "{}", &模块演示回调)
             // 命令ID：EdgeView打印_PDF流到文件异步
-            // [177] EdgeView打印_PDF流到文件异步(控件名, 文件路径, 完成处理器)
+            // [183] EdgeView打印_PDF流到文件异步(控件名, 文件路径, 完成处理器)
             // 功能：使用 PrintToPdfStream 后把二进制结果写入明确文件路径。
             // 参数：控件名:controlRef，文件路径:wideString，完成处理器:handler；返回：longLong；可见性：default
             EdgeView打印_PDF流到文件异步(演示EdgeBrowser控件, "module-demo-temp.txt", &模块演示回调)
             // 命令ID：EdgeView打印_打印异步
-            // [178] EdgeView打印_打印异步(控件名, 设置JSON, 完成处理器)
-            // 功能：使用类型化 JSON 打印设置异步打印。
+            // [184] EdgeView打印_打印异步(控件名, 设置JSON, 完成处理器)
+            // 功能：异步打印当前页面；设置JSON 用 WebView2 驼峰键名覆盖本控件的打印设置，空对象表示不改设置。
             // 参数：控件名:controlRef，设置JSON:wideString，完成处理器:handler；返回：longLong；可见性：default
             EdgeView打印_打印异步(演示EdgeBrowser控件, "{}", &模块演示回调)
             // 命令ID：EdgeView媒体_截图异步
-            // [179] EdgeView媒体_截图异步(控件名, 文件路径, 格式, 完成处理器)
-            // 功能：把截图写入明确文件路径，不暴露 IStream。
+            // [185] EdgeView媒体_截图异步(控件名, 文件路径, 格式, 完成处理器)
+            // 功能：把页面截图写入文件路径（相对路径按当前工作目录解析），任务结果返回落盘后的绝对路径，不暴露 IStream。
             // 参数：控件名:controlRef，文件路径:wideString，格式:int，完成处理器:handler；返回：longLong；可见性：default
             EdgeView媒体_截图异步(演示EdgeBrowser控件, "module-demo-temp.txt", 1, &模块演示回调)
             // 命令ID：EdgeView媒体_取Favicon异步
-            // [180] EdgeView媒体_取Favicon异步(控件名, 文件路径, 完成处理器)
-            // 功能：把 Favicon 写入明确文件路径。
+            // [186] EdgeView媒体_取Favicon异步(控件名, 文件路径, 完成处理器)
+            // 功能：把页面 Favicon 写入文件路径（相对路径按当前工作目录解析），任务结果返回落盘后的绝对路径。
             // 参数：控件名:controlRef，文件路径:wideString，完成处理器:handler；返回：longLong；可见性：default
             EdgeView媒体_取Favicon异步(演示EdgeBrowser控件, "module-demo-temp.txt", &模块演示回调)
             // 命令ID：EdgeView媒体_取全屏状态
-            // [181] EdgeView媒体_取全屏状态(控件名)
+            // [187] EdgeView媒体_取全屏状态(控件名)
             // 功能：取得页面是否含全屏元素。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView媒体_取全屏状态(演示EdgeBrowser控件)
             // 命令ID：EdgeView媒体_取音频状态
-            // [182] EdgeView媒体_取音频状态(控件名)
+            // [188] EdgeView媒体_取音频状态(控件名)
             // 功能：取得页面是否正在播放音频。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView媒体_取音频状态(演示EdgeBrowser控件)
             // 命令ID：EdgeView开发者工具_打开
-            // [183] EdgeView开发者工具_打开(控件名)
+            // [189] EdgeView开发者工具_打开(控件名)
             // 功能：打开开发者工具窗口。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView开发者工具_打开(演示EdgeBrowser控件)
+        如果结束
+        调试输出("已查看 命令 163–189：EdgeView打印_置左边距 至 EdgeView开发者工具_打开；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第08组_被单击()
+        控件_设置文本(演示状态, "命令 190–216：EdgeView开发者工具_打开任务管理器 至 EdgeView填表_聚焦元素；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：EdgeView开发者工具_打开任务管理器
-            // [184] EdgeView开发者工具_打开任务管理器(控件名)
+            // [190] EdgeView开发者工具_打开任务管理器(控件名)
             // 功能：打开 WebView2 任务管理器。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView开发者工具_打开任务管理器(演示EdgeBrowser控件)
-        如果结束
-        调试输出("已查看 命令 162–184：EdgeView打印_取打印背景 至 EdgeView开发者工具_打开任务管理器；勾选允许实际执行后会使用演示参数调用。")
-    结束
-
-    事件 _运行第09组_被单击()
-        控件_设置文本(演示状态, "命令 185–207：EdgeView开发者工具_调用异步 至 EdgeView框架_发送共享缓冲；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选(允许实际执行))
             // 命令ID：EdgeView开发者工具_调用异步
-            // [185] EdgeView开发者工具_调用异步(控件名, 方法, 参数JSON, 完成处理器)
+            // [191] EdgeView开发者工具_调用异步(控件名, 方法, 参数JSON, 完成处理器)
             // 功能：调用 DevTools Protocol 方法，结果为 JSON。
             // 参数：控件名:controlRef，方法:wideString，参数JSON:wideString，完成处理器:handler；返回：longLong；可见性：default
             EdgeView开发者工具_调用异步(演示EdgeBrowser控件, "演示参数2", "{}", &模块演示回调)
             // 命令ID：EdgeView开发者工具_调用会话异步
-            // [186] EdgeView开发者工具_调用会话异步(控件名, 会话ID, 方法, 参数JSON, 完成处理器)
+            // [192] EdgeView开发者工具_调用会话异步(控件名, 会话ID, 方法, 参数JSON, 完成处理器)
             // 功能：在指定 DevTools 会话调用协议方法。
             // 参数：控件名:controlRef，会话ID:wideString，方法:wideString，参数JSON:wideString，完成处理器:handler；返回：longLong；可见性：default
             EdgeView开发者工具_调用会话异步(演示EdgeBrowser控件, "演示参数2", "演示参数3", "{}", &模块演示回调)
             // 命令ID：EdgeView资源_添加过滤器
-            // [187] EdgeView资源_添加过滤器(控件名, URI模式, 上下文, 来源类型)
+            // [193] EdgeView资源_添加过滤器(控件名, URI模式, 上下文, 来源类型)
             // 功能：添加带请求来源类型的资源过滤器。
             // 参数：控件名:controlRef，URI模式:wideString，上下文:int，来源类型:int；返回：int；可见性：default
             EdgeView资源_添加过滤器(演示EdgeBrowser控件, "演示参数2", 1, 1)
             // 命令ID：EdgeView资源_移除过滤器
-            // [188] EdgeView资源_移除过滤器(控件名, URI模式, 上下文)
+            // [194] EdgeView资源_移除过滤器(控件名, URI模式, 上下文)
             // 功能：移除资源过滤器。
             // 参数：控件名:controlRef，URI模式:wideString，上下文:int；返回：int；可见性：default
             EdgeView资源_移除过滤器(演示EdgeBrowser控件, "演示参数2", 1)
             // 命令ID：EdgeView资源_移除来源过滤器
-            // [189] EdgeView资源_移除来源过滤器(控件名, URI模式, 上下文, 来源类型)
+            // [195] EdgeView资源_移除来源过滤器(控件名, URI模式, 上下文, 来源类型)
             // 功能：移除带请求来源类型的资源过滤器。
             // 参数：控件名:controlRef，URI模式:wideString，上下文:int，来源类型:int；返回：int；可见性：default
             EdgeView资源_移除来源过滤器(演示EdgeBrowser控件, "演示参数2", 1, 1)
             // 命令ID：EdgeView资源_设置事件响应文本
-            // [190] EdgeView资源_设置事件响应文本(控件名, 状态码, 原因, 响应头, 正文)
+            // [196] EdgeView资源_设置事件响应文本(控件名, 状态码, 原因, 响应头, 正文)
             // 功能：在 Web资源请求同步事件中以限长 UTF-8 正文替换响应。
             // 参数：控件名:controlRef，状态码:int，原因:wideString，响应头:wideString，正文:wideString；返回：int；可见性：advanced
             EdgeView资源_设置事件响应文本(演示EdgeBrowser控件, 1, "演示参数3", "演示参数4", "演示参数5")
             // 命令ID：EdgeView资源_读响应正文异步
-            // [191] EdgeView资源_读响应正文异步(控件名, 响应句柄, 最大字节数, 完成处理器)
-            // 功能：把响应流限长读取为十六进制 JSON，不暴露 IStream。
+            // [197] EdgeView资源_读响应正文异步(控件名, 响应句柄, 最大字节数, 完成处理器)
+            // 功能：把响应流限长读取为十六进制 JSON，不暴露 IStream；必须在 Web资源响应收到 处理器执行期间交给本命令，处理器返回后 WebView2 会释放该响应的正文，稍后读取一律失败。
             // 参数：控件名:controlRef，响应句柄:handle，最大字节数:longLong，完成处理器:handler；返回：longLong；可见性：advanced
             EdgeView资源_读响应正文异步(演示EdgeBrowser控件, 0, 1, &模块演示回调)
             // 命令ID：EdgeView事件_取字段
-            // [192] EdgeView事件_取字段(控件名, 字段名)
+            // [198] EdgeView事件_取字段(控件名, 字段名)
             // 功能：取得当前同步事件字段；右键菜单目标等复合参数会预先转换为字段。
             // 参数：控件名:controlRef，字段名:wideString；返回：wideString；可见性：advanced
             EdgeView事件_取字段(演示EdgeBrowser控件, "演示参数2")
             // 命令ID：EdgeView事件_设置动作
-            // [193] EdgeView事件_设置动作(控件名, 动作)
+            // [199] EdgeView事件_设置动作(控件名, 动作)
             // 功能：设置当前同步事件动作；未设置时保持 WebView2 默认行为。
             // 参数：控件名:controlRef，动作:int；返回：int；可见性：advanced
             EdgeView事件_设置动作(演示EdgeBrowser控件, 1)
             // 命令ID：EdgeView事件_设置返回文本
-            // [194] EdgeView事件_设置返回文本(控件名, 文本)
+            // [200] EdgeView事件_设置返回文本(控件名, 文本)
             // 功能：设置脚本对话框、认证或下载等事件返回文本。
             // 参数：控件名:controlRef，文本:wideString；返回：int；可见性：advanced
             EdgeView事件_设置返回文本(演示EdgeBrowser控件, "演示参数2")
             // 命令ID：EdgeView事件_设置认证
-            // [195] EdgeView事件_设置认证(控件名, 用户名, 密码)
+            // [201] EdgeView事件_设置认证(控件名, 用户名, 密码)
             // 功能：设置当前基本身份验证请求凭据。
             // 参数：控件名:controlRef，用户名:wideString，密码:wideString；返回：int；可见性：advanced
             EdgeView事件_设置认证(演示EdgeBrowser控件, "演示参数2", "演示参数3")
             // 命令ID：EdgeView事件_设置下载路径
-            // [196] EdgeView事件_设置下载路径(控件名, 文件路径)
-            // 功能：设置当前下载开始事件的目标文件路径。
+            // [202] EdgeView事件_设置下载路径(控件名, 文件路径)
+            // 功能：设置当前下载开始事件的目标文件路径。只能在「下载开始」同步处理器执行期间调用；相对路径会按当前工作目录补全成绝对路径并自动创建父目录；实际落点必须在事件结束后用下载状态查询接口再读一次确认。
             // 参数：控件名:controlRef，文件路径:wideString；返回：int；可见性：advanced
             EdgeView事件_设置下载路径(演示EdgeBrowser控件, "module-demo-temp.txt")
             // 命令ID：EdgeView事件_取菜单项JSON
-            // [197] EdgeView事件_取菜单项JSON(控件名, 菜单项句柄)
+            // [203] EdgeView事件_取菜单项JSON(控件名, 菜单项句柄)
             // 功能：取得受管 WebView2 菜单项名称、标签、命令 ID、类型、状态、快捷键、图标存在性和子项句柄。
             // 参数：控件名:controlRef，菜单项句柄:handle；返回：wideString；可见性：advanced
             EdgeView事件_取菜单项JSON(演示EdgeBrowser控件, 0)
             // 命令ID：EdgeView事件_置菜单项勾选
-            // [198] EdgeView事件_置菜单项勾选(控件名, 菜单项句柄, 勾选)
+            // [204] EdgeView事件_置菜单项勾选(控件名, 菜单项句柄, 勾选)
             // 功能：设置受管菜单项勾选状态。
             // 参数：控件名:controlRef，菜单项句柄:handle，勾选:bool；返回：int；可见性：advanced
             EdgeView事件_置菜单项勾选(演示EdgeBrowser控件, 0, 真)
             // 命令ID：EdgeView事件_置菜单项启用
-            // [199] EdgeView事件_置菜单项启用(控件名, 菜单项句柄, 启用)
+            // [205] EdgeView事件_置菜单项启用(控件名, 菜单项句柄, 启用)
             // 功能：设置受管菜单项启用状态。
             // 参数：控件名:controlRef，菜单项句柄:handle，启用:bool；返回：int；可见性：advanced
             EdgeView事件_置菜单项启用(演示EdgeBrowser控件, 0, 真)
             // 命令ID：EdgeView对象_取状态JSON
-            // [200] EdgeView对象_取状态JSON(对象句柄)
+            // [206] EdgeView对象_取状态JSON(对象句柄)
             // 功能：取得受管对象类型、所属控件、generation、线程和生命周期状态。
             // 参数：对象句柄:handle；返回：wideString；可见性：advanced
             EdgeView对象_取状态JSON(0)
             // 命令ID：EdgeView对象_释放
-            // [201] EdgeView对象_释放(对象句柄)
+            // [207] EdgeView对象_释放(对象句柄)
             // 功能：显式释放受管对象；句柄不会被复用。
             // 参数：对象句柄:handle；返回：int；可见性：advanced
             EdgeView对象_释放(0)
             // 命令ID：EdgeView框架_枚举JSON
-            // [202] EdgeView框架_枚举JSON(控件名)
+            // [208] EdgeView框架_枚举JSON(控件名)
             // 功能：枚举当前控件已发现的 Frame 受管句柄和层级信息。
             // 参数：控件名:controlRef；返回：wideString；可见性：default
             EdgeView框架_枚举JSON(演示EdgeBrowser控件)
             // 命令ID：EdgeView框架_取信息JSON
-            // [203] EdgeView框架_取信息JSON(控件名, 框架句柄)
+            // [209] EdgeView框架_取信息JSON(控件名, 框架句柄)
             // 功能：取得 Frame ID、名称、来源和生命周期信息。
             // 参数：控件名:controlRef，框架句柄:handle；返回：wideString；可见性：default
             EdgeView框架_取信息JSON(演示EdgeBrowser控件, 0)
             // 命令ID：EdgeView框架_执行脚本异步
-            // [204] EdgeView框架_执行脚本异步(控件名, 框架句柄, 脚本, 完成处理器)
+            // [210] EdgeView框架_执行脚本异步(控件名, 框架句柄, 脚本, 完成处理器)
             // 功能：在受管 Frame 中异步执行 JavaScript。
             // 参数：控件名:controlRef，框架句柄:handle，脚本:wideString，完成处理器:handler；返回：longLong；可见性：default
             EdgeView框架_执行脚本异步(演示EdgeBrowser控件, 0, "演示参数3", &模块演示回调)
             // 命令ID：EdgeView框架_发送字符串消息
-            // [205] EdgeView框架_发送字符串消息(控件名, 框架句柄, 消息)
+            // [211] EdgeView框架_发送字符串消息(控件名, 框架句柄, 消息)
             // 功能：向受管 Frame 发送字符串消息。
             // 参数：控件名:controlRef，框架句柄:handle，消息:wideString；返回：int；可见性：default
             EdgeView框架_发送字符串消息(演示EdgeBrowser控件, 0, "演示参数3")
             // 命令ID：EdgeView框架_发送JSON消息
-            // [206] EdgeView框架_发送JSON消息(控件名, 框架句柄, JSON)
+            // [212] EdgeView框架_发送JSON消息(控件名, 框架句柄, JSON)
             // 功能：向受管 Frame 发送 JSON 消息。
             // 参数：控件名:controlRef，框架句柄:handle，JSON:wideString；返回：int；可见性：default
             EdgeView框架_发送JSON消息(演示EdgeBrowser控件, 0, "{}")
             // 命令ID：EdgeView框架_发送共享缓冲
-            // [207] EdgeView框架_发送共享缓冲(控件名, 框架句柄, 缓冲句柄, 访问模式, 附加JSON)
+            // [213] EdgeView框架_发送共享缓冲(控件名, 框架句柄, 缓冲句柄, 访问模式, 附加JSON)
             // 功能：把受管共享缓冲发送到指定 Frame。
             // 参数：控件名:controlRef，框架句柄:handle，缓冲句柄:handle，访问模式:int，附加JSON:wideString；返回：int；可见性：default
             EdgeView框架_发送共享缓冲(演示EdgeBrowser控件, 0, 0, 1, "{}")
+            // 命令ID：EdgeView填表_点击元素
+            // [214] EdgeView填表_点击元素(控件名, 框架句柄, 选择器, 序号)
+            // 功能：按 CSS 选择器点击第序号个匹配元素（序号从 0 起，传 -1 取首个）；优先调用元素自身 click，失败时回退为合成 click 事件。 本命令返回受管任务 ID，结果在完成处理器里用 EdgeView任务_取结果读取。
+            // 参数：控件名:controlRef，框架句柄:handle，选择器:wideString，序号:int；返回：longLong；可见性：default
+            EdgeView填表_点击元素(演示EdgeBrowser控件, 0, "演示参数3", 1)
+            // 命令ID：EdgeView填表_滚动到元素
+            // [215] EdgeView填表_滚动到元素(控件名, 框架句柄, 选择器, 序号, 滚到顶部)
+            // 功能：把匹配元素滚动到可视区域；滚到顶部为真时贴顶对齐，否则尽量贴底。 本命令返回受管任务 ID，结果在完成处理器里用 EdgeView任务_取结果读取。
+            // 参数：控件名:controlRef，框架句柄:handle，选择器:wideString，序号:int，滚到顶部:bool；返回：longLong；可见性：default
+            EdgeView填表_滚动到元素(演示EdgeBrowser控件, 0, "演示参数3", 1, 真)
+            // 命令ID：EdgeView填表_聚焦元素
+            // [216] EdgeView填表_聚焦元素(控件名, 框架句柄, 选择器, 序号, 是否聚焦)
+            // 功能：设置或移除匹配元素的输入焦点。 本命令返回受管任务 ID，结果在完成处理器里用 EdgeView任务_取结果读取。
+            // 参数：控件名:controlRef，框架句柄:handle，选择器:wideString，序号:int，是否聚焦:bool；返回：longLong；可见性：default
+            EdgeView填表_聚焦元素(演示EdgeBrowser控件, 0, "演示参数3", 1, 真)
         如果结束
-        调试输出("已查看 命令 185–207：EdgeView开发者工具_调用异步 至 EdgeView框架_发送共享缓冲；勾选允许实际执行后会使用演示参数调用。")
+        调试输出("已查看 命令 190–216：EdgeView开发者工具_打开任务管理器 至 EdgeView填表_聚焦元素；勾选允许实际执行后会使用演示参数调用。")
     结束
 
-    事件 _运行第10组_被单击()
-        控件_设置文本(演示状态, "命令 208–230：EdgeView工作线程_枚举异步 至 EdgeView安全_选择客户端证书；源码内含完整签名、参数、返回值与调用。")
+    事件 _运行第09组_被单击()
+        控件_设置文本(演示状态, "命令 217–243：EdgeView填表_赋值 至 EdgeView扩展_枚举异步；源码内含完整签名、参数、返回值与调用。")
         如果 (控件_取勾选(允许实际执行))
+            // 命令ID：EdgeView填表_赋值
+            // [217] EdgeView填表_赋值(控件名, 框架句柄, 选择器, 序号, 值)
+            // 功能：给匹配元素写入表单值：具备 value 的控件写 value，其它元素写 textContent，并补发 input 与 change 事件。 本命令返回受管任务 ID，结果在完成处理器里用 EdgeView任务_取结果读取。
+            // 参数：控件名:controlRef，框架句柄:handle，选择器:wideString，序号:int，值:wideString；返回：longLong；可见性：default
+            EdgeView填表_赋值(演示EdgeBrowser控件, 0, "演示参数3", 1, "演示参数5")
+            // 命令ID：EdgeView填表_置选择框
+            // [218] EdgeView填表_置选择框(控件名, 框架句柄, 选择器, 序号, 是否选中)
+            // 功能：设置复选框/单选框的勾选状态，并补发 change 事件。 本命令返回受管任务 ID，结果在完成处理器里用 EdgeView任务_取结果读取。
+            // 参数：控件名:controlRef，框架句柄:handle，选择器:wideString，序号:int，是否选中:bool；返回：longLong；可见性：default
+            EdgeView填表_置选择框(演示EdgeBrowser控件, 0, "演示参数3", 1, 真)
+            // 命令ID：EdgeView填表_置选择项
+            // [219] EdgeView填表_置选择项(控件名, 框架句柄, 选择器, 序号, 选项序号)
+            // 功能：把匹配下拉框选中第选项序号个 option（从 0 起），并补发 change 事件。 本命令返回受管任务 ID，结果在完成处理器里用 EdgeView任务_取结果读取。
+            // 参数：控件名:controlRef，框架句柄:handle，选择器:wideString，序号:int，选项序号:int；返回：longLong；可见性：default
+            EdgeView填表_置选择项(演示EdgeBrowser控件, 0, "演示参数3", 1, 1)
+            // 命令ID：EdgeView填表_置内文本
+            // [220] EdgeView填表_置内文本(控件名, 框架句柄, 选择器, 序号, 文本)
+            // 功能：设置匹配元素的 innerText；不支持时降级为 textContent。 本命令返回受管任务 ID，结果在完成处理器里用 EdgeView任务_取结果读取。
+            // 参数：控件名:controlRef，框架句柄:handle，选择器:wideString，序号:int，文本:wideString；返回：longLong；可见性：default
+            EdgeView填表_置内文本(演示EdgeBrowser控件, 0, "演示参数3", 1, "演示参数5")
+            // 命令ID：EdgeView填表_置外文本
+            // [221] EdgeView填表_置外文本(控件名, 框架句柄, 选择器, 序号, 文本)
+            // 功能：设置匹配元素的 outerText；不支持时降级为 textContent。 本命令返回受管任务 ID，结果在完成处理器里用 EdgeView任务_取结果读取。
+            // 参数：控件名:controlRef，框架句柄:handle，选择器:wideString，序号:int，文本:wideString；返回：longLong；可见性：default
+            EdgeView填表_置外文本(演示EdgeBrowser控件, 0, "演示参数3", 1, "演示参数5")
+            // 命令ID：EdgeView填表_置内代码
+            // [222] EdgeView填表_置内代码(控件名, 框架句柄, 选择器, 序号, 代码文本)
+            // 功能：设置匹配元素的 innerHTML，可写入标签结构。 本命令返回受管任务 ID，结果在完成处理器里用 EdgeView任务_取结果读取。
+            // 参数：控件名:controlRef，框架句柄:handle，选择器:wideString，序号:int，代码文本:wideString；返回：longLong；可见性：default
+            EdgeView填表_置内代码(演示EdgeBrowser控件, 0, "演示参数3", 1, "演示参数5")
+            // 命令ID：EdgeView填表_置外代码
+            // [223] EdgeView填表_置外代码(控件名, 框架句柄, 选择器, 序号, 代码文本)
+            // 功能：设置匹配元素的 outerHTML（含元素自身标签），会替换原元素。 本命令返回受管任务 ID，结果在完成处理器里用 EdgeView任务_取结果读取。
+            // 参数：控件名:controlRef，框架句柄:handle，选择器:wideString，序号:int，代码文本:wideString；返回：longLong；可见性：default
+            EdgeView填表_置外代码(演示EdgeBrowser控件, 0, "演示参数3", 1, "演示参数5")
+            // 命令ID：EdgeView填表_置属性
+            // [224] EdgeView填表_置属性(控件名, 框架句柄, 选择器, 序号, 属性名, 值)
+            // 功能：给匹配元素设置指定 HTML 属性。 本命令返回受管任务 ID，结果在完成处理器里用 EdgeView任务_取结果读取。
+            // 参数：控件名:controlRef，框架句柄:handle，选择器:wideString，序号:int，属性名:wideString，值:wideString；返回：longLong；可见性：default
+            EdgeView填表_置属性(演示EdgeBrowser控件, 0, "演示参数3", 1, "演示参数5", "演示参数6")
+            // 命令ID：EdgeView填表_触发事件
+            // [225] EdgeView填表_触发事件(控件名, 框架句柄, 选择器, 序号, 事件名, 按键代码)
+            // 功能：在匹配元素上合成 DOM 事件；事件名如 click、dblclick、keydown、change、input，键盘类事件的按键代码回车传 13。 本命令返回受管任务 ID，结果在完成处理器里用 EdgeView任务_取结果读取。
+            // 参数：控件名:controlRef，框架句柄:handle，选择器:wideString，序号:int，事件名:wideString，按键代码:int；返回：longLong；可见性：default
+            EdgeView填表_触发事件(演示EdgeBrowser控件, 0, "演示参数3", 1, "演示事件", 1)
+            // 命令ID：EdgeView填表_取值
+            // [226] EdgeView填表_取值(控件名, 框架句柄, 选择器, 序号, 完成处理器)
+            // 功能：异步读取匹配元素的值（无 value 时读 textContent），结果经完成处理器回传 JSON。 本命令返回受管任务 ID，结果在完成处理器里用 EdgeView任务_取结果读取。
+            // 参数：控件名:controlRef，框架句柄:handle，选择器:wideString，序号:int，完成处理器:handler；返回：longLong；可见性：default
+            EdgeView填表_取值(演示EdgeBrowser控件, 0, "演示参数3", 1, &模块演示回调)
+            // 命令ID：EdgeView填表_取选择框
+            // [227] EdgeView填表_取选择框(控件名, 框架句柄, 选择器, 序号, 完成处理器)
+            // 功能：异步读取匹配复选框/单选框的勾选状态，结果经完成处理器回传 JSON。 本命令返回受管任务 ID，结果在完成处理器里用 EdgeView任务_取结果读取。
+            // 参数：控件名:controlRef，框架句柄:handle，选择器:wideString，序号:int，完成处理器:handler；返回：longLong；可见性：default
+            EdgeView填表_取选择框(演示EdgeBrowser控件, 0, "演示参数3", 1, &模块演示回调)
+            // 命令ID：EdgeView填表_取选择项
+            // [228] EdgeView填表_取选择项(控件名, 框架句柄, 选择器, 序号, 完成处理器)
+            // 功能：异步读取匹配下拉框当前选中项序号，结果经完成处理器回传 JSON。 本命令返回受管任务 ID，结果在完成处理器里用 EdgeView任务_取结果读取。
+            // 参数：控件名:controlRef，框架句柄:handle，选择器:wideString，序号:int，完成处理器:handler；返回：longLong；可见性：default
+            EdgeView填表_取选择项(演示EdgeBrowser控件, 0, "演示参数3", 1, &模块演示回调)
+            // 命令ID：EdgeView填表_取内文本
+            // [229] EdgeView填表_取内文本(控件名, 框架句柄, 选择器, 序号, 完成处理器)
+            // 功能：异步读取匹配元素的 innerText，结果经完成处理器回传 JSON。 本命令返回受管任务 ID，结果在完成处理器里用 EdgeView任务_取结果读取。
+            // 参数：控件名:controlRef，框架句柄:handle，选择器:wideString，序号:int，完成处理器:handler；返回：longLong；可见性：default
+            EdgeView填表_取内文本(演示EdgeBrowser控件, 0, "演示参数3", 1, &模块演示回调)
+            // 命令ID：EdgeView填表_取外文本
+            // [230] EdgeView填表_取外文本(控件名, 框架句柄, 选择器, 序号, 完成处理器)
+            // 功能：异步读取匹配元素的 outerText，结果经完成处理器回传 JSON。 本命令返回受管任务 ID，结果在完成处理器里用 EdgeView任务_取结果读取。
+            // 参数：控件名:controlRef，框架句柄:handle，选择器:wideString，序号:int，完成处理器:handler；返回：longLong；可见性：default
+            EdgeView填表_取外文本(演示EdgeBrowser控件, 0, "演示参数3", 1, &模块演示回调)
+            // 命令ID：EdgeView填表_取内代码
+            // [231] EdgeView填表_取内代码(控件名, 框架句柄, 选择器, 序号, 完成处理器)
+            // 功能：异步读取匹配元素的 innerHTML，结果经完成处理器回传 JSON。 本命令返回受管任务 ID，结果在完成处理器里用 EdgeView任务_取结果读取。
+            // 参数：控件名:controlRef，框架句柄:handle，选择器:wideString，序号:int，完成处理器:handler；返回：longLong；可见性：default
+            EdgeView填表_取内代码(演示EdgeBrowser控件, 0, "演示参数3", 1, &模块演示回调)
+            // 命令ID：EdgeView填表_取外代码
+            // [232] EdgeView填表_取外代码(控件名, 框架句柄, 选择器, 序号, 完成处理器)
+            // 功能：异步读取匹配元素的 outerHTML，结果经完成处理器回传 JSON。 本命令返回受管任务 ID，结果在完成处理器里用 EdgeView任务_取结果读取。
+            // 参数：控件名:controlRef，框架句柄:handle，选择器:wideString，序号:int，完成处理器:handler；返回：longLong；可见性：default
+            EdgeView填表_取外代码(演示EdgeBrowser控件, 0, "演示参数3", 1, &模块演示回调)
+            // 命令ID：EdgeView填表_取属性
+            // [233] EdgeView填表_取属性(控件名, 框架句柄, 选择器, 序号, 属性名, 完成处理器)
+            // 功能：异步读取匹配元素指定 HTML 属性的值，结果经完成处理器回传 JSON。 本命令返回受管任务 ID，结果在完成处理器里用 EdgeView任务_取结果读取。
+            // 参数：控件名:controlRef，框架句柄:handle，选择器:wideString，序号:int，属性名:wideString，完成处理器:handler；返回：longLong；可见性：default
+            EdgeView填表_取属性(演示EdgeBrowser控件, 0, "演示参数3", 1, "演示参数5", &模块演示回调)
+            // 命令ID：EdgeView填表_元素是否存在
+            // [234] EdgeView填表_元素是否存在(控件名, 框架句柄, 选择器, 序号, 完成处理器)
+            // 功能：异步判断选择器是否匹配到元素，结果经完成处理器回传 JSON。 本命令返回受管任务 ID，结果在完成处理器里用 EdgeView任务_取结果读取。
+            // 参数：控件名:controlRef，框架句柄:handle，选择器:wideString，序号:int，完成处理器:handler；返回：longLong；可见性：default
+            EdgeView填表_元素是否存在(演示EdgeBrowser控件, 0, "演示参数3", 1, &模块演示回调)
+            // 命令ID：EdgeView填表_取坐标
+            // [235] EdgeView填表_取坐标(控件名, 框架句柄, 选择器, 序号, 完成处理器)
+            // 功能：异步读取匹配元素的页面矩形（x/y/width/height），结果经完成处理器回传 JSON。 本命令返回受管任务 ID，结果在完成处理器里用 EdgeView任务_取结果读取。
+            // 参数：控件名:controlRef，框架句柄:handle，选择器:wideString，序号:int，完成处理器:handler；返回：longLong；可见性：default
+            EdgeView填表_取坐标(演示EdgeBrowser控件, 0, "演示参数3", 1, &模块演示回调)
             // 命令ID：EdgeView工作线程_枚举异步
-            // [208] EdgeView工作线程_枚举异步(控件名, 类型, 完成处理器)
+            // [236] EdgeView工作线程_枚举异步(控件名, 类型, 完成处理器)
             // 功能：枚举 Shared Worker 或 Service Worker；结果为受管句柄 JSON。
             // 参数：控件名:controlRef，类型:int，完成处理器:handler；返回：longLong；可见性：default
             EdgeView工作线程_枚举异步(演示EdgeBrowser控件, 1, &模块演示回调)
             // 命令ID：EdgeView工作线程_取信息JSON
-            // [209] EdgeView工作线程_取信息JSON(控件名, 工作线程句柄)
+            // [237] EdgeView工作线程_取信息JSON(控件名, 工作线程句柄)
             // 功能：取得 Dedicated、Shared 或 Service Worker 类型及 URI 信息。
             // 参数：控件名:controlRef，工作线程句柄:handle；返回：wideString；可见性：default
             EdgeView工作线程_取信息JSON(演示EdgeBrowser控件, 0)
             // 命令ID：EdgeView工作线程_发送字符串消息
-            // [210] EdgeView工作线程_发送字符串消息(控件名, 工作线程句柄, 消息)
+            // [238] EdgeView工作线程_发送字符串消息(控件名, 工作线程句柄, 消息)
             // 功能：向支持消息的 Dedicated 或 Service Worker 发送字符串消息。
             // 参数：控件名:controlRef，工作线程句柄:handle，消息:wideString；返回：int；可见性：default
             EdgeView工作线程_发送字符串消息(演示EdgeBrowser控件, 0, "演示参数3")
             // 命令ID：EdgeView工作线程_发送JSON消息
-            // [211] EdgeView工作线程_发送JSON消息(控件名, 工作线程句柄, JSON)
+            // [239] EdgeView工作线程_发送JSON消息(控件名, 工作线程句柄, JSON)
             // 功能：向支持消息的 Dedicated 或 Service Worker 发送 JSON 消息。
             // 参数：控件名:controlRef，工作线程句柄:handle，JSON:wideString；返回：int；可见性：default
             EdgeView工作线程_发送JSON消息(演示EdgeBrowser控件, 0, "{}")
             // 命令ID：EdgeView工作线程_置ServiceWorker脚本API
-            // [212] EdgeView工作线程_置ServiceWorker脚本API(控件名, 启用)
+            // [240] EdgeView工作线程_置ServiceWorker脚本API(控件名, 启用)
             // 功能：设置 Service Worker 是否允许 WebView 脚本 API。
             // 参数：控件名:controlRef，启用:bool；返回：int；可见性：default
             EdgeView工作线程_置ServiceWorker脚本API(演示EdgeBrowser控件, 真)
             // 命令ID：EdgeView工作线程_取ServiceWorker脚本API
-            // [213] EdgeView工作线程_取ServiceWorker脚本API(控件名)
+            // [241] EdgeView工作线程_取ServiceWorker脚本API(控件名)
             // 功能：取得 Service Worker 的 WebView 脚本 API 开关。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView工作线程_取ServiceWorker脚本API(演示EdgeBrowser控件)
             // 命令ID：EdgeView扩展_安装异步
-            // [214] EdgeView扩展_安装异步(控件名, 扩展目录, 完成处理器)
+            // [242] EdgeView扩展_安装异步(控件名, 扩展目录, 完成处理器)
             // 功能：从显式目录安装浏览器扩展，结果为受管扩展句柄。
             // 参数：控件名:controlRef，扩展目录:wideString，完成处理器:handler；返回：longLong；可见性：default
             EdgeView扩展_安装异步(演示EdgeBrowser控件, ".", &模块演示回调)
             // 命令ID：EdgeView扩展_枚举异步
-            // [215] EdgeView扩展_枚举异步(控件名, 完成处理器)
+            // [243] EdgeView扩展_枚举异步(控件名, 完成处理器)
             // 功能：枚举当前 Profile 的浏览器扩展。
             // 参数：控件名:controlRef，完成处理器:handler；返回：longLong；可见性：default
             EdgeView扩展_枚举异步(演示EdgeBrowser控件, &模块演示回调)
+        如果结束
+        调试输出("已查看 命令 217–243：EdgeView填表_赋值 至 EdgeView扩展_枚举异步；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第10组_被单击()
+        控件_设置文本(演示状态, "命令 244–270：EdgeView扩展_置启用异步 至 EdgeView_设置全局代理；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：EdgeView扩展_置启用异步
-            // [216] EdgeView扩展_置启用异步(控件名, 扩展句柄, 启用, 完成处理器)
+            // [244] EdgeView扩展_置启用异步(控件名, 扩展句柄, 启用, 完成处理器)
             // 功能：异步启用或禁用受管浏览器扩展。
             // 参数：控件名:controlRef，扩展句柄:handle，启用:bool，完成处理器:handler；返回：longLong；可见性：default
             EdgeView扩展_置启用异步(演示EdgeBrowser控件, 0, 真, &模块演示回调)
             // 命令ID：EdgeView扩展_删除异步
-            // [217] EdgeView扩展_删除异步(控件名, 扩展句柄, 完成处理器)
+            // [245] EdgeView扩展_删除异步(控件名, 扩展句柄, 完成处理器)
             // 功能：异步删除受管浏览器扩展。
             // 参数：控件名:controlRef，扩展句柄:handle，完成处理器:handler；返回：longLong；可见性：default
             EdgeView扩展_删除异步(演示EdgeBrowser控件, 0, &模块演示回调)
             // 命令ID：EdgeView权限_枚举异步
-            // [218] EdgeView权限_枚举异步(控件名, 完成处理器)
+            // [246] EdgeView权限_枚举异步(控件名, 完成处理器)
             // 功能：枚举当前 Profile 的非默认权限设置。
             // 参数：控件名:controlRef，完成处理器:handler；返回：longLong；可见性：default
             EdgeView权限_枚举异步(演示EdgeBrowser控件, &模块演示回调)
             // 命令ID：EdgeView权限_设置异步
-            // [219] EdgeView权限_设置异步(控件名, 权限类型, 来源, 状态, 完成处理器)
+            // [247] EdgeView权限_设置异步(控件名, 权限类型, 来源, 状态, 完成处理器)
             // 功能：异步设置指定来源的权限状态。
             // 参数：控件名:controlRef，权限类型:int，来源:wideString，状态:int，完成处理器:handler；返回：longLong；可见性：default
             EdgeView权限_设置异步(演示EdgeBrowser控件, 1, "演示参数3", 1, &模块演示回调)
             // 命令ID：EdgeView通知_取信息JSON
-            // [220] EdgeView通知_取信息JSON(控件名, 通知句柄)
+            // [248] EdgeView通知_取信息JSON(控件名, 通知句柄)
             // 功能：取得受管通知的标题、正文、语言和状态；来源由“通知收到”事件提供。
             // 参数：控件名:controlRef，通知句柄:handle；返回：wideString；可见性：default
             EdgeView通知_取信息JSON(演示EdgeBrowser控件, 0)
             // 命令ID：EdgeView通知_报告已显示
-            // [221] EdgeView通知_报告已显示(控件名, 通知句柄)
+            // [249] EdgeView通知_报告已显示(控件名, 通知句柄)
             // 功能：向 WebView2 报告自定义通知已显示。
             // 参数：控件名:controlRef，通知句柄:handle；返回：int；可见性：default
             EdgeView通知_报告已显示(演示EdgeBrowser控件, 0)
             // 命令ID：EdgeView通知_报告单击
-            // [222] EdgeView通知_报告单击(控件名, 通知句柄)
+            // [250] EdgeView通知_报告单击(控件名, 通知句柄)
             // 功能：向 WebView2 报告通知被单击。
             // 参数：控件名:controlRef，通知句柄:handle；返回：int；可见性：default
             EdgeView通知_报告单击(演示EdgeBrowser控件, 0)
             // 命令ID：EdgeView通知_报告关闭
-            // [223] EdgeView通知_报告关闭(控件名, 通知句柄)
+            // [251] EdgeView通知_报告关闭(控件名, 通知句柄)
             // 功能：向 WebView2 报告通知已关闭。
             // 参数：控件名:controlRef，通知句柄:handle；返回：int；可见性：default
             EdgeView通知_报告关闭(演示EdgeBrowser控件, 0)
             // 命令ID：EdgeView缓冲_创建
-            // [224] EdgeView缓冲_创建(控件名, 字节数)
+            // [252] EdgeView缓冲_创建(控件名, 字节数)
             // 功能：创建不超过 16 MiB 的受管共享缓冲。
             // 参数：控件名:controlRef，字节数:longLong；返回：handle；可见性：default
             EdgeView缓冲_创建(演示EdgeBrowser控件, 1)
             // 命令ID：EdgeView缓冲_取大小
-            // [225] EdgeView缓冲_取大小(控件名, 缓冲句柄)
+            // [253] EdgeView缓冲_取大小(控件名, 缓冲句柄)
             // 功能：取得受管共享缓冲大小。
             // 参数：控件名:controlRef，缓冲句柄:handle；返回：longLong；可见性：default
             EdgeView缓冲_取大小(演示EdgeBrowser控件, 0)
             // 命令ID：EdgeView缓冲_写十六进制
-            // [226] EdgeView缓冲_写十六进制(控件名, 缓冲句柄, 十六进制)
+            // [254] EdgeView缓冲_写十六进制(控件名, 缓冲句柄, 十六进制)
             // 功能：把限长十六进制数据写入受管共享缓冲。
             // 参数：控件名:controlRef，缓冲句柄:handle，十六进制:wideString；返回：int；可见性：default
             EdgeView缓冲_写十六进制(演示EdgeBrowser控件, 0, "演示参数3")
             // 命令ID：EdgeView缓冲_读十六进制
-            // [227] EdgeView缓冲_读十六进制(控件名, 缓冲句柄, 最大字节数)
+            // [255] EdgeView缓冲_读十六进制(控件名, 缓冲句柄, 最大字节数)
             // 功能：从受管共享缓冲读取限长十六进制。
             // 参数：控件名:controlRef，缓冲句柄:handle，最大字节数:longLong；返回：wideString；可见性：default
             EdgeView缓冲_读十六进制(演示EdgeBrowser控件, 0, 1)
             // 命令ID：EdgeView缓冲_发送到网页
-            // [228] EdgeView缓冲_发送到网页(控件名, 缓冲句柄, 访问模式, 附加JSON)
+            // [256] EdgeView缓冲_发送到网页(控件名, 缓冲句柄, 访问模式, 附加JSON)
             // 功能：把共享缓冲以只读或读写模式发送到网页。
             // 参数：控件名:controlRef，缓冲句柄:handle，访问模式:int，附加JSON:wideString；返回：int；可见性：default
             EdgeView缓冲_发送到网页(演示EdgeBrowser控件, 0, 1, "{}")
             // 命令ID：EdgeView安全_取证书JSON
-            // [229] EdgeView安全_取证书JSON(控件名, 证书句柄)
+            // [257] EdgeView安全_取证书JSON(控件名, 证书句柄)
             // 功能：取得受管客户端或服务器证书的主题、签发者、有效期、序列号、显示名和 PEM。
             // 参数：控件名:controlRef，证书句柄:handle；返回：wideString；可见性：default
             EdgeView安全_取证书JSON(演示EdgeBrowser控件, 0)
             // 命令ID：EdgeView安全_选择客户端证书
-            // [230] EdgeView安全_选择客户端证书(控件名, 证书句柄)
+            // [258] EdgeView安全_选择客户端证书(控件名, 证书句柄)
             // 功能：在客户端证书同步决策事件中选择受管证书。
             // 参数：控件名:controlRef，证书句柄:handle；返回：int；可见性：default
             EdgeView安全_选择客户端证书(演示EdgeBrowser控件, 0)
-        如果结束
-        调试输出("已查看 命令 208–230：EdgeView工作线程_枚举异步 至 EdgeView安全_选择客户端证书；勾选允许实际执行后会使用演示参数调用。")
-    结束
-
-    事件 _运行第11组_被单击()
-        控件_设置文本(演示状态, "命令 231–253：EdgeView安全_清除证书错误决策异步 至 EdgeView_取事件数据；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选(允许实际执行))
             // 命令ID：EdgeView安全_清除证书错误决策异步
-            // [231] EdgeView安全_清除证书错误决策异步(控件名, 完成处理器)
+            // [259] EdgeView安全_清除证书错误决策异步(控件名, 完成处理器)
             // 功能：清除当前 WebView 的服务器证书错误持久决策。
             // 参数：控件名:controlRef，完成处理器:handler；返回：longLong；可见性：default
             EdgeView安全_清除证书错误决策异步(演示EdgeBrowser控件, &模块演示回调)
             // 命令ID：EdgeView安全_显示另存为界面异步
-            // [232] EdgeView安全_显示另存为界面异步(控件名, 完成处理器)
+            // [260] EdgeView安全_显示另存为界面异步(控件名, 完成处理器)
             // 功能：显示 WebView2 另存为界面并返回状态。
             // 参数：控件名:controlRef，完成处理器:handler；返回：longLong；可见性：default
             EdgeView安全_显示另存为界面异步(演示EdgeBrowser控件, &模块演示回调)
             // 命令ID：EdgeView对象_取文件路径
-            // [233] EdgeView对象_取文件路径(控件名, 对象句柄)
+            // [261] EdgeView对象_取文件路径(控件名, 对象句柄)
             // 功能：从受管 File 对象取得安全文件路径。
             // 参数：控件名:controlRef，对象句柄:handle；返回：wideString；可见性：advanced
             EdgeView对象_取文件路径(演示EdgeBrowser控件, 0)
             // 命令ID：EdgeView对象_创建文件系统句柄
-            // [234] EdgeView对象_创建文件系统句柄(控件名, 路径, 目录, 权限)
+            // [262] EdgeView对象_创建文件系统句柄(控件名, 路径, 目录, 权限)
             // 功能：从绝对路径创建受管文件或目录句柄；拒绝相对路径和不存在路径。
             // 参数：控件名:controlRef，路径:wideString，目录:bool，权限:int；返回：handle；可见性：advanced
             EdgeView对象_创建文件系统句柄(演示EdgeBrowser控件, "module-demo-temp.txt", 真, 1)
             // 命令ID：EdgeView脚本_发送附加对象JSON
-            // [235] EdgeView脚本_发送附加对象JSON(控件名, JSON, 对象句柄)
+            // [263] EdgeView脚本_发送附加对象JSON(控件名, JSON, 对象句柄)
             // 功能：向网页发送 JSON 与一个受管文件系统附加对象。
             // 参数：控件名:controlRef，JSON:wideString，对象句柄:handle；返回：int；可见性：advanced
             EdgeView脚本_发送附加对象JSON(演示EdgeBrowser控件, "{}", 0)
             // 命令ID：EdgeView_创建
-            // [236] EdgeView_创建(父组件句柄, 地址)
+            // [264] EdgeView_创建(父组件句柄, 地址)
             // 功能：在指定 HWND 组件客户区内创建 EdgeView；传 0 时嵌入当前窗口。成功返回 1。
             // 参数：父组件句柄:longLong，地址:wideString；返回：int；可见性：default
             EdgeView_创建(1, "https://example.com")
             // 命令ID：EdgeView_创建实例
-            // [237] EdgeView_创建实例(实例编号, 父组件句柄, 地址, 独立缓存目录)
+            // [265] EdgeView_创建实例(实例编号, 父组件句柄, 地址, 独立缓存目录)
             // 功能：创建具名 EdgeView 实例；不同缓存目录拥有独立 Cookie、存储和会话。
             // 参数：实例编号:int，父组件句柄:longLong，地址:wideString，独立缓存目录:wideString；返回：int；可见性：default
             EdgeView_创建实例(1, 1, "https://example.com", ".")
             // 命令ID：EdgeView_创建实例代理
-            // [238] EdgeView_创建实例代理(实例编号, 父组件句柄, 地址, 独立缓存目录, 代理地址)
+            // [266] EdgeView_创建实例代理(实例编号, 父组件句柄, 地址, 独立缓存目录, 代理地址)
             // 功能：创建使用独立代理的 EdgeView 实例；该代理覆盖全局代理。
             // 参数：实例编号:int，父组件句柄:longLong，地址:wideString，独立缓存目录:wideString，代理地址:wideString；返回：int；可见性：default
             EdgeView_创建实例代理(1, 1, "https://example.com", ".", "https://example.com")
             // 命令ID：EdgeView_创建区域
-            // [239] EdgeView_创建区域(实例编号, 左, 顶, 宽, 高, 地址, 独立缓存目录)
+            // [267] EdgeView_创建区域(实例编号, 左, 顶, 宽, 高, 地址, 独立缓存目录)
             // 功能：在当前窗口指定区域创建独立承载 HWND 和 EdgeView 实例。
             // 参数：实例编号:int，左:int，顶:int，宽:int，高:int，地址:wideString，独立缓存目录:wideString；返回：int；可见性：default
             EdgeView_创建区域(1, 1, 1, 1, 1, "https://example.com", ".")
             // 命令ID：EdgeView_创建区域代理
-            // [240] EdgeView_创建区域代理(实例编号, 左, 顶, 宽, 高, 地址, 独立缓存目录, 代理地址)
+            // [268] EdgeView_创建区域代理(实例编号, 左, 顶, 宽, 高, 地址, 独立缓存目录, 代理地址)
             // 功能：在指定区域创建使用独立代理的 EdgeView 实例。
             // 参数：实例编号:int，左:int，顶:int，宽:int，高:int，地址:wideString，独立缓存目录:wideString，代理地址:wideString；返回：int；可见性：default
             EdgeView_创建区域代理(1, 1, 1, 1, 1, "https://example.com", ".", "https://example.com")
+            // 命令ID：EdgeView_创建区域代理UA
+            // [269] EdgeView_创建区域代理UA(实例编号, 左, 顶, 宽, 高, 地址, 独立缓存目录, 代理地址, 用户代理)
+            // 功能：带独立代理与独立 User-Agent 的区域实例：UA 在首次导航前应用（可让出站请求头完全脱离 WebView2 默认 UA，例如屏蔽 Edg/ 标记的场景），代理语义与 EdgeView_创建区域代理 相同。运行期再改 UA 请用 EdgeView设置_置用户代理实例。
+            // 参数：实例编号:int，左:int，顶:int，宽:int，高:int，地址:wideString，独立缓存目录:wideString，代理地址:wideString，用户代理:wideString；返回：int；可见性：default
+            EdgeView_创建区域代理UA(1, 1, 1, 1, 1, "https://example.com", ".", "https://example.com", "演示参数9")
             // 命令ID：EdgeView_设置全局代理
-            // [241] EdgeView_设置全局代理(代理地址)
+            // [270] EdgeView_设置全局代理(代理地址)
             // 功能：设置后续新建 EdgeView 实例默认使用的 HTTP/HTTPS/SOCKS5 代理；现有实例不变。
             // 参数：代理地址:wideString；返回：int；可见性：default
             EdgeView_设置全局代理("https://example.com")
+        如果结束
+        调试输出("已查看 命令 244–270：EdgeView扩展_置启用异步 至 EdgeView_设置全局代理；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第11组_被单击()
+        控件_设置文本(演示状态, "命令 271–297：EdgeView_清除全局代理 至 EdgeView_前进控件；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：EdgeView_清除全局代理
-            // [242] EdgeView_清除全局代理()
+            // [271] EdgeView_清除全局代理()
             // 功能：清除后续新建实例的全局代理，现有实例不变。
             // 参数：无；返回：void；可见性：default
             EdgeView_清除全局代理()
             // 命令ID：EdgeView_取全局代理
-            // [243] EdgeView_取全局代理()
+            // [272] EdgeView_取全局代理()
             // 功能：返回当前 EdgeView 全局代理设置。
             // 参数：无；返回：wideString；可见性：default
             EdgeView_取全局代理()
             // 命令ID：EdgeView_取实例代理
-            // [244] EdgeView_取实例代理(实例编号)
+            // [273] EdgeView_取实例代理(实例编号)
             // 功能：返回指定实例创建时实际采用的代理地址。
             // 参数：实例编号:int；返回：wideString；可见性：default
             EdgeView_取实例代理(1)
             // 命令ID：EdgeView_绑定事件
-            // [245] EdgeView_绑定事件(实例编号, 事件名, &处理器名)
-            // 功能：绑定 WebView2 完整事件目录中的中文事件；当前目录共 71 项。旧字符串处理器仍兼容，但会产生迁移警告。
+            // [274] EdgeView_绑定事件(实例编号, 事件名, &处理器名)
+            // 功能：绑定 WebView2 完整事件清单中的中文事件；当前清单共 71 项。旧字符串处理器仍兼容，但会产生迁移警告。
             // 参数：实例编号:int，事件名:wideString，处理器名:handler；返回：int；可见性：default
             EdgeView_绑定事件(1, "演示事件", &模块演示回调)
             // 命令ID：EdgeView_监听开发者工具事件
-            // [246] EdgeView_监听开发者工具事件(实例编号, 协议事件名)
+            // [275] EdgeView_监听开发者工具事件(实例编号, 协议事件名)
             // 功能：监听指定 Chromium DevTools Protocol 事件，触发“开发者工具协议事件”。
             // 参数：实例编号:int，协议事件名:wideString；返回：int；可见性：default
             EdgeView_监听开发者工具事件(1, "演示事件")
             // 命令ID：EdgeView_等待事件
-            // [247] EdgeView_等待事件(实例编号, 事件名, 超时毫秒)
+            // [276] EdgeView_等待事件(实例编号, 事件名, 超时毫秒)
             // 功能：泵送窗口消息并等待指定浏览器事件，成功返回 1，超时返回 0。
             // 参数：实例编号:int，事件名:wideString，超时毫秒:int；返回：int；可见性：default
             EdgeView_等待事件(1, "演示事件", 1)
+            // 命令ID：EdgeView_等待事件控件
+            // [277] EdgeView_等待事件控件(控件名, 事件名, 超时毫秒)
+            // 功能：在设计器 Edge 浏览器控件上泵送消息并等待指定中文事件，成功返回 1，超时或控件不存在返回 0。用于在“创建完毕”里等页面就绪后再调用同步命令；不能在其它浏览器事件处理器内调用，否则同样会等满超时。
+            // 参数：控件名:controlRef，事件名:wideString，超时毫秒:int；返回：int；可见性：default
+            EdgeView_等待事件控件(演示EdgeBrowser控件, "演示事件", 1)
             // 命令ID：EdgeView_导航
-            // [248] EdgeView_导航(地址)
+            // [278] EdgeView_导航(地址)
             // 功能：导航到 HTTP/HTTPS 地址或本地文件地址。
             // 参数：地址:wideString；返回：int；可见性：default
             EdgeView_导航("https://example.com")
             // 命令ID：EdgeView_导航实例
-            // [249] EdgeView_导航实例(实例编号, 地址)
+            // [279] EdgeView_导航实例(实例编号, 地址)
             // 功能：让指定 EdgeView 实例导航。
             // 参数：实例编号:int，地址:wideString；返回：int；可见性：default
             EdgeView_导航实例(1, "https://example.com")
             // 命令ID：EdgeView_执行JS
-            // [250] EdgeView_执行JS(脚本)
+            // [280] EdgeView_执行JS(脚本)
             // 功能：执行 JavaScript 并等待异步回调，返回 WebView2 的 JSON 编码结果；失败返回空文本。
             // 参数：脚本:wideString；返回：wideString；可见性：default
             EdgeView_执行JS("演示参数1")
             // 命令ID：EdgeView_执行JS实例
-            // [251] EdgeView_执行JS实例(实例编号, 脚本)
+            // [281] EdgeView_执行JS实例(实例编号, 脚本)
             // 功能：在指定实例执行 JavaScript，并返回 WebView2 JSON 编码结果。
             // 参数：实例编号:int，脚本:wideString；返回：wideString；可见性：default
             EdgeView_执行JS实例(1, "演示参数2")
             // 命令ID：EdgeView_取最近事件
-            // [252] EdgeView_取最近事件()
+            // [282] EdgeView_取最近事件()
             // 功能：返回最近触发的 WebView2 中文事件名。
             // 参数：无；返回：wideString；可见性：default
             EdgeView_取最近事件()
             // 命令ID：EdgeView_取事件数据
-            // [253] EdgeView_取事件数据()
+            // [283] EdgeView_取事件数据()
             // 功能：返回最近事件携带的 UTF-16 JSON 对象文本。
             // 参数：无；返回：wideString；可见性：default
             EdgeView_取事件数据()
-        如果结束
-        调试输出("已查看 命令 231–253：EdgeView安全_清除证书错误决策异步 至 EdgeView_取事件数据；勾选允许实际执行后会使用演示参数调用。")
-    结束
-
-    事件 _运行第12组_被单击()
-        控件_设置文本(演示状态, "命令 254–271：EdgeView_取最近事件实例 至 EdgeView_监听开发者工具事件控件；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选(允许实际执行))
             // 命令ID：EdgeView_取最近事件实例
-            // [254] EdgeView_取最近事件实例(实例编号)
+            // [284] EdgeView_取最近事件实例(实例编号)
             // 功能：返回指定浏览器实例最近事件名。
             // 参数：实例编号:int；返回：wideString；可见性：default
             EdgeView_取最近事件实例(1)
             // 命令ID：EdgeView_取事件数据实例
-            // [255] EdgeView_取事件数据实例(实例编号)
+            // [285] EdgeView_取事件数据实例(实例编号)
             // 功能：返回指定浏览器实例最近事件携带的数据。
             // 参数：实例编号:int；返回：wideString；可见性：default
             EdgeView_取事件数据实例(1)
             // 命令ID：EdgeView_后退
-            // [256] EdgeView_后退()
+            // [286] EdgeView_后退()
             // 功能：浏览器可以后退时返回上一页。
             // 参数：无；返回：int；可见性：default
             EdgeView_后退()
             // 命令ID：EdgeView_前进
-            // [257] EdgeView_前进()
+            // [287] EdgeView_前进()
             // 功能：浏览器可以前进时进入下一页。
             // 参数：无；返回：int；可见性：default
             EdgeView_前进()
             // 命令ID：EdgeView_刷新
-            // [258] EdgeView_刷新()
+            // [288] EdgeView_刷新()
             // 功能：刷新当前网页。
             // 参数：无；返回：void；可见性：default
             EdgeView_刷新()
             // 命令ID：EdgeView_关闭
-            // [259] EdgeView_关闭()
+            // [289] EdgeView_关闭()
             // 功能：关闭浏览器控制器并释放 WebView2 资源。
             // 参数：无；返回：void；可见性：default
             EdgeView_关闭()
             // 命令ID：EdgeView_关闭实例
-            // [260] EdgeView_关闭实例(实例编号)
+            // [290] EdgeView_关闭实例(实例编号)
             // 功能：关闭指定 EdgeView 实例并释放其承载窗口。
             // 参数：实例编号:int；返回：void；可见性：default
             EdgeView_关闭实例(1)
             // 命令ID：EdgeView_创建控件
-            // [261] EdgeView_创建控件(控件名)
+            // [291] EdgeView_创建控件(控件名)
             // 功能：使用设计器属性重新创建指定 Edge 浏览器控件；空文本创建当前窗口全部 Edge 浏览器控件。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView_创建控件(演示EdgeBrowser控件)
             // 命令ID：EdgeView_导航控件
-            // [262] EdgeView_导航控件(控件名, 地址)
+            // [292] EdgeView_导航控件(控件名, 地址)
             // 功能：让指定设计器 Edge 浏览器控件导航到新地址。
             // 参数：控件名:controlRef，地址:wideString；返回：int；可见性：default
             EdgeView_导航控件(演示EdgeBrowser控件, "https://example.com")
             // 命令ID：EdgeView_执行JS控件
-            // [263] EdgeView_执行JS控件(控件名, 脚本)
+            // [293] EdgeView_执行JS控件(控件名, 脚本)
             // 功能：在指定设计器 Edge 浏览器控件中执行 JavaScript 并返回 JSON 编码结果。
             // 参数：控件名:controlRef，脚本:wideString；返回：wideString；可见性：default
             EdgeView_执行JS控件(演示EdgeBrowser控件, "演示参数2")
             // 命令ID：EdgeView_取最近事件控件
-            // [264] EdgeView_取最近事件控件(控件名)
+            // [294] EdgeView_取最近事件控件(控件名)
             // 功能：读取指定设计器 Edge 浏览器控件最近触发的事件名。
             // 参数：控件名:controlRef；返回：wideString；可见性：default
             EdgeView_取最近事件控件(演示EdgeBrowser控件)
             // 命令ID：EdgeView_取事件数据控件
-            // [265] EdgeView_取事件数据控件(控件名)
+            // [295] EdgeView_取事件数据控件(控件名)
             // 功能：读取指定设计器 Edge 浏览器控件最近事件的数据。
             // 参数：控件名:controlRef；返回：wideString；可见性：default
             EdgeView_取事件数据控件(演示EdgeBrowser控件)
             // 命令ID：EdgeView_后退控件
-            // [266] EdgeView_后退控件(控件名)
+            // [296] EdgeView_后退控件(控件名)
             // 功能：让指定设计器 Edge 浏览器控件后退。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView_后退控件(演示EdgeBrowser控件)
             // 命令ID：EdgeView_前进控件
-            // [267] EdgeView_前进控件(控件名)
+            // [297] EdgeView_前进控件(控件名)
             // 功能：让指定设计器 Edge 浏览器控件前进。
             // 参数：控件名:controlRef；返回：int；可见性：default
             EdgeView_前进控件(演示EdgeBrowser控件)
+        如果结束
+        调试输出("已查看 命令 271–297：EdgeView_清除全局代理 至 EdgeView_前进控件；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第12组_被单击()
+        控件_设置文本(演示状态, "命令 298–324：EdgeView_刷新控件 至 EdgeView会话_清理全部浏览数据实例异步；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：EdgeView_刷新控件
-            // [268] EdgeView_刷新控件(控件名)
+            // [298] EdgeView_刷新控件(控件名)
             // 功能：刷新指定设计器 Edge 浏览器控件。
             // 参数：控件名:controlRef；返回：void；可见性：default
             EdgeView_刷新控件(演示EdgeBrowser控件)
             // 命令ID：EdgeView_关闭控件
-            // [269] EdgeView_关闭控件(控件名)
+            // [299] EdgeView_关闭控件(控件名)
             // 功能：关闭指定设计器 Edge 浏览器控件并保留设计器宿主占位。
             // 参数：控件名:controlRef；返回：void；可见性：default
             EdgeView_关闭控件(演示EdgeBrowser控件)
             // 命令ID：EdgeView_绑定控件事件
-            // [270] EdgeView_绑定控件事件(控件名, 事件名, &处理器名)
-            // 功能：按控件名绑定 WebView2 完整事件目录中的中文事件；当前目录共 71 项。旧字符串处理器仍兼容，但会产生迁移警告。
+            // [300] EdgeView_绑定控件事件(控件名, 事件名, &处理器名)
+            // 功能：按控件名绑定 WebView2 完整事件清单中的中文事件；当前清单共 71 项。旧字符串处理器仍兼容，但会产生迁移警告。
             // 参数：控件名:controlRef，事件名:wideString，处理器名:handler；返回：int；可见性：default
             EdgeView_绑定控件事件(演示EdgeBrowser控件, "演示事件", &模块演示回调)
             // 命令ID：EdgeView_监听开发者工具事件控件
-            // [271] EdgeView_监听开发者工具事件控件(控件名, 协议事件名)
+            // [301] EdgeView_监听开发者工具事件控件(控件名, 协议事件名)
             // 功能：按设计器控件名监听 Chromium DevTools Protocol 事件。
             // 参数：控件名:controlRef，协议事件名:wideString；返回：int；可见性：default
             EdgeView_监听开发者工具事件控件(演示EdgeBrowser控件, "演示事件")
+            // 命令ID：EdgeView_创建弹窗浏览器
+            // [302] EdgeView_创建弹窗浏览器(实例编号, 窗口标题, 宽, 高, 地址, 独立缓存目录, 用户代理)
+            // 功能：创建独立顶层浏览器弹窗（任务栏可见、可独立拖动缩放、页面随窗口自适应），用指定独立缓存目录实现店铺间 Cookie/存储隔离，并在首次导航前应用 User-Agent。实例编号供 导航实例/关闭实例/绑定事件/等待事件/执行JS实例/会话命令 复用；关闭主窗口会连带关闭全部弹窗。代理沿用 EdgeView_设置全局代理；要每个弹窗各走独立代理 IP 请用 EdgeView_创建弹窗浏览器代理。成功返回 1。
+            // 参数：实例编号:int，窗口标题:wideString，宽:int，高:int，地址:wideString，独立缓存目录:wideString，用户代理:wideString；返回：int；可见性：default
+            EdgeView_创建弹窗浏览器(1, "演示参数2", 1, 1, "https://example.com", ".", "演示参数7")
+            // 命令ID：EdgeView_创建弹窗浏览器代理
+            // [303] EdgeView_创建弹窗浏览器代理(实例编号, 窗口标题, 宽, 高, 地址, 独立缓存目录, 用户代理, 代理地址)
+            // 功能：创建带独立代理的顶层浏览器弹窗：代理地址非空时该弹窗用专属 HTTP/HTTPS/SOCKS5 代理（配合不同独立缓存目录=独立浏览器进程，实现每店铺独立出口 IP）；代理地址为空时回落到 EdgeView_设置全局代理，与创建实例/创建实例代理同一语义。
+            // 参数：实例编号:int，窗口标题:wideString，宽:int，高:int，地址:wideString，独立缓存目录:wideString，用户代理:wideString，代理地址:wideString；返回：int；可见性：default
+            EdgeView_创建弹窗浏览器代理(1, "演示参数2", 1, 1, "https://example.com", ".", "演示参数7", "https://example.com")
+            // 命令ID：EdgeView_创建弹窗浏览器初始隐藏
+            // [304] EdgeView_创建弹窗浏览器初始隐藏(实例编号, 窗口标题, 宽, 高, 地址, 独立缓存目录, 用户代理)
+            // 功能：与 EdgeView_创建弹窗浏览器 相同，但宿主窗口创建时不显示（消除首帧闪窗），需要人工可见时用 EdgeView_置实例可见(实例编号, 真) 唤出；适合先建后按需展示的多开场景。
+            // 参数：实例编号:int，窗口标题:wideString，宽:int，高:int，地址:wideString，独立缓存目录:wideString，用户代理:wideString；返回：int；可见性：default
+            EdgeView_创建弹窗浏览器初始隐藏(1, "演示参数2", 1, 1, "https://example.com", ".", "演示参数7")
+            // 命令ID：EdgeView_创建弹窗浏览器初始隐藏代理
+            // [305] EdgeView_创建弹窗浏览器初始隐藏代理(实例编号, 窗口标题, 宽, 高, 地址, 独立缓存目录, 用户代理, 代理地址)
+            // 功能：带独立代理的初始隐藏弹窗：代理语义与 EdgeView_创建弹窗浏览器代理 相同（空值回落全局代理），窗口创建时不显示，置实例可见 可唤出。
+            // 参数：实例编号:int，窗口标题:wideString，宽:int，高:int，地址:wideString，独立缓存目录:wideString，用户代理:wideString，代理地址:wideString；返回：int；可见性：default
+            EdgeView_创建弹窗浏览器初始隐藏代理(1, "演示参数2", 1, 1, "https://example.com", ".", "演示参数7", "https://example.com")
+            // 命令ID：EdgeView_创建无头实例
+            // [306] EdgeView_创建无头实例(实例编号, 地址, 独立缓存目录)
+            // 功能：创建无界面 EdgeView 浏览器：内部挂一个从不调用 ShowWindow 的离屏隐藏宿主（WebView2 官方无头 API 不存在，控制器必须挂窗口，这是平台允许的最接近无头形态），任务栏与界面完全不可见。导航实例/执行JS实例/等待事件/绑定事件/会话 Cookie 族/UA/独立代理等全部实例编号命令照常可用；控制台项目可用（创建与等待自带消息泵）。rAF/IntersectionObserver 等可见性相关行为按隐藏页节流；截图类命令在无头实例上不可用，需要页面图像请改用 CDP_启动浏览器（真无头独立进程）。返回 1 成功。
+            // 参数：实例编号:int，地址:wideString，独立缓存目录:wideString；返回：int；可见性：default
+            EdgeView_创建无头实例(1, "https://example.com", ".")
+            // 命令ID：EdgeView_创建无头实例代理
+            // [307] EdgeView_创建无头实例代理(实例编号, 地址, 独立缓存目录, 用户代理, 代理地址)
+            // 功能：创建带独立用户代理与独立代理的无头 EdgeView 实例：代理地址非空走专属代理（空值回落 EdgeView_设置全局代理）；用户代理需传非空且等效真实 UA。适合后台多账号抓取/自动化，界面零显示。
+            // 参数：实例编号:int，地址:wideString，独立缓存目录:wideString，用户代理:wideString，代理地址:wideString；返回：int；可见性：default
+            EdgeView_创建无头实例代理(1, "https://example.com", ".", "演示参数4", "https://example.com")
+            // 命令ID：EdgeView_泵消息
+            // [308] EdgeView_泵消息(等待毫秒)
+            // 功能：泵送当前线程消息队列指定毫秒（0=只清队列不等待），返回处理掉的消息数；用于控制台/无头场景驱动 WebView2 回调、线程完成处理器与 CDP/HTTP/WS 派发消息（等待事件、创建无头实例内部已自带泵，通常只需在等待多个异步结果时循环调用）。遇 WM_QUIT 立即返回。
+            // 参数：等待毫秒:int；返回：int；可见性：default
+            EdgeView_泵消息(1)
+            // 命令ID：EdgeView_关闭全部实例
+            // [309] EdgeView_关闭全部实例()
+            // 功能：关闭当前全部 EdgeView 实例（弹窗、区域、控件实例一并释放）并返回关闭数量。
+            // 参数：无；返回：int；可见性：default
+            EdgeView_关闭全部实例()
+            // 命令ID：EdgeView_枚举实例JSON
+            // [310] EdgeView_枚举实例JSON()
+            // 功能：返回当前全部 EdgeView 实例的 JSON 数组，每项含 实例编号/窗口标题/地址/缓存目录/代理/是否弹窗/是否无头/是否有效，供调用方自省与列表展示。
+            // 参数：无；返回：wideString；可见性：default
+            EdgeView_枚举实例JSON()
+            // 命令ID：EdgeView_置实例可见
+            // [311] EdgeView_置实例可见(实例编号, 可见)
+            // 功能：按实例编号显示或隐藏：弹窗实例连带顶层窗口显隐，区域/控件实例调整控制器可见性。
+            // 参数：实例编号:int，可见:bool；返回：int；可见性：default
+            EdgeView_置实例可见(1, 真)
+            // 命令ID：EdgeView_置实例大小
+            // [312] EdgeView_置实例大小(实例编号, 宽, 高)
+            // 功能：按实例编号设置浏览器尺寸；弹窗实例调整顶层窗口客户区并自适应，区域/控件实例设置控制器边界。
+            // 参数：实例编号:int，宽:int，高:int；返回：int；可见性：default
+            EdgeView_置实例大小(1, 1, 1)
+            // 命令ID：EdgeView_置区域位置
+            // [313] EdgeView_置区域位置(实例编号, 左, 顶, 宽, 高)
+            // 功能：按实例编号移动并缩放 EdgeView_创建区域 的承载区域（窗口内逻辑坐标，按 DPI 自动缩放），并把网页内容对齐到新矩形。顶部留导航条/边距的区域浏览器必须在窗口「大小被改变」事件里调用本命令同步区域，窗口缩放才跟手且不会白屏；创建时铺满整个窗口的区域会自动跟随窗口缩放，无需调用。弹窗实例请用 EdgeView_置实例大小。成功返回 1。
+            // 参数：实例编号:int，左:int，顶:int，宽:int，高:int；返回：int；可见性：default
+            EdgeView_置区域位置(1, 1, 1, 1, 1)
+            // 命令ID：EdgeView_取实例大小JSON
+            // [314] EdgeView_取实例大小JSON(实例编号)
+            // 功能：按实例编号返回当前客户区尺寸 JSON：{"宽":..,"高":..}。数值为物理像素（创建时按窗口 DPI 缩放，150% 缩放下 800 逻辑宽返回 1200）；无头实例同样可用。
+            // 参数：实例编号:int；返回：wideString；可见性：default
+            EdgeView_取实例大小JSON(1)
+            // 命令ID：EdgeView_置实例标题
+            // [315] EdgeView_置实例标题(实例编号, 标题)
+            // 功能：按实例编号设置弹窗顶层窗口标题，便于人工识别店铺。
+            // 参数：实例编号:int，标题:wideString；返回：int；可见性：default
+            EdgeView_置实例标题(1, "演示参数2")
+            // 命令ID：EdgeView设置_置用户代理实例
+            // [316] EdgeView设置_置用户代理实例(实例编号, 用户代理)
+            // 功能：按实例编号设置 User-Agent；建议用 EdgeView_创建弹窗浏览器 的 用户代理 参数在首次导航前设定，运行时再改首个请求已带旧 UA。
+            // 参数：实例编号:int，用户代理:wideString；返回：int；可见性：default
+            EdgeView设置_置用户代理实例(1, "演示参数2")
+            // 命令ID：EdgeView脚本_文档预注入实例异步
+            // [317] EdgeView脚本_文档预注入实例异步(实例编号, 脚本, &完成处理器)
+            // 功能：按实例编号注册「每个新文档创建前自动执行」的脚本（document-start 语义，先于页面脚本），任务结果为脚本 ID。区域/弹窗/无头实例均可用；设计器 EdgeBrowser 控件请用 EdgeView脚本_文档预注入异步。
+            // 参数：实例编号:int，脚本:wideString，完成处理器:handler；返回：longLong；可见性：default
+            EdgeView脚本_文档预注入实例异步(1, "演示参数2", &模块演示回调)
+            // 命令ID：EdgeView脚本_移除文档预注入实例
+            // [318] EdgeView脚本_移除文档预注入实例(实例编号, 脚本ID)
+            // 功能：按实例编号移除文档预注入脚本；脚本 ID 来自注册任务的结果。
+            // 参数：实例编号:int，脚本ID:wideString；返回：int；可见性：default
+            EdgeView脚本_移除文档预注入实例(1, "演示参数2")
+            // 命令ID：EdgeView设置_取用户代理实例
+            // [319] EdgeView设置_取用户代理实例(实例编号)
+            // 功能：按实例编号读取当前 User-Agent。
+            // 参数：实例编号:int；返回：wideString；可见性：default
+            EdgeView设置_取用户代理实例(1)
+            // 命令ID：EdgeView会话_批量置Cookie实例
+            // [320] EdgeView会话_批量置Cookie实例(实例编号, Cookie列表JSON)
+            // 功能：按实例编号批量注入 Cookie，返回成功条数。Cookie列表JSON 为含 name/value/domain/path 的数组，可带 expires（UTC 秒，会话 Cookie 用 -1 或省略）、secure、httpOnly、sameSite（0 None/1 Lax/2 Strict，None 必须同时 secure）。这是注入 HttpOnly Cookie 的正确方式，禁止用 JavaScript document.cookie。
+            // 参数：实例编号:int，Cookie列表JSON:wideString；返回：int；可见性：default
+            EdgeView会话_批量置Cookie实例(1, "{}")
+            // 命令ID：EdgeView会话_置Cookie带属性实例
+            // [321] EdgeView会话_置Cookie带属性实例(实例编号, 名称, 值, 域, 路径, 过期时间, 安全, 仅HTTP, 同源策略)
+            // 功能：按实例编号创建或更新带完整属性的 Cookie；过期时间为 UTC 秒（会话 Cookie 传 -1），安全/仅HTTP 传 1/0，同源策略 0 None/1 Lax/2 Strict。
+            // 参数：实例编号:int，名称:wideString，值:wideString，域:wideString，路径:wideString，过期时间:double，安全:bool，仅HTTP:bool，同源策略:int；返回：int；可见性：default
+            EdgeView会话_置Cookie带属性实例(1, "演示参数2", "演示参数3", "演示参数4", "module-demo-temp.txt", 1.0, 真, 真, 1)
+            // 命令ID：EdgeView会话_删除全部Cookie实例
+            // [322] EdgeView会话_删除全部Cookie实例(实例编号)
+            // 功能：按实例编号删除该实例 Profile 的全部 Cookie。
+            // 参数：实例编号:int；返回：int；可见性：default
+            EdgeView会话_删除全部Cookie实例(1)
+            // 命令ID：EdgeView会话_取Cookie实例异步
+            // [323] EdgeView会话_取Cookie实例异步(实例编号, 地址, &完成处理器)
+            // 功能：按实例编号异步读取指定地址的 Cookie 列表 JSON，完成后在 完成处理器 里用 EdgeView任务_取结果 取值，可校验 httpOnly 标志是否回读成功。
+            // 参数：实例编号:int，地址:wideString，完成处理器:handler；返回：longLong；可见性：default
+            EdgeView会话_取Cookie实例异步(1, "https://example.com", &模块演示回调)
+            // 命令ID：EdgeView会话_清理全部浏览数据实例异步
+            // [324] EdgeView会话_清理全部浏览数据实例异步(实例编号, &完成处理器)
+            // 功能：按实例编号异步清理该实例 Profile 的全部浏览数据。
+            // 参数：实例编号:int，完成处理器:handler；返回：longLong；可见性：default
+            EdgeView会话_清理全部浏览数据实例异步(1, &模块演示回调)
         如果结束
-        调试输出("已查看 命令 254–271：EdgeView_取最近事件实例 至 EdgeView_监听开发者工具事件控件；勾选允许实际执行后会使用演示参数调用。")
+        调试输出("已查看 命令 298–324：EdgeView_刷新控件 至 EdgeView会话_清理全部浏览数据实例异步；勾选允许实际执行后会使用演示参数调用。")
     结束
 
     事件 模块演示回调()

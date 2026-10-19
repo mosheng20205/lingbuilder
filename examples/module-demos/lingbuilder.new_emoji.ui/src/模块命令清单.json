@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-03T09:44:23.534Z",
+  "generatedAt": "2026-10-19T03:18:58.818Z",
   "module": {
     "id": "lingbuilder.new_emoji.ui",
     "name": "new_emoji 原生界面库",
     "version": "2.0.0",
     "description": "集成 new_emoji Windows 原生 Direct2D/DirectWrite UI DLL，提供中文/emoji 友好的原生控件能力。"
   },
-  "commandCount": 4019,
+  "commandCount": 4024,
   "commands": [
     {
       "index": 1,
@@ -66113,9 +66113,9 @@
       "aliases": [
         "NE_EU_GetTabsFullStateEx"
       ],
-      "signature": "NE标签页_取完整状态扩展(hwnd, element_id, active_index, item_count, tab_type, closable, addable, scroll_offset, max_scroll_offset, hover_index, press_index, hover_part, press_part, last_closed_index, last_added_index, close_count, add_count, select_count, scroll_count, last_action, tab_position, editable, content_visible, active_disabled, active_closable)",
-      "description": "底层直调 EU_GetTabsFullStateEx：取完整状态扩展。",
-      "insertText": "NE标签页_取完整状态扩展($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)",
+      "signature": "NE标签页_取完整状态扩展(hwnd, element_id, active_index, item_count, tab_type, closable, addable, scroll_offset, max_scroll_offset, hover_index, press_index, hover_part, press_part, last_closed_index, last_added_index, close_count, add_count, select_count, scroll_count, last_action, tab_position, editable, content_visible, active_disabled, active_closable), header_content_width",
+      "description": "底层直调 EU_GetTabsFullStateEx：取完整状态扩展；header_content_width 带回标签条内容总占用宽（逻辑像素，chrome 模式含新建按钮区）。",
+      "insertText": "NE标签页_取完整状态扩展($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25), $26",
       "returnType": "整数型",
       "visibility": "advanced",
       "binding": {
@@ -66229,13 +66229,18 @@
           {
             "name": "active_closable",
             "type": "int"
+          },
+          {
+            "name": "header_content_width",
+            "type": "int",
+            "byRef": true
           }
         ],
         "returnType": "int",
         "encoding": "raw",
-        "example": "NE标签页_取完整状态扩展($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)"
+        "example": "NE标签页_取完整状态扩展($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25), $26"
       },
-      "demoInvocation": "NE标签页_取完整状态扩展(0, 演示lingbuildernew_emojiuiTabs控件, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 真, 1, 1)"
+      "demoInvocation": "NE标签页_取完整状态扩展(0, 演示lingbuildernew_emojiuiTabs控件, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 真, 1, 1, 1)"
     },
     {
       "index": 1330,

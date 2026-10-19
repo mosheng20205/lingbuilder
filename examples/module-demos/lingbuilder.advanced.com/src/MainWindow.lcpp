@@ -7,45 +7,161 @@
 类 MainWindow : 公开 窗口
     事件 _MainWindow_创建完毕()
         控件_设置选择项(命令分组选项卡, 0)
-        控件_设置文本(演示状态, "COM自动化模块：6 条命令，默认处于安全预览模式。")
+        控件_设置文本(演示状态, "COM自动化模块：27 条命令，默认处于安全预览模式。")
         调试输出("已加载模块演示：lingbuilder.advanced.com")
     结束
 
     事件 _运行第01组_被单击()
-        控件_设置文本(演示状态, "命令 1–6：COM_创建对象 至 COM_关闭；源码内含完整签名、参数、返回值与调用。")
+        控件_设置文本(演示状态, "命令 1–14：COM_创建对象 至 COM_调用文本方法；源码内含完整签名、参数、返回值与调用。")
         如果 (控件_取勾选(允许实际执行))
             // 命令ID：COM_创建对象
             // [1] COM_创建对象(ProgID)
-            // 功能：创建一个 COM 自动化对象。
-            // 参数：ProgID:wideString；返回：bool；可见性：default
+            // 功能：通过 ProgID 创建 COM 自动化对象，返回 COM 对象句柄，0 表示失败。
+            // 参数：ProgID:wideString；返回：longLong；可见性：default
             COM_创建对象("演示参数1")
+            // 命令ID：COM_创建对象免注册
+            // [2] COM_创建对象免注册(CLSID, 组件DLL路径)
+            // 功能：加载组件 DLL 并通过 DllGetClassObject 免注册创建 COM 对象；组件位数必须与程序位数一致。
+            // 参数：CLSID:wideString，组件DLL路径:wideString；返回：longLong；可见性：default
+            COM_创建对象免注册("演示参数1", "module-demo-temp.txt")
+            // 命令ID：COM_注册组件
+            // [3] COM_注册组件(组件DLL路径)
+            // 功能：加载组件 DLL 并调用 DllRegisterServer 把 OCX/DLL 注册到系统（需要管理员权限时由系统返回失败）。
+            // 参数：组件DLL路径:wideString；返回：bool；可见性：default
+            COM_注册组件("module-demo-temp.txt")
+            // 命令ID：COM_注销组件
+            // [4] COM_注销组件(组件DLL路径)
+            // 功能：加载组件 DLL 并调用 DllUnregisterServer 从系统注销；程序退出前注销随程序携带的组件即可实现绿色免安装。
+            // 参数：组件DLL路径:wideString；返回：bool；可见性：default
+            COM_注销组件("module-demo-temp.txt")
+            // 命令ID：COM_取组件路径
+            // [5] COM_取组件路径(文件名)
+            // 功能：返回当前 exe 所在目录与文件名拼接的完整路径，用于随程序携带的组件定位。
+            // 参数：文件名:wideString；返回：wideString；可见性：default
+            COM_取组件路径("module-demo-temp.txt")
+            // 命令ID：COM_创建OCX组件
+            // [6] COM_创建OCX组件(父窗口, 类标识, 左边, 顶边, 宽度, 高度, [边框])
+            // 功能：在父窗口内以 AtlAxWin 宿主一个 ActiveX/OCX 控件，返回 OCX 宿主窗口句柄；对象用 COM_取OCX对象 取回。边框：0 无边框，1 凹入式，2 凸出式，3 浅凹入式，4 镜框式，5 单线边框。
+            // 参数：父窗口:controlRef，类标识:wideString，左边:int，顶边:int，宽度:int，高度:int，边框:int；返回：longLong；可见性：default
+            COM_创建OCX组件(演示状态, "演示参数2", 1, 1, 1, 1, 1)
+            // 命令ID：COM_取OCX对象
+            // [7] COM_取OCX对象(OCX窗口句柄)
+            // 功能：取 OCX 宿主窗口内的 COM 对象句柄。
+            // 参数：OCX窗口句柄:longLong；返回：longLong；可见性：default
+            COM_取OCX对象(1)
             // 命令ID：COM_取文本属性
-            // [2] COM_取文本属性(属性名)
+            // [8] COM_取文本属性(对象, 属性名)
             // 功能：读取文本或可转文本属性。
-            // 参数：属性名:wideString；返回：wideString；可见性：default
-            COM_取文本属性("演示参数1")
+            // 参数：对象:longLong，属性名:wideString；返回：wideString；可见性：default
+            COM_取文本属性(1, "演示参数2")
+            // 命令ID：COM_取数值属性
+            // [9] COM_取数值属性(对象, 属性名)
+            // 功能：读取数值属性，返回双精度小数。
+            // 参数：对象:longLong，属性名:wideString；返回：double；可见性：default
+            COM_取数值属性(1, "演示参数2")
+            // 命令ID：COM_取逻辑属性
+            // [10] COM_取逻辑属性(对象, 属性名)
+            // 功能：读取逻辑属性。
+            // 参数：对象:longLong，属性名:wideString；返回：bool；可见性：default
+            COM_取逻辑属性(1, "演示参数2")
+            // 命令ID：COM_取对象属性
+            // [11] COM_取对象属性(对象, 属性名)
+            // 功能：读取对象类型属性并返回新的 COM 对象句柄，用 COM_关闭 释放。
+            // 参数：对象:longLong，属性名:wideString；返回：longLong；可见性：default
+            COM_取对象属性(1, "演示参数2")
             // 命令ID：COM_置文本属性
-            // [3] COM_置文本属性(属性名, 值)
-            // 功能：设置 BSTR 文本属性。
-            // 参数：属性名:wideString，值:wideString；返回：bool；可见性：default
-            COM_置文本属性("演示参数1", "演示参数2")
-            // 命令ID：COM_调用无参方法
-            // [4] COM_调用无参方法(方法名)
-            // 功能：调用无参数方法。
-            // 参数：方法名:wideString；返回：bool；可见性：default
-            COM_调用无参方法("演示参数1")
+            // [12] COM_置文本属性(对象, 属性名, 值)
+            // 功能：写入属性；值按文本传入（VT_BSTR），目标属性为数值或逻辑时由组件自动转换类型，只读属性写入失败。
+            // 参数：对象:longLong，属性名:wideString，值:wideString；返回：bool；可见性：default
+            COM_置文本属性(1, "演示参数2", "演示参数3")
+            // 命令ID：COM_调用方法
+            // [13] COM_调用方法(对象, 方法名, 参数...)
+            // 功能：调用 COM 方法，参数按值传入；成功返回真。
+            // 参数：对象:longLong，方法名:wideString，参数:lingValue；返回：bool；可见性：default
+            COM_调用方法(1, "演示参数2")
+            // 命令ID：COM_调用文本方法
+            // [14] COM_调用文本方法(对象, 方法名, 参数...)
+            // 功能：调用 COM 方法并把返回值转为文本。
+            // 参数：对象:longLong，方法名:wideString，参数:lingValue；返回：wideString；可见性：default
+            COM_调用文本方法(1, "演示参数2")
+        如果结束
+        调试输出("已查看 命令 1–14：COM_创建对象 至 COM_调用文本方法；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第02组_被单击()
+        控件_设置文本(演示状态, "命令 15–27：COM_调用数值方法 至 COM_取错误；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
+            // 命令ID：COM_调用数值方法
+            // [15] COM_调用数值方法(对象, 方法名, 参数...)
+            // 功能：调用 COM 方法并把返回值转为双精度小数。
+            // 参数：对象:longLong，方法名:wideString，参数:lingValue；返回：double；可见性：default
+            COM_调用数值方法(1, "演示参数2")
+            // 命令ID：COM_调用逻辑方法
+            // [16] COM_调用逻辑方法(对象, 方法名, 参数...)
+            // 功能：调用 COM 方法并把返回值转为逻辑值。
+            // 参数：对象:longLong，方法名:wideString，参数:lingValue；返回：bool；可见性：default
+            COM_调用逻辑方法(1, "演示参数2")
+            // 命令ID：COM_调用对象方法
+            // [17] COM_调用对象方法(对象, 方法名, 参数...)
+            // 功能：调用返回对象的 COM 方法，返回新的 COM 对象句柄。
+            // 参数：对象:longLong，方法名:wideString，参数:lingValue；返回：longLong；可见性：default
+            COM_调用对象方法(1, "演示参数2")
+            // 命令ID：COM_挂接事件
+            // [18] COM_挂接事件(对象)
+            // 功能：挂接对象的全部事件连接点，返回事件句柄（非 0）；失败返回 0 并可用 COM_取错误 查看原因。
+            // 参数：对象:longLong；返回：int；可见性：default
+            COM_挂接事件(1)
+            // 命令ID：COM_映射事件
+            // [19] COM_映射事件(对象, 事件ID, &处理器, [用户数据])
+            // 功能：把 COM 事件 ID 映射到当前类的处理器；处理器签名：空 处理器(整数型 用户数据, 文本型 参数文本)，事件参数按制表符拼接，对象参数为 [COM对象] 占位。
+            // 参数：对象:longLong，事件ID:int，处理器:handler，用户数据:int；返回：bool；可见性：default
+            COM_映射事件(1, 1, &模块演示回调_整数型_文本型_空, 1)
+            // 命令ID：COM_取消挂接事件
+            // [20] COM_取消挂接事件(对象, 事件句柄)
+            // 功能：取消事件挂接并清除该对象的全部事件映射。
+            // 参数：对象:longLong，事件句柄:int；返回：bool；可见性：default
+            COM_取消挂接事件(1, 1)
+            // 命令ID：COM_取事件对象参数
+            // [21] COM_取事件对象参数(序号)
+            // 功能：仅在事件处理器内有效：把第 N 个（从 0 开始）对象类型事件参数包装为新的 COM 对象句柄。
+            // 参数：序号:int；返回：longLong；可见性：default
+            COM_取事件对象参数(1)
+            // 命令ID：COM_启用OCX消息转发
+            // [22] COM_启用OCX消息转发()
+            // 功能：安装当前线程消息钩子，把键盘和鼠标消息转发给 OCX 宿主窗口（WM_FORWARDMSG）。
+            // 参数：无；返回：bool；可见性：default
+            COM_启用OCX消息转发()
+            // 命令ID：COM_移除OCX消息转发
+            // [23] COM_移除OCX消息转发()
+            // 功能：移除 OCX 消息转发钩子。
+            // 参数：无；返回：bool；可见性：default
+            COM_移除OCX消息转发()
+            // 命令ID：COM_取接口信息
+            // [24] COM_取接口信息(对象)
+            // 功能：通过 ITypeInfo 返回接口摘要文本：类型名、GUID 和属性、方法（含 DISPID）、事件清单，用于确定映射事件的事件 ID。
+            // 参数：对象:longLong；返回：wideString；可见性：default
+            COM_取接口信息(1)
+            // 命令ID：COM_关闭
+            // [25] COM_关闭(对象)
+            // 功能：释放一个 COM 对象（含其 OCX 宿主窗口与事件挂接）。
+            // 参数：对象:longLong；返回：bool；可见性：default
+            COM_关闭(1)
+            // 命令ID：COM_关闭全部
+            // [26] COM_关闭全部()
+            // 功能：释放当前程序创建的全部 COM 对象；窗口销毁时自动调用。
+            // 参数：无；返回：bool；可见性：default
+            COM_关闭全部()
             // 命令ID：COM_取错误
-            // [5] COM_取错误()
-            // 功能：返回最近 COM 错误。
+            // [27] COM_取错误()
+            // 功能：返回最近一次 COM 操作的中文错误文本。
             // 参数：无；返回：wideString；可见性：default
             COM_取错误()
-            // 命令ID：COM_关闭
-            // [6] COM_关闭()
-            // 功能：释放当前自动化对象。
-            // 参数：无；返回：void；可见性：default
-            COM_关闭()
         如果结束
-        调试输出("已查看 命令 1–6：COM_创建对象 至 COM_关闭；勾选允许实际执行后会使用演示参数调用。")
+        调试输出("已查看 命令 15–27：COM_调用数值方法 至 COM_取错误；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 模块演示回调_整数型_文本型_空(整数型 参数1, 文本型 参数2)
+        调试输出("模块演示回调已触发。")
     结束
 
 结束类

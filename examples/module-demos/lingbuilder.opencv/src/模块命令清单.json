@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.958Z",
+  "generatedAt": "2026-10-19T03:18:58.850Z",
   "module": {
     "id": "lingbuilder.opencv",
     "name": "OpenCV 图像处理模块",
@@ -74,11 +74,13 @@
         "parameters": [
           {
             "name": "图像",
-            "type": "handle"
+            "type": "handle",
+            "description": "OpenCV_加载图像 等命令返回的受管图像句柄；句柄类型不符、不存在或已释放时命令返回失败值。"
           },
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "输出文件路径，支持中文；保存格式由扩展名决定，支持 png、jpg、jpeg 和 webp。"
           },
           {
             "name": "质量",
@@ -108,7 +110,8 @@
         "parameters": [
           {
             "name": "图像",
-            "type": "handle"
+            "type": "handle",
+            "description": "OpenCV_加载图像 等命令返回的受管图像句柄；句柄类型不符、不存在或已释放时命令返回失败值。"
           }
         ],
         "returnType": "handle",
@@ -131,7 +134,8 @@
         "parameters": [
           {
             "name": "图像",
-            "type": "handle"
+            "type": "handle",
+            "description": "OpenCV_加载图像 等命令返回的受管图像句柄；句柄类型不符、不存在或已释放时命令返回失败值。"
           }
         ],
         "returnType": "bool",
@@ -172,7 +176,8 @@
         "parameters": [
           {
             "name": "图像",
-            "type": "handle"
+            "type": "handle",
+            "description": "OpenCV_加载图像 等命令返回的受管图像句柄；句柄类型不符、不存在或已释放时命令返回失败值。"
           }
         ],
         "returnType": "int",
@@ -195,7 +200,8 @@
         "parameters": [
           {
             "name": "图像",
-            "type": "handle"
+            "type": "handle",
+            "description": "OpenCV_加载图像 等命令返回的受管图像句柄；句柄类型不符、不存在或已释放时命令返回失败值。"
           }
         ],
         "returnType": "int",
@@ -218,7 +224,8 @@
         "parameters": [
           {
             "name": "图像",
-            "type": "handle"
+            "type": "handle",
+            "description": "OpenCV_加载图像 等命令返回的受管图像句柄；句柄类型不符、不存在或已释放时命令返回失败值。"
           }
         ],
         "returnType": "int",
@@ -260,7 +267,8 @@
         "parameters": [
           {
             "name": "图像",
-            "type": "handle"
+            "type": "handle",
+            "description": "OpenCV_加载图像 等命令返回的受管图像句柄；句柄类型不符、不存在或已释放时命令返回失败值。"
           }
         ],
         "returnType": "handle",
@@ -283,15 +291,18 @@
         "parameters": [
           {
             "name": "图像",
-            "type": "handle"
+            "type": "handle",
+            "description": "OpenCV_加载图像 等命令返回的受管图像句柄；句柄类型不符、不存在或已释放时命令返回失败值。"
           },
           {
             "name": "宽度",
-            "type": "int"
+            "type": "int",
+            "description": "缩放后的目标宽度，像素；必须大于 0 且与高度的乘积不超过 100MP。"
           },
           {
             "name": "高度",
-            "type": "int"
+            "type": "int",
+            "description": "缩放后的目标高度，像素；必须大于 0 且与宽度的乘积不超过 100MP。"
           }
         ],
         "returnType": "handle",
@@ -314,23 +325,28 @@
         "parameters": [
           {
             "name": "图像",
-            "type": "handle"
+            "type": "handle",
+            "description": "OpenCV_加载图像 等命令返回的受管图像句柄；句柄类型不符、不存在或已释放时命令返回失败值。"
           },
           {
             "name": "横坐标",
-            "type": "int"
+            "type": "int",
+            "description": "裁剪起点列坐标，从 0 起；不能为负，且与宽度之和不得超出图像宽度。"
           },
           {
             "name": "纵坐标",
-            "type": "int"
+            "type": "int",
+            "description": "裁剪起点行坐标，从 0 起；不能为负，且与高度之和不得超出图像高度。"
           },
           {
             "name": "宽度",
-            "type": "int"
+            "type": "int",
+            "description": "裁剪区域宽度，像素；必须大于 0。"
           },
           {
             "name": "高度",
-            "type": "int"
+            "type": "int",
+            "description": "裁剪区域高度，像素；必须大于 0。"
           }
         ],
         "returnType": "handle",
@@ -353,7 +369,8 @@
         "parameters": [
           {
             "name": "图像",
-            "type": "handle"
+            "type": "handle",
+            "description": "OpenCV_加载图像 等命令返回的受管图像句柄；句柄类型不符、不存在或已释放时命令返回失败值。"
           },
           {
             "name": "卷积核",
@@ -362,7 +379,8 @@
           },
           {
             "name": "Sigma",
-            "type": "double"
+            "type": "double",
+            "description": "高斯核标准差，不能为负数；传 0 时按卷积核大小自动推算。"
           }
         ],
         "returnType": "handle",
@@ -385,11 +403,13 @@
         "parameters": [
           {
             "name": "图像",
-            "type": "handle"
+            "type": "handle",
+            "description": "OpenCV_加载图像 等命令返回的受管图像句柄；句柄类型不符、不存在或已释放时命令返回失败值。"
           },
           {
             "name": "阈值",
-            "type": "double"
+            "type": "double",
+            "description": "像素灰度分界值，通常取 0 到 255；选择大津或大津反向模式时由算法自动求阈值。"
           },
           {
             "name": "模式",
@@ -418,7 +438,8 @@
         "parameters": [
           {
             "name": "图像",
-            "type": "handle"
+            "type": "handle",
+            "description": "OpenCV_加载图像 等命令返回的受管图像句柄；句柄类型不符、不存在或已释放时命令返回失败值。"
           },
           {
             "name": "块大小",
@@ -427,11 +448,13 @@
           },
           {
             "name": "常数",
-            "type": "double"
+            "type": "double",
+            "description": "从局部加权均值中减去的常数，可正可负。"
           },
           {
             "name": "反向",
-            "type": "bool"
+            "type": "bool",
+            "description": "传真时把结果反相输出。"
           }
         ],
         "returnType": "handle",
@@ -454,15 +477,18 @@
         "parameters": [
           {
             "name": "图像",
-            "type": "handle"
+            "type": "handle",
+            "description": "OpenCV_加载图像 等命令返回的受管图像句柄；句柄类型不符、不存在或已释放时命令返回失败值。"
           },
           {
             "name": "低阈值",
-            "type": "double"
+            "type": "double",
+            "description": "从局部加权均值中减去的常数，可正可负。"
           },
           {
             "name": "高阈值",
-            "type": "double"
+            "type": "double",
+            "description": "传真时把结果反相输出。"
           }
         ],
         "returnType": "handle",
@@ -485,7 +511,8 @@
         "parameters": [
           {
             "name": "图像",
-            "type": "handle"
+            "type": "handle",
+            "description": "OpenCV_加载图像 等命令返回的受管图像句柄；句柄类型不符、不存在或已释放时命令返回失败值。"
           },
           {
             "name": "操作",
@@ -494,11 +521,13 @@
           },
           {
             "name": "卷积核",
-            "type": "int"
+            "type": "int",
+            "description": "结构元尺寸，1 到 31 的正奇数。"
           },
           {
             "name": "次数",
-            "type": "int"
+            "type": "int",
+            "description": "同一形态学操作重复的次数，1 到 100。"
           }
         ],
         "returnType": "handle",
@@ -523,11 +552,13 @@
         "parameters": [
           {
             "name": "图像",
-            "type": "handle"
+            "type": "handle",
+            "description": "OpenCV_加载图像 等命令返回的受管图像句柄；句柄类型不符、不存在或已释放时命令返回失败值。"
           },
           {
             "name": "模板",
-            "type": "handle"
+            "type": "handle",
+            "description": "作为模板的图像句柄，尺寸不得大于待匹配图像。"
           },
           {
             "name": "方法",
@@ -536,11 +567,13 @@
           },
           {
             "name": "最低分数",
-            "type": "double"
+            "type": "double",
+            "description": "保留候选的最低匹配分数，0 到 1；超出该范围返回失败并记录中文错误。"
           },
           {
             "name": "最大结果数",
-            "type": "int"
+            "type": "int",
+            "description": "最多返回的候选数量，1 到 100；超范围或小于 1 时返回失败并记录中文错误。"
           }
         ],
         "returnType": "handle",
@@ -564,11 +597,13 @@
         "parameters": [
           {
             "name": "图像",
-            "type": "handle"
+            "type": "handle",
+            "description": "OpenCV_加载图像 等命令返回的受管图像句柄；句柄类型不符、不存在或已释放时命令返回失败值。"
           },
           {
             "name": "最小面积",
-            "type": "double"
+            "type": "double",
+            "description": "作为模板的图像句柄，尺寸不得大于待匹配图像。"
           },
           {
             "name": "最大面积",
@@ -577,7 +612,8 @@
           },
           {
             "name": "最大结果数",
-            "type": "int"
+            "type": "int",
+            "description": "最多返回的候选数量，1 到 100；超范围或小于 1 时返回失败并记录中文错误。"
           }
         ],
         "returnType": "handle",
@@ -601,7 +637,8 @@
         "parameters": [
           {
             "name": "背景图像",
-            "type": "handle"
+            "type": "handle",
+            "description": "作为背景的整图句柄，检测按配置 JSON 中的 ROI 在其上执行。"
           },
           {
             "name": "滑块图像",
@@ -641,7 +678,8 @@
         "parameters": [
           {
             "name": "结果",
-            "type": "handle"
+            "type": "handle",
+            "description": "作为背景的整图句柄，检测按配置 JSON 中的 ROI 在其上执行。"
           }
         ],
         "returnType": "wideString",
@@ -665,7 +703,8 @@
         "parameters": [
           {
             "name": "结果",
-            "type": "handle"
+            "type": "handle",
+            "description": "OpenCV_模板匹配、OpenCV_查找轮廓 或 OpenCV_分析缺口 返回的受管结果句柄；不存在或已释放时命令返回失败值。"
           }
         ],
         "returnType": "int",
@@ -688,11 +727,13 @@
         "parameters": [
           {
             "name": "结果",
-            "type": "handle"
+            "type": "handle",
+            "description": "OpenCV_模板匹配、OpenCV_查找轮廓 或 OpenCV_分析缺口 返回的受管结果句柄；不存在或已释放时命令返回失败值。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "候选项索引，从 0 起，必须小于 OpenCV结果_取数量 的返回值；越界返回失败值并记录中文错误。"
           }
         ],
         "returnType": "int",
@@ -715,11 +756,13 @@
         "parameters": [
           {
             "name": "结果",
-            "type": "handle"
+            "type": "handle",
+            "description": "OpenCV_模板匹配、OpenCV_查找轮廓 或 OpenCV_分析缺口 返回的受管结果句柄；不存在或已释放时命令返回失败值。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "候选项索引，从 0 起，必须小于 OpenCV结果_取数量 的返回值；越界返回失败值并记录中文错误。"
           }
         ],
         "returnType": "int",
@@ -742,11 +785,13 @@
         "parameters": [
           {
             "name": "结果",
-            "type": "handle"
+            "type": "handle",
+            "description": "OpenCV_模板匹配、OpenCV_查找轮廓 或 OpenCV_分析缺口 返回的受管结果句柄；不存在或已释放时命令返回失败值。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "候选项索引，从 0 起，必须小于 OpenCV结果_取数量 的返回值；越界返回失败值并记录中文错误。"
           }
         ],
         "returnType": "int",
@@ -769,11 +814,13 @@
         "parameters": [
           {
             "name": "结果",
-            "type": "handle"
+            "type": "handle",
+            "description": "OpenCV_模板匹配、OpenCV_查找轮廓 或 OpenCV_分析缺口 返回的受管结果句柄；不存在或已释放时命令返回失败值。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "候选项索引，从 0 起，必须小于 OpenCV结果_取数量 的返回值；越界返回失败值并记录中文错误。"
           }
         ],
         "returnType": "int",
@@ -796,11 +843,13 @@
         "parameters": [
           {
             "name": "结果",
-            "type": "handle"
+            "type": "handle",
+            "description": "OpenCV_模板匹配、OpenCV_查找轮廓 或 OpenCV_分析缺口 返回的受管结果句柄；不存在或已释放时命令返回失败值。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "候选项索引，从 0 起，必须小于 OpenCV结果_取数量 的返回值；越界返回失败值并记录中文错误。"
           }
         ],
         "returnType": "int",
@@ -823,11 +872,13 @@
         "parameters": [
           {
             "name": "结果",
-            "type": "handle"
+            "type": "handle",
+            "description": "OpenCV_模板匹配、OpenCV_查找轮廓 或 OpenCV_分析缺口 返回的受管结果句柄；不存在或已释放时命令返回失败值。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "候选项索引，从 0 起，必须小于 OpenCV结果_取数量 的返回值；越界返回失败值并记录中文错误。"
           }
         ],
         "returnType": "int",
@@ -850,11 +901,13 @@
         "parameters": [
           {
             "name": "结果",
-            "type": "handle"
+            "type": "handle",
+            "description": "OpenCV_模板匹配、OpenCV_查找轮廓 或 OpenCV_分析缺口 返回的受管结果句柄；不存在或已释放时命令返回失败值。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "候选项索引，从 0 起，必须小于 OpenCV结果_取数量 的返回值；越界返回失败值并记录中文错误。"
           }
         ],
         "returnType": "double",
@@ -877,7 +930,8 @@
         "parameters": [
           {
             "name": "结果",
-            "type": "handle"
+            "type": "handle",
+            "description": "OpenCV_模板匹配、OpenCV_查找轮廓 或 OpenCV_分析缺口 返回的受管结果句柄；不存在或已释放时命令返回失败值。"
           }
         ],
         "returnType": "wideString",
@@ -901,15 +955,18 @@
         "parameters": [
           {
             "name": "结果",
-            "type": "handle"
+            "type": "handle",
+            "description": "OpenCV_模板匹配、OpenCV_查找轮廓 或 OpenCV_分析缺口 返回的受管结果句柄；不存在或已释放时命令返回失败值。"
           },
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "输出文件路径，支持中文；保存格式由扩展名决定，支持 png、jpg、jpeg 和 webp。"
           },
           {
             "name": "质量",
-            "type": "int"
+            "type": "int",
+            "description": "编码质量，0 到 100，超出范围会被夹到端点；PNG 按该值换算压缩级别。"
           }
         ],
         "returnType": "bool",
@@ -933,7 +990,8 @@
         "parameters": [
           {
             "name": "结果",
-            "type": "handle"
+            "type": "handle",
+            "description": "OpenCV_模板匹配、OpenCV_查找轮廓 或 OpenCV_分析缺口 返回的受管结果句柄；不存在或已释放时命令返回失败值。"
           }
         ],
         "returnType": "bool",

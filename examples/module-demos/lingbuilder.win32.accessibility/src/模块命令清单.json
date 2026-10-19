@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:36.007Z",
+  "generatedAt": "2026-10-19T03:18:58.890Z",
   "module": {
     "id": "lingbuilder.win32.accessibility",
     "name": "辅助功能模块",
@@ -22,7 +22,8 @@
         "parameters": [
           {
             "name": "窗口句柄",
-            "type": "handle"
+            "type": "handle",
+            "description": "要读取的窗口句柄；无法取得可访问对象时返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -43,7 +44,8 @@
         "parameters": [
           {
             "name": "窗口句柄",
-            "type": "handle"
+            "type": "handle",
+            "description": "要读取的窗口句柄；对象没有值或无法访问时返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -64,7 +66,8 @@
         "parameters": [
           {
             "name": "窗口句柄",
-            "type": "handle"
+            "type": "handle",
+            "description": "要读取的窗口句柄；返回系统本地化的角色文本，无法访问时返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -85,7 +88,8 @@
         "parameters": [
           {
             "name": "窗口句柄",
-            "type": "handle"
+            "type": "handle",
+            "description": "要读取的窗口句柄；返回 MSAA 状态位按位或的结果，无法访问时返回 0。"
           }
         ],
         "returnType": "longLong"

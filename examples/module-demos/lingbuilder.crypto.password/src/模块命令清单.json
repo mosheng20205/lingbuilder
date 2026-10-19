@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.764Z",
+  "generatedAt": "2026-10-19T03:18:58.705Z",
   "module": {
     "id": "lingbuilder.crypto.password",
     "name": "密码哈希与派生模块",
@@ -61,11 +61,13 @@
         "parameters": [
           {
             "name": "密码",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "待验证的密码，按 UTF-8 编码参与运算；空文本同样会执行一次完整哈希比对。"
           },
           {
             "name": "已保存哈希",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "对应哈希算法生成的自描述 PHC 文本，内含算法、参数和随机盐；格式不符时返回假并记录中文错误。"
           }
         ],
         "returnType": "bool",
@@ -86,7 +88,8 @@
         "parameters": [
           {
             "name": "密码",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "待验证的密码，按 UTF-8 编码参与运算；空文本同样会执行一次完整哈希比对。"
           },
           {
             "name": "N",
@@ -123,11 +126,13 @@
         "parameters": [
           {
             "name": "密码",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "待验证的密码，按 UTF-8 编码参与运算；空文本同样会执行一次完整哈希比对。"
           },
           {
             "name": "已保存哈希",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "对应哈希算法生成的自描述 PHC 文本，内含算法、参数和随机盐；格式不符时返回假并记录中文错误。"
           }
         ],
         "returnType": "bool",
@@ -148,7 +153,8 @@
         "parameters": [
           {
             "name": "密码",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "待验证的密码，按 UTF-8 编码参与运算；空文本同样会执行一次完整哈希比对。"
           },
           {
             "name": "成本",
@@ -175,11 +181,13 @@
         "parameters": [
           {
             "name": "密码",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "待验证的密码，按 UTF-8 编码参与运算；空文本同样会执行一次完整哈希比对。"
           },
           {
             "name": "已保存哈希",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "对应哈希算法生成的自描述 PHC 文本，内含算法、参数和随机盐；格式不符时返回假并记录中文错误。"
           }
         ],
         "returnType": "bool",
@@ -200,7 +208,8 @@
         "parameters": [
           {
             "name": "密码",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "待验证的密码，按 UTF-8 编码参与运算；空文本同样会执行一次完整哈希比对。"
           },
           {
             "name": "迭代次数",
@@ -227,11 +236,13 @@
         "parameters": [
           {
             "name": "密码",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "待验证的密码，按 UTF-8 编码参与运算；空文本同样会执行一次完整哈希比对。"
           },
           {
             "name": "已保存哈希",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "对应哈希算法生成的自描述 PHC 文本，内含算法、参数和随机盐；格式不符时返回假并记录中文错误。"
           }
         ],
         "returnType": "bool",

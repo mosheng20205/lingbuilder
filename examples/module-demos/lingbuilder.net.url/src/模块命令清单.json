@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.892Z",
+  "generatedAt": "2026-10-19T03:18:58.787Z",
   "module": {
     "id": "lingbuilder.net.url",
     "name": "URL解析模块",
@@ -22,7 +22,8 @@
         "parameters": [
           {
             "name": "地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要解析的完整 URL，必须带协议名；由 WinHTTP 解析，解析失败时文本项返回空文本、端口返回 0。"
           }
         ],
         "returnType": "bool",
@@ -43,7 +44,8 @@
         "parameters": [
           {
             "name": "地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要解析的完整 URL，必须带协议名；由 WinHTTP 解析，解析失败时文本项返回空文本、端口返回 0。"
           }
         ],
         "returnType": "wideString",
@@ -64,7 +66,8 @@
         "parameters": [
           {
             "name": "地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要解析的完整 URL，必须带协议名；由 WinHTTP 解析，解析失败时文本项返回空文本、端口返回 0。"
           }
         ],
         "returnType": "wideString",
@@ -85,7 +88,8 @@
         "parameters": [
           {
             "name": "地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要解析的完整 URL，必须带协议名；由 WinHTTP 解析，解析失败时文本项返回空文本、端口返回 0。未显式写端口时返回该协议的默认端口。"
           }
         ],
         "returnType": "int",
@@ -106,7 +110,8 @@
         "parameters": [
           {
             "name": "地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要解析的完整 URL，必须带协议名；由 WinHTTP 解析，解析失败时文本项返回空文本、端口返回 0。返回值含问号后的查询串和锚点等附加信息。"
           }
         ],
         "returnType": "wideString",
@@ -127,7 +132,8 @@
         "parameters": [
           {
             "name": "地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要解析的完整 URL，必须带协议名；由 WinHTTP 解析，解析失败时文本项返回空文本、端口返回 0。"
           }
         ],
         "returnType": "bool",

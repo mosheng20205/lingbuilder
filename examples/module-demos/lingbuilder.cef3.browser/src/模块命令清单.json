@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.720Z",
+  "generatedAt": "2026-10-19T03:18:58.674Z",
   "module": {
     "id": "lingbuilder.cef3.browser",
     "name": "CEF3浏览器模块",
-    "version": "3.0.0-alpha.3",
+    "version": "3.0.0-alpha.5",
     "description": "基于 Chromium Embedded Framework 3，提供设计器浏览器控件、中文命令和集中式浏览器事件目录。"
   },
-  "commandCount": 64,
+  "commandCount": 102,
   "commands": [
     {
       "index": 1,
@@ -45,11 +45,13 @@
         "parameters": [
           {
             "name": "键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "崩溃报告键名。"
           },
           {
             "name": "值",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "崩溃键对应的值文本。"
           }
         ],
         "returnType": "int",
@@ -75,7 +77,8 @@
         "parameters": [
           {
             "name": "名称",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "命令资源名，如 \"IDC_BACK\"。"
           }
         ],
         "returnType": "int",
@@ -105,11 +108,13 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "完整 URL 或本地文件路径。"
           }
         ],
         "returnType": "int",
@@ -139,11 +144,13 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "完整 URL 或本地文件路径。"
           }
         ],
         "returnType": "int",
@@ -154,6 +161,721 @@
     },
     {
       "index": 6,
+      "name": "CEF3_创建弹窗浏览器",
+      "signature": "CEF3_创建弹窗浏览器(实例编号, 地址, 独立缓存目录, 代理地址)",
+      "description": "不依赖设计器控件，用 CEF Chrome Runtime 凭空创建独立顶层浏览器弹窗：不同 实例编号 + 不同 独立缓存目录（独立 profile）实现店铺间 Cookie/缓存隔离，代理地址非空即该弹窗独立出口 IP。实例登记进运行时表，可被 CEF3_枚举实例JSON 列出、由 CEF3_关闭全部实例 统一关闭；实例级 UA 用 CEF3_设置实例用户代理 设置。",
+      "insertText": "CEF3_创建弹窗浏览器(1, \"https://www.example.com\", \".cef3/store-a\", \"\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3_创建弹窗浏览器",
+        "runtimeName": "CEF3_创建弹窗浏览器",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "EdgeView 实例的正整数编号；后续命令按它指定实例。"
+          },
+          {
+            "name": "地址",
+            "type": "wideString",
+            "description": "完整 URL 或本地文件路径。"
+          },
+          {
+            "name": "独立缓存目录",
+            "type": "wideString",
+            "description": "实例专用缓存目录（相对工作目录或绝对路径）；相同目录共享会话数据。"
+          },
+          {
+            "name": "代理地址",
+            "type": "wideString",
+            "description": "代理地址，如 \"http://127.0.0.1:7890\" 或 \"socks5://127.0.0.1:1080\"。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3_创建弹窗浏览器(1, \"https://example.com\", \".\", \"https://example.com\")"
+    },
+    {
+      "index": 7,
+      "name": "CEF3_创建无头浏览器",
+      "signature": "CEF3_创建无头浏览器(实例编号, 地址, 独立缓存目录, 代理地址, 视口宽, 视口高)",
+      "description": "用 CEF 官方无窗口渲染（OSR）创建不产生任何窗口的浏览器实例，控制台项目可直接调用：地址传空为 about:blank，独立缓存目录传空用默认 cef3-headless-<实例编号>，代理地址非空即该实例独立出口 IP，视口默认 1280×720（宽高传非正数直接失败）。实例登记进运行时表，可被 CEF3_枚举实例JSON 列出（mode 为 windowless）、由 CEF3_关闭全部实例 统一关闭。一期无画面输出，取内容用 CEF3无头_取页面文本 / CEF3无头_执行JS；截图未开放，禁止用创建可见窗口再隐藏的方式冒充无头。",
+      "insertText": "CEF3_创建无头浏览器(1, \"https://www.example.com\", \".cef3/headless-1\", \"\", 1280, 720)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3_创建无头浏览器",
+        "runtimeName": "CEF3_创建无头浏览器",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "CEF3 无头（OSR）浏览器实例的正整数编号，取自 CEF3_创建无头浏览器 的首参；它是运行期编号而不是设计器控件名，写裸数字不加引号，实例不存在时命令一律返回失败值并给中文诊断。"
+          },
+          {
+            "name": "地址",
+            "type": "wideString",
+            "description": "完整 URL 或本地文件路径。"
+          },
+          {
+            "name": "独立缓存目录",
+            "type": "wideString",
+            "description": "实例专用缓存目录（相对工作目录或绝对路径）；相同目录共享会话数据。"
+          },
+          {
+            "name": "代理地址",
+            "type": "wideString",
+            "description": "代理地址，如 \"http://127.0.0.1:7890\" 或 \"socks5://127.0.0.1:1080\"。"
+          },
+          {
+            "name": "视口宽",
+            "type": "int",
+            "description": "OSR 无头浏览器的页面视口宽度（CSS 像素），必须是正整数，传 0 或负数直接创建/设置失败；它决定页面布局宽度与媒体查询结果，默认 1280。"
+          },
+          {
+            "name": "视口高",
+            "type": "int",
+            "description": "OSR 无头浏览器的页面视口高度（CSS 像素），必须是正整数，传 0 或负数直接创建/设置失败；无头实例不产生窗口，该值只影响页面布局与渲染尺寸，默认 720。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3_创建无头浏览器(1, \"https://example.com\", \".\", \"https://example.com\", 1, 1)"
+    },
+    {
+      "index": 8,
+      "name": "CEF3无头_是否已创建",
+      "signature": "CEF3无头_是否已创建(实例编号)",
+      "description": "按实例编号查询无头浏览器实例是否仍存在且已创建：返回 1 已创建，0 表示实例不存在或已关闭。无头实例没有宿主窗口、派发不了中文事件处理器，创建结果只能靠本命令与 CEF3无头_取视口JSON 回读，不要凭假设往下走。",
+      "insertText": "CEF3无头_是否已创建(1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3无头_是否已创建",
+        "runtimeName": "CEF3无头_是否已创建",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "CEF3 无头（OSR）浏览器实例的正整数编号，取自 CEF3_创建无头浏览器 的首参；它是运行期编号而不是设计器控件名，写裸数字不加引号，实例不存在时命令一律返回失败值并给中文诊断。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3无头_是否已创建(1)"
+    },
+    {
+      "index": 9,
+      "name": "CEF3无头_设置视口",
+      "signature": "CEF3无头_设置视口(实例编号, 视口宽, 视口高)",
+      "description": "修改无头浏览器实例的渲染视口（CSS 像素），宽高必须为正整数；写入成功后向 CEF 请求重查视口并立即重绘，决定后续布局宽度与媒体查询结果。返回 1 表示视口已生效。两条口径必须知道：一、写入与刷新是两步，宿主刷新请求未确认时视口其实已经写入，此时本命令仍返回 1 并给出中文诊断「视口已写入，但刷新未确认」，不得按失败处理；二、设定值不是永久权威，出帧后 CEF 会把实际渲染尺寸回写，读取当前尺寸一律用 CEF3无头_取视口JSON。",
+      "insertText": "CEF3无头_设置视口(1, 1024, 640)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3无头_设置视口",
+        "runtimeName": "CEF3无头_设置视口",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "CEF3 无头（OSR）浏览器实例的正整数编号，取自 CEF3_创建无头浏览器 的首参；它是运行期编号而不是设计器控件名，写裸数字不加引号，实例不存在时命令一律返回失败值并给中文诊断。"
+          },
+          {
+            "name": "视口宽",
+            "type": "int",
+            "description": "OSR 无头浏览器的页面视口宽度（CSS 像素），必须是正整数，传 0 或负数直接创建/设置失败；它决定页面布局宽度与媒体查询结果，默认 1280。"
+          },
+          {
+            "name": "视口高",
+            "type": "int",
+            "description": "OSR 无头浏览器的页面视口高度（CSS 像素），必须是正整数，传 0 或负数直接创建/设置失败；无头实例不产生窗口，该值只影响页面布局与渲染尺寸，默认 720。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3无头_设置视口(1, 1, 1)"
+    },
+    {
+      "index": 10,
+      "name": "CEF3无头_取视口JSON",
+      "signature": "CEF3无头_取视口JSON(实例编号)",
+      "description": "读取无头浏览器实例当前生效的视口，返回 {\"width\":…,\"height\":…,\"paintCount\":…}。这里的宽高是 CEF 的实际渲染尺寸，不是设定值的回显：每次出帧 CEF 会把该帧真实尺寸回写进存储视口，因此读到的可能不等于 CEF3无头_设置视口 刚传入的数字，判断布局尺寸只能以此为准。paintCount 是已交付像素帧计数，不代表宿主已取走帧内容。实例不存在或该实例不是无窗口 OSR 浏览器时返回空文本，并原样转述 CEF3 桥给出的中文原因。",
+      "insertText": "调试输出(CEF3无头_取视口JSON(1))",
+      "returnType": "文本型",
+      "binding": {
+        "command": "CEF3无头_取视口JSON",
+        "runtimeName": "CEF3无头_取视口JSON",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "CEF3 无头（OSR）浏览器实例的正整数编号，取自 CEF3_创建无头浏览器 的首参；它是运行期编号而不是设计器控件名，写裸数字不加引号，实例不存在时命令一律返回失败值并给中文诊断。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3无头_取视口JSON(1)"
+    },
+    {
+      "index": 11,
+      "name": "CEF3无头_取渲染帧数",
+      "signature": "CEF3无头_取渲染帧数(实例编号)",
+      "description": "返回无头浏览器实例至今交付的 OSR 像素帧数量（长整数）。一期不外发像素内容，本计数是唯一可用的「确实在无窗口渲染」证据：大于 0 说明页面已出帧，长期为 0 说明页面没出帧（未加载、被阻塞或视口无效）。实例不存在或该实例不是无窗口 OSR 浏览器返回 0 并转述桥的中文原因。",
+      "insertText": "局部 长整数型 帧数 = CEF3无头_取渲染帧数(1)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "CEF3无头_取渲染帧数",
+        "runtimeName": "CEF3无头_取渲染帧数",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "CEF3 无头（OSR）浏览器实例的正整数编号，取自 CEF3_创建无头浏览器 的首参；它是运行期编号而不是设计器控件名，写裸数字不加引号，实例不存在时命令一律返回失败值并给中文诊断。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3无头_取渲染帧数(1)"
+    },
+    {
+      "index": 12,
+      "name": "CEF3无头_等待出帧",
+      "signature": "CEF3无头_等待出帧(实例编号, 超时毫秒)",
+      "description": "带超时地等该无头实例交付第一帧 OSR 像素，出帧返回 1。为什么必须单独等：CEF 的「加载完成」与「首帧交付」是两件事——真机实测窗口项目里 CEF3无头_等待加载完成 刚返回时 CEF3无头_取渲染帧数 仍然是 0，约半秒后才交付第一帧，只读一次就把「没出帧」当结论是错的。等待期间每过 500 毫秒周期性请求一次视图重绘：无窗口浏览器没有宿主可见性变化来催帧，重绘请求是把渲染管线叫醒的唯一手段。超时毫秒传 0 或负数按默认 10000；超时或实例不存在返回 0 并给含当前帧数的中文诊断，绝不无限等待。一期不外发帧内容，本命令只证明「确实在无窗口渲染」，不是截图能力。",
+      "insertText": "CEF3无头_等待出帧(1, 8000)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3无头_等待出帧",
+        "runtimeName": "CEF3无头_等待出帧",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "CEF3 无头（OSR）浏览器实例的正整数编号，取自 CEF3_创建无头浏览器 的首参；它是运行期编号而不是设计器控件名，写裸数字不加引号，实例不存在时命令一律返回失败值并给中文诊断。"
+          },
+          {
+            "name": "超时毫秒",
+            "type": "int",
+            "description": "最长等待毫秒数；传 0 或负数按默认 10000，超时返回 0 并给含当前帧数的中文诊断，绝不无限等待。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3无头_等待出帧(1, 1)"
+    },
+    {
+      "index": 13,
+      "name": "CEF3无头_导航",
+      "signature": "CEF3无头_导航(实例编号, 地址)",
+      "description": "让指定实例编号的无头浏览器导航到 HTTP/HTTPS 或本地文件地址；不依赖设计器控件、不依赖消息泵。桥的创建是异步的，CEF 侧浏览器尚未建好时本次导航只登记为排队目标，由「浏览器创建完成」事件或下一次就绪确认（CEF3无头_等待加载完成 / 再次导航）补发，因此创建后立刻导航不会失败也不会静默丢失。成功或已排队返回 1，地址为空文本或实例不存在返回 0。",
+      "insertText": "CEF3无头_导航(1, \"https://www.example.com\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3无头_导航",
+        "runtimeName": "CEF3无头_导航",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "CEF3 无头（OSR）浏览器实例的正整数编号，取自 CEF3_创建无头浏览器 的首参；它是运行期编号而不是设计器控件名，写裸数字不加引号，实例不存在时命令一律返回失败值并给中文诊断。"
+          },
+          {
+            "name": "地址",
+            "type": "wideString",
+            "description": "完整 URL 或本地文件路径。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3无头_导航(1, \"https://example.com\")"
+    },
+    {
+      "index": 14,
+      "name": "CEF3无头_是否加载中",
+      "signature": "CEF3无头_是否加载中(实例编号)",
+      "description": "该无头浏览器正在加载网页时返回 1，否则 0；实例不存在返回 0。红线：桥的浏览器创建是异步投递到 CEF UI 线程的，创建尚未完成时本命令同样返回 0，因此 0 只表示「此刻没在加载」，绝不能当作「浏览器已建好」或「加载已结束」的判据。无头实例派发不了事件处理器，加载进度只能靠本命令与 CEF3无头_等待加载完成 轮询。",
+      "insertText": "CEF3无头_是否加载中(1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3无头_是否加载中",
+        "runtimeName": "CEF3无头_是否加载中",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "CEF3 无头（OSR）浏览器实例的正整数编号，取自 CEF3_创建无头浏览器 的首参；它是运行期编号而不是设计器控件名，写裸数字不加引号，实例不存在时命令一律返回失败值并给中文诊断。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3无头_是否加载中(1)"
+    },
+    {
+      "index": 15,
+      "name": "CEF3无头_等待加载完成",
+      "signature": "CEF3无头_等待加载完成(实例编号, 超时毫秒)",
+      "description": "无头实例读取标题、执行JS、取页面内容之前的必用前置命令，两段轮询共用同一个总超时：第一段每 20 毫秒轮询确认 CEF 真的把浏览器对象建出来（创建是异步投递到 CEF UI 线程的）；第二段每 50 毫秒轮询确认「主文档已提交 且 不在加载中」。为什么必须两段并且要问主文档：浏览器对象没建好时「是否加载中」返回 0，建好与导航真正开始之间那一拍它同样返回 0，只轮询加载状态会把这两种「还没开始」都误判成「已加载完」，导致后续命令读到空文本。全程不依赖消息泵、消息循环或无头泵窗口，控制台项目可直接调用。超时毫秒传 0 或负数按默认 30000；超时返回 0 并按阶段给出中文诊断（创建未完成 / 加载未结束），绝不无限等待。实例不存在返回 0。",
+      "insertText": "CEF3无头_等待加载完成(1, 15000)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3无头_等待加载完成",
+        "runtimeName": "CEF3无头_等待加载完成",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "CEF3 无头（OSR）浏览器实例的正整数编号，取自 CEF3_创建无头浏览器 的首参；它是运行期编号而不是设计器控件名，写裸数字不加引号，实例不存在时命令一律返回失败值并给中文诊断。"
+          },
+          {
+            "name": "超时毫秒",
+            "type": "int",
+            "description": "最长等待毫秒数；传 0 或负数按默认 30000，超时返回 0 并给中文诊断，绝不无限等待。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3无头_等待加载完成(1, 1)"
+    },
+    {
+      "index": 16,
+      "name": "CEF3无头_取标题",
+      "signature": "CEF3无头_取标题(实例编号)",
+      "description": "返回无头浏览器当前页面标题，与控件版 CEF3_取标题 复用同一份运行时实现，只是按实例编号寻址、不需要设计器控件。实例不存在或页面尚未产生标题返回空文本。",
+      "insertText": "局部 文本型 标题 = CEF3无头_取标题(1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "CEF3无头_取标题",
+        "runtimeName": "CEF3无头_取标题",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "CEF3 无头（OSR）浏览器实例的正整数编号，取自 CEF3_创建无头浏览器 的首参；它是运行期编号而不是设计器控件名，写裸数字不加引号，实例不存在时命令一律返回失败值并给中文诊断。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3无头_取标题(1)"
+    },
+    {
+      "index": 17,
+      "name": "CEF3无头_取地址",
+      "signature": "CEF3无头_取地址(实例编号)",
+      "description": "返回无头浏览器当前页面地址，与控件版 CEF3_取地址 复用同一份运行时实现，按实例编号寻址。实例不存在返回空文本。导航后立刻读取可能仍是旧地址，先等 CEF3无头_等待加载完成。",
+      "insertText": "局部 文本型 地址 = CEF3无头_取地址(1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "CEF3无头_取地址",
+        "runtimeName": "CEF3无头_取地址",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "CEF3 无头（OSR）浏览器实例的正整数编号，取自 CEF3_创建无头浏览器 的首参；它是运行期编号而不是设计器控件名，写裸数字不加引号，实例不存在时命令一律返回失败值并给中文诊断。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3无头_取地址(1)"
+    },
+    {
+      "index": 18,
+      "name": "CEF3无头_取主框架",
+      "signature": "CEF3无头_取主框架(实例编号)",
+      "description": "取得无头浏览器实例的主框架受管句柄（实例编号寻址，不需要设计器控件）；随后全部句柄版命令零改动可用：CEF3框架_执行JS、CEF3框架_取源码异步、CEF3框架_取文本异步、CEF3填表_点击元素/赋值/置选择项、CEF3DOM_*。这是页面内容与表单操作的唯一入口，不要拿它当 OSR 帧命令的句柄。句柄是 64 位受管值且高位恒置 1，在 .lcpp 里必然显示为负数：判断有效一律用「!= 0」，写「> 0」会把每个合法句柄判成无效。页面尚未产生框架或实例不存在返回 0。",
+      "insertText": "局部 长整数型 框架 = CEF3无头_取主框架(1)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "CEF3无头_取主框架",
+        "runtimeName": "CEF3无头_取主框架",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "CEF3 无头（OSR）浏览器实例的正整数编号，取自 CEF3_创建无头浏览器 的首参；它是运行期编号而不是设计器控件名，写裸数字不加引号，实例不存在时命令一律返回失败值并给中文诊断。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3无头_取主框架(1)"
+    },
+    {
+      "index": 19,
+      "name": "CEF3无头_取浏览器句柄",
+      "signature": "CEF3无头_取浏览器句柄(实例编号)",
+      "description": "取得无头浏览器实例的受管浏览器句柄（实例编号寻址），供浏览器级 OSR 命令使用：CEF3OSR_请求重绘、CEF3OSR_设置窗口外帧率、CEF3OSR_取窗口外帧率、CEF3离屏_订阅像素帧、CEF3离屏_订阅视图矩形。句柄由运行时托管，用户侧不得释放，实例关闭后失效返回 0；句柄是 64 位受管值、在 .lcpp 里通常显示为负数，判断有效只用「!= 0」。取页面内容请改用 CEF3无头_取主框架，不要用本句柄拼第二套内容链路。",
+      "insertText": "局部 长整数型 句柄 = CEF3无头_取浏览器句柄(1)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "CEF3无头_取浏览器句柄",
+        "runtimeName": "CEF3无头_取浏览器句柄",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "CEF3 无头（OSR）浏览器实例的正整数编号，取自 CEF3_创建无头浏览器 的首参；它是运行期编号而不是设计器控件名，写裸数字不加引号，实例不存在时命令一律返回失败值并给中文诊断。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3无头_取浏览器句柄(1)"
+    },
+    {
+      "index": 20,
+      "name": "CEF3无头_执行JS",
+      "signature": "CEF3无头_执行JS(实例编号, 脚本)",
+      "description": "在无头浏览器实例里执行 JavaScript 并返回 JSON 结果文本，与控件版 CEF3_执行JS 复用同一份 DevTools Runtime.evaluate 实现与最多 5 秒超时口径，只是按实例编号寻址、不需要设计器控件。实例不存在或浏览器尚未创建返回空文本并给中文诊断。填表与 DOM 批量操作请走 CEF3无头_取主框架 再接句柄版命令，不要为无头实例另造第二套页面链路。",
+      "insertText": "调试输出(CEF3无头_执行JS(1, \"document.title\"))",
+      "returnType": "文本型",
+      "binding": {
+        "command": "CEF3无头_执行JS",
+        "runtimeName": "CEF3无头_执行JS",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "CEF3 无头（OSR）浏览器实例的正整数编号，取自 CEF3_创建无头浏览器 的首参；它是运行期编号而不是设计器控件名，写裸数字不加引号，实例不存在时命令一律返回失败值并给中文诊断。"
+          },
+          {
+            "name": "脚本",
+            "type": "wideString",
+            "description": "JavaScript 源码文本。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3无头_执行JS(1, \"演示参数2\")"
+    },
+    {
+      "index": 21,
+      "name": "CEF3无头_取页面文本",
+      "signature": "CEF3无头_取页面文本(实例编号, 超时毫秒)",
+      "description": "同步取该无头实例主框架的可见纯文本：内部按 CEF3框架_取文本异步 发起任务后每 50 毫秒轮询任务状态（CEF 侧没有任务等待导出），因此不依赖消息泵，控制台可直接用。超时毫秒传 0 或负数按默认 30000；超时、实例不存在或页面还没有主框架都返回空文本并给中文诊断。只要文本判断时优先用本命令，需要 HTML 结构再用 CEF3无头_取页面源码。",
+      "insertText": "调试输出(CEF3无头_取页面文本(1, 15000))",
+      "returnType": "文本型",
+      "binding": {
+        "command": "CEF3无头_取页面文本",
+        "runtimeName": "CEF3无头_取页面文本",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "CEF3 无头（OSR）浏览器实例的正整数编号，取自 CEF3_创建无头浏览器 的首参；它是运行期编号而不是设计器控件名，写裸数字不加引号，实例不存在时命令一律返回失败值并给中文诊断。"
+          },
+          {
+            "name": "超时毫秒",
+            "type": "int",
+            "description": "最长等待毫秒数；传 0 或负数按默认 30000，超时返回空文本并给中文诊断。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3无头_取页面文本(1, 1)"
+    },
+    {
+      "index": 22,
+      "name": "CEF3无头_取页面源码",
+      "signature": "CEF3无头_取页面源码(实例编号, 超时毫秒)",
+      "description": "同步取该无头实例主框架的完整 HTML 源码，等待方式与超时口径同 CEF3无头_取页面文本（CEF3框架_取源码异步 + 50 毫秒轮询，默认超时 30000 毫秒）。源码可能很大，取回后先按需截取再输出日志；超时或实例/框架不存在返回空文本并给中文诊断。",
+      "insertText": "调试输出(CEF3无头_取页面源码(1, 15000))",
+      "returnType": "文本型",
+      "binding": {
+        "command": "CEF3无头_取页面源码",
+        "runtimeName": "CEF3无头_取页面源码",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "CEF3 无头（OSR）浏览器实例的正整数编号，取自 CEF3_创建无头浏览器 的首参；它是运行期编号而不是设计器控件名，写裸数字不加引号，实例不存在时命令一律返回失败值并给中文诊断。"
+          },
+          {
+            "name": "超时毫秒",
+            "type": "int",
+            "description": "最长等待毫秒数；传 0 或负数按默认 30000，超时返回空文本并给中文诊断。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3无头_取页面源码(1, 1)"
+    },
+    {
+      "index": 23,
+      "name": "CEF3无头_取事件JSON",
+      "signature": "CEF3无头_取事件JSON(实例编号)",
+      "description": "返回该无头实例缓冲的 CEF 事件 JSON 数组，每项含 事件名 与 字段。无头实例没有宿主窗口，控件版事件派发会因缺少宿主直接丢弃，所以事件被写进实例内的有界环形缓冲：上限 200 条，超限丢最旧，本命令只读不清空。给无头实例绑定中文事件处理器无效，只能靠本命令轮询取事件。实例不存在返回空文本。",
+      "insertText": "调试输出(CEF3无头_取事件JSON(1))",
+      "returnType": "文本型",
+      "binding": {
+        "command": "CEF3无头_取事件JSON",
+        "runtimeName": "CEF3无头_取事件JSON",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "CEF3 无头（OSR）浏览器实例的正整数编号，取自 CEF3_创建无头浏览器 的首参；它是运行期编号而不是设计器控件名，写裸数字不加引号，实例不存在时命令一律返回失败值并给中文诊断。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3无头_取事件JSON(1)"
+    },
+    {
+      "index": 24,
+      "name": "CEF3无头_关闭",
+      "signature": "CEF3无头_关闭(实例编号)",
+      "description": "按实例编号关闭无头浏览器并释放其受管桥句柄（含由它派生的弹窗别名句柄），返回 1 表示已关闭，0 表示实例不存在。关闭后同一实例编号可以再次 CEF3_创建无头浏览器。进程退出时运行时会统一回收全部无头实例，正常流程不必逐个调用。",
+      "insertText": "CEF3无头_关闭(1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3无头_关闭",
+        "runtimeName": "CEF3无头_关闭",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "CEF3 无头（OSR）浏览器实例的正整数编号，取自 CEF3_创建无头浏览器 的首参；它是运行期编号而不是设计器控件名，写裸数字不加引号，实例不存在时命令一律返回失败值并给中文诊断。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3无头_关闭(1)"
+    },
+    {
+      "index": 25,
+      "name": "CEF3_创建区域",
+      "signature": "CEF3_创建区域(实例编号, 左, 顶, 宽, 高, 地址, 独立缓存目录, 代理地址)",
+      "description": "不依赖设计器控件，在当前窗口指定矩形区域创建独立 CEF3 浏览器实例（运行时自建承载子窗口 + 独立 profile 缓存目录 + 可选独立代理），用于动态数量的内嵌多浏览器；实例登记进运行时表，可被 CEF3_枚举实例JSON 列出、由 CEF3_关闭全部实例 统一关闭。",
+      "insertText": "CEF3_创建区域(1, 10, 10, 480, 500, \"https://www.example.com\", \".cef3/store-a\", \"\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3_创建区域",
+        "runtimeName": "CEF3_创建区域",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "EdgeView 实例的正整数编号；后续命令按它指定实例。"
+          },
+          {
+            "name": "左",
+            "type": "int",
+            "description": "左边界 X 坐标（像素或 DIP，视命令而定）。"
+          },
+          {
+            "name": "顶",
+            "type": "int",
+            "description": "顶边界 Y 坐标（像素或 DIP，视命令而定）。"
+          },
+          {
+            "name": "宽",
+            "type": "int",
+            "description": "宽度（像素或 DIP，视命令而定）。"
+          },
+          {
+            "name": "高",
+            "type": "int",
+            "description": "高度（像素或 DIP，视命令而定）。"
+          },
+          {
+            "name": "地址",
+            "type": "wideString",
+            "description": "完整 URL 或本地文件路径。"
+          },
+          {
+            "name": "独立缓存目录",
+            "type": "wideString",
+            "description": "实例专用缓存目录（相对工作目录或绝对路径）；相同目录共享会话数据。"
+          },
+          {
+            "name": "代理地址",
+            "type": "wideString",
+            "description": "代理地址，如 \"http://127.0.0.1:7890\" 或 \"socks5://127.0.0.1:1080\"。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3_创建区域(1, 1, 1, 1, 1, \"https://example.com\", \".\", \"https://example.com\")"
+    },
+    {
+      "index": 26,
+      "name": "CEF3会话_取上下文实例",
+      "signature": "CEF3会话_取上下文实例(实例编号)",
+      "description": "取得设计器无关实例（CEF3_创建弹窗浏览器 / CEF3_创建区域 的实例编号）的 RequestContext 受管句柄，随后即可用全部句柄版 CEF3会话_* 命令（Cookie 设置/遍历/删除、清缓存、首选项）对该弹窗/区域实例操作；实例不存在或未创建返回 0，用完用 CEF3会话_释放上下文 释放。",
+      "insertText": "局部 长整数型 上下文 = CEF3会话_取上下文实例(1)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "CEF3会话_取上下文实例",
+        "runtimeName": "CEF3会话_取上下文实例",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "EdgeView 实例的正整数编号；后续命令按它指定实例。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3会话_取上下文实例(1)"
+    },
+    {
+      "index": 27,
+      "name": "CEF3_设置用户代理",
+      "signature": "CEF3_设置用户代理(控件名, 用户代理)",
+      "description": "为指定 CEF3 浏览器控件实例设置独立用户代理（UA）。CEF 无 per-browser settings，本命令在「资源加载前」事件里改写请求头 User-Agent，逐实例隔离；用户代理置空则清除覆盖。",
+      "insertText": "CEF3_设置用户代理(浏览器1, \"Mozilla/5.0 (store-A)\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3_设置用户代理",
+        "runtimeName": "CEF3_设置用户代理",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "用户代理",
+            "type": "wideString",
+            "description": "要使用的 User-Agent 字符串；需在首次导航前生效，建议建弹窗时直接传入。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "CEF3_设置用户代理(浏览器1, \"Mozilla/5.0 (store-A)\")"
+      },
+      "demoInvocation": "CEF3_设置用户代理(演示CefBrowser控件, \"演示参数2\")"
+    },
+    {
+      "index": 28,
+      "name": "CEF3_设置实例用户代理",
+      "signature": "CEF3_设置实例用户代理(实例编号, 用户代理)",
+      "description": "为设计器无关实例（CEF3_创建弹窗浏览器 / CEF3_创建区域 的实例编号）设置独立用户代理，实现多店铺弹窗/区域各自不同 UA；置空清除覆盖，实例不存在返回 0。",
+      "insertText": "CEF3_设置实例用户代理(1, \"Mozilla/5.0 (store-A)\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3_设置实例用户代理",
+        "runtimeName": "CEF3_设置实例用户代理",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "EdgeView 实例的正整数编号；后续命令按它指定实例。"
+          },
+          {
+            "name": "用户代理",
+            "type": "wideString",
+            "description": "要使用的 User-Agent 字符串；需在首次导航前生效，建议建弹窗时直接传入。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3_设置实例用户代理(1, \"演示参数2\")"
+    },
+    {
+      "index": 29,
+      "name": "CEF3_取用户代理",
+      "signature": "CEF3_取用户代理(控件名)",
+      "description": "读取指定 CEF3 浏览器控件实例当前设置的独立用户代理，未设置返回空文本。",
+      "insertText": "CEF3_取用户代理(浏览器1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "CEF3_取用户代理",
+        "runtimeName": "CEF3_取用户代理",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "CEF3_取用户代理(浏览器1)"
+      },
+      "demoInvocation": "CEF3_取用户代理(演示CefBrowser控件)"
+    },
+    {
+      "index": 30,
+      "name": "CEF3_取实例用户代理",
+      "signature": "CEF3_取实例用户代理(实例编号)",
+      "description": "读取设计器无关实例（弹窗/区域实例编号）当前设置的独立用户代理，未设置或实例不存在返回空文本。",
+      "insertText": "CEF3_取实例用户代理(1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "CEF3_取实例用户代理",
+        "runtimeName": "CEF3_取实例用户代理",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "EdgeView 实例的正整数编号；后续命令按它指定实例。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3_取实例用户代理(1)"
+    },
+    {
+      "index": 31,
+      "name": "CEF3_关闭全部实例",
+      "signature": "CEF3_关闭全部实例()",
+      "description": "关闭当前全部 CEF3 浏览器实例（含内嵌控件与独立顶层弹窗）并释放受管句柄，返回关闭数量。",
+      "insertText": "CEF3_关闭全部实例()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3_关闭全部实例",
+        "runtimeName": "CEF3_关闭全部实例",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3_关闭全部实例()"
+    },
+    {
+      "index": 32,
+      "name": "CEF3_枚举实例JSON",
+      "signature": "CEF3_枚举实例JSON()",
+      "description": "返回当前全部 CEF3 实例的 JSON 数组，每项含 controlId/地址/标题/缓存目录/代理，供调用方自省与多实例列表展示。",
+      "insertText": "CEF3_枚举实例JSON()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "CEF3_枚举实例JSON",
+        "runtimeName": "CEF3_枚举实例JSON",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3_枚举实例JSON()"
+    },
+    {
+      "index": 33,
       "name": "CEF3_执行JS",
       "aliases": [
         "Runtime.evaluate"
@@ -176,11 +898,13 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "脚本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "JavaScript 源码文本。"
           }
         ],
         "returnType": "wideString",
@@ -190,7 +914,7 @@
       "demoInvocation": "CEF3_执行JS(演示CefBrowser控件, \"演示参数2\")"
     },
     {
-      "index": 7,
+      "index": 34,
       "name": "CEF3_后退",
       "signature": "CEF3_后退(控件名)",
       "description": "指定 CEF3 浏览器控件可以后退时返回上一页，成功返回 1。",
@@ -210,7 +934,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "int",
@@ -219,7 +944,7 @@
       "demoInvocation": "CEF3_后退(演示CefBrowser控件)"
     },
     {
-      "index": 8,
+      "index": 35,
       "name": "CEF3_前进",
       "signature": "CEF3_前进(控件名)",
       "description": "指定 CEF3 浏览器控件可以前进时进入下一页，成功返回 1。",
@@ -239,7 +964,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "int",
@@ -248,7 +974,7 @@
       "demoInvocation": "CEF3_前进(演示CefBrowser控件)"
     },
     {
-      "index": 9,
+      "index": 36,
       "name": "CEF3_刷新",
       "signature": "CEF3_刷新(控件名)",
       "description": "刷新指定 CEF3 浏览器控件的当前网页。",
@@ -268,7 +994,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "void",
@@ -277,7 +1004,7 @@
       "demoInvocation": "CEF3_刷新(演示CefBrowser控件)"
     },
     {
-      "index": 10,
+      "index": 37,
       "name": "CEF3_停止",
       "signature": "CEF3_停止(控件名)",
       "description": "停止指定 CEF3 浏览器控件的当前导航。",
@@ -297,7 +1024,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "void",
@@ -306,7 +1034,7 @@
       "demoInvocation": "CEF3_停止(演示CefBrowser控件)"
     },
     {
-      "index": 11,
+      "index": 38,
       "name": "CEF3_取标题",
       "signature": "CEF3_取标题(控件名)",
       "description": "返回指定 CEF3 浏览器控件当前网页标题。",
@@ -326,7 +1054,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "wideString",
@@ -335,7 +1064,7 @@
       "demoInvocation": "CEF3_取标题(演示CefBrowser控件)"
     },
     {
-      "index": 12,
+      "index": 39,
       "name": "CEF3_取地址",
       "signature": "CEF3_取地址(控件名)",
       "description": "返回指定 CEF3 浏览器控件当前网页地址。",
@@ -355,7 +1084,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "wideString",
@@ -364,7 +1094,30 @@
       "demoInvocation": "CEF3_取地址(演示CefBrowser控件)"
     },
     {
-      "index": 13,
+      "index": 40,
+      "name": "CEF3_取资源地址",
+      "signature": "CEF3_取资源地址(相对路径)",
+      "description": "把相对路径解析为随程序一起部署在 exe 同级 assets 目录下的文件地址，返回已按 UTF-8 转义的 file:/// URL，用于加载本地测试页，避免在源码里写死机器特定绝对路径。传入盘符绝对路径、UNC 路径或已带协议的完整地址时原样返回，可重复套用。地址形参是宽字符串指针，因此结果必须先赋给文本型局部变量再传给 CEF3_导航，不能直接内联嵌套。",
+      "insertText": "局部 文本型 地址 = CEF3_取资源地址(\"index.html\")\nCEF3_导航($1, 地址)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "CEF3_取资源地址",
+        "runtimeName": "CEF3_取资源地址",
+        "parameters": [
+          {
+            "name": "相对路径",
+            "type": "wideString",
+            "description": "资源相对路径（相对生成的资源目录）。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "局部 文本型 地址 = CEF3_取资源地址(\"index.html\")\nCEF3_导航(浏览器1, 地址)"
+      },
+      "demoInvocation": "CEF3_取资源地址(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 41,
       "name": "CEF3_设置缓存目录",
       "aliases": [
         "CefRequestContext::CreateContext"
@@ -387,11 +1140,13 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "目录",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "缓存目录路径。"
           }
         ],
         "returnType": "int",
@@ -400,7 +1155,7 @@
       "demoInvocation": "CEF3_设置缓存目录(演示CefBrowser控件, \".\")"
     },
     {
-      "index": 14,
+      "index": 42,
       "name": "CEF3_设置代理",
       "aliases": [
         "CefPreferenceManager::SetPreference"
@@ -423,11 +1178,13 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "代理地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "代理地址，如 \"http://127.0.0.1:7890\" 或 \"socks5://127.0.0.1:1080\"。"
           }
         ],
         "returnType": "int",
@@ -436,7 +1193,82 @@
       "demoInvocation": "CEF3_设置代理(演示CefBrowser控件, \"https://example.com\")"
     },
     {
-      "index": 15,
+      "index": 43,
+      "name": "CEF3_设置全局代理",
+      "signature": "CEF3_设置全局代理(代理地址)",
+      "description": "设置之后新建 CEF3 实例（控件 / 弹窗 / 区域 / 无头）默认使用的 HTTP/HTTPS/SOCKS5 全局代理；实例创建时自带代理优先，传空给 CEF3_设置代理 的显式直连不参与回落，已创建实例不受影响。代理地址传空文本等价于 CEF3_清除全局代理。带认证（用户名/密码）的代理当前不被 CEF3 支持：CEF 150 不把代理 407 挑战投递给客户端（真机验证），需要代理认证请改用 FBro（FBro会话_设置代理认证）或 EdgeView；也禁止把凭据拼进代理地址。成功返回 1。",
+      "insertText": "CEF3_设置全局代理(\"http://127.0.0.1:7890\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3_设置全局代理",
+        "runtimeName": "CEF3_设置全局代理",
+        "parameters": [
+          {
+            "name": "代理地址",
+            "type": "wideString",
+            "description": "全局代理地址，格式 \"scheme://host:port\"（如 \"http://127.0.0.1:7890\"、\"socks5://127.0.0.1:1080\"）；空文本清除。只影响之后新建实例；不得把用户名密码拼进地址，带认证的代理改用 FBro/EdgeView。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3_设置全局代理(\"https://example.com\")"
+    },
+    {
+      "index": 44,
+      "name": "CEF3_清除全局代理",
+      "signature": "CEF3_清除全局代理()",
+      "description": "清除 CEF3 全局代理，之后新建实例回到各自的代理设置；已创建实例不变。成功返回 1。",
+      "insertText": "CEF3_清除全局代理()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3_清除全局代理",
+        "runtimeName": "CEF3_清除全局代理",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3_清除全局代理()"
+    },
+    {
+      "index": 45,
+      "name": "CEF3_取全局代理",
+      "signature": "CEF3_取全局代理()",
+      "description": "返回当前 CEF3 全局代理地址；未设置返回空文本。",
+      "insertText": "调试输出(CEF3_取全局代理())",
+      "returnType": "文本型",
+      "binding": {
+        "command": "CEF3_取全局代理",
+        "runtimeName": "CEF3_取全局代理",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3_取全局代理()"
+    },
+    {
+      "index": 46,
+      "name": "CEF3_取实例代理",
+      "signature": "CEF3_取实例代理(实例编号)",
+      "description": "按实例编号返回设计器无关实例（CEF3_创建弹窗浏览器 / CEF3_创建区域 / CEF3_创建无头浏览器）实际采用的代理地址：实例自带代理优先，未设置时显示全局代理回落值；返回空文本表示该实例按系统代理或直接连接。实例不存在返回空文本并给中文诊断。",
+      "insertText": "调试输出(CEF3_取实例代理(1))",
+      "returnType": "文本型",
+      "binding": {
+        "command": "CEF3_取实例代理",
+        "runtimeName": "CEF3_取实例代理",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "CEF3 设计器无关实例的正整数编号（创建弹窗浏览器 / 创建区域 / 创建无头浏览器 的首参），写裸数字不加引号；返回实例自带代理，为空时显示全局代理回落值。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3_取实例代理(1)"
+    },
+    {
+      "index": 47,
       "name": "CEF3_创建",
       "signature": "CEF3_创建(控件名)",
       "description": "使用属性面板配置的地址、缓存目录和代理参数初始化指定 CEF3 浏览器控件；传空控件名时初始化当前窗口全部 CEF3 控件。成功返回 1。",
@@ -456,7 +1288,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "int",
@@ -465,7 +1298,7 @@
       "demoInvocation": "CEF3_创建(演示CefBrowser控件)"
     },
     {
-      "index": 16,
+      "index": 48,
       "name": "CEF3_执行消息循环工作",
       "aliases": [
         "cef_do_message_loop_work"
@@ -484,7 +1317,7 @@
       "demoInvocation": "CEF3_执行消息循环工作()"
     },
     {
-      "index": 17,
+      "index": 49,
       "name": "CEF3_关闭",
       "signature": "CEF3_关闭(控件名)",
       "description": "关闭指定 CEF3 浏览器控件并释放 Chromium 资源。",
@@ -504,7 +1337,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "void",
@@ -513,10 +1347,10 @@
       "demoInvocation": "CEF3_关闭(演示CefBrowser控件)"
     },
     {
-      "index": 18,
+      "index": 50,
       "name": "CEF3_取最近事件",
       "signature": "CEF3_取最近事件(控件名)",
-      "description": "返回最近 CEF3 事件名；当前目录包含 96 个浏览器回调。",
+      "description": "返回最近 CEF3 事件名；当前事件清单共 99 个浏览器回调。",
       "insertText": "CEF3_取最近事件($1)",
       "returnType": "文本型",
       "binding": {
@@ -533,7 +1367,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "wideString",
@@ -542,7 +1377,7 @@
       "demoInvocation": "CEF3_取最近事件(演示CefBrowser控件)"
     },
     {
-      "index": 19,
+      "index": 51,
       "name": "CEF3_取事件数据",
       "signature": "CEF3_取事件数据(控件名)",
       "description": "返回最近事件的主要文本数据。",
@@ -562,7 +1397,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "wideString",
@@ -571,7 +1407,7 @@
       "demoInvocation": "CEF3_取事件数据(演示CefBrowser控件)"
     },
     {
-      "index": 20,
+      "index": 52,
       "name": "CEF3_取事件字段",
       "signature": "CEF3_取事件字段(控件名, 字段名)",
       "description": "读取最近事件的命名字段，例如 url、frameId、statusCode、progress、commandId。",
@@ -591,11 +1427,13 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "字段名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "当前事件 JSON 的字段名，取值见事件说明。"
           }
         ],
         "returnType": "wideString",
@@ -604,7 +1442,120 @@
       "demoInvocation": "CEF3_取事件字段(演示CefBrowser控件, \"演示参数2\")"
     },
     {
-      "index": 21,
+      "index": 53,
+      "name": "CEF3_读资源响应正文",
+      "signature": "CEF3_读资源响应正文(控件名, 最大字节数, 完成处理器)",
+      "description": "在“资源响应到达”处理器执行期间，为当前资源安装有界正文捕获；完成后触发“资源响应正文到达”，通过 CEF3_取事件字段读取 bodyText、bodyBase64、receivedBytes、truncated 和 error。不会重新发起请求。",
+      "insertText": "CEF3_读资源响应正文($1, 1048576, &$2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3_读资源响应正文",
+        "runtimeName": "CEF3_读资源响应正文",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "最大字节数",
+            "type": "longLong",
+            "description": "允许捕获的正文最大字节数，超出部分截断。"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；只能在“资源响应到达”处理器中调用。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "CEF3_读资源响应正文(浏览器1, 1048576, &资源正文到达)"
+      },
+      "demoInvocation": "CEF3_读资源响应正文(演示CefBrowser控件, 1, &模块演示回调)"
+    },
+    {
+      "index": 54,
+      "name": "CEF3_替换资源响应内容",
+      "signature": "CEF3_替换资源响应内容(控件名, 查找内容, 替换内容)",
+      "description": "为指定 CEF3 浏览器配置响应正文查找替换：之后加载的资源正文中的“查找内容”（按 UTF-8 字节匹配）会被“替换内容”改写，替换内容为空表示删除。二进制安全、流式处理，对整只浏览器全部资源生效；重复调用以最后一次为准。浏览器未就绪时自动排队，导航前配置可覆盖首个页面。只修改响应正文，不改变响应头和状态码。",
+      "insertText": "CEF3_替换资源响应内容($1, \"原始文本\", \"替换文本\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3_替换资源响应内容",
+        "runtimeName": "CEF3_替换资源响应内容",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "查找内容",
+            "type": "wideString",
+            "description": "按 UTF-8 字节匹配的查找文本，不能为空。"
+          },
+          {
+            "name": "替换内容",
+            "type": "wideString",
+            "description": "替换后的文本；空文本表示删除查找内容。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "CEF3_替换资源响应内容(浏览器1, \"原始价格\", \"会员价格\")\nCEF3_导航(浏览器1, 地址)"
+      },
+      "demoInvocation": "CEF3_替换资源响应内容(演示CefBrowser控件, \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 55,
+      "name": "CEF3_清除资源响应替换",
+      "signature": "CEF3_清除资源响应替换(控件名)",
+      "description": "移除指定 CEF3 浏览器当前的响应替换配置，之后加载的资源恢复原始正文；已加载页面不受影响。同时取消尚未生效的排队配置。",
+      "insertText": "CEF3_清除资源响应替换($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3_清除资源响应替换",
+        "runtimeName": "CEF3_清除资源响应替换",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "CEF3_清除资源响应替换(浏览器1)"
+      },
+      "demoInvocation": "CEF3_清除资源响应替换(演示CefBrowser控件)"
+    },
+    {
+      "index": 56,
       "name": "CEF3_设置事件结果",
       "signature": "CEF3_设置事件结果(控件名, 结果)",
       "description": "设置当前同步事件结果：0=默认、1=允许/继续、2=拒绝/取消、3=已处理。",
@@ -624,11 +1575,13 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "结果",
-            "type": "int"
+            "type": "int",
+            "description": "同步事件结果：0 默认、1 允许/继续、2 拒绝/取消、3 已处理。"
           }
         ],
         "returnType": "int",
@@ -637,7 +1590,7 @@
       "demoInvocation": "CEF3_设置事件结果(演示CefBrowser控件, 1)"
     },
     {
-      "index": 22,
+      "index": 57,
       "name": "CEF3_设置事件返回文本",
       "signature": "CEF3_设置事件返回文本(控件名, 文本)",
       "description": "设置当前事件的返回文本，例如修改后的 URL、下载路径、对话框输入或身份验证信息。",
@@ -657,11 +1610,13 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要写入或查找的文本内容。"
           }
         ],
         "returnType": "int",
@@ -670,10 +1625,10 @@
       "demoInvocation": "CEF3_设置事件返回文本(演示CefBrowser控件, \"演示参数2\")"
     },
     {
-      "index": 23,
+      "index": 58,
       "name": "CEF3_绑定事件",
       "signature": "CEF3_绑定事件(控件名, 事件名, 处理器)",
-      "description": "绑定 CEF3 浏览器事件目录（96 项）到当前窗口无参数中文事件或方法；处理器必须使用 &处理器名。",
+      "description": "绑定 CEF3 浏览器事件清单（99 项）到当前窗口无参数中文事件或方法；处理器必须使用 &处理器名。",
       "insertText": "CEF3_绑定事件($1, \"加载完成\", &$2)",
       "returnType": "整数型",
       "binding": {
@@ -690,7 +1645,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "事件名",
@@ -710,7 +1666,135 @@
       "demoInvocation": "CEF3_绑定事件(演示CefBrowser控件, \"演示事件\", &模块演示回调)"
     },
     {
-      "index": 24,
+      "index": 59,
+      "name": "CEF3_启用JS扩展",
+      "signature": "CEF3_启用JS扩展(控件名, 查询函数名, 取消函数名)",
+      "description": "启用页面调用原生的 JS 交互（cefQuery）通道：页面通过 window.查询函数名({request, onSuccess, onFailure}) 发起查询，原生通过「查询请求」事件接收并用 CEF3_查询应答 / CEF3_查询应答失败 应答。通道必须在 CEF 初始化之前配置——请优先使用 CEF3 浏览器控件的 jsQueryFunctions 属性（格式“查询函数名,取消函数名”），本命令仅在初始化前调用有效，初始化后调用返回 0。一个程序可注册多条通道（各通道的查询函数名互不重复），同名重复调用按幂等成功处理；「查询请求」事件的 channelIndex 字段标明来源通道序号（0 起）。",
+      "insertText": "CEF3_启用JS扩展($1, \"cefQuery\", \"cefQueryCancel\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3_启用JS扩展",
+        "runtimeName": "CEF3_启用JS扩展",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "查询函数名",
+            "type": "wideString",
+            "description": "页面调用的查询函数名，留空使用 cefQuery。"
+          },
+          {
+            "name": "取消函数名",
+            "type": "wideString",
+            "description": "页面取消查询的函数名，留空使用 cefQueryCancel。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "CEF3_启用JS扩展(浏览器1, \"cefQuery\", \"cefQueryCancel\")"
+      },
+      "demoInvocation": "CEF3_启用JS扩展(演示CefBrowser控件, \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 60,
+      "name": "CEF3_查询应答",
+      "signature": "CEF3_查询应答(控件名, 查询ID, 结果文本)",
+      "description": "应答「查询请求」事件：查询ID 从事件字段 queryId 读取（数字文本，原样传回），结果文本回传给页面 onSuccess。每条查询只能应答一次；未应答的查询 120 秒后自动对页面回错误码 -4。",
+      "insertText": "CEF3_查询应答($1, CEF3_取事件字段($1, \"queryId\"), \"完成\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3_查询应答",
+        "runtimeName": "CEF3_查询应答",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "查询ID",
+            "type": "wideString",
+            "description": "「查询请求」事件 queryId 字段的数字文本，应答时原样传回。"
+          },
+          {
+            "name": "结果文本",
+            "type": "wideString",
+            "description": "回传给页面 onSuccess 的结果。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "CEF3_查询应答(浏览器1, CEF3_取事件字段(浏览器1, \"queryId\"), \"完成\")"
+      },
+      "demoInvocation": "CEF3_查询应答(演示CefBrowser控件, \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 61,
+      "name": "CEF3_查询应答失败",
+      "signature": "CEF3_查询应答失败(控件名, 查询ID, 错误码, 错误文本)",
+      "description": "以失败结果应答「查询请求」事件：错误码与错误文本回传给页面 onFailure（错误码 0 视为 -1）。每条查询只能应答一次。",
+      "insertText": "CEF3_查询应答失败($1, CEF3_取事件字段($1, \"queryId\"), -1, \"没有数据\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3_查询应答失败",
+        "runtimeName": "CEF3_查询应答失败",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "查询ID",
+            "type": "wideString",
+            "description": "「查询请求」事件 queryId 字段的数字文本，应答时原样传回。"
+          },
+          {
+            "name": "错误码",
+            "type": "int",
+            "description": "回传给页面 onFailure 的错误码，0 视为 -1。"
+          },
+          {
+            "name": "错误文本",
+            "type": "wideString",
+            "description": "回传给页面 onFailure 的错误说明。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "CEF3_查询应答失败(浏览器1, CEF3_取事件字段(浏览器1, \"queryId\"), -1, \"本地没有对应数据\")"
+      },
+      "demoInvocation": "CEF3_查询应答失败(演示CefBrowser控件, \"演示参数2\", 1, \"演示参数4\")"
+    },
+    {
+      "index": 62,
       "name": "CEF3_是否可后退",
       "signature": "CEF3_是否可后退(控件名)",
       "description": "指定 CEF3 浏览器控件可以后退时返回 1。",
@@ -730,7 +1814,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "int",
@@ -739,7 +1824,7 @@
       "demoInvocation": "CEF3_是否可后退(演示CefBrowser控件)"
     },
     {
-      "index": 25,
+      "index": 63,
       "name": "CEF3_是否可前进",
       "signature": "CEF3_是否可前进(控件名)",
       "description": "指定 CEF3 浏览器控件可以前进时返回 1。",
@@ -759,7 +1844,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "int",
@@ -768,7 +1854,7 @@
       "demoInvocation": "CEF3_是否可前进(演示CefBrowser控件)"
     },
     {
-      "index": 26,
+      "index": 64,
       "name": "CEF3_是否加载中",
       "signature": "CEF3_是否加载中(控件名)",
       "description": "指定 CEF3 浏览器控件正在加载网页时返回 1。",
@@ -788,7 +1874,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "int",
@@ -797,7 +1884,7 @@
       "demoInvocation": "CEF3_是否加载中(演示CefBrowser控件)"
     },
     {
-      "index": 27,
+      "index": 65,
       "name": "CEF3_是否有效",
       "aliases": [
         "is_valid"
@@ -820,7 +1907,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "int",
@@ -829,7 +1917,7 @@
       "demoInvocation": "CEF3_是否有效(演示CefBrowser控件)"
     },
     {
-      "index": 28,
+      "index": 66,
       "name": "CEF3_是否弹出窗口",
       "aliases": [
         "is_popup"
@@ -852,7 +1940,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "int",
@@ -861,7 +1950,7 @@
       "demoInvocation": "CEF3_是否弹出窗口(演示CefBrowser控件)"
     },
     {
-      "index": 29,
+      "index": 67,
       "name": "CEF3_是否同一实例",
       "aliases": [
         "is_same"
@@ -884,7 +1973,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "另一控件名",
@@ -896,7 +1986,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "int",
@@ -905,7 +1996,7 @@
       "demoInvocation": "CEF3_是否同一实例(演示CefBrowser控件, 演示CefBrowser控件)"
     },
     {
-      "index": 30,
+      "index": 68,
       "name": "CEF3_是否有文档",
       "aliases": [
         "has_document"
@@ -928,7 +2019,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "int",
@@ -937,7 +2029,7 @@
       "demoInvocation": "CEF3_是否有文档(演示CefBrowser控件)"
     },
     {
-      "index": 31,
+      "index": 69,
       "name": "CEF3_是否禁用窗口渲染",
       "aliases": [
         "is_window_rendering_disabled"
@@ -961,7 +2053,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "int",
@@ -970,7 +2063,7 @@
       "demoInvocation": "CEF3_是否禁用窗口渲染(演示CefBrowser控件)"
     },
     {
-      "index": 32,
+      "index": 70,
       "name": "CEF3_是否网页全屏",
       "aliases": [
         "is_fullscreen"
@@ -994,7 +2087,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "int",
@@ -1003,7 +2097,7 @@
       "demoInvocation": "CEF3_是否网页全屏(演示CefBrowser控件)"
     },
     {
-      "index": 33,
+      "index": 71,
       "name": "CEF3_是否使用浏览器视图",
       "aliases": [
         "has_view"
@@ -1027,7 +2121,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "int",
@@ -1036,7 +2131,7 @@
       "demoInvocation": "CEF3_是否使用浏览器视图(演示CefBrowser控件)"
     },
     {
-      "index": 34,
+      "index": 72,
       "name": "CEF3_取打开者浏览器ID",
       "aliases": [
         "get_opener_identifier"
@@ -1060,7 +2155,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "int",
@@ -1069,7 +2165,7 @@
       "demoInvocation": "CEF3_取打开者浏览器ID(演示CefBrowser控件)"
     },
     {
-      "index": 35,
+      "index": 73,
       "name": "CEF3_是否已准备关闭",
       "aliases": [
         "is_ready_to_be_closed"
@@ -1093,7 +2189,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "int",
@@ -1102,7 +2199,7 @@
       "demoInvocation": "CEF3_是否已准备关闭(演示CefBrowser控件)"
     },
     {
-      "index": 36,
+      "index": 74,
       "name": "CEF3_是否渲染进程无响应",
       "aliases": [
         "is_render_process_unresponsive"
@@ -1126,7 +2223,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "int",
@@ -1135,7 +2233,7 @@
       "demoInvocation": "CEF3_是否渲染进程无响应(演示CefBrowser控件)"
     },
     {
-      "index": 37,
+      "index": 75,
       "name": "CEF3_取运行时样式",
       "aliases": [
         "get_runtime_style"
@@ -1159,7 +2257,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "int",
@@ -1168,7 +2267,7 @@
       "demoInvocation": "CEF3_取运行时样式(演示CefBrowser控件)"
     },
     {
-      "index": 38,
+      "index": 76,
       "name": "CEF3_取缩放级别",
       "aliases": [
         "get_zoom_level"
@@ -1191,7 +2290,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "double",
@@ -1200,7 +2300,7 @@
       "demoInvocation": "CEF3_取缩放级别(演示CefBrowser控件)"
     },
     {
-      "index": 39,
+      "index": 77,
       "name": "CEF3_取默认缩放级别",
       "aliases": [
         "get_default_zoom_level"
@@ -1223,7 +2323,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "double",
@@ -1232,7 +2333,7 @@
       "demoInvocation": "CEF3_取默认缩放级别(演示CefBrowser控件)"
     },
     {
-      "index": 40,
+      "index": 78,
       "name": "CEF3_设置缩放级别",
       "aliases": [
         "set_zoom_level"
@@ -1255,11 +2356,13 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "级别",
-            "type": "double"
+            "type": "double",
+            "description": "CEF 缩放级别（对数刻度，0 表示 100%，每 ±1 约增减 20%）。"
           }
         ],
         "returnType": "int",
@@ -1268,7 +2371,7 @@
       "demoInvocation": "CEF3_设置缩放级别(演示CefBrowser控件, 1.0)"
     },
     {
-      "index": 41,
+      "index": 79,
       "name": "CEF3_是否可缩放",
       "aliases": [
         "can_zoom"
@@ -1292,11 +2395,13 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "缩放命令",
-            "type": "int"
+            "type": "int",
+            "description": "缩放命令：0 缩小、1 重置、2 放大。"
           }
         ],
         "returnType": "int",
@@ -1306,7 +2411,7 @@
       "demoInvocation": "CEF3_是否可缩放(演示CefBrowser控件, 1)"
     },
     {
-      "index": 42,
+      "index": 80,
       "name": "CEF3_执行缩放",
       "aliases": [
         "zoom"
@@ -1330,11 +2435,13 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "缩放命令",
-            "type": "int"
+            "type": "int",
+            "description": "缩放命令：0 缩小、1 重置、2 放大。"
           }
         ],
         "returnType": "int",
@@ -1344,7 +2451,7 @@
       "demoInvocation": "CEF3_执行缩放(演示CefBrowser控件, 1)"
     },
     {
-      "index": 43,
+      "index": 81,
       "name": "CEF3_尝试关闭",
       "aliases": [
         "try_close_browser"
@@ -1367,7 +2474,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "int",
@@ -1376,7 +2484,7 @@
       "demoInvocation": "CEF3_尝试关闭(演示CefBrowser控件)"
     },
     {
-      "index": 44,
+      "index": 82,
       "name": "CEF3_通知窗口移动或调整大小",
       "aliases": [
         "notify_move_or_resize_started"
@@ -1400,7 +2508,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "int",
@@ -1409,7 +2518,7 @@
       "demoInvocation": "CEF3_通知窗口移动或调整大小(演示CefBrowser控件)"
     },
     {
-      "index": 45,
+      "index": 83,
       "name": "CEF3_通知屏幕信息已改变",
       "aliases": [
         "notify_screen_info_changed"
@@ -1433,7 +2542,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "int",
@@ -1442,7 +2552,7 @@
       "demoInvocation": "CEF3_通知屏幕信息已改变(演示CefBrowser控件)"
     },
     {
-      "index": 46,
+      "index": 84,
       "name": "CEF3_发送捕获丢失事件",
       "aliases": [
         "send_capture_lost_event"
@@ -1466,7 +2576,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "int",
@@ -1475,7 +2586,7 @@
       "demoInvocation": "CEF3_发送捕获丢失事件(演示CefBrowser控件)"
     },
     {
-      "index": 47,
+      "index": 85,
       "name": "CEF3_取消输入法组合文本",
       "aliases": [
         "ime_cancel_composition"
@@ -1499,7 +2610,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "int",
@@ -1508,7 +2620,7 @@
       "demoInvocation": "CEF3_取消输入法组合文本(演示CefBrowser控件)"
     },
     {
-      "index": 48,
+      "index": 86,
       "name": "CEF3_完成输入法组合文本",
       "aliases": [
         "ime_finish_composing_text"
@@ -1532,11 +2644,13 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "保留选择",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=完成输入法组合时保留当前选区。"
           }
         ],
         "returnType": "int",
@@ -1546,7 +2660,7 @@
       "demoInvocation": "CEF3_完成输入法组合文本(演示CefBrowser控件, 真)"
     },
     {
-      "index": 49,
+      "index": 87,
       "name": "CEF3_添加单词到词典",
       "aliases": [
         "add_word_to_dictionary"
@@ -1570,11 +2684,13 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "单词",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要加入词典或替换的单词。"
           }
         ],
         "returnType": "int",
@@ -1584,7 +2700,7 @@
       "demoInvocation": "CEF3_添加单词到词典(演示CefBrowser控件, \"演示参数2\")"
     },
     {
-      "index": 50,
+      "index": 88,
       "name": "CEF3_替换拼写错误",
       "aliases": [
         "replace_misspelling"
@@ -1608,11 +2724,13 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "单词",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要加入词典或替换的单词。"
           }
         ],
         "returnType": "int",
@@ -1622,7 +2740,7 @@
       "demoInvocation": "CEF3_替换拼写错误(演示CefBrowser控件, \"演示参数2\")"
     },
     {
-      "index": 51,
+      "index": 89,
       "name": "CEF3_通知系统拖放结束",
       "aliases": [
         "drag_source_system_drag_ended"
@@ -1646,7 +2764,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "int",
@@ -1656,7 +2775,7 @@
       "demoInvocation": "CEF3_通知系统拖放结束(演示CefBrowser控件)"
     },
     {
-      "index": 52,
+      "index": 90,
       "name": "CEF3_通知拖放目标离开",
       "aliases": [
         "drag_target_drag_leave"
@@ -1680,7 +2799,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "int",
@@ -1690,7 +2810,7 @@
       "demoInvocation": "CEF3_通知拖放目标离开(演示CefBrowser控件)"
     },
     {
-      "index": 53,
+      "index": 91,
       "name": "CEF3_通知隐藏状态",
       "aliases": [
         "was_hidden"
@@ -1714,11 +2834,13 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "是否隐藏",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=通知浏览器控件已被隐藏。"
           }
         ],
         "returnType": "int",
@@ -1728,7 +2850,7 @@
       "demoInvocation": "CEF3_通知隐藏状态(演示CefBrowser控件, 真)"
     },
     {
-      "index": 54,
+      "index": 92,
       "name": "CEF3_退出网页全屏",
       "aliases": [
         "exit_fullscreen"
@@ -1752,11 +2874,13 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "是否调整大小",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=退出全屏时同步调整控件大小。"
           }
         ],
         "returnType": "int",
@@ -1766,7 +2890,7 @@
       "demoInvocation": "CEF3_退出网页全屏(演示CefBrowser控件, 真)"
     },
     {
-      "index": 55,
+      "index": 93,
       "name": "CEF3_强制刷新",
       "aliases": [
         "reload_ignore_cache"
@@ -1789,7 +2913,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "void",
@@ -1798,7 +2923,7 @@
       "demoInvocation": "CEF3_强制刷新(演示CefBrowser控件)"
     },
     {
-      "index": 56,
+      "index": 94,
       "name": "CEF3_页内查找",
       "aliases": [
         "find"
@@ -1821,23 +2946,28 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要写入或查找的文本内容。"
           },
           {
             "name": "向前",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=按正方向查找下一处。"
           },
           {
             "name": "区分大小写",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=区分大小写。"
           },
           {
             "name": "查找下一个",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=从当前位置查找下一个匹配，假=从头查找。"
           }
         ],
         "returnType": "int",
@@ -1847,7 +2977,7 @@
       "demoInvocation": "CEF3_页内查找(演示CefBrowser控件, \"演示参数2\", 真, 真, 真)"
     },
     {
-      "index": 57,
+      "index": 95,
       "name": "CEF3_停止页内查找",
       "aliases": [
         "stop_finding"
@@ -1870,11 +3000,13 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "清除选择",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=停止查找时清除当前选区。"
           }
         ],
         "returnType": "int",
@@ -1884,7 +3016,7 @@
       "demoInvocation": "CEF3_停止页内查找(演示CefBrowser控件, 真)"
     },
     {
-      "index": 58,
+      "index": 96,
       "name": "CEF3_设置焦点",
       "aliases": [
         "set_focus"
@@ -1907,11 +3039,13 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "是否聚焦",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=把焦点移入浏览器。"
           }
         ],
         "returnType": "int",
@@ -1921,7 +3055,7 @@
       "demoInvocation": "CEF3_设置焦点(演示CefBrowser控件, 真)"
     },
     {
-      "index": 59,
+      "index": 97,
       "name": "CEF3_发送鼠标单击事件",
       "aliases": [
         "send_mouse_click_event"
@@ -1945,31 +3079,38 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "X",
-            "type": "int"
+            "type": "int",
+            "description": "相对浏览器客户区的 X 坐标。"
           },
           {
             "name": "Y",
-            "type": "int"
+            "type": "int",
+            "description": "相对浏览器客户区的 Y 坐标。"
           },
           {
             "name": "修饰键",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF 事件标志位掩码（EVENTFLAG_* 组合），0 表示无修饰键。"
           },
           {
             "name": "按钮类型",
-            "type": "int"
+            "type": "int",
+            "description": "鼠标按钮：0 左键、1 中键、2 右键。"
           },
           {
             "name": "是否抬起",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=发送抬起事件，假=按下事件。"
           },
           {
             "name": "单击次数",
-            "type": "int"
+            "type": "int",
+            "description": "连击次数：1 单击、2 双击，依此类推。"
           }
         ],
         "returnType": "int",
@@ -1979,7 +3120,7 @@
       "demoInvocation": "CEF3_发送鼠标单击事件(演示CefBrowser控件, 1, 1, 1, 1, 真, 1)"
     },
     {
-      "index": 60,
+      "index": 98,
       "name": "CEF3_发送鼠标移动事件",
       "aliases": [
         "send_mouse_move_event"
@@ -2003,23 +3144,28 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "X",
-            "type": "int"
+            "type": "int",
+            "description": "相对浏览器客户区的 X 坐标。"
           },
           {
             "name": "Y",
-            "type": "int"
+            "type": "int",
+            "description": "相对浏览器客户区的 Y 坐标。"
           },
           {
             "name": "修饰键",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF 事件标志位掩码（EVENTFLAG_* 组合），0 表示无修饰键。"
           },
           {
             "name": "是否离开",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=鼠标离开事件。"
           }
         ],
         "returnType": "int",
@@ -2029,7 +3175,7 @@
       "demoInvocation": "CEF3_发送鼠标移动事件(演示CefBrowser控件, 1, 1, 1, 真)"
     },
     {
-      "index": 61,
+      "index": 99,
       "name": "CEF3_发送鼠标滚轮事件",
       "aliases": [
         "send_mouse_wheel_event"
@@ -2053,27 +3199,33 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "X",
-            "type": "int"
+            "type": "int",
+            "description": "相对浏览器客户区的 X 坐标。"
           },
           {
             "name": "Y",
-            "type": "int"
+            "type": "int",
+            "description": "相对浏览器客户区的 Y 坐标。"
           },
           {
             "name": "修饰键",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF 事件标志位掩码（EVENTFLAG_* 组合），0 表示无修饰键。"
           },
           {
             "name": "横向增量",
-            "type": "int"
+            "type": "int",
+            "description": "滚轮横向滚动增量。"
           },
           {
             "name": "纵向增量",
-            "type": "int"
+            "type": "int",
+            "description": "滚轮纵向滚动增量。"
           }
         ],
         "returnType": "int",
@@ -2083,7 +3235,7 @@
       "demoInvocation": "CEF3_发送鼠标滚轮事件(演示CefBrowser控件, 1, 1, 1, 1, 1)"
     },
     {
-      "index": 62,
+      "index": 100,
       "name": "CEF3_发送触摸事件",
       "aliases": [
         "send_touch_event"
@@ -2107,47 +3259,58 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "触点ID",
-            "type": "int"
+            "type": "int",
+            "description": "触点编号，多指触控时用于区分触点。"
           },
           {
             "name": "X",
-            "type": "double"
+            "type": "double",
+            "description": "相对浏览器客户区的 X 坐标。"
           },
           {
             "name": "Y",
-            "type": "double"
+            "type": "double",
+            "description": "相对浏览器客户区的 Y 坐标。"
           },
           {
             "name": "半径X",
-            "type": "double"
+            "type": "double",
+            "description": "触点 X 方向半径。"
           },
           {
             "name": "半径Y",
-            "type": "double"
+            "type": "double",
+            "description": "触点 Y 方向半径。"
           },
           {
             "name": "旋转角度",
-            "type": "double"
+            "type": "double",
+            "description": "触点旋转角度（弧度）。"
           },
           {
             "name": "压力",
-            "type": "double"
+            "type": "double",
+            "description": "触点压力 0.0~1.0。"
           },
           {
             "name": "事件类型",
-            "type": "int"
+            "type": "int",
+            "description": "触摸事件类型：0 松开、1 按下、2 移动、3 取消。"
           },
           {
             "name": "修饰键",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF 事件标志位掩码（EVENTFLAG_* 组合），0 表示无修饰键。"
           },
           {
             "name": "指针类型",
-            "type": "int"
+            "type": "int",
+            "description": "指针类型：0 触摸、1 鼠标、2 笔、3 橡皮擦、4 未知。"
           }
         ],
         "returnType": "int",
@@ -2157,7 +3320,7 @@
       "demoInvocation": "CEF3_发送触摸事件(演示CefBrowser控件, 1, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1, 1, 1)"
     },
     {
-      "index": 63,
+      "index": 101,
       "name": "CEF3_发送按键事件",
       "aliases": [
         "send_key_event"
@@ -2181,39 +3344,48 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "类型",
-            "type": "int"
+            "type": "int",
+            "description": "图像列表类型文本（\"normal\"、\"small\"、\"state\"）。"
           },
           {
             "name": "修饰键",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF 事件标志位掩码（EVENTFLAG_* 组合），0 表示无修饰键。"
           },
           {
             "name": "Windows键码",
-            "type": "int"
+            "type": "int",
+            "description": "Windows 虚拟键码（VK_*），如 65=A。"
           },
           {
             "name": "原生键码",
-            "type": "int"
+            "type": "int",
+            "description": "平台原生键码/扫描码。"
           },
           {
             "name": "是否系统键",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=系统键事件（如 Alt 组合）。"
           },
           {
             "name": "字符编码",
-            "type": "int"
+            "type": "int",
+            "description": "字符的 UTF-16 代码单元。"
           },
           {
             "name": "未修改字符编码",
-            "type": "int"
+            "type": "int",
+            "description": "未经修饰键修改的字符 UTF-16 代码单元。"
           },
           {
             "name": "焦点在可编辑字段",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=当前焦点位于可编辑字段。"
           }
         ],
         "returnType": "int",
@@ -2222,7 +3394,7 @@
       "demoInvocation": "CEF3_发送按键事件(演示CefBrowser控件, 1, 1, 1, 1, 真, 1, 1, 真)"
     },
     {
-      "index": 64,
+      "index": 102,
       "name": "CEF3_是否静音",
       "aliases": [
         "is_audio_muted"
@@ -2245,7 +3417,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "int",

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-25T22:05:22.479Z",
+  "generatedAt": "2026-10-19T03:18:58.870Z",
   "module": {
     "id": "lingbuilder.std.pinyin",
     "name": "拼音处理模块",

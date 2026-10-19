@@ -7,40 +7,132 @@
 类 MainWindow : 公开 窗口
     事件 _MainWindow_创建完毕()
         控件_设置选择项(命令分组选项卡, 0)
-        控件_设置文本(演示状态, "FBro传输模块：5 条命令，默认处于安全预览模式。")
+        控件_设置文本(演示状态, "FBro传输模块：22 条命令，默认处于安全预览模式。")
         调试输出("已加载模块演示：lingbuilder.fbro.transfer")
     结束
 
     事件 _运行第01组_被单击()
-        控件_设置文本(演示状态, "命令 1–5：FBro传输_开始下载 至 FBro传输_异步截图；源码内含完整签名、参数、返回值与调用。")
+        控件_设置文本(演示状态, "命令 1–11：FBro传输_开始下载 至 FBro下载_取结束时间；源码内含完整签名、参数、返回值与调用。")
         如果 (控件_取勾选(允许实际执行))
             // 命令ID：FBro传输_开始下载
             // [1] FBro传输_开始下载(控件名, 地址)
             // 功能：使用当前浏览器会话开始下载。
             // 参数：控件名:controlRef，地址:wideString；返回：int；可见性：default
             FBro传输_开始下载(演示FBroBrowser控件, "https://example.com")
+            // 命令ID：FBro下载_是否进行中
+            // [2] FBro下载_是否进行中(下载句柄)
+            // 功能：判断下载是否仍在进行。
+            // 参数：下载句柄:longLong；返回：int；可见性：advanced
+            FBro下载_是否进行中(1)
+            // 命令ID：FBro下载_是否完成
+            // [3] FBro下载_是否完成(下载句柄)
+            // 功能：判断下载是否已完成。
+            // 参数：下载句柄:longLong；返回：int；可见性：advanced
+            FBro下载_是否完成(1)
+            // 命令ID：FBro下载_是否已取消
+            // [4] FBro下载_是否已取消(下载句柄)
+            // 功能：判断下载是否已取消。
+            // 参数：下载句柄:longLong；返回：int；可见性：advanced
+            FBro下载_是否已取消(1)
+            // 命令ID：FBro下载_取百分比
+            // [5] FBro下载_取百分比(下载句柄)
+            // 功能：取下载进度百分比（0~100）。
+            // 参数：下载句柄:longLong；返回：int；可见性：advanced
+            FBro下载_取百分比(1)
+            // 命令ID：FBro下载_取下载ID
+            // [6] FBro下载_取下载ID(下载句柄)
+            // 功能：取下载项标识。
+            // 参数：下载句柄:longLong；返回：int；可见性：advanced
+            FBro下载_取下载ID(1)
+            // 命令ID：FBro下载_取速度
+            // [7] FBro下载_取速度(下载句柄)
+            // 功能：取当前下载速度（字节/秒）。
+            // 参数：下载句柄:longLong；返回：longLong；可见性：advanced
+            FBro下载_取速度(1)
+            // 命令ID：FBro下载_取总长度
+            // [8] FBro下载_取总长度(下载句柄)
+            // 功能：取下载总字节数（未知为 0 或 -1）。
+            // 参数：下载句柄:longLong；返回：longLong；可见性：advanced
+            FBro下载_取总长度(1)
+            // 命令ID：FBro下载_取已接收字节
+            // [9] FBro下载_取已接收字节(下载句柄)
+            // 功能：取已接收字节数。
+            // 参数：下载句柄:longLong；返回：longLong；可见性：advanced
+            FBro下载_取已接收字节(1)
+            // 命令ID：FBro下载_取开始时间
+            // [10] FBro下载_取开始时间(下载句柄)
+            // 功能：取开始时间（Unix 时间戳秒）。
+            // 参数：下载句柄:longLong；返回：longLong；可见性：advanced
+            FBro下载_取开始时间(1)
+            // 命令ID：FBro下载_取结束时间
+            // [11] FBro下载_取结束时间(下载句柄)
+            // 功能：取结束时间（Unix 时间戳秒，未结束为 0）。
+            // 参数：下载句柄:longLong；返回：longLong；可见性：advanced
+            FBro下载_取结束时间(1)
+        如果结束
+        调试输出("已查看 命令 1–11：FBro传输_开始下载 至 FBro下载_取结束时间；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第02组_被单击()
+        控件_设置文本(演示状态, "命令 12–22：FBro下载_取完整路径 至 FBro传输_异步截图；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
+            // 命令ID：FBro下载_取完整路径
+            // [12] FBro下载_取完整路径(下载句柄)
+            // 功能：取下载文件的完整保存路径。
+            // 参数：下载句柄:longLong；返回：wideString；可见性：advanced
+            FBro下载_取完整路径(1)
+            // 命令ID：FBro下载_取地址
+            // [13] FBro下载_取地址(下载句柄)
+            // 功能：取下载地址。
+            // 参数：下载句柄:longLong；返回：wideString；可见性：advanced
+            FBro下载_取地址(1)
+            // 命令ID：FBro下载_取原始地址
+            // [14] FBro下载_取原始地址(下载句柄)
+            // 功能：取重定向前的原始下载地址。
+            // 参数：下载句柄:longLong；返回：wideString；可见性：advanced
+            FBro下载_取原始地址(1)
+            // 命令ID：FBro下载_取建议文件名
+            // [15] FBro下载_取建议文件名(下载句柄)
+            // 功能：取服务器建议的文件名。
+            // 参数：下载句柄:longLong；返回：wideString；可见性：advanced
+            FBro下载_取建议文件名(1)
+            // 命令ID：FBro下载_取MIME类型
+            // [16] FBro下载_取MIME类型(下载句柄)
+            // 功能：取下载内容的 MIME 类型。
+            // 参数：下载句柄:longLong；返回：wideString；可见性：advanced
+            FBro下载_取MIME类型(1)
+            // 命令ID：FBro下载_取内容处置
+            // [17] FBro下载_取内容处置(下载句柄)
+            // 功能：取 Content-Disposition 响应头值。
+            // 参数：下载句柄:longLong；返回：wideString；可见性：advanced
+            FBro下载_取内容处置(1)
             // 命令ID：FBro传输_打印
-            // [2] FBro传输_打印(控件名)
+            // [18] FBro传输_打印(控件名)
             // 功能：打开当前浏览器页面的原生打印流程。
             // 参数：控件名:controlRef；返回：int；可见性：default
             FBro传输_打印(演示FBroBrowser控件)
             // 命令ID：FBro传输_异步生成PDF
-            // [3] FBro传输_异步生成PDF(控件名, 输出路径, 设置JSON)
+            // [19] FBro传输_异步生成PDF(控件名, 输出路径, 设置JSON)
             // 功能：异步生成 PDF；设置使用 UTF-16 JSON，任务结果包含成功状态和绝对路径。
             // 参数：控件名:controlRef，输出路径:wideString，设置JSON:wideString；返回：longLong；可见性：default
             FBro传输_异步生成PDF(演示FBroBrowser控件, "module-demo-temp.txt", "{}")
+            // 命令ID：FBro传输_生成PDF
+            // [20] FBro传输_生成PDF(控件名, 输出路径, 设置JSON)
+            // 功能：同步生成 PDF 并等待完成（60 秒超时）；设置 JSON 传空文本使用默认，返回 1 表示文件已生成。
+            // 参数：控件名:controlRef，输出路径:wideString，设置JSON:wideString；返回：int；可见性：advanced
+            FBro传输_生成PDF(演示FBroBrowser控件, "module-demo-temp.txt", "{}")
             // 命令ID：FBro传输_异步打开文件对话框
-            // [4] FBro传输_异步打开文件对话框(控件名, 模式, 标题, 默认路径, 筛选器JSON)
+            // [21] FBro传输_异步打开文件对话框(控件名, 模式, 标题, 默认路径, 筛选器JSON)
             // 功能：调用独立 STA Windows 安全文件对话框；模式为 0打开、1多选、2文件夹、3保存，任务返回 cancelled 和 paths UTF-16 JSON 字段。
             // 参数：控件名:controlRef，模式:int，标题:wideString，默认路径:wideString，筛选器JSON:wideString；返回：longLong；可见性：default
             FBro传输_异步打开文件对话框(演示FBroBrowser控件, 1, "演示参数3", "module-demo-temp.txt", "{}")
             // 命令ID：FBro传输_异步截图
-            // [5] FBro传输_异步截图(控件名, 格式, 质量, 横坐标, 纵坐标, 宽度, 高度, 缩放, 来自表面, 超出视口)
+            // [22] FBro传输_异步截图(控件名, 格式, 质量, 横坐标, 纵坐标, 宽度, 高度, 缩放, 来自表面, 超出视口)
             // 功能：通过 FBro VIP Page.captureScreenshot 异步截图；任务结果通过受管缓冲返回。
             // 参数：控件名:controlRef，格式:wideString，质量:int，横坐标:int，纵坐标:int，宽度:int，高度:int，缩放:int，来自表面:bool，超出视口:bool；返回：longLong；可见性：default
             FBro传输_异步截图(演示FBroBrowser控件, "演示参数2", 1, 1, 1, 1, 1, 1, 真, 真)
         如果结束
-        调试输出("已查看 命令 1–5：FBro传输_开始下载 至 FBro传输_异步截图；勾选允许实际执行后会使用演示参数调用。")
+        调试输出("已查看 命令 12–22：FBro下载_取完整路径 至 FBro传输_异步截图；勾选允许实际执行后会使用演示参数调用。")
     结束
 
 结束类

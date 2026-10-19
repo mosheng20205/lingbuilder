@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.874Z",
+  "generatedAt": "2026-10-19T03:18:58.774Z",
   "module": {
     "id": "lingbuilder.net.dns",
     "name": "DNS与IP模块",
     "version": "1.0.0",
     "description": "提供域名解析、本机名、IP 格式检查和反向查询。"
   },
-  "commandCount": 5,
+  "commandCount": 9,
   "commands": [
     {
       "index": 1,
@@ -22,7 +22,8 @@
         "parameters": [
           {
             "name": "主机名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要解析的域名或 IP 文本；解析失败返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -44,7 +45,8 @@
         "parameters": [
           {
             "name": "IP地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "点分 IPv4 或标准 IPv6 文本；传入域名等非法地址直接返回空文本，没有 PTR 记录同样返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -81,7 +83,8 @@
         "parameters": [
           {
             "name": "地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "待检查的地址文本，必须是点分十进制 IPv4，不接受前导零之外的空格或端口写法。"
           }
         ],
         "returnType": "bool",
@@ -102,13 +105,89 @@
         "parameters": [
           {
             "name": "地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "待检查的地址文本，必须是冒号分隔的 IPv6，允许双冒号缩写形式。"
           }
         ],
         "returnType": "bool",
         "encoding": "wide"
       },
       "demoInvocation": "网络_是否IPv6(\"https://example.com\")"
+    },
+    {
+      "index": 6,
+      "name": "网络_取MAC地址",
+      "signature": "网络_取MAC地址()",
+      "description": "返回首个非环回网卡的物理地址，格式如 00-1A-2B-3C-4D-5E；读取失败返回空文本。",
+      "insertText": "网络_取MAC地址()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "网络_取MAC地址",
+        "runtimeName": "网络_取MAC地址",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "网络_取MAC地址()"
+      },
+      "demoInvocation": "网络_取MAC地址()"
+    },
+    {
+      "index": 7,
+      "name": "网络_取网卡名称列表",
+      "signature": "网络_取网卡名称列表(结果数组)",
+      "description": "把本机全部网卡的名称写入文本数组，返回网卡数量。",
+      "insertText": "网络_取网卡名称列表(0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "网络_取网卡名称列表",
+        "runtimeName": "网络_取网卡名称列表",
+        "parameters": [
+          {
+            "name": "结果数组",
+            "type": "array",
+            "description": "接收网卡友好名称的文本型数组变量，调用前会先清空原有内容。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "网络_取网卡名称列表(0)"
+    },
+    {
+      "index": 8,
+      "name": "网络_取IP地址列表",
+      "signature": "网络_取IP地址列表(结果数组)",
+      "description": "把本机全部网卡的 IPv4 与 IPv6 地址写入文本数组，返回地址数量。",
+      "insertText": "网络_取IP地址列表(0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "网络_取IP地址列表",
+        "runtimeName": "网络_取IP地址列表",
+        "parameters": [
+          {
+            "name": "结果数组",
+            "type": "array",
+            "description": "接收 IP 地址的文本型数组变量，调用前会先清空原有内容。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "网络_取IP地址列表(0)"
+    },
+    {
+      "index": 9,
+      "name": "网络_取DNS后缀",
+      "signature": "网络_取DNS后缀()",
+      "description": "返回首个配置了主 DNS 后缀的网卡后缀文本；没有配置返回空文本。",
+      "insertText": "网络_取DNS后缀()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "网络_取DNS后缀",
+        "runtimeName": "网络_取DNS后缀",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "网络_取DNS后缀()"
     }
   ]
 }

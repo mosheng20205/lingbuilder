@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.820Z",
+  "generatedAt": "2026-10-19T03:18:58.744Z",
   "module": {
     "id": "lingbuilder.fbro.session",
     "name": "FBro会话模块",
     "version": "2.1.0",
     "description": "提供隔离 Profile、Cookie 和代理认证高层能力。"
   },
-  "commandCount": 10,
+  "commandCount": 14,
   "commands": [
     {
       "index": 1,
@@ -27,17 +27,21 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "Cookie 目标的完整 URL（含协议），如 \"https://example.com/\"；按该 URL 匹配 Cookie 域和路径。"
           }
         ],
         "returnType": "wideString",
@@ -63,17 +67,21 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "Cookie 目标的完整 URL（含协议），如 \"https://example.com/\"；按该 URL 匹配 Cookie 域和路径。"
           }
         ],
         "returnType": "int",
@@ -99,25 +107,31 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "代理地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "代理地址，格式 \"scheme://host:port\"，如 \"http://127.0.0.1:8080\"。"
           },
           {
             "name": "用户名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "代理认证用户名；代理不要求认证时传空文本。"
           },
           {
             "name": "密码",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "代理认证密码；代理不要求认证时传空文本。"
           }
         ],
         "returnType": "int",
@@ -143,13 +157,16 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "longLong",
@@ -175,21 +192,26 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "Cookie 目标的完整 URL（含协议），如 \"https://example.com/\"；按该 URL 匹配 Cookie 域和路径。"
           },
           {
             "name": "包含HttpOnly",
-            "type": "int"
+            "type": "int",
+            "description": "是否包含 HttpOnly Cookie：1 包含，0 排除。"
           }
         ],
         "returnType": "longLong",
@@ -215,41 +237,51 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "Cookie 目标的完整 URL（含协议），如 \"https://example.com/\"；按该 URL 匹配 Cookie 域和路径。"
           },
           {
             "name": "名称",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "Cookie 名称；删除命令传空文本时删除该地址全部 Cookie。"
           },
           {
             "name": "值",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "Cookie 内容文本。"
           },
           {
             "name": "域",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "Cookie 归属域，如 \"example.com\"。"
           },
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "Cookie 生效路径，如 \"/\"。"
           },
           {
             "name": "安全",
-            "type": "int"
+            "type": "int",
+            "description": "是否标记仅 HTTPS 传输（Secure）：1 是，0 否。"
           },
           {
             "name": "仅HTTP",
-            "type": "int"
+            "type": "int",
+            "description": "是否标记 HttpOnly（禁止页面脚本读取）：1 是，0 否。"
           }
         ],
         "returnType": "longLong",
@@ -275,21 +307,26 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "Cookie 目标的完整 URL（含协议），如 \"https://example.com/\"；按该 URL 匹配 Cookie 域和路径。"
           },
           {
             "name": "名称",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "Cookie 名称；删除命令传空文本时删除该地址全部 Cookie。"
           }
         ],
         "returnType": "longLong",
@@ -315,13 +352,16 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "longLong",
@@ -348,25 +388,31 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "来源",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "缓存来源限定文本；空文本时不限定来源。"
           },
           {
             "name": "移除标志",
-            "type": "int"
+            "type": "int",
+            "description": "缓存移除标志位掩码；0 使用默认清除范围。"
           },
           {
             "name": "配额标志",
-            "type": "int"
+            "type": "int",
+            "description": "配额数据移除标志位掩码；0 使用默认。"
           }
         ],
         "returnType": "longLong",
@@ -391,21 +437,163 @@
         "parameters": [
           {
             "name": "来源",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "缓存来源限定文本；空文本时不限定来源。"
           },
           {
             "name": "移除标志",
-            "type": "int"
+            "type": "int",
+            "description": "缓存移除标志位掩码；0 使用默认清除范围。"
           },
           {
             "name": "配额标志",
-            "type": "int"
+            "type": "int",
+            "description": "配额数据移除标志位掩码；0 使用默认。"
           }
         ],
         "returnType": "longLong",
         "encoding": "wide"
       },
       "demoInvocation": "FBro会话_异步清理全局缓存(\"演示参数1\", 1, 1)"
+    },
+    {
+      "index": 11,
+      "name": "FBro会话_是否全局上下文",
+      "aliases": [
+        "LB_FBro_IsGlobalRequestContext"
+      ],
+      "signature": "FBro会话_是否全局上下文(控件名)",
+      "description": "判断指定浏览器使用的 RequestContext 是否为全局上下文；独立 Profile 返回 0。",
+      "insertText": "FBro会话_是否全局上下文($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro会话_是否全局上下文",
+        "runtimeName": "FBro会话_是否全局上下文",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual",
+              "resource"
+            ],
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro会话_是否全局上下文(演示FBroBrowser控件)"
+    },
+    {
+      "index": 12,
+      "name": "FBro会话_取上下文缓存路径",
+      "aliases": [
+        "LB_FBro_GetRequestContextCachePath"
+      ],
+      "signature": "FBro会话_取上下文缓存路径(控件名)",
+      "description": "返回 RequestContext 缓存路径 JSON（global 与 cachePath 字段）；全局上下文同样返回其真实路径。",
+      "insertText": "FBro会话_取上下文缓存路径($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro会话_取上下文缓存路径",
+        "runtimeName": "FBro会话_取上下文缓存路径",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual",
+              "resource"
+            ],
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro会话_取上下文缓存路径(演示FBroBrowser控件)"
+    },
+    {
+      "index": 13,
+      "name": "FBro会话_创建上下文",
+      "aliases": [
+        "LB_FBro_RequestContextCreateAsync"
+      ],
+      "signature": "FBro会话_创建上下文(设置JSON)",
+      "description": "运行时创建独立 RequestContext（设置 JSON：cachePath、persistSessionCookies、acceptLanguageList、cookieableSchemesList、cookieableSchemesExcludeDefaults）；任务结果包含 context 句柄，可传给 FBro会话_使用上下文重建。",
+      "insertText": "FBro会话_创建上下文(\"$1\")",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro会话_创建上下文",
+        "runtimeName": "FBro会话_创建上下文",
+        "parameters": [
+          {
+            "name": "设置JSON",
+            "type": "wideString",
+            "description": "上下文设置 JSON 文本，支持 cachePath、persistSessionCookies、acceptLanguageList、cookieableSchemesList、cookieableSchemesExcludeDefaults 键。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro会话_创建上下文(\"{}\")"
+    },
+    {
+      "index": 14,
+      "name": "FBro会话_使用上下文重建",
+      "aliases": [
+        "LB_FBro_RecreateBrowserWithContext"
+      ],
+      "signature": "FBro会话_使用上下文重建(控件名, 上下文句柄)",
+      "description": "让浏览器改用指定 RequestContext 原地重建：先关闭旧浏览器，关闭完成后自动以新上下文重启（指纹多 profile 场景）。",
+      "insertText": "FBro会话_使用上下文重建($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro会话_使用上下文重建",
+        "runtimeName": "FBro会话_使用上下文重建",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual",
+              "resource"
+            ],
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "上下文句柄",
+            "type": "longLong",
+            "description": "“FBro会话_创建上下文”任务结果中 context 字段的上下文句柄；只用于“FBro会话_使用上下文重建”。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro会话_使用上下文重建(演示FBroBrowser控件, 1)"
     }
   ]
 }

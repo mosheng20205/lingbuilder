@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.877Z",
+  "generatedAt": "2026-10-19T03:18:58.775Z",
   "module": {
     "id": "lingbuilder.net.ftp",
     "name": "FTP客户端模块",
@@ -22,23 +22,28 @@
         "parameters": [
           {
             "name": "主机",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "FTP 服务器主机名或 IP。"
           },
           {
             "name": "端口",
-            "type": "int"
+            "type": "int",
+            "description": "控制端口；小于等于 0 时使用 FTP 默认端口 21。"
           },
           {
             "name": "用户名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "登录账号；空文本按匿名登录处理。"
           },
           {
             "name": "密码",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "登录密码；空文本表示不提交密码。"
           },
           {
             "name": "安全连接",
-            "type": "bool"
+            "type": "bool",
+            "description": "传真按 FTPS 建立加密控制连接，传假使用明文 FTP。"
           }
         ],
         "returnType": "bool",
@@ -59,11 +64,13 @@
         "parameters": [
           {
             "name": "本地文件",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要上传的本机文件路径，文件必须已存在。"
           },
           {
             "name": "远程文件",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "服务器上的目标路径，相对当前登录目录，以二进制方式传输。"
           }
         ],
         "returnType": "bool",
@@ -84,15 +91,18 @@
         "parameters": [
           {
             "name": "远程文件",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "服务器上的源文件路径，相对当前登录目录，以二进制方式传输。"
           },
           {
             "name": "本地文件",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "保存到本机的路径；所在目录必须已存在。"
           },
           {
             "name": "允许覆盖",
-            "type": "bool"
+            "type": "bool",
+            "description": "传真时本地同名文件会被覆盖，传假时本地文件已存在则下载失败。"
           }
         ],
         "returnType": "bool",
@@ -113,7 +123,8 @@
         "parameters": [
           {
             "name": "远程文件",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "服务器上要删除的文件路径。"
           }
         ],
         "returnType": "bool",
@@ -134,11 +145,13 @@
         "parameters": [
           {
             "name": "原名称",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "服务器上的原文件路径。"
           },
           {
             "name": "新名称",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "服务器上的新文件路径，只能在同一台服务器上改名。"
           }
         ],
         "returnType": "bool",

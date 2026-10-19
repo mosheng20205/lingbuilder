@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.961Z",
+  "generatedAt": "2026-10-19T03:18:58.852Z",
   "module": {
     "id": "lingbuilder.process",
     "name": "进程管理模块",
-    "version": "1.0.0",
-    "description": "提供受控的程序启动、等待、进程状态和显式进程终止能力。"
+    "version": "1.1.0",
+    "description": "提供受控的程序启动、等待、进程状态、按名称枚举进程 ID、枚举系统全部进程和显式进程终止能力。"
   },
-  "commandCount": 5,
+  "commandCount": 10,
   "commands": [
     {
       "index": 1,
@@ -22,11 +22,13 @@
         "parameters": [
           {
             "name": "命令行",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "完整的命令行文本，含可执行文件和参数，不能为空；路径中有空格时必须用双引号包住该段。"
           },
           {
             "name": "工作目录",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "新进程的当前工作目录；空文本表示沿用本进程的工作目录。"
           }
         ],
         "returnType": "int",
@@ -47,15 +49,18 @@
         "parameters": [
           {
             "name": "命令行",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "完整的命令行文本，含可执行文件和参数，不能为空；路径中有空格时必须用双引号包住该段。"
           },
           {
             "name": "工作目录",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "新进程的当前工作目录；空文本表示沿用本进程的工作目录。"
           },
           {
             "name": "超时毫秒",
-            "type": "int"
+            "type": "int",
+            "description": "等待进程退出的最长毫秒数；小于 0 表示一直等待。超时或启动失败返回 -1；在界面事件里等待会卡住界面。"
           }
         ],
         "returnType": "int",
@@ -91,7 +96,8 @@
         "parameters": [
           {
             "name": "进程ID",
-            "type": "int"
+            "type": "int",
+            "description": "要检查的进程 ID，必须大于 0；进程已退出或无权打开时返回假。"
           }
         ],
         "returnType": "bool"
@@ -111,16 +117,141 @@
         "parameters": [
           {
             "name": "进程ID",
-            "type": "int"
+            "type": "int",
+            "description": "要终止的进程 ID，必须大于 0 且不能等于当前进程自身。"
           },
           {
             "name": "退出码",
-            "type": "int"
+            "type": "int",
+            "description": "强制写入被终止进程的退出码。"
           }
         ],
         "returnType": "bool"
       },
       "demoInvocation": "进程_终止(1, 1)"
+    },
+    {
+      "index": 6,
+      "name": "进程_按名称取ID列表",
+      "signature": "进程_按名称取ID列表(进程名, 结果数组)",
+      "description": "按 exe 名称枚举匹配进程的 ID 列表，返回命中数量。",
+      "insertText": "进程_按名称取ID列表(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "进程_按名称取ID列表",
+        "runtimeName": "进程_按名称取ID列表",
+        "parameters": [
+          {
+            "name": "进程名",
+            "type": "wideString",
+            "description": "要匹配的可执行文件名（如 \"explorer.exe\"），不区分大小写，按完整文件名匹配而非子串；空文本直接返回 0。"
+          },
+          {
+            "name": "结果数组",
+            "type": "array",
+            "description": "接收十进制进程 ID 文本的数组变量（如 \"4321\"），调用前会先清空原有内容；同名多实例进程全部返回，可用 到整数 转回整数。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "局部 文本型 名单[]\n进程_按名称取ID列表(\"explorer.exe\", 名单)"
+      },
+      "demoInvocation": "进程_按名称取ID列表(\"演示参数1\", 0)"
+    },
+    {
+      "index": 7,
+      "name": "进程_按名称取ID列表JSON",
+      "signature": "进程_按名称取ID列表JSON(进程名)",
+      "description": "按 exe 名称枚举进程 ID 并返回 JSON 数组文本（如 [\"4321\",\"890\"]），可直接落盘或交给 JSON 模块解析。",
+      "insertText": "进程_按名称取ID列表JSON(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "进程_按名称取ID列表JSON",
+        "runtimeName": "进程_按名称取ID列表JSON",
+        "parameters": [
+          {
+            "name": "进程名",
+            "type": "wideString",
+            "description": "要匹配的可执行文件名，不区分大小写，允许带或不带 .exe 后缀；空文本返回空数组 JSON \"[]\"。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "进程_按名称取ID列表JSON(\"explorer.exe\")"
+      },
+      "demoInvocation": "进程_按名称取ID列表JSON(\"演示参数1\")"
+    },
+    {
+      "index": 8,
+      "name": "进程_枚举全部",
+      "signature": "进程_枚举全部(名称数组, PID数组)",
+      "description": "枚举系统当前全部进程（含 System 等系统进程），返回进程数量；两个数组按下标一一对应，可直接用来填充「进程名 + 进程ID」列表界面。",
+      "insertText": "进程_枚举全部($1, $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "进程_枚举全部",
+        "runtimeName": "进程_枚举全部",
+        "parameters": [
+          {
+            "name": "名称数组",
+            "type": "array",
+            "description": "接收进程映像名文本的数组变量（如 \"chrome.exe\"），调用前会先清空原有内容；顺序按进程 ID 从小到大。"
+          },
+          {
+            "name": "PID数组",
+            "type": "array",
+            "description": "接收十进制进程 ID 文本的数组变量（如 \"4321\"），与 名称数组 按下标一一对应，可用 到整数 转回整数。"
+          }
+        ],
+        "returnType": "int",
+        "example": "局部 文本型 名称[]\n局部 文本型 ID[]\n进程_枚举全部(名称, ID)"
+      },
+      "demoInvocation": "进程_枚举全部(0, 0)"
+    },
+    {
+      "index": 9,
+      "name": "程序_执行并取输出",
+      "signature": "程序_执行并取输出(命令行, 超时毫秒)",
+      "description": "执行命令行并等待结束，把标准输出与错误输出合并读回为文本；命令无法启动返回空文本，用 程序_上次执行退出码 查询退出码。",
+      "insertText": "程序_执行并取输出(\"$1\", 0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "程序_执行并取输出",
+        "runtimeName": "程序_执行并取输出",
+        "parameters": [
+          {
+            "name": "命令行",
+            "type": "wideString",
+            "description": "要执行的完整命令行，例如 cmd /c ping 127.0.0.1；输出与错误回显合并读回，中文按系统 OEM 代码页解码。"
+          },
+          {
+            "name": "超时毫秒",
+            "type": "int",
+            "optional": true,
+            "defaultValue": 30000,
+            "description": "最长等待毫秒数，超时强制结束子进程并返回已捕获的输出；小于 0 表示无限等待，省略默认 30000。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "程序_执行并取输出(\"cmd /c echo 你好\")"
+      },
+      "demoInvocation": "程序_执行并取输出(\"演示参数1\", 1)"
+    },
+    {
+      "index": 10,
+      "name": "程序_上次执行退出码",
+      "signature": "程序_上次执行退出码()",
+      "description": "返回本线程上一次 程序_执行并取输出 的子进程退出码；尚未执行过或命令无法启动返回 -1。",
+      "insertText": "程序_上次执行退出码()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "程序_上次执行退出码",
+        "runtimeName": "程序_上次执行退出码",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "程序_上次执行退出码()"
     }
   ]
 }

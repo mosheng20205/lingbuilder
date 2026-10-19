@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.964Z",
+  "generatedAt": "2026-10-19T03:18:58.861Z",
   "module": {
     "id": "lingbuilder.std.bytes",
     "name": "字节与十六进制模块",
-    "version": "1.0.0",
-    "description": "通过安全文本接口提供 UTF-8 字节长度与十六进制编解码，不暴露裸内存指针。"
+    "version": "1.4.0",
+    "description": "通过安全文本接口提供 UTF-8 字节长度、十六进制编解码和数值进制文本转换。"
   },
-  "commandCount": 13,
+  "commandCount": 34,
   "commands": [
     {
       "index": 1,
@@ -22,7 +22,8 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要统计的文本；返回其 UTF-8 编码后的字节数，编码失败返回 0。"
           }
         ],
         "returnType": "int",
@@ -44,7 +45,8 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要转换的文本；输出大写十六进制文本，编码失败时返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -66,7 +68,8 @@
         "parameters": [
           {
             "name": "十六进制",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "十六进制字节文本，长度必须为偶数且每个字符只允许 0-9、a-f、A-F；格式非法按命令说明返回失败值。；解码或转码失败时返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -87,7 +90,8 @@
         "parameters": [
           {
             "name": "十六进制",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "待校验的文本；要求长度为偶数且每个字符都是 0-9、a-f、A-F。"
           }
         ],
         "returnType": "bool",
@@ -97,6 +101,98 @@
     },
     {
       "index": 5,
+      "name": "数值_到十六进制文本",
+      "signature": "数值_到十六进制文本(数值)",
+      "description": "返回整数的十六进制文本形式：非负数为大写十六进制（无前缀），负数为 8 位 32 位补码形式。",
+      "insertText": "数值_到十六进制文本(0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "数值_到十六进制文本",
+        "runtimeName": "数值_到十六进制文本",
+        "parameters": [
+          {
+            "name": "数值",
+            "type": "int",
+            "description": "要转换的整数；例如 255 得 FF，-1 得 FFFFFFFF。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "数值_到十六进制文本(255)"
+      },
+      "demoInvocation": "数值_到十六进制文本(1)"
+    },
+    {
+      "index": 6,
+      "name": "数值_到八进制文本",
+      "signature": "数值_到八进制文本(数值)",
+      "description": "返回整数的八进制文本形式（无前缀）；负数按 32 位补码的八进制输出。",
+      "insertText": "数值_到八进制文本(0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "数值_到八进制文本",
+        "runtimeName": "数值_到八进制文本",
+        "parameters": [
+          {
+            "name": "数值",
+            "type": "int",
+            "description": "要转换的整数；例如 8 得 10，-1 得 37777777777。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "数值_到八进制文本(8)"
+      },
+      "demoInvocation": "数值_到八进制文本(1)"
+    },
+    {
+      "index": 7,
+      "name": "数值_十六进制解析",
+      "signature": "数值_十六进制解析(十六进制文本)",
+      "description": "把十六进制文本解析为整数；可带 0x/0X 前缀，非法内容返回 0。",
+      "insertText": "数值_十六进制解析(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "数值_十六进制解析",
+        "runtimeName": "数值_十六进制解析",
+        "parameters": [
+          {
+            "name": "十六进制文本",
+            "type": "wideString",
+            "description": "只含十六进制字符的文本，允许首尾空白和可选 0x/0X 前缀；超过 8 位取低 32 位（按补码解释），没有有效字符时返回 0。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "数值_十六进制解析(\"FF\")"
+      },
+      "demoInvocation": "数值_十六进制解析(\"演示参数1\")"
+    },
+    {
+      "index": 8,
+      "name": "数值_八进制解析",
+      "signature": "数值_八进制解析(八进制文本)",
+      "description": "把八进制文本解析为整数；非法内容返回 0。",
+      "insertText": "数值_八进制解析(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "数值_八进制解析",
+        "runtimeName": "数值_八进制解析",
+        "parameters": [
+          {
+            "name": "八进制文本",
+            "type": "wideString",
+            "description": "只含八进制字符（0-7）的文本，允许首尾空白；超过位数取低 32 位（按补码解释），没有有效字符时返回 0。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "数值_八进制解析(\"10\")"
+      },
+      "demoInvocation": "数值_八进制解析(\"演示参数1\")"
+    },
+    {
+      "index": 9,
       "name": "字节集_长度",
       "signature": "字节集_长度(数据)",
       "description": "返回字节集长度。",
@@ -108,7 +204,8 @@
         "parameters": [
           {
             "name": "数据",
-            "type": "bytes"
+            "type": "bytes",
+            "description": "要统计的字节集；字节数超过整数上限时返回 2147483647。"
           }
         ],
         "returnType": "int"
@@ -116,7 +213,7 @@
       "demoInvocation": "字节集_长度({})"
     },
     {
-      "index": 6,
+      "index": 10,
       "name": "字节集_截取",
       "signature": "字节集_截取(数据, 起始位置, 长度)",
       "description": "按 0 起始位置安全截取字节集。",
@@ -128,15 +225,18 @@
         "parameters": [
           {
             "name": "数据",
-            "type": "bytes"
+            "type": "bytes",
+            "description": "要操作的字节集；位置与长度均按字节计，索引从 0 起。"
           },
           {
             "name": "起始位置",
-            "type": "int"
+            "type": "int",
+            "description": "截取起始字节索引，从 0 起；为负或已到达末尾时返回空字节集。"
           },
           {
             "name": "长度",
-            "type": "int"
+            "type": "int",
+            "description": "要截取的字节数；小于等于 0 返回空字节集，越过末尾时只取到末尾。"
           }
         ],
         "returnType": "bytes"
@@ -144,7 +244,7 @@
       "demoInvocation": "字节集_截取({}, 1, 1)"
     },
     {
-      "index": 7,
+      "index": 11,
       "name": "字节集_拼接",
       "signature": "字节集_拼接(前段, 后段)",
       "description": "拼接两个字节集，溢出时返回空字节集。",
@@ -156,11 +256,13 @@
         "parameters": [
           {
             "name": "前段",
-            "type": "bytes"
+            "type": "bytes",
+            "description": "作为前半部分的字节集，字节顺序保持不变。"
           },
           {
             "name": "后段",
-            "type": "bytes"
+            "type": "bytes",
+            "description": "追加到前段之后的字节集；两段总长度溢出时返回空字节集。"
           }
         ],
         "returnType": "bytes"
@@ -168,7 +270,7 @@
       "demoInvocation": "字节集_拼接({}, {})"
     },
     {
-      "index": 8,
+      "index": 12,
       "name": "字节集_取字节",
       "signature": "字节集_取字节(数据, 位置)",
       "description": "读取指定位置的 0～255 字节，越界返回 -1。",
@@ -180,11 +282,13 @@
         "parameters": [
           {
             "name": "数据",
-            "type": "bytes"
+            "type": "bytes",
+            "description": "要操作的字节集；位置与长度均按字节计，索引从 0 起。"
           },
           {
             "name": "位置",
-            "type": "int"
+            "type": "int",
+            "description": "要读取的字节位置，从 0 起；越界返回 -1。"
           }
         ],
         "returnType": "int"
@@ -192,7 +296,7 @@
       "demoInvocation": "字节集_取字节({}, 1)"
     },
     {
-      "index": 9,
+      "index": 13,
       "name": "字节集_置字节",
       "signature": "字节集_置字节(数据, 位置, 数值)",
       "description": "写入一个字节，位置或数值无效时返回假。",
@@ -204,15 +308,18 @@
         "parameters": [
           {
             "name": "数据",
-            "type": "bytes"
+            "type": "bytes",
+            "description": "要修改的字节集；只改动指定位置，长度不变。"
           },
           {
             "name": "位置",
-            "type": "int"
+            "type": "int",
+            "description": "要写入的字节位置，从 0 起；越界返回假且不改动数据。"
           },
           {
             "name": "数值",
-            "type": "int"
+            "type": "int",
+            "description": "写入的字节值，必须在 0 到 255 之间；超范围返回假。"
           }
         ],
         "returnType": "bool"
@@ -220,7 +327,7 @@
       "demoInvocation": "字节集_置字节({}, 1, 1)"
     },
     {
-      "index": 10,
+      "index": 14,
       "name": "字节集_Base64编码",
       "signature": "字节集_Base64编码(数据)",
       "description": "把字节集编码为 Base64 文本。",
@@ -232,7 +339,8 @@
         "parameters": [
           {
             "name": "数据",
-            "type": "bytes"
+            "type": "bytes",
+            "description": "要编码的原始字节集；输出标准 Base64 字母表并以等号补齐。"
           }
         ],
         "returnType": "wideString",
@@ -241,7 +349,7 @@
       "demoInvocation": "字节集_Base64编码({})"
     },
     {
-      "index": 11,
+      "index": 15,
       "name": "字节集_Base64解码",
       "signature": "字节集_Base64解码(Base64文本)",
       "description": "把 Base64 文本解码为字节集，格式错误返回空字节集。",
@@ -253,7 +361,8 @@
         "parameters": [
           {
             "name": "Base64文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "标准 Base64 文本，长度必须是 4 的倍数，只含字母表字符和末尾补齐等号；格式错误返回空字节集。"
           }
         ],
         "returnType": "bytes",
@@ -262,27 +371,54 @@
       "demoInvocation": "字节集_Base64解码(\"演示参数1\")"
     },
     {
-      "index": 12,
-      "name": "字节集_十六进制编码",
-      "signature": "字节集_十六进制编码(数据)",
-      "description": "把字节集编码为 ASCII 十六进制字节集。",
-      "insertText": "字节集_十六进制编码($1)",
+      "index": 16,
+      "name": "字节集_到十六进制字节集",
+      "signature": "字节集_到十六进制字节集(数据)",
+      "description": "把字节集编码为 ASCII 十六进制字节集。⚠️ 返回的是字节集而不是文本：要直接得到可显示的十六进制文本请用 字节集_到十六进制文本，或对结果再调 编码_字节集转文本(结果, \"ANSI\")。",
+      "insertText": "字节集_到十六进制字节集($1)",
+      "aliases": [
+        "字节集_十六进制编码"
+      ],
       "returnType": "字节集",
       "binding": {
-        "command": "字节集_十六进制编码",
-        "runtimeName": "字节集_十六进制编码",
+        "command": "字节集_到十六进制字节集",
+        "runtimeName": "字节集_到十六进制字节集",
         "parameters": [
           {
             "name": "数据",
-            "type": "bytes"
+            "type": "bytes",
+            "description": "要编码的字节集；输出由大写十六进制字符组成的 ASCII 字节集。"
           }
         ],
         "returnType": "bytes"
       },
-      "demoInvocation": "字节集_十六进制编码({})"
+      "demoInvocation": "字节集_到十六进制字节集({})"
     },
     {
-      "index": 13,
+      "index": 17,
+      "name": "字节集_到十六进制文本",
+      "signature": "字节集_到十六进制文本(数据)",
+      "description": "把字节集编码为大写十六进制并直接返回文本（字节集_到十六进制字节集 的文本版），一步得到可直接显示或拼接的结果。",
+      "insertText": "字节集_到十六进制文本($1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "字节集_到十六进制文本",
+        "runtimeName": "字节集_到十六进制文本",
+        "parameters": [
+          {
+            "name": "数据",
+            "type": "bytes",
+            "description": "要编码的字节集；输出由大写十六进制字符组成的文本，空字节集返回空文本。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "调试输出(字节集_到十六进制文本(字节集_从文本(\"Ling\")))"
+      },
+      "demoInvocation": "字节集_到十六进制文本({})"
+    },
+    {
+      "index": 18,
       "name": "字节集_十六进制解码",
       "signature": "字节集_十六进制解码(十六进制)",
       "description": "把十六进制文本解码为字节集。",
@@ -294,13 +430,499 @@
         "parameters": [
           {
             "name": "十六进制",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "十六进制字节文本；长度必须为偶数且逐字符合法，否则返回空字节集。"
           }
         ],
         "returnType": "bytes",
         "encoding": "wide"
       },
       "demoInvocation": "字节集_十六进制解码(\"演示参数1\")"
+    },
+    {
+      "index": 19,
+      "name": "字节集_寻找",
+      "signature": "字节集_寻找(数据, 欲寻找, 起始位置)",
+      "description": "从起始位置（从 0 起）向后查找字节集首次出现的位置；未找到、欲寻找为空或起始位置越界返回 -1。",
+      "insertText": "字节集_寻找($1, $2, 0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "字节集_寻找",
+        "runtimeName": "字节集_寻找",
+        "parameters": [
+          {
+            "name": "数据",
+            "type": "bytes",
+            "description": "要操作的字节集；位置与长度均按字节计，索引从 0 起。"
+          },
+          {
+            "name": "欲寻找",
+            "type": "bytes",
+            "description": "要查找的目标字节集；为空时按命令说明返回 -1 或原样处理。"
+          },
+          {
+            "name": "起始位置",
+            "type": "int",
+            "description": "开始查找的字节索引，从 0 起；为负或剩余长度不足时返回 -1。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "字节集_寻找({}, {}, 1)"
+    },
+    {
+      "index": 20,
+      "name": "字节集_倒找",
+      "signature": "字节集_倒找(数据, 欲寻找, 起始位置)",
+      "description": "从起始位置（含）向左查找字节集最后一次出现的位置；起始位置小于 0 或越界时按末尾处理；未找到返回 -1。",
+      "insertText": "字节集_倒找($1, $2, 0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "字节集_倒找",
+        "runtimeName": "字节集_倒找",
+        "parameters": [
+          {
+            "name": "数据",
+            "type": "bytes",
+            "description": "要操作的字节集；位置与长度均按字节计，索引从 0 起。"
+          },
+          {
+            "name": "欲寻找",
+            "type": "bytes",
+            "description": "要查找的目标字节集；为空时返回 -1。"
+          },
+          {
+            "name": "起始位置",
+            "type": "int",
+            "description": "查找窗口的右端字节索引，含该位置，从 0 起；小于 0 或不小于字节集长度时按整个字节集查找。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "字节集_倒找({}, {}, 1)"
+    },
+    {
+      "index": 21,
+      "name": "字节集_替换",
+      "signature": "字节集_替换(数据, 欲寻找, 替换内容, 次数)",
+      "description": "把字节集中的欲替换内容替换为替换内容；次数小于等于 0 表示全部替换；欲替换为空时原样返回。",
+      "insertText": "字节集_替换($1, $2, $3, 0)",
+      "returnType": "字节集",
+      "binding": {
+        "command": "字节集_替换",
+        "runtimeName": "字节集_替换",
+        "parameters": [
+          {
+            "name": "数据",
+            "type": "bytes",
+            "description": "要操作的字节集；位置与长度均按字节计，索引从 0 起。"
+          },
+          {
+            "name": "欲寻找",
+            "type": "bytes",
+            "description": "要被替换掉的目标字节集；为空时原样返回。"
+          },
+          {
+            "name": "替换内容",
+            "type": "bytes",
+            "description": "替换写入的字节集，长度可以和目标不同，空字节集表示删除匹配。"
+          },
+          {
+            "name": "次数",
+            "type": "int",
+            "description": "最多替换次数；小于等于 0 表示全部替换。"
+          }
+        ],
+        "returnType": "bytes"
+      },
+      "demoInvocation": "字节集_替换({}, {}, {}, 1)"
+    },
+    {
+      "index": 22,
+      "name": "字节集_插入",
+      "signature": "字节集_插入(数据, 位置, 插入内容)",
+      "description": "在指定位置（从 0 起）插入字节集；位置小于 0 原样返回，超过长度时追加到末尾。",
+      "insertText": "字节集_插入($1, 0, $2)",
+      "returnType": "字节集",
+      "binding": {
+        "command": "字节集_插入",
+        "runtimeName": "字节集_插入",
+        "parameters": [
+          {
+            "name": "数据",
+            "type": "bytes",
+            "description": "要操作的字节集；位置与长度均按字节计，索引从 0 起。"
+          },
+          {
+            "name": "位置",
+            "type": "int",
+            "description": "插入点字节索引，从 0 起；小于 0 原样返回，大于长度时追加到末尾。"
+          },
+          {
+            "name": "插入内容",
+            "type": "bytes",
+            "description": "要插入的字节集；空字节集时结果与源字节集相同。"
+          }
+        ],
+        "returnType": "bytes"
+      },
+      "demoInvocation": "字节集_插入({}, 1, {})"
+    },
+    {
+      "index": 23,
+      "name": "字节集_删除",
+      "signature": "字节集_删除(数据, 位置, 长度)",
+      "description": "从指定位置（从 0 起）删除指定长度的字节；长度小于 0 表示删除到末尾；位置越界时原样返回。",
+      "insertText": "字节集_删除($1, 0, 1)",
+      "returnType": "字节集",
+      "binding": {
+        "command": "字节集_删除",
+        "runtimeName": "字节集_删除",
+        "parameters": [
+          {
+            "name": "数据",
+            "type": "bytes",
+            "description": "要操作的字节集；位置与长度均按字节计，索引从 0 起。"
+          },
+          {
+            "name": "位置",
+            "type": "int",
+            "description": "起始删除的字节索引，从 0 起；为负或不小于长度时原样返回。"
+          },
+          {
+            "name": "长度",
+            "type": "int",
+            "description": "要删除的字节数；小于 0 表示删除到末尾，超出剩余时删除到末尾。"
+          }
+        ],
+        "returnType": "bytes"
+      },
+      "demoInvocation": "字节集_删除({}, 1, 1)"
+    },
+    {
+      "index": 24,
+      "name": "字节集_从文本",
+      "signature": "字节集_从文本(文本)",
+      "description": "把文本按 UTF-8 编码转为字节集。",
+      "insertText": "字节集_从文本(\"$1\")",
+      "returnType": "字节集",
+      "binding": {
+        "command": "字节集_从文本",
+        "runtimeName": "字节集_从文本",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要转换的文本；按 UTF-8 编码为字节序列，空文本返回空字节集。"
+          }
+        ],
+        "returnType": "bytes",
+        "encoding": "wide",
+        "example": "字节集_从文本(\"你好\")"
+      },
+      "demoInvocation": "字节集_从文本(\"演示参数1\")"
+    },
+    {
+      "index": 25,
+      "name": "字节集_重复",
+      "signature": "字节集_重复(次数, 数据)",
+      "description": "把字节集重复拼接指定次数；次数小于等于 0 或源为空时返回空字节集。",
+      "insertText": "字节集_重复(3, $1)",
+      "returnType": "字节集",
+      "binding": {
+        "command": "字节集_重复",
+        "runtimeName": "字节集_重复",
+        "parameters": [
+          {
+            "name": "次数",
+            "type": "int",
+            "description": "重复次数；小于等于 0，或重复结果超过 268435456 字节时返回空字节集。"
+          },
+          {
+            "name": "数据",
+            "type": "bytes",
+            "description": "要重复的字节集；空字节集直接返回空字节集。"
+          }
+        ],
+        "returnType": "bytes",
+        "example": "局部 字节集 原始数据\n原始数据 = 字节集_从文本(\"AB\")"
+      },
+      "demoInvocation": "字节集_重复(1, {})"
+    },
+    {
+      "index": 26,
+      "name": "字节集_分割",
+      "signature": "字节集_分割(数据, 分隔字节集, 结果数组, 数目)",
+      "description": "把字节集按分隔字节集切分为多段写入字节集数组，返回分段数量；分隔字节集为空时按单个字节 0 分割。",
+      "insertText": "字节集_分割($1, $2, $3, 0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "字节集_分割",
+        "runtimeName": "字节集_分割",
+        "parameters": [
+          {
+            "name": "数据",
+            "type": "bytes",
+            "description": "待分割的字节集；空字节集返回 0 且不写数组。"
+          },
+          {
+            "name": "分隔字节集",
+            "type": "bytes",
+            "description": "分段边界的字节集；为空时按单个字节 0 分割，连续分隔符会产生空分段。"
+          },
+          {
+            "name": "结果数组",
+            "type": "array",
+            "description": "接收分段结果的字节集数组变量，调用前会先清空原有内容。"
+          },
+          {
+            "name": "数目",
+            "type": "int",
+            "description": "最多返回的分段数；小于等于 0 表示返回全部分段，达到数目后剩余内容整体作为最后一段。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "字节集_分割({}, {}, 0, 1)"
+    },
+    {
+      "index": 27,
+      "name": "字节集_取无符号32",
+      "signature": "字节集_取无符号32(数据, 偏移, 大端)",
+      "description": "从指定字节偏移一次读出一个 32 位无符号整数（0～4294967295，返回长整数型）；MD5/SHA 一类「字节集 ↔ 字数组」互转用它，不再逐字节拼。越界返回 -1。",
+      "insertText": "字节集_取无符号32($1, 0, 假)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "字节集_取无符号32",
+        "runtimeName": "字节集_取无符号32",
+        "parameters": [
+          {
+            "name": "数据",
+            "type": "bytes",
+            "description": "要操作的字节集；位置与长度均按字节计，索引从 0 起。"
+          },
+          {
+            "name": "偏移",
+            "type": "int",
+            "description": "起始字节索引，从 0 起；为负或剩余不足 4 字节时返回 -1。"
+          },
+          {
+            "name": "大端",
+            "type": "bool",
+            "optional": true,
+            "defaultValue": false,
+            "description": "传真按大端读（高位字节在前，SHA 族常用），传假按小端读（低位字节在前，MD5/x86 常用）；省略时为假。"
+          }
+        ],
+        "returnType": "longLong",
+        "example": "调试输出(字节集_取无符号32(字节集_十六进制解码(\"78563412\"), 0, 假))"
+      },
+      "demoInvocation": "字节集_取无符号32({}, 1, 真)"
+    },
+    {
+      "index": 28,
+      "name": "字节集_置无符号32",
+      "signature": "字节集_置无符号32(数据, 偏移, 数值, 大端)",
+      "description": "把一个 32 位无符号整数按指定字节序写入字节集的指定偏移（原地改写，长度不变），与 字节集_置字节 同一写回风格。位置越界返回假且不改动数据。",
+      "insertText": "字节集_置无符号32($1, 0, $2, 假)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "字节集_置无符号32",
+        "runtimeName": "字节集_置无符号32",
+        "parameters": [
+          {
+            "name": "数据",
+            "type": "bytes",
+            "description": "要修改的字节集；只改动偏移处的 4 个字节，长度不变。"
+          },
+          {
+            "name": "偏移",
+            "type": "int",
+            "description": "起始字节索引，从 0 起；为负或剩余不足 4 字节时返回假。"
+          },
+          {
+            "name": "数值",
+            "type": "longLong",
+            "description": "要写入的整数；只取低 32 位（按位模式，0～4294967295 之外的值按 32 位补码截断）。"
+          },
+          {
+            "name": "大端",
+            "type": "bool",
+            "optional": true,
+            "defaultValue": false,
+            "description": "传真按大端写（高位字节在前），传假按小端写；省略时为假。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "字节集_置无符号32({}, 1, 1, 真)"
+    },
+    {
+      "index": 29,
+      "name": "字节集_取无符号16",
+      "signature": "字节集_取无符号16(数据, 偏移, 大端)",
+      "description": "从指定字节偏移读出一个 16 位无符号整数（0～65535）；越界返回 -1。",
+      "insertText": "字节集_取无符号16($1, 0, 假)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "字节集_取无符号16",
+        "runtimeName": "字节集_取无符号16",
+        "parameters": [
+          {
+            "name": "数据",
+            "type": "bytes",
+            "description": "要操作的字节集；位置与长度均按字节计，索引从 0 起。"
+          },
+          {
+            "name": "偏移",
+            "type": "int",
+            "description": "起始字节索引，从 0 起；为负或剩余不足 2 字节时返回 -1。"
+          },
+          {
+            "name": "大端",
+            "type": "bool",
+            "optional": true,
+            "defaultValue": false,
+            "description": "传真按大端读（高位字节在前），传假按小端读；省略时为假。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "字节集_取无符号16({}, 1, 真)"
+    },
+    {
+      "index": 30,
+      "name": "字节集_字节序反转",
+      "signature": "字节集_字节序反转(数据, 每元素字节数)",
+      "description": "把字节集按固定宽度元素逐个反转字节顺序（bswap）：宽度 4 即 32 位字 bswap，宽度 2/8 同理；返回反转后的新字节集，源数据不变。",
+      "insertText": "字节集_字节序反转($1, 4)",
+      "returnType": "字节集",
+      "binding": {
+        "command": "字节集_字节序反转",
+        "runtimeName": "字节集_字节序反转",
+        "parameters": [
+          {
+            "name": "数据",
+            "type": "bytes",
+            "description": "要反转的字节集；空字节集返回空字节集。"
+          },
+          {
+            "name": "每元素字节数",
+            "type": "int",
+            "description": "元素宽度，只允许 1、2、4、8；其它值原样返回（不改动）。末尾不足一个完整元素的字节保持原样。"
+          }
+        ],
+        "returnType": "bytes",
+        "example": "调试输出(字节集_到十六进制文本(字节集_字节序反转(字节集_十六进制解码(\"12345678ABCD\"), 4)))"
+      },
+      "demoInvocation": "字节集_字节序反转({}, 1)"
+    },
+    {
+      "index": 31,
+      "name": "字节集_异或",
+      "signature": "字节集_异或(甲, 乙)",
+      "description": "把两个字节集按位置逐字节异或，返回新字节集；输出长度取两段中较短者（等长输入即整体异或，RC4/分组加密轮密钥异或用它）。任一为空返回空字节集。",
+      "insertText": "字节集_异或($1, $2)",
+      "returnType": "字节集",
+      "binding": {
+        "command": "字节集_异或",
+        "runtimeName": "字节集_异或",
+        "parameters": [
+          {
+            "name": "甲",
+            "type": "bytes",
+            "description": "参与异或的第一段字节集。"
+          },
+          {
+            "name": "乙",
+            "type": "bytes",
+            "description": "参与异或的第二段字节集；输出长度 = 较短一方的长度，较长一方的尾部不参与。"
+          }
+        ],
+        "returnType": "bytes"
+      },
+      "demoInvocation": "字节集_异或({}, {})"
+    },
+    {
+      "index": 32,
+      "name": "字节集_按表映射",
+      "signature": "字节集_按表映射(数据, 映射表)",
+      "description": "用 256 项映射表批量替换每个字节（结果[i] = 映射表[数据[i]]），AES S 盒/逆 S 盒每块每轮一次查表搞定，不必逐字节循环。",
+      "insertText": "字节集_按表映射($1, $2)",
+      "returnType": "字节集",
+      "binding": {
+        "command": "字节集_按表映射",
+        "runtimeName": "字节集_按表映射",
+        "parameters": [
+          {
+            "name": "数据",
+            "type": "bytes",
+            "description": "要映射的字节集；空字节集返回空字节集。"
+          },
+          {
+            "name": "映射表",
+            "type": "bytes",
+            "description": "必须恰好 256 字节的映射表字节集，下标即输入字节值、内容即输出字节值；长度不是 256 时返回空字节集。"
+          }
+        ],
+        "returnType": "bytes"
+      },
+      "demoInvocation": "字节集_按表映射({}, {})"
+    },
+    {
+      "index": 33,
+      "name": "字节集_逐字循环左移32",
+      "signature": "字节集_逐字循环左移32(数据, 位数, 大端)",
+      "description": "把字节集按 32 位字逐个循环左移（rotl）后返回新字节集，一次调用完成整段字的移位；MD5/SM3 轮函数、AES RotWord 类操作用它。源数据不变。",
+      "insertText": "字节集_逐字循环左移32($1, 7, 假)",
+      "returnType": "字节集",
+      "binding": {
+        "command": "字节集_逐字循环左移32",
+        "runtimeName": "字节集_逐字循环左移32",
+        "parameters": [
+          {
+            "name": "数据",
+            "type": "bytes",
+            "description": "要移位的字节集；末尾不足 4 字节的尾巴保持原样。"
+          },
+          {
+            "name": "位数",
+            "type": "int",
+            "description": "循环左移位数，按补码对 32 取模（0 到 31 生效）；0 位原样返回副本。"
+          },
+          {
+            "name": "大端",
+            "type": "bool",
+            "optional": true,
+            "defaultValue": false,
+            "description": "传真按大端解释每个 32 位字，传假按小端解释（MD5/x86 常用）；省略时为假。字内字节序与写出顺序一致。"
+          }
+        ],
+        "returnType": "bytes"
+      },
+      "demoInvocation": "字节集_逐字循环左移32({}, 1, 真)"
+    },
+    {
+      "index": 34,
+      "name": "字节集_取数据地址",
+      "signature": "字节集_取数据地址(数据)",
+      "description": "返回字节集数据首地址（长整数型，空字节集返回 0），用于直接递给 DLL 命令的 指针整数 形参（void*/字节指针），配合项目 DLL 命令声明完成原生互操作；按引用转发不拷贝。⚠️ 数组重定义、清空或所在变量销毁后旧地址立即失效，一律不要保存后延迟使用；需要长期保存请复制字节集。",
+      "insertText": "字节集_取数据地址($1)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "字节集_取数据地址",
+        "runtimeName": "字节集_取数据地址",
+        "parameters": [
+          {
+            "name": "数据",
+            "type": "bytes",
+            "description": "要取地址的字节集；传变量时得到该变量数据缓冲区的地址，空字节集返回 0。"
+          }
+        ],
+        "returnType": "longLong",
+        "example": "局部 字节集 数据\n数据 = 字节集_十六进制解码(\"AABB\")\n调试输出(字节集_取数据地址(数据) > 0)"
+      },
+      "demoInvocation": "字节集_取数据地址({})"
     }
   ]
 }

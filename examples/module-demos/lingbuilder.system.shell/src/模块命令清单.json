@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.992Z",
+  "generatedAt": "2026-10-19T03:18:58.881Z",
   "module": {
     "id": "lingbuilder.system.shell",
     "name": "系统外壳模块",
     "version": "1.0.0",
     "description": "提供打开文件或网址、资源管理器定位和常用系统目录读取。"
   },
-  "commandCount": 5,
+  "commandCount": 11,
   "commands": [
     {
       "index": 1,
@@ -22,7 +22,8 @@
         "parameters": [
           {
             "name": "目标",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要打开的文件、目录或网址文本，交给系统默认程序处理；返回假表示 ShellExecute 未成功启动。"
           }
         ],
         "returnType": "bool",
@@ -44,7 +45,8 @@
         "parameters": [
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要在资源管理器窗口中选中并显示的文件路径。"
           }
         ],
         "returnType": "bool",
@@ -54,6 +56,26 @@
     },
     {
       "index": 3,
+      "name": "系统_取运行目录",
+      "signature": "系统_取运行目录()",
+      "description": "返回当前运行 exe 所在目录，不带尾部反斜杠。",
+      "insertText": "系统_取运行目录()",
+      "aliases": [
+        "取运行目录"
+      ],
+      "returnType": "文本型",
+      "binding": {
+        "command": "系统_取运行目录",
+        "runtimeName": "系统_取运行目录",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "系统_取运行目录()"
+      },
+      "demoInvocation": "系统_取运行目录()"
+    },
+    {
+      "index": 4,
       "name": "系统_取临时目录",
       "signature": "系统_取临时目录()",
       "description": "返回当前用户临时目录。",
@@ -69,7 +91,7 @@
       "demoInvocation": "系统_取临时目录()"
     },
     {
-      "index": 4,
+      "index": 5,
       "name": "系统_取桌面目录",
       "signature": "系统_取桌面目录()",
       "description": "返回当前用户桌面目录。",
@@ -85,7 +107,7 @@
       "demoInvocation": "系统_取桌面目录()"
     },
     {
-      "index": 5,
+      "index": 6,
       "name": "系统_取文档目录",
       "signature": "系统_取文档目录()",
       "description": "返回当前用户文档目录。",
@@ -99,6 +121,107 @@
         "encoding": "wide"
       },
       "demoInvocation": "系统_取文档目录()"
+    },
+    {
+      "index": 7,
+      "name": "系统_创建桌面快捷方式",
+      "signature": "系统_创建桌面快捷方式(快捷方式名称, 目标路径, 参数, 图标路径)",
+      "description": "在当前用户桌面创建快捷方式；COM 初始化失败或目标无效返回假。",
+      "insertText": "系统_创建桌面快捷方式(\"$1\", \"$2\", \"$3\", \"$4\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "系统_创建桌面快捷方式",
+        "runtimeName": "系统_创建桌面快捷方式",
+        "parameters": [
+          {
+            "name": "快捷方式名称",
+            "type": "wideString",
+            "description": "快捷方式文件名，不带路径；不带 .lnk 后缀时自动补上。"
+          },
+          {
+            "name": "目标路径",
+            "type": "wideString",
+            "description": "快捷方式指向的文件或目录，不能为空。"
+          },
+          {
+            "name": "参数",
+            "type": "wideString",
+            "optional": true,
+            "defaultValue": "",
+            "description": "传给目标的命令行参数，可省略。"
+          },
+          {
+            "name": "图标路径",
+            "type": "wideString",
+            "optional": true,
+            "defaultValue": "",
+            "description": "快捷方式图标来源文件；省略时使用目标路径自身图标。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "系统_创建桌面快捷方式(\"演示参数1\", \"module-demo-temp.txt\", \"演示参数3\", \"module-demo-temp.txt\")"
+    },
+    {
+      "index": 8,
+      "name": "系统_关机",
+      "signature": "系统_关机()",
+      "description": "关闭计算机（先取得关机权限，失败返回假）。",
+      "insertText": "系统_关机()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "系统_关机",
+        "runtimeName": "系统_关机",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "系统_关机()"
+    },
+    {
+      "index": 9,
+      "name": "系统_重启",
+      "signature": "系统_重启()",
+      "description": "重启计算机（先取得关机权限，失败返回假）。",
+      "insertText": "系统_重启()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "系统_重启",
+        "runtimeName": "系统_重启",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "系统_重启()"
+    },
+    {
+      "index": 10,
+      "name": "系统_注销",
+      "signature": "系统_注销()",
+      "description": "注销当前登录用户。",
+      "insertText": "系统_注销()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "系统_注销",
+        "runtimeName": "系统_注销",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "系统_注销()"
+    },
+    {
+      "index": 11,
+      "name": "系统_清空回收站",
+      "signature": "系统_清空回收站()",
+      "description": "清空回收站，不弹确认框、不播放声音；回收站已为空同样返回真。",
+      "insertText": "系统_清空回收站()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "系统_清空回收站",
+        "runtimeName": "系统_清空回收站",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "系统_清空回收站()"
     }
   ]
 }

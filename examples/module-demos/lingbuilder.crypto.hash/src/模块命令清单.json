@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.761Z",
+  "generatedAt": "2026-10-19T03:18:58.704Z",
   "module": {
     "id": "lingbuilder.crypto.hash",
     "name": "哈希摘要模块",
-    "version": "1.0.0",
-    "description": "计算文本和文件的 MD5、SHA-1、SHA-256、SHA-3、SM3、BLAKE2 与 BLAKE3 摘要。"
+    "version": "1.1.0",
+    "description": "计算文本、字节集和文件的 MD5、SHA-1、SHA-256、SHA-3、SM3、BLAKE2 与 BLAKE3 摘要。"
   },
-  "commandCount": 15,
+  "commandCount": 22,
   "commands": [
     {
       "index": 1,
@@ -33,6 +33,28 @@
     },
     {
       "index": 2,
+      "name": "哈希_MD5字节集",
+      "signature": "哈希_MD5字节集(数据)",
+      "description": "计算字节集的 MD5 大写十六进制摘要。128 位；仅用于兼容和文件校验，不得用于密码或数字签名。",
+      "insertText": "哈希_MD5字节集($1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "哈希_MD5字节集",
+        "runtimeName": "哈希_MD5字节集",
+        "parameters": [
+          {
+            "name": "数据",
+            "type": "bytes",
+            "description": "要参与摘要计算的原始字节集，不做任何编码转换；任意二进制（含非 UTF-8）都用它。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "哈希_MD5字节集({})"
+    },
+    {
+      "index": 3,
       "name": "哈希_MD5文件",
       "signature": "哈希_MD5文件(路径)",
       "description": "流式计算文件的 MD5 大写十六进制摘要。128 位；仅用于兼容和文件校验，不得用于密码或数字签名。",
@@ -54,7 +76,7 @@
       "demoInvocation": "哈希_MD5文件(\"module-demo-temp.txt\")"
     },
     {
-      "index": 3,
+      "index": 4,
       "name": "哈希_SHA1文本",
       "signature": "哈希_SHA1文本(文本)",
       "description": "计算 UTF-8 文本的 SHA-1 大写十六进制摘要。160 位；仅用于兼容，不得用于新的安全协议或数字签名。",
@@ -76,7 +98,29 @@
       "demoInvocation": "哈希_SHA1文本(\"演示参数1\")"
     },
     {
-      "index": 4,
+      "index": 5,
+      "name": "哈希_SHA1字节集",
+      "signature": "哈希_SHA1字节集(数据)",
+      "description": "计算字节集的 SHA-1 大写十六进制摘要。160 位；仅用于兼容，不得用于新的安全协议或数字签名。",
+      "insertText": "哈希_SHA1字节集($1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "哈希_SHA1字节集",
+        "runtimeName": "哈希_SHA1字节集",
+        "parameters": [
+          {
+            "name": "数据",
+            "type": "bytes",
+            "description": "要参与摘要计算的原始字节集，不做任何编码转换；任意二进制（含非 UTF-8）都用它。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "哈希_SHA1字节集({})"
+    },
+    {
+      "index": 6,
       "name": "哈希_SHA1文件",
       "signature": "哈希_SHA1文件(路径)",
       "description": "流式计算文件的 SHA-1 大写十六进制摘要。160 位；仅用于兼容，不得用于新的安全协议或数字签名。",
@@ -98,7 +142,7 @@
       "demoInvocation": "哈希_SHA1文件(\"module-demo-temp.txt\")"
     },
     {
-      "index": 5,
+      "index": 7,
       "name": "哈希_SHA256文本",
       "signature": "哈希_SHA256文本(文本)",
       "description": "计算 UTF-8 文本的 SHA-256 大写十六进制摘要。256 位 SHA-2 摘要。",
@@ -121,7 +165,29 @@
       "demoInvocation": "哈希_SHA256文本(\"演示参数1\")"
     },
     {
-      "index": 6,
+      "index": 8,
+      "name": "哈希_SHA256字节集",
+      "signature": "哈希_SHA256字节集(数据)",
+      "description": "计算字节集的 SHA-256 大写十六进制摘要。256 位 SHA-2 摘要。",
+      "insertText": "哈希_SHA256字节集($1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "哈希_SHA256字节集",
+        "runtimeName": "哈希_SHA256字节集",
+        "parameters": [
+          {
+            "name": "数据",
+            "type": "bytes",
+            "description": "要参与摘要计算的原始字节集，不做任何编码转换；任意二进制（含非 UTF-8）都用它。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "哈希_SHA256字节集({})"
+    },
+    {
+      "index": 9,
       "name": "哈希_SHA256文件",
       "signature": "哈希_SHA256文件(路径)",
       "description": "流式计算文件的 SHA-256 大写十六进制摘要。256 位 SHA-2 摘要。",
@@ -143,7 +209,7 @@
       "demoInvocation": "哈希_SHA256文件(\"module-demo-temp.txt\")"
     },
     {
-      "index": 7,
+      "index": 10,
       "name": "哈希_SHA3_256文本",
       "signature": "哈希_SHA3_256文本(文本)",
       "description": "计算 UTF-8 文本的 SHA-3(256) 大写十六进制摘要。256 位 SHA-3 摘要。",
@@ -165,7 +231,29 @@
       "demoInvocation": "哈希_SHA3_256文本(\"演示参数1\")"
     },
     {
-      "index": 8,
+      "index": 11,
+      "name": "哈希_SHA3_256字节集",
+      "signature": "哈希_SHA3_256字节集(数据)",
+      "description": "计算字节集的 SHA-3(256) 大写十六进制摘要。256 位 SHA-3 摘要。",
+      "insertText": "哈希_SHA3_256字节集($1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "哈希_SHA3_256字节集",
+        "runtimeName": "哈希_SHA3_256字节集",
+        "parameters": [
+          {
+            "name": "数据",
+            "type": "bytes",
+            "description": "要参与摘要计算的原始字节集，不做任何编码转换；任意二进制（含非 UTF-8）都用它。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "哈希_SHA3_256字节集({})"
+    },
+    {
+      "index": 12,
       "name": "哈希_SHA3_256文件",
       "signature": "哈希_SHA3_256文件(路径)",
       "description": "流式计算文件的 SHA-3(256) 大写十六进制摘要。256 位 SHA-3 摘要。",
@@ -187,7 +275,7 @@
       "demoInvocation": "哈希_SHA3_256文件(\"module-demo-temp.txt\")"
     },
     {
-      "index": 9,
+      "index": 13,
       "name": "哈希_SM3文本",
       "signature": "哈希_SM3文本(文本)",
       "description": "计算 UTF-8 文本的 SM3 大写十六进制摘要。256 位国产商用密码摘要。",
@@ -209,7 +297,29 @@
       "demoInvocation": "哈希_SM3文本(\"演示参数1\")"
     },
     {
-      "index": 10,
+      "index": 14,
+      "name": "哈希_SM3字节集",
+      "signature": "哈希_SM3字节集(数据)",
+      "description": "计算字节集的 SM3 大写十六进制摘要。256 位国产商用密码摘要。",
+      "insertText": "哈希_SM3字节集($1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "哈希_SM3字节集",
+        "runtimeName": "哈希_SM3字节集",
+        "parameters": [
+          {
+            "name": "数据",
+            "type": "bytes",
+            "description": "要参与摘要计算的原始字节集，不做任何编码转换；任意二进制（含非 UTF-8）都用它。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "哈希_SM3字节集({})"
+    },
+    {
+      "index": 15,
       "name": "哈希_SM3文件",
       "signature": "哈希_SM3文件(路径)",
       "description": "流式计算文件的 SM3 大写十六进制摘要。256 位国产商用密码摘要。",
@@ -231,7 +341,7 @@
       "demoInvocation": "哈希_SM3文件(\"module-demo-temp.txt\")"
     },
     {
-      "index": 11,
+      "index": 16,
       "name": "哈希_BLAKE2b文本",
       "signature": "哈希_BLAKE2b文本(文本)",
       "description": "计算 UTF-8 文本的 BLAKE2b-512 大写十六进制摘要。512 位 BLAKE2b 摘要。",
@@ -253,7 +363,29 @@
       "demoInvocation": "哈希_BLAKE2b文本(\"演示参数1\")"
     },
     {
-      "index": 12,
+      "index": 17,
+      "name": "哈希_BLAKE2b字节集",
+      "signature": "哈希_BLAKE2b字节集(数据)",
+      "description": "计算字节集的 BLAKE2b-512 大写十六进制摘要。512 位 BLAKE2b 摘要。",
+      "insertText": "哈希_BLAKE2b字节集($1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "哈希_BLAKE2b字节集",
+        "runtimeName": "哈希_BLAKE2b字节集",
+        "parameters": [
+          {
+            "name": "数据",
+            "type": "bytes",
+            "description": "要参与摘要计算的原始字节集，不做任何编码转换；任意二进制（含非 UTF-8）都用它。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "哈希_BLAKE2b字节集({})"
+    },
+    {
+      "index": 18,
       "name": "哈希_BLAKE2b文件",
       "signature": "哈希_BLAKE2b文件(路径)",
       "description": "流式计算文件的 BLAKE2b-512 大写十六进制摘要。512 位 BLAKE2b 摘要。",
@@ -275,7 +407,7 @@
       "demoInvocation": "哈希_BLAKE2b文件(\"module-demo-temp.txt\")"
     },
     {
-      "index": 13,
+      "index": 19,
       "name": "哈希_BLAKE3文本",
       "signature": "哈希_BLAKE3文本(文本)",
       "description": "计算 UTF-8 文本的 BLAKE3-256 大写十六进制摘要。256 位 BLAKE3 摘要。",
@@ -297,7 +429,29 @@
       "demoInvocation": "哈希_BLAKE3文本(\"演示参数1\")"
     },
     {
-      "index": 14,
+      "index": 20,
+      "name": "哈希_BLAKE3字节集",
+      "signature": "哈希_BLAKE3字节集(数据)",
+      "description": "计算字节集的 BLAKE3-256 大写十六进制摘要。256 位 BLAKE3 摘要。",
+      "insertText": "哈希_BLAKE3字节集($1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "哈希_BLAKE3字节集",
+        "runtimeName": "哈希_BLAKE3字节集",
+        "parameters": [
+          {
+            "name": "数据",
+            "type": "bytes",
+            "description": "要参与摘要计算的原始字节集，不做任何编码转换；任意二进制（含非 UTF-8）都用它。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "哈希_BLAKE3字节集({})"
+    },
+    {
+      "index": 21,
       "name": "哈希_BLAKE3文件",
       "signature": "哈希_BLAKE3文件(路径)",
       "description": "流式计算文件的 BLAKE3-256 大写十六进制摘要。256 位 BLAKE3 摘要。",
@@ -319,7 +473,7 @@
       "demoInvocation": "哈希_BLAKE3文件(\"module-demo-temp.txt\")"
     },
     {
-      "index": 15,
+      "index": 22,
       "name": "哈希_安全随机十六进制",
       "signature": "哈希_安全随机十六进制(字节数)",
       "description": "使用系统加密随机源生成十六进制文本。",
@@ -331,7 +485,8 @@
         "parameters": [
           {
             "name": "字节数",
-            "type": "int"
+            "type": "int",
+            "description": "要生成的随机字节数；小于 0 按 0、大于 1048576 按 1048576 处理，输出大写十六进制文本。"
           }
         ],
         "returnType": "wideString",

@@ -7,12 +7,12 @@
 类 MainWindow : 公开 窗口
     事件 _MainWindow_创建完毕()
         控件_设置选择项(命令分组选项卡, 0)
-        控件_设置文本(演示状态, "new_emoji 原生界面库：4019 条命令，默认处于安全预览模式。")
+        控件_设置文本(演示状态, "new_emoji 原生界面库：4024 条命令，默认处于安全预览模式。")
         调试输出("已加载模块演示：lingbuilder.new_emoji.ui")
     结束
 
     事件 _运行第01组_被单击()
-        控件_设置文本(演示状态, "命令 1–335：NE_创建窗口 至 NE输入框_设置前后缀；源码内含完整签名、参数、返回值与调用。")
+        控件_设置文本(演示状态, "命令 1–336：NE_创建窗口 至 NE输入框_投递设置前后缀；源码内含完整签名、参数、返回值与调用。")
         如果 (控件_取勾选(允许实际执行))
             // 命令ID：NE_创建窗口
             // [1] NE_创建窗口(标题, X, Y, 宽度, 高度)
@@ -1689,18 +1689,18 @@
             // 功能：底层直调 EU_SetInputAffixes：设置前后缀。文本参数为 UTF-8 字节指针＋长度成对传入。
             // 参数：hwnd:handle，element_id:controlRef，prefix_bytes:raw，prefix_len:raw，suffix_bytes:raw，suffix_len:raw；返回：void；可见性：advanced
             NE输入框_设置前后缀(0, 演示lingbuildernew_emojiuiInput控件, 0, 0, 0, 0)
-        如果结束
-        调试输出("已查看 命令 1–335：NE_创建窗口 至 NE输入框_设置前后缀；勾选允许实际执行后会使用演示参数调用。")
-    结束
-
-    事件 _运行第02组_被单击()
-        控件_设置文本(演示状态, "命令 336–670：NE输入框_投递设置前后缀 至 NE列表框_设置滚动；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选(允许实际执行))
             // 命令ID：NE输入框_投递设置前后缀
             // [336] NE输入框_投递设置前后缀(hwnd, element_id, prefix_bytes, prefix_len, suffix_bytes, suffix_len)
             // 功能：底层直调 EU_PostSetInputAffixes：投递设置前后缀。文本参数为 UTF-8 字节指针＋长度成对传入。
             // 参数：hwnd:handle，element_id:controlRef，prefix_bytes:raw，prefix_len:raw，suffix_bytes:raw，suffix_len:raw；返回：int；可见性：advanced
             NE输入框_投递设置前后缀(0, 演示lingbuildernew_emojiuiInput控件, 0, 0, 0, 0)
+        如果结束
+        调试输出("已查看 命令 1–336：NE_创建窗口 至 NE输入框_投递设置前后缀；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第02组_被单击()
+        控件_设置文本(演示状态, "命令 337–672：NE输入框_设置图标 至 NE列表框_取滚动；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：NE输入框_设置图标
             // [337] NE输入框_设置图标(hwnd, element_id, prefix_icon_bytes, prefix_icon_len, suffix_icon_bytes, suffix_icon_len)
             // 功能：底层直调 EU_SetInputIcons：设置图标。文本参数为 UTF-8 字节指针＋长度成对传入。
@@ -3371,13 +3371,6 @@
             // 功能：底层直调 EU_SetListBoxScroll：设置滚动。
             // 参数：hwnd:handle，element_id:controlRef，scroll_y:int；返回：void；可见性：advanced
             NE列表框_设置滚动(0, 演示lingbuildernew_emojiuiListBox控件, 1)
-        如果结束
-        调试输出("已查看 命令 336–670：NE输入框_投递设置前后缀 至 NE列表框_设置滚动；勾选允许实际执行后会使用演示参数调用。")
-    结束
-
-    事件 _运行第03组_被单击()
-        控件_设置文本(演示状态, "命令 671–1005：NE列表框_投递设置滚动 至 NE级联选择_设置选项直调；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选(允许实际执行))
             // 命令ID：NE列表框_投递设置滚动
             // [671] NE列表框_投递设置滚动(hwnd, element_id, scroll_y)
             // 功能：底层直调 EU_PostSetListBoxScroll：投递设置滚动。
@@ -3388,6 +3381,13 @@
             // 功能：底层直调 EU_GetListBoxScroll：取滚动。
             // 参数：hwnd:handle，element_id:controlRef；返回：int；可见性：advanced
             NE列表框_取滚动(0, 演示lingbuildernew_emojiuiListBox控件)
+        如果结束
+        调试输出("已查看 命令 337–672：NE输入框_设置图标 至 NE列表框_取滚动；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第03组_被单击()
+        控件_设置文本(演示状态, "命令 673–1008：NE列表框_设置选项 至 NE级联选择_投递设置值；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：NE列表框_设置选项
             // [673] NE列表框_设置选项(hwnd, element_id, selection_mode, size, bordered, zebra, compact, show_icons, show_desc, show_tags, tree_mode, group_mode, drag_sort)
             // 功能：底层直调 EU_SetListBoxOptions：设置选项。文本参数为 UTF-8 字节指针＋长度成对传入。
@@ -5053,13 +5053,6 @@
             // 功能：NE级联选择_设置选项 的底层直调版本：设置选项。一般请用高层封装 NE级联选择_设置选项。文本参数为 UTF-8 字节指针＋长度成对传入。
             // 参数：hwnd:handle，element_id:controlRef，options_bytes:raw，options_len:raw；返回：void；可见性：advanced
             NE级联选择_设置选项直调(0, 演示lingbuildernew_emojiuiCascader控件, 0, 0)
-        如果结束
-        调试输出("已查看 命令 671–1005：NE列表框_投递设置滚动 至 NE级联选择_设置选项直调；勾选允许实际执行后会使用演示参数调用。")
-    结束
-
-    事件 _运行第04组_被单击()
-        控件_设置文本(演示状态, "命令 1006–1340：NE级联选择_投递设置选项 至 NE分页_设置每页条数选项；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选(允许实际执行))
             // 命令ID：NE级联选择_投递设置选项
             // [1006] NE级联选择_投递设置选项(hwnd, element_id, options_bytes, options_len)
             // 功能：底层直调 EU_PostSetCascaderOptions：投递设置选项。文本参数为 UTF-8 字节指针＋长度成对传入。
@@ -5075,6 +5068,13 @@
             // 功能：底层直调 EU_PostSetCascaderValue：投递设置值。文本参数为 UTF-8 字节指针＋长度成对传入。
             // 参数：hwnd:handle，element_id:controlRef，selected_bytes:raw，selected_len:raw；返回：int；可见性：advanced
             NE级联选择_投递设置值(0, 演示lingbuildernew_emojiuiCascader控件, 0, 0)
+        如果结束
+        调试输出("已查看 命令 673–1008：NE列表框_设置选项 至 NE级联选择_投递设置值；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第04组_被单击()
+        控件_设置文本(演示状态, "命令 1009–1344：NE级联选择_设置打开 至 NE分页_下一档每页条数；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：NE级联选择_设置打开
             // [1009] NE级联选择_设置打开(hwnd, element_id, open)
             // 功能：底层直调 EU_SetCascaderOpen：设置打开。
@@ -6676,10 +6676,10 @@
             // 参数：hwnd:handle，element_id:controlRef，active_index:int，item_count:int，tab_type:int，closable:int，addable:int，scroll_offset:int，max_scroll_offset:int，hover_index:int，press_index:int，hover_part:int，press_part:int，last_closed_index:int，last_added_index:int，close_count:int，add_count:int，select_count:int，scroll_count:int，last_action:int；返回：int；可见性：advanced
             NE标签页_取完整状态(0, 演示lingbuildernew_emojiuiTabs控件, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)
             // 命令ID：NE标签页_取完整状态扩展
-            // [1329] NE标签页_取完整状态扩展(hwnd, element_id, active_index, item_count, tab_type, closable, addable, scroll_offset, max_scroll_offset, hover_index, press_index, hover_part, press_part, last_closed_index, last_added_index, close_count, add_count, select_count, scroll_count, last_action, tab_position, editable, content_visible, active_disabled, active_closable)
-            // 功能：底层直调 EU_GetTabsFullStateEx：取完整状态扩展。
-            // 参数：hwnd:handle，element_id:controlRef，active_index:int，item_count:int，tab_type:int，closable:int，addable:int，scroll_offset:int，max_scroll_offset:int，hover_index:int，press_index:int，hover_part:int，press_part:int，last_closed_index:int，last_added_index:int，close_count:int，add_count:int，select_count:int，scroll_count:int，last_action:int，tab_position:int，editable:int，content_visible:bool，active_disabled:int，active_closable:int；返回：int；可见性：advanced
-            NE标签页_取完整状态扩展(0, 演示lingbuildernew_emojiuiTabs控件, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 真, 1, 1)
+            // [1329] NE标签页_取完整状态扩展(hwnd, element_id, active_index, item_count, tab_type, closable, addable, scroll_offset, max_scroll_offset, hover_index, press_index, hover_part, press_part, last_closed_index, last_added_index, close_count, add_count, select_count, scroll_count, last_action, tab_position, editable, content_visible, active_disabled, active_closable), header_content_width
+            // 功能：底层直调 EU_GetTabsFullStateEx：取完整状态扩展；header_content_width 带回标签条内容总占用宽（逻辑像素，chrome 模式含新建按钮区）。
+            // 参数：hwnd:handle，element_id:controlRef，active_index:int，item_count:int，tab_type:int，closable:int，addable:int，scroll_offset:int，max_scroll_offset:int，hover_index:int，press_index:int，hover_part:int，press_part:int，last_closed_index:int，last_added_index:int，close_count:int，add_count:int，select_count:int，scroll_count:int，last_action:int，tab_position:int，editable:int，content_visible:bool，active_disabled:int，active_closable:int，header_content_width:int；返回：int；可见性：advanced
+            NE标签页_取完整状态扩展(0, 演示lingbuildernew_emojiuiTabs控件, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 真, 1, 1, 1)
             // 命令ID：NE标签页_设置变化回调
             // [1330] NE标签页_设置变化回调(hwnd, element_id, cb)
             // 功能：底层直调 EU_SetTabsChangeCallback：设置变化回调。处理器实参必须写 &处理器名。
@@ -6735,13 +6735,6 @@
             // 功能：底层直调 EU_SetPaginationPageSizeOptions：设置每页条数选项。文本参数为 UTF-8 字节指针＋长度成对传入。
             // 参数：hwnd:handle，element_id:controlRef，sizes:int，count:int；返回：void；可见性：advanced
             NE分页_设置每页条数选项(0, 演示lingbuildernew_emojiuiPagination控件, 1, 1)
-        如果结束
-        调试输出("已查看 命令 1006–1340：NE级联选择_投递设置选项 至 NE分页_设置每页条数选项；勾选允许实际执行后会使用演示参数调用。")
-    结束
-
-    事件 _运行第05组_被单击()
-        控件_设置文本(演示状态, "命令 1341–1675：NE分页_设置跳页 至 NE表格_插入行；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选(允许实际执行))
             // 命令ID：NE分页_设置跳页
             // [1341] NE分页_设置跳页(hwnd, element_id, jump_page)
             // 功能：底层直调 EU_SetPaginationJumpPage：设置跳页。
@@ -6762,6 +6755,13 @@
             // 功能：底层直调 EU_NextPaginationPageSize：下一档每页条数。
             // 参数：hwnd:handle，element_id:controlRef；返回：void；可见性：advanced
             NE分页_下一档每页条数(0, 演示lingbuildernew_emojiuiPagination控件)
+        如果结束
+        调试输出("已查看 命令 1009–1344：NE级联选择_设置打开 至 NE分页_下一档每页条数；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第05组_被单击()
+        控件_设置文本(演示状态, "命令 1345–1680：NE分页_取当前 至 NE富列表_设置倒计时；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：NE分页_取当前
             // [1345] NE分页_取当前(hwnd, element_id)
             // 功能：底层直调 EU_GetPaginationCurrent：取当前。
@@ -8417,13 +8417,6 @@
             // 功能：向 new_emoji 表格指定位置插入一行，行数据为高阶行 kv 协议单行文本（key=…	c0=…	c1=…），返回插入后的行索引（失败返回 -1）。
             // 参数：控件:controlRef，行号:int，行数据:wideString；返回：int；可见性：default
             NE表格_插入行(演示lingbuildernew_emojiuiTable控件, 1, "演示参数3")
-        如果结束
-        调试输出("已查看 命令 1341–1675：NE分页_设置跳页 至 NE表格_插入行；勾选允许实际执行后会使用演示参数调用。")
-    结束
-
-    事件 _运行第06组_被单击()
-        控件_设置文本(演示状态, "命令 1676–2010：NE富列表_设置模板 至 NE表格_解绑单元格点击；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选(允许实际执行))
             // 命令ID：NE富列表_设置模板
             // [1676] NE富列表_设置模板(控件, 模板JSON)
             // 功能：设置 new_emoji 富列表节点模板。模板为 new_emoji 高阶模板 JSON 文本，与 NE富列表_设置模板直调 一致。
@@ -8449,6 +8442,13 @@
             // 功能：为 new_emoji 富列表条目设置倒计时。目标毫秒为 Unix 毫秒时间戳，格式为时间显示格式文本，与 NE富列表_设置倒计时直调 一致。
             // 参数：控件:controlRef，键:wideString，节点:wideString，目标毫秒:int，格式:wideString，是否暂停:bool；返回：int；可见性：default
             NE富列表_设置倒计时(演示lingbuildernew_emojiuiRichList控件, "演示参数2", "演示参数3", 1, "演示参数5", 真)
+        如果结束
+        调试输出("已查看 命令 1345–1680：NE分页_取当前 至 NE富列表_设置倒计时；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第06组_被单击()
+        控件_设置文本(演示状态, "命令 1681–2016：NE富列表_设置倒计时状态 至 NE表格_解绑表格右键菜单；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：NE富列表_设置倒计时状态
             // [1681] NE富列表_设置倒计时状态(控件, 键, 节点, 是否暂停)
             // 功能：更新 new_emoji 富列表已有倒计时的暂停/继续状态，与 NE富列表_设置倒计时状态直调 一致。
@@ -10099,13 +10099,6 @@
             // 功能：移除NE表格实例由代码绑定的“单元格点击”处理器。
             // 参数：控件:controlRef；返回：bool；可见性：default
             NE表格_解绑单元格点击(演示lingbuildernew_emojiuiTable控件)
-        如果结束
-        调试输出("已查看 命令 1676–2010：NE富列表_设置模板 至 NE表格_解绑单元格点击；勾选允许实际执行后会使用演示参数调用。")
-    结束
-
-    事件 _运行第07组_被单击()
-        控件_设置文本(演示状态, "命令 2011–2345：NE表格_绑定单元格动作 至 通过标记整数获取NE图标；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选(允许实际执行))
             // 命令ID：NE表格_绑定单元格动作
             // [2011] NE表格_绑定单元格动作(控件, 处理器)
             // 功能：为NE表格实例绑定“单元格动作”处理器，处理器必须使用 &名称。
@@ -10136,6 +10129,13 @@
             // 功能：移除NE表格实例由代码绑定的“表格右键菜单”处理器。
             // 参数：控件:controlRef；返回：bool；可见性：default
             NE表格_解绑表格右键菜单(演示lingbuildernew_emojiuiTable控件)
+        如果结束
+        调试输出("已查看 命令 1681–2016：NE富列表_设置倒计时状态 至 NE表格_解绑表格右键菜单；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第07组_被单击()
+        控件_设置文本(演示状态, "命令 2017–2352：NE表格_绑定虚拟行数据源 至 NE图标_绑定鼠标抬起；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：NE表格_绑定虚拟行数据源
             // [2017] NE表格_绑定虚拟行数据源(控件, 处理器)
             // 功能：为NE表格实例绑定“虚拟行数据源”处理器，处理器必须使用 &名称。
@@ -11781,13 +11781,6 @@
             // 功能：按有符号 32 位整数标记查找NE图标，找不到时返回无效引用。
             // 参数：标记整数:int；返回：NE图标；可见性：default
             通过标记整数获取NE图标(1)
-        如果结束
-        调试输出("已查看 命令 2011–2345：NE表格_绑定单元格动作 至 通过标记整数获取NE图标；勾选允许实际执行后会使用演示参数调用。")
-    结束
-
-    事件 _运行第08组_被单击()
-        控件_设置文本(演示状态, "命令 2346–2680：NE图标_绑定鼠标进入 至 NE虚拟选择器_解绑鼠标抬起；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选(允许实际执行))
             // 命令ID：NE图标_绑定鼠标进入
             // [2346] NE图标_绑定鼠标进入(控件, 处理器)
             // 功能：为NE图标实例绑定“鼠标进入”处理器，处理器必须使用 &名称。
@@ -11823,6 +11816,13 @@
             // 功能：为NE图标实例绑定“鼠标抬起”处理器，处理器必须使用 &名称。
             // 参数：控件:controlRef，处理器:handler；返回：bool；可见性：default
             NE图标_绑定鼠标抬起(演示lingbuildernew_emojiuiIcon控件, &模块演示回调_整数型_整数型_整数型_空)
+        如果结束
+        调试输出("已查看 命令 2017–2352：NE表格_绑定虚拟行数据源 至 NE图标_绑定鼠标抬起；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第08组_被单击()
+        控件_设置文本(演示状态, "命令 2353–2688：NE图标_解绑鼠标抬起 至 NE虚拟选择器_解绑获得焦点；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：NE图标_解绑鼠标抬起
             // [2353] NE图标_解绑鼠标抬起(控件)
             // 功能：移除NE图标实例由代码绑定的“鼠标抬起”处理器。
@@ -13463,13 +13463,6 @@
             // 功能：移除NE虚拟选择器实例由代码绑定的“鼠标抬起”处理器。
             // 参数：控件:controlRef；返回：bool；可见性：default
             NE虚拟选择器_解绑鼠标抬起(演示lingbuildernew_emojiuiSelectV2控件)
-        如果结束
-        调试输出("已查看 命令 2346–2680：NE图标_绑定鼠标进入 至 NE虚拟选择器_解绑鼠标抬起；勾选允许实际执行后会使用演示参数调用。")
-    结束
-
-    事件 _运行第09组_被单击()
-        控件_设置文本(演示状态, "命令 2681–3015：NE虚拟选择器_绑定鼠标双击 至 NE步骤条_解绑鼠标抬起；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选(允许实际执行))
             // 命令ID：NE虚拟选择器_绑定鼠标双击
             // [2681] NE虚拟选择器_绑定鼠标双击(控件, 处理器)
             // 功能：为NE虚拟选择器实例绑定“鼠标双击”处理器，处理器必须使用 &名称。
@@ -13510,6 +13503,13 @@
             // 功能：移除NE虚拟选择器实例由代码绑定的“获得焦点”处理器。
             // 参数：控件:controlRef；返回：bool；可见性：default
             NE虚拟选择器_解绑获得焦点(演示lingbuildernew_emojiuiSelectV2控件)
+        如果结束
+        调试输出("已查看 命令 2353–2688：NE图标_解绑鼠标抬起 至 NE虚拟选择器_解绑获得焦点；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第09组_被单击()
+        控件_设置文本(演示状态, "命令 2689–3024：NE虚拟选择器_绑定失去焦点 至 NE步骤条_绑定失去焦点；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：NE虚拟选择器_绑定失去焦点
             // [2689] NE虚拟选择器_绑定失去焦点(控件, 处理器)
             // 功能：为NE虚拟选择器实例绑定“失去焦点”处理器，处理器必须使用 &名称。
@@ -15145,13 +15145,6 @@
             // 功能：移除NE步骤条实例由代码绑定的“鼠标抬起”处理器。
             // 参数：控件:controlRef；返回：bool；可见性：default
             NE步骤条_解绑鼠标抬起(演示lingbuildernew_emojiuiSteps控件)
-        如果结束
-        调试输出("已查看 命令 2681–3015：NE虚拟选择器_绑定鼠标双击 至 NE步骤条_解绑鼠标抬起；勾选允许实际执行后会使用演示参数调用。")
-    结束
-
-    事件 _运行第10组_被单击()
-        控件_设置文本(演示状态, "命令 3016–3350：NE步骤条_绑定鼠标双击 至 NE树_绑定节点事件；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选(允许实际执行))
             // 命令ID：NE步骤条_绑定鼠标双击
             // [3016] NE步骤条_绑定鼠标双击(控件, 处理器)
             // 功能：为NE步骤条实例绑定“鼠标双击”处理器，处理器必须使用 &名称。
@@ -15197,6 +15190,13 @@
             // 功能：为NE步骤条实例绑定“失去焦点”处理器，处理器必须使用 &名称。
             // 参数：控件:controlRef，处理器:handler；返回：bool；可见性：default
             NE步骤条_绑定失去焦点(演示lingbuildernew_emojiuiSteps控件, &模块演示回调)
+        如果结束
+        调试输出("已查看 命令 2689–3024：NE虚拟选择器_绑定失去焦点 至 NE步骤条_绑定失去焦点；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第10组_被单击()
+        控件_设置文本(演示状态, "命令 3025–3360：NE步骤条_解绑失去焦点 至 NE树_绑定鼠标进入；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：NE步骤条_解绑失去焦点
             // [3025] NE步骤条_解绑失去焦点(控件)
             // 功能：移除NE步骤条实例由代码绑定的“失去焦点”处理器。
@@ -16827,13 +16827,6 @@
             // 功能：为NE树实例绑定“节点事件”处理器，处理器必须使用 &名称。
             // 参数：控件:controlRef，处理器:handler；返回：bool；可见性：default
             NE树_绑定节点事件(演示lingbuildernew_emojiuiTree控件, &模块演示回调)
-        如果结束
-        调试输出("已查看 命令 3016–3350：NE步骤条_绑定鼠标双击 至 NE树_绑定节点事件；勾选允许实际执行后会使用演示参数调用。")
-    结束
-
-    事件 _运行第11组_被单击()
-        控件_设置文本(演示状态, "命令 3351–3685：NE树_解绑节点事件 至 NE分段控制_绑定获得焦点；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选(允许实际执行))
             // 命令ID：NE树_解绑节点事件
             // [3351] NE树_解绑节点事件(控件)
             // 功能：移除NE树实例由代码绑定的“节点事件”处理器。
@@ -16884,6 +16877,13 @@
             // 功能：为NE树实例绑定“鼠标进入”处理器，处理器必须使用 &名称。
             // 参数：控件:controlRef，处理器:handler；返回：bool；可见性：default
             NE树_绑定鼠标进入(演示lingbuildernew_emojiuiTree控件, &模块演示回调)
+        如果结束
+        调试输出("已查看 命令 3025–3360：NE步骤条_解绑失去焦点 至 NE树_绑定鼠标进入；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第11组_被单击()
+        控件_设置文本(演示状态, "命令 3361–3696：NE树_解绑鼠标进入 至 NE页头_绑定鼠标离开；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：NE树_解绑鼠标进入
             // [3361] NE树_解绑鼠标进入(控件)
             // 功能：移除NE树实例由代码绑定的“鼠标进入”处理器。
@@ -18509,13 +18509,6 @@
             // 功能：为NE分段控制实例绑定“获得焦点”处理器，处理器必须使用 &名称。
             // 参数：控件:controlRef，处理器:handler；返回：bool；可见性：default
             NE分段控制_绑定获得焦点(演示lingbuildernew_emojiuiSegmented控件, &模块演示回调)
-        如果结束
-        调试输出("已查看 命令 3351–3685：NE树_解绑节点事件 至 NE分段控制_绑定获得焦点；勾选允许实际执行后会使用演示参数调用。")
-    结束
-
-    事件 _运行第12组_被单击()
-        控件_设置文本(演示状态, "命令 3686–4019：NE分段控制_解绑获得焦点 至 NE浏览器视口_解绑失去焦点；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选(允许实际执行))
             // 命令ID：NE分段控制_解绑获得焦点
             // [3686] NE分段控制_解绑获得焦点(控件)
             // 功能：移除NE分段控制实例由代码绑定的“获得焦点”处理器。
@@ -18571,6 +18564,13 @@
             // 功能：为NE页头实例绑定“鼠标离开”处理器，处理器必须使用 &名称。
             // 参数：控件:controlRef，处理器:handler；返回：bool；可见性：default
             NE页头_绑定鼠标离开(演示lingbuildernew_emojiuiPageHeader控件, &模块演示回调)
+        如果结束
+        调试输出("已查看 命令 3361–3696：NE树_解绑鼠标进入 至 NE页头_绑定鼠标离开；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第12组_被单击()
+        控件_设置文本(演示状态, "命令 3697–4024：NE页头_解绑鼠标离开 至 NE标签页_取标签条内容宽；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：NE页头_解绑鼠标离开
             // [3697] NE页头_解绑鼠标离开(控件)
             // 功能：移除NE页头实例由代码绑定的“鼠标离开”处理器。
@@ -20186,8 +20186,33 @@
             // 功能：移除NE浏览器视口实例由代码绑定的“失去焦点”处理器。
             // 参数：控件:controlRef；返回：bool；可见性：default
             NE浏览器视口_解绑失去焦点(演示lingbuildernew_emojiuiBrowserViewport控件)
+            // 命令ID：NE标签页_取项矩形直调
+            // [4020] NE标签页_取项矩形直调(hwnd, element_id, item_index, x, y, w, h)
+            // 功能：NE标签页_取项矩形 的底层直调版本：按索引读回单个标签的实测矩形（x/y/w/h 出参，逻辑像素、相对标签条元素左上角），与绘制/命中同一套宽度，成功返回 1。hwnd 传 当前窗口；一般请用高层封装 NE标签页_取项矩形。
+            // 参数：hwnd:handle，element_id:controlRef，item_index:int，x:int，y:int，w:int，h:int；返回：int；可见性：advanced
+            NE标签页_取项矩形直调(0, 演示lingbuildernew_emojiuiTabs控件, 1, 1, 1, 1, 1)
+            // 命令ID：NE标签页_取头部内容宽度直调
+            // [4021] NE标签页_取头部内容宽度直调(hwnd, element_id, out_width)
+            // 功能：NE标签页_取标签条内容宽 的底层直调版本：读回标签条内容总占用宽（out_width 出参，逻辑像素；chrome 模式新建按钮可见时计入其区域），成功返回 1。hwnd 传 当前窗口；一般请用高层封装 NE标签页_取标签条内容宽。
+            // 参数：hwnd:handle，element_id:controlRef，out_width:int；返回：int；可见性：advanced
+            NE标签页_取头部内容宽度直调(0, 演示lingbuildernew_emojiuiTabs控件, 1)
+            // 命令ID：NE标签页_取项矩形
+            // [4022] NE标签页_取项矩形(控件, 索引)
+            // 功能：读回单个标签的实测矩形，返回 JSON 文本 {"x":…,"y":…,"w":…,"h":…}。单位逻辑像素，坐标相对标签条元素左上角，与绘制/命中使用同一套宽度（chrome 模式按内容自适应）。索引越界或控件不存在返回空文本。用于把「新建标签」等按钮贴到末签右侧等按内容自适应布局，禁止再用 chromeMaxWidth 反推标签宽度。
+            // 参数：控件:controlRef，索引:int；返回：wideString；可见性：default
+            NE标签页_取项矩形(演示lingbuildernew_emojiuiTabs控件, 1)
+            // 命令ID：NE标签页_取项矩形2
+            // [4023] NE标签页_取项矩形2(控件, 索引, 横, 纵, 宽, 高)
+            // 功能：读回单个标签的实测矩形（多出参形态）：横/纵/宽/高 按引用写回，返回 1 成功、0 失败（索引越界或控件不存在）。单位逻辑像素，坐标相对标签条元素左上角；与 NE标签页_取项矩形 同源，需要逐项矩形运算（并排布局、滚动定位）时用它免 JSON 解析。
+            // 参数：控件:controlRef，索引:int，横:int，纵:int，宽:int，高:int；返回：int；可见性：default
+            NE标签页_取项矩形2(演示lingbuildernew_emojiuiTabs控件, 1, 1, 1, 1, 1)
+            // 命令ID：NE标签页_取标签条内容宽
+            // [4024] NE标签页_取标签条内容宽(控件)
+            // 功能：读回标签条内容总占用宽（逻辑像素）＝全部标签实测宽度之和（chrome 模式新建按钮可见时含其区域），标签条滚动时返回的仍是内容总宽而非控件宽。返回 -1 表示控件不存在。外层布局用它直接定位新建按钮、收紧标签条控件宽度；DPI 变化或改标题后需重新读取。
+            // 参数：控件:controlRef；返回：int；可见性：default
+            NE标签页_取标签条内容宽(演示lingbuildernew_emojiuiTabs控件)
         如果结束
-        调试输出("已查看 命令 3686–4019：NE分段控制_解绑获得焦点 至 NE浏览器视口_解绑失去焦点；勾选允许实际执行后会使用演示参数调用。")
+        调试输出("已查看 命令 3697–4024：NE页头_解绑鼠标离开 至 NE标签页_取标签条内容宽；勾选允许实际执行后会使用演示参数调用。")
     结束
 
     整数型 模块演示回调_整数型_整数型_整数型(整数型 参数1, 整数型 参数2)

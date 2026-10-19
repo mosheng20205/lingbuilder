@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.716Z",
+  "generatedAt": "2026-10-19T03:18:58.672Z",
   "module": {
     "id": "lingbuilder.cef3.automation",
     "name": "CEF3自动化模块",
-    "version": "3.0.0-alpha.3",
+    "version": "3.0.0-alpha.4",
     "description": "提供异步JavaScript任务及后续DOM/V8能力。"
   },
-  "commandCount": 6,
+  "commandCount": 43,
   "commands": [
     {
       "index": 1,
@@ -34,11 +34,13 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "脚本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要执行或注入的 JavaScript 源码文本。"
           }
         ],
         "returnType": "longLong",
@@ -71,27 +73,33 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "名称",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "JSHook 自定义名称，用于识别和管理。"
           },
           {
             "name": "脚本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要执行或注入的 JavaScript 源码文本。"
           },
           {
             "name": "地址匹配",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "Frame URL 通配符匹配文本（如 \"*.example.com/*\"），传 \"*\" 匹配全部。"
           },
           {
             "name": "全部框架",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=在全部子 Frame 注入，假=只在主 Frame。"
           },
           {
             "name": "立即执行当前上下文",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=对已存在的 V8 上下文立即执行一次。"
           }
         ],
         "returnType": "longLong",
@@ -116,7 +124,8 @@
         "parameters": [
           {
             "name": "Hook句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "CEF3Hook_注册脚本 返回的受管 Hook 句柄。"
           }
         ],
         "returnType": "int"
@@ -148,7 +157,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "int",
@@ -181,7 +191,8 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "wideString",
@@ -214,25 +225,1223 @@
             "controlKinds": [
               "visual"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "请求ID",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "页面 LingBuilder调用宿主 请求的唯一 ID，取自对应事件字段。"
           },
           {
             "name": "是否成功",
-            "type": "bool"
+            "type": "bool",
+            "description": "真=页面 Promise 按 resolve 完成，假=按 reject 拒绝。"
           },
           {
             "name": "返回文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "返回给页面的结果文本。"
           }
         ],
         "returnType": "int",
         "encoding": "wide"
       },
       "demoInvocation": "CEF3Hook_回复页面消息(演示CefBrowser控件, 1, 真, \"演示参数4\")"
+    },
+    {
+      "index": 7,
+      "name": "CEF3框架_取主框架",
+      "aliases": [
+        "CefBrowser::GetMainFrame"
+      ],
+      "signature": "CEF3框架_取主框架(控件名)",
+      "description": "取得浏览器主框架的受管句柄；内部按框架标识枚举并用主框架判定筛选，页面尚未产生任何框架时返回0。",
+      "insertText": "CEF3框架_取主框架($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3框架_取主框架",
+        "runtimeName": "CEF3框架_取主框架",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3框架_取主框架(演示CefBrowser控件)"
+    },
+    {
+      "index": 8,
+      "name": "CEF3框架_取焦点框架",
+      "aliases": [
+        "CefBrowser::GetFocusedFrame"
+      ],
+      "signature": "CEF3框架_取焦点框架(控件名)",
+      "description": "取得当前焦点所在框架的受管句柄；无焦点框架时返回0。",
+      "insertText": "CEF3框架_取焦点框架($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3框架_取焦点框架",
+        "runtimeName": "CEF3框架_取焦点框架",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3框架_取焦点框架(演示CefBrowser控件)"
+    },
+    {
+      "index": 9,
+      "name": "CEF3框架_按标识取框架",
+      "aliases": [
+        "CefBrowser::GetFrameByIdentifier"
+      ],
+      "signature": "CEF3框架_按标识取框架(控件名, 标识)",
+      "description": "按CEF官方字符串标识取得框架受管句柄；标识可从 CEF3框架_取标识列表JSON 获得，不存在时返回0。",
+      "insertText": "CEF3框架_按标识取框架($1, \"$2\")",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3框架_按标识取框架",
+        "runtimeName": "CEF3框架_按标识取框架",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "标识",
+            "type": "wideString",
+            "description": "框架的 CEF 官方字符串标识，取自 CEF3框架_取标识列表JSON 或 CEF3框架_取标识；不是 iframe 的 name 属性。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3框架_按标识取框架(演示CefBrowser控件, \"演示参数2\")"
+    },
+    {
+      "index": 10,
+      "name": "CEF3框架_按名称取框架",
+      "aliases": [
+        "CefBrowser::GetFrameByName"
+      ],
+      "signature": "CEF3框架_按名称取框架(控件名, 名称)",
+      "description": "按框架名称（iframe 的 name 属性）取得框架受管句柄；同名多个时由CEF决定，未命中返回0。",
+      "insertText": "CEF3框架_按名称取框架($1, \"$2\")",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3框架_按名称取框架",
+        "runtimeName": "CEF3框架_按名称取框架",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "名称",
+            "type": "wideString",
+            "description": "JSHook 自定义名称，用于识别和管理。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3框架_按名称取框架(演示CefBrowser控件, \"演示参数2\")"
+    },
+    {
+      "index": 11,
+      "name": "CEF3框架_取框架数量",
+      "aliases": [
+        "CefBrowser::GetFrameCount"
+      ],
+      "signature": "CEF3框架_取框架数量(控件名)",
+      "description": "返回浏览器当前持有的框架总数（含主框架与全部 iframe）。",
+      "insertText": "CEF3框架_取框架数量($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3框架_取框架数量",
+        "runtimeName": "CEF3框架_取框架数量",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3框架_取框架数量(演示CefBrowser控件)"
+    },
+    {
+      "index": 12,
+      "name": "CEF3框架_取标识列表JSON",
+      "aliases": [
+        "CefBrowser::GetFrameIdentifiers"
+      ],
+      "signature": "CEF3框架_取标识列表JSON(控件名)",
+      "description": "返回全部框架官方标识的 UTF-16 JSON 字符串数组；无框架时返回 []。",
+      "insertText": "CEF3框架_取标识列表JSON($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3框架_取标识列表JSON",
+        "runtimeName": "CEF3框架_取标识列表JSON",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3框架_取标识列表JSON(演示CefBrowser控件)"
+    },
+    {
+      "index": 13,
+      "name": "CEF3框架_取名称列表JSON",
+      "aliases": [
+        "CefBrowser::GetFrameNames"
+      ],
+      "signature": "CEF3框架_取名称列表JSON(控件名)",
+      "description": "返回全部框架名称的 UTF-16 JSON 字符串数组；未命名框架对应空文本。",
+      "insertText": "CEF3框架_取名称列表JSON($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3框架_取名称列表JSON",
+        "runtimeName": "CEF3框架_取名称列表JSON",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CefBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3框架_取名称列表JSON(演示CefBrowser控件)"
+    },
+    {
+      "index": 14,
+      "name": "CEF3框架_是否有效",
+      "aliases": [
+        "CefFrame::IsValid"
+      ],
+      "signature": "CEF3框架_是否有效(框架句柄)",
+      "description": "判断受管框架句柄是否仍然有效；框架被销毁或句柄已释放返回0。",
+      "insertText": "CEF3框架_是否有效($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3框架_是否有效",
+        "runtimeName": "CEF3框架_是否有效",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "CEF3框架_取主框架/取焦点框架/按标识取框架/按名称取框架/取父框架 返回的受管框架句柄；框架被销毁或句柄已释放后再操作返回稳定错误。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3框架_是否有效(1)"
+    },
+    {
+      "index": 15,
+      "name": "CEF3框架_是否主框架",
+      "aliases": [
+        "CefFrame::IsMain"
+      ],
+      "signature": "CEF3框架_是否主框架(框架句柄)",
+      "description": "判断该框架是否为浏览器主框架。",
+      "insertText": "CEF3框架_是否主框架($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3框架_是否主框架",
+        "runtimeName": "CEF3框架_是否主框架",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "CEF3框架_取主框架/取焦点框架/按标识取框架/按名称取框架/取父框架 返回的受管框架句柄；框架被销毁或句柄已释放后再操作返回稳定错误。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3框架_是否主框架(1)"
+    },
+    {
+      "index": 16,
+      "name": "CEF3框架_是否焦点框架",
+      "aliases": [
+        "CefFrame::IsFocused"
+      ],
+      "signature": "CEF3框架_是否焦点框架(框架句柄)",
+      "description": "判断该框架当前是否拥有输入焦点。",
+      "insertText": "CEF3框架_是否焦点框架($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3框架_是否焦点框架",
+        "runtimeName": "CEF3框架_是否焦点框架",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "CEF3框架_取主框架/取焦点框架/按标识取框架/按名称取框架/取父框架 返回的受管框架句柄；框架被销毁或句柄已释放后再操作返回稳定错误。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3框架_是否焦点框架(1)"
+    },
+    {
+      "index": 17,
+      "name": "CEF3框架_取地址",
+      "aliases": [
+        "CefFrame::GetURL"
+      ],
+      "signature": "CEF3框架_取地址(框架句柄)",
+      "description": "取得该框架当前加载的地址。",
+      "insertText": "CEF3框架_取地址($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3框架_取地址",
+        "runtimeName": "CEF3框架_取地址",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "CEF3框架_取主框架/取焦点框架/按标识取框架/按名称取框架/取父框架 返回的受管框架句柄；框架被销毁或句柄已释放后再操作返回稳定错误。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3框架_取地址(1)"
+    },
+    {
+      "index": 18,
+      "name": "CEF3框架_取名称",
+      "aliases": [
+        "CefFrame::GetName"
+      ],
+      "signature": "CEF3框架_取名称(框架句柄)",
+      "description": "取得该框架名称；未命名返回空文本。",
+      "insertText": "CEF3框架_取名称($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3框架_取名称",
+        "runtimeName": "CEF3框架_取名称",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "CEF3框架_取主框架/取焦点框架/按标识取框架/按名称取框架/取父框架 返回的受管框架句柄；框架被销毁或句柄已释放后再操作返回稳定错误。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3框架_取名称(1)"
+    },
+    {
+      "index": 19,
+      "name": "CEF3框架_取标识",
+      "aliases": [
+        "CefFrame::GetIdentifier"
+      ],
+      "signature": "CEF3框架_取标识(框架句柄)",
+      "description": "取得该框架的CEF官方字符串标识。",
+      "insertText": "CEF3框架_取标识($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3框架_取标识",
+        "runtimeName": "CEF3框架_取标识",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "CEF3框架_取主框架/取焦点框架/按标识取框架/按名称取框架/取父框架 返回的受管框架句柄；框架被销毁或句柄已释放后再操作返回稳定错误。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3框架_取标识(1)"
+    },
+    {
+      "index": 20,
+      "name": "CEF3框架_取父框架",
+      "aliases": [
+        "CefFrame::GetParent"
+      ],
+      "signature": "CEF3框架_取父框架(框架句柄)",
+      "description": "取得上层框架的受管句柄；主框架没有父框架，返回0。",
+      "insertText": "CEF3框架_取父框架($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3框架_取父框架",
+        "runtimeName": "CEF3框架_取父框架",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "CEF3框架_取主框架/取焦点框架/按标识取框架/按名称取框架/取父框架 返回的受管框架句柄；框架被销毁或句柄已释放后再操作返回稳定错误。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3框架_取父框架(1)"
+    },
+    {
+      "index": 21,
+      "name": "CEF3框架_载入地址",
+      "aliases": [
+        "CefFrame::LoadURL"
+      ],
+      "signature": "CEF3框架_载入地址(框架句柄, 地址)",
+      "description": "只让该框架载入指定地址，不影响同页面其它框架；主框架等价于整页导航。",
+      "insertText": "CEF3框架_载入地址($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3框架_载入地址",
+        "runtimeName": "CEF3框架_载入地址",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "CEF3框架_取主框架/取焦点框架/按标识取框架/按名称取框架/取父框架 返回的受管框架句柄；框架被销毁或句柄已释放后再操作返回稳定错误。"
+          },
+          {
+            "name": "地址",
+            "type": "wideString",
+            "description": "要载入的完整 URL（含协议）。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3框架_载入地址(1, \"https://example.com\")"
+    },
+    {
+      "index": 22,
+      "name": "CEF3框架_执行JS",
+      "aliases": [
+        "CefFrame::ExecuteJavaScript"
+      ],
+      "signature": "CEF3框架_执行JS(框架句柄, 脚本, 脚本地址, 起始行)",
+      "description": "在指定框架内执行 JavaScript，不等待返回值；脚本地址与起始行只用于报错定位，可传空文本和1。要读取表达式结果请用 CEF3自动化_执行JS异步 或填表读取命令。",
+      "insertText": "CEF3框架_执行JS(框架句柄, \"document.title = \\\"改过的标题\\\";\", \"\", 1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3框架_执行JS",
+        "runtimeName": "CEF3框架_执行JS",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "CEF3框架_取主框架/取焦点框架/按标识取框架/按名称取框架/取父框架 返回的受管框架句柄；框架被销毁或句柄已释放后再操作返回稳定错误。"
+          },
+          {
+            "name": "脚本",
+            "type": "wideString",
+            "description": "要执行或注入的 JavaScript 源码文本。"
+          },
+          {
+            "name": "脚本地址",
+            "type": "wideString",
+            "description": "模拟脚本来源 URL，仅用于报错定位信息；可传空文本。"
+          },
+          {
+            "name": "起始行",
+            "type": "int",
+            "description": "配合脚本地址定位行号的起始行，一般传 1。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "CEF3框架_执行JS(框架句柄, \"document.title = \\\"改过的标题\\\";\", \"\", 1)"
+      },
+      "demoInvocation": "CEF3框架_执行JS(1, \"演示参数2\", \"https://example.com\", 1)"
+    },
+    {
+      "index": 23,
+      "name": "CEF3框架_取源码异步",
+      "aliases": [
+        "CefFrame::GetSource"
+      ],
+      "signature": "CEF3框架_取源码异步(框架句柄)",
+      "description": "异步取得该框架完整 HTML 源码，返回受管任务句柄；用 CEF3任务_等待 后用 CEF3任务_取结果 读取。",
+      "insertText": "CEF3框架_取源码异步($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3框架_取源码异步",
+        "runtimeName": "CEF3框架_取源码异步",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "CEF3框架_取主框架/取焦点框架/按标识取框架/按名称取框架/取父框架 返回的受管框架句柄；框架被销毁或句柄已释放后再操作返回稳定错误。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3框架_取源码异步(1)"
+    },
+    {
+      "index": 24,
+      "name": "CEF3框架_取文本异步",
+      "aliases": [
+        "CefFrame::GetText"
+      ],
+      "signature": "CEF3框架_取文本异步(框架句柄)",
+      "description": "异步取得该框架可见文本，返回受管任务句柄；读取方式同 CEF3框架_取源码异步。",
+      "insertText": "CEF3框架_取文本异步($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3框架_取文本异步",
+        "runtimeName": "CEF3框架_取文本异步",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "CEF3框架_取主框架/取焦点框架/按标识取框架/按名称取框架/取父框架 返回的受管框架句柄；框架被销毁或句柄已释放后再操作返回稳定错误。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3框架_取文本异步(1)"
+    },
+    {
+      "index": 25,
+      "name": "CEF3框架_撤销",
+      "aliases": [
+        "CefFrame::Undo"
+      ],
+      "signature": "CEF3框架_撤销(框架句柄)",
+      "description": "在该框架的可编辑区域执行撤销。",
+      "insertText": "CEF3框架_撤销($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3框架_撤销",
+        "runtimeName": "CEF3框架_撤销",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "CEF3框架_取主框架/取焦点框架/按标识取框架/按名称取框架/取父框架 返回的受管框架句柄；框架被销毁或句柄已释放后再操作返回稳定错误。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3框架_撤销(1)"
+    },
+    {
+      "index": 26,
+      "name": "CEF3框架_重做",
+      "aliases": [
+        "CefFrame::Redo"
+      ],
+      "signature": "CEF3框架_重做(框架句柄)",
+      "description": "在该框架的可编辑区域执行重做。",
+      "insertText": "CEF3框架_重做($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3框架_重做",
+        "runtimeName": "CEF3框架_重做",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "CEF3框架_取主框架/取焦点框架/按标识取框架/按名称取框架/取父框架 返回的受管框架句柄；框架被销毁或句柄已释放后再操作返回稳定错误。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3框架_重做(1)"
+    },
+    {
+      "index": 27,
+      "name": "CEF3框架_剪切",
+      "aliases": [
+        "CefFrame::Cut"
+      ],
+      "signature": "CEF3框架_剪切(框架句柄)",
+      "description": "剪切该框架的当前选区。",
+      "insertText": "CEF3框架_剪切($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3框架_剪切",
+        "runtimeName": "CEF3框架_剪切",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "CEF3框架_取主框架/取焦点框架/按标识取框架/按名称取框架/取父框架 返回的受管框架句柄；框架被销毁或句柄已释放后再操作返回稳定错误。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3框架_剪切(1)"
+    },
+    {
+      "index": 28,
+      "name": "CEF3框架_复制",
+      "aliases": [
+        "CefFrame::Copy"
+      ],
+      "signature": "CEF3框架_复制(框架句柄)",
+      "description": "复制该框架的当前选区到剪贴板。",
+      "insertText": "CEF3框架_复制($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3框架_复制",
+        "runtimeName": "CEF3框架_复制",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "CEF3框架_取主框架/取焦点框架/按标识取框架/按名称取框架/取父框架 返回的受管框架句柄；框架被销毁或句柄已释放后再操作返回稳定错误。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3框架_复制(1)"
+    },
+    {
+      "index": 29,
+      "name": "CEF3框架_粘贴",
+      "aliases": [
+        "CefFrame::Paste"
+      ],
+      "signature": "CEF3框架_粘贴(框架句柄)",
+      "description": "把剪贴板内容粘贴进该框架。",
+      "insertText": "CEF3框架_粘贴($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3框架_粘贴",
+        "runtimeName": "CEF3框架_粘贴",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "CEF3框架_取主框架/取焦点框架/按标识取框架/按名称取框架/取父框架 返回的受管框架句柄；框架被销毁或句柄已释放后再操作返回稳定错误。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3框架_粘贴(1)"
+    },
+    {
+      "index": 30,
+      "name": "CEF3框架_全选",
+      "aliases": [
+        "CefFrame::SelectAll"
+      ],
+      "signature": "CEF3框架_全选(框架句柄)",
+      "description": "全选该框架内容。",
+      "insertText": "CEF3框架_全选($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3框架_全选",
+        "runtimeName": "CEF3框架_全选",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "CEF3框架_取主框架/取焦点框架/按标识取框架/按名称取框架/取父框架 返回的受管框架句柄；框架被销毁或句柄已释放后再操作返回稳定错误。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3框架_全选(1)"
+    },
+    {
+      "index": 31,
+      "name": "CEF3框架_释放",
+      "aliases": [
+        "LB_CEF3_HandleRelease"
+      ],
+      "signature": "CEF3框架_释放(框架句柄)",
+      "description": "释放取框架命令返回的受管句柄；同一句柄重复释放返回0。",
+      "insertText": "CEF3框架_释放($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3框架_释放",
+        "runtimeName": "CEF3框架_释放",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "CEF3框架_取主框架/取焦点框架/按标识取框架/按名称取框架/取父框架 返回的受管框架句柄；框架被销毁或句柄已释放后再操作返回稳定错误。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3框架_释放(1)"
+    },
+    {
+      "index": 32,
+      "name": "CEF3填表_点击元素",
+      "aliases": [],
+      "signature": "CEF3填表_点击元素(框架句柄, 选择器, 序号)",
+      "description": "按 CSS 选择器点击第序号个匹配元素（序号从 0 起，传 -1 取首个）；优先调用元素自身的 click，失败时回退为合成 click 事件。",
+      "insertText": "CEF3填表_点击元素($1, \"$2\", $3)",
+      "returnType": "整数型",
+      "visibility": "default",
+      "binding": {
+        "command": "CEF3填表_点击元素",
+        "runtimeName": "CEF3填表_点击元素",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "CEF3框架_取主框架/取焦点框架/按标识取框架/按名称取框架/取父框架 返回的受管框架句柄；框架被销毁或句柄已释放后再操作返回稳定错误。"
+          },
+          {
+            "name": "选择器",
+            "type": "wideString",
+            "description": "CSS 选择器文本，如 \"#submit\" 或 \"input[name=q]\"；匹配多个元素时用序号选择。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "同一选择器匹配结果中的元素下标，从 0 起；传 -1 取首个。超出匹配数量时命令静默不生效（返回失败）。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3填表_点击元素(1, \"演示参数2\", 1)"
+    },
+    {
+      "index": 33,
+      "name": "CEF3填表_滚动到元素",
+      "aliases": [],
+      "signature": "CEF3填表_滚动到元素(框架句柄, 选择器, 序号, 滚到顶部)",
+      "description": "把匹配元素滚动到可视区域；滚到顶部为真时贴顶对齐，否则尽量贴底。",
+      "insertText": "CEF3填表_滚动到元素($1, \"$2\", $3, 假)",
+      "returnType": "整数型",
+      "visibility": "default",
+      "binding": {
+        "command": "CEF3填表_滚动到元素",
+        "runtimeName": "CEF3填表_滚动到元素",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "CEF3框架_取主框架/取焦点框架/按标识取框架/按名称取框架/取父框架 返回的受管框架句柄；框架被销毁或句柄已释放后再操作返回稳定错误。"
+          },
+          {
+            "name": "选择器",
+            "type": "wideString",
+            "description": "CSS 选择器文本，如 \"#submit\" 或 \"input[name=q]\"；匹配多个元素时用序号选择。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "同一选择器匹配结果中的元素下标，从 0 起；传 -1 取首个。超出匹配数量时命令静默不生效（返回失败）。"
+          },
+          {
+            "name": "滚到顶部",
+            "type": "bool",
+            "description": "真=滚动后贴顶对齐，假=尽量贴底对齐。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3填表_滚动到元素(1, \"演示参数2\", 1, 真)"
+    },
+    {
+      "index": 34,
+      "name": "CEF3填表_聚焦元素",
+      "aliases": [],
+      "signature": "CEF3填表_聚焦元素(框架句柄, 选择器, 序号, 是否聚焦)",
+      "description": "设置或移除匹配元素的输入焦点。",
+      "insertText": "CEF3填表_聚焦元素($1, \"$2\", $3, 假)",
+      "returnType": "整数型",
+      "visibility": "default",
+      "binding": {
+        "command": "CEF3填表_聚焦元素",
+        "runtimeName": "CEF3填表_聚焦元素",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "CEF3框架_取主框架/取焦点框架/按标识取框架/按名称取框架/取父框架 返回的受管框架句柄；框架被销毁或句柄已释放后再操作返回稳定错误。"
+          },
+          {
+            "name": "选择器",
+            "type": "wideString",
+            "description": "CSS 选择器文本，如 \"#submit\" 或 \"input[name=q]\"；匹配多个元素时用序号选择。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "同一选择器匹配结果中的元素下标，从 0 起；传 -1 取首个。超出匹配数量时命令静默不生效（返回失败）。"
+          },
+          {
+            "name": "是否聚焦",
+            "type": "bool",
+            "description": "真=赋予输入焦点，假=移除输入焦点。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3填表_聚焦元素(1, \"演示参数2\", 1, 真)"
+    },
+    {
+      "index": 35,
+      "name": "CEF3填表_赋值",
+      "aliases": [],
+      "signature": "CEF3填表_赋值(框架句柄, 选择器, 序号, 值)",
+      "description": "给匹配元素写入表单值：具备 value 的控件写 value，其它元素写 textContent，并主动补发 input 与 change 事件，避免页面监听不到。",
+      "insertText": "CEF3填表_赋值($1, \"$2\", $3, \"$4\")",
+      "returnType": "整数型",
+      "visibility": "default",
+      "binding": {
+        "command": "CEF3填表_赋值",
+        "runtimeName": "CEF3填表_赋值",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "CEF3框架_取主框架/取焦点框架/按标识取框架/按名称取框架/取父框架 返回的受管框架句柄；框架被销毁或句柄已释放后再操作返回稳定错误。"
+          },
+          {
+            "name": "选择器",
+            "type": "wideString",
+            "description": "CSS 选择器文本，如 \"#submit\" 或 \"input[name=q]\"；匹配多个元素时用序号选择。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "同一选择器匹配结果中的元素下标，从 0 起；传 -1 取首个。超出匹配数量时命令静默不生效（返回失败）。"
+          },
+          {
+            "name": "值",
+            "type": "wideString",
+            "description": "要写入的文本内容。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3填表_赋值(1, \"演示参数2\", 1, \"演示参数4\")"
+    },
+    {
+      "index": 36,
+      "name": "CEF3填表_置选择框",
+      "aliases": [],
+      "signature": "CEF3填表_置选择框(框架句柄, 选择器, 序号, 是否选中)",
+      "description": "设置复选框/单选框的勾选状态，并补发 change 事件。",
+      "insertText": "CEF3填表_置选择框($1, \"$2\", $3, 假)",
+      "returnType": "整数型",
+      "visibility": "default",
+      "binding": {
+        "command": "CEF3填表_置选择框",
+        "runtimeName": "CEF3填表_置选择框",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "CEF3框架_取主框架/取焦点框架/按标识取框架/按名称取框架/取父框架 返回的受管框架句柄；框架被销毁或句柄已释放后再操作返回稳定错误。"
+          },
+          {
+            "name": "选择器",
+            "type": "wideString",
+            "description": "CSS 选择器文本，如 \"#submit\" 或 \"input[name=q]\"；匹配多个元素时用序号选择。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "同一选择器匹配结果中的元素下标，从 0 起；传 -1 取首个。超出匹配数量时命令静默不生效（返回失败）。"
+          },
+          {
+            "name": "是否选中",
+            "type": "bool",
+            "description": "真=勾选，假=取消勾选。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3填表_置选择框(1, \"演示参数2\", 1, 真)"
+    },
+    {
+      "index": 37,
+      "name": "CEF3填表_置选择项",
+      "aliases": [],
+      "signature": "CEF3填表_置选择项(框架句柄, 选择器, 序号, 选项序号)",
+      "description": "把匹配下拉框选中第选项序号个 option（从 0 起），并补发 change 事件。",
+      "insertText": "CEF3填表_置选择项($1, \"$2\", $3, $4)",
+      "returnType": "整数型",
+      "visibility": "default",
+      "binding": {
+        "command": "CEF3填表_置选择项",
+        "runtimeName": "CEF3填表_置选择项",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "CEF3框架_取主框架/取焦点框架/按标识取框架/按名称取框架/取父框架 返回的受管框架句柄；框架被销毁或句柄已释放后再操作返回稳定错误。"
+          },
+          {
+            "name": "选择器",
+            "type": "wideString",
+            "description": "CSS 选择器文本，如 \"#submit\" 或 \"input[name=q]\"；匹配多个元素时用序号选择。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "同一选择器匹配结果中的元素下标，从 0 起；传 -1 取首个。超出匹配数量时命令静默不生效（返回失败）。"
+          },
+          {
+            "name": "选项序号",
+            "type": "int",
+            "description": "下拉框 option 下标，从 0 起。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3填表_置选择项(1, \"演示参数2\", 1, 1)"
+    },
+    {
+      "index": 38,
+      "name": "CEF3填表_置内文本",
+      "aliases": [],
+      "signature": "CEF3填表_置内文本(框架句柄, 选择器, 序号, 文本)",
+      "description": "设置匹配元素的 innerText；不支持时降级为 textContent。",
+      "insertText": "CEF3填表_置内文本($1, \"$2\", $3, \"$4\")",
+      "returnType": "整数型",
+      "visibility": "default",
+      "binding": {
+        "command": "CEF3填表_置内文本",
+        "runtimeName": "CEF3填表_置内文本",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "CEF3框架_取主框架/取焦点框架/按标识取框架/按名称取框架/取父框架 返回的受管框架句柄；框架被销毁或句柄已释放后再操作返回稳定错误。"
+          },
+          {
+            "name": "选择器",
+            "type": "wideString",
+            "description": "CSS 选择器文本，如 \"#submit\" 或 \"input[name=q]\"；匹配多个元素时用序号选择。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "同一选择器匹配结果中的元素下标，从 0 起；传 -1 取首个。超出匹配数量时命令静默不生效（返回失败）。"
+          },
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要写入的纯文本内容。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3填表_置内文本(1, \"演示参数2\", 1, \"演示参数4\")"
+    },
+    {
+      "index": 39,
+      "name": "CEF3填表_置外文本",
+      "aliases": [],
+      "signature": "CEF3填表_置外文本(框架句柄, 选择器, 序号, 文本)",
+      "description": "设置匹配元素的 outerText；不支持时降级为 textContent。",
+      "insertText": "CEF3填表_置外文本($1, \"$2\", $3, \"$4\")",
+      "returnType": "整数型",
+      "visibility": "default",
+      "binding": {
+        "command": "CEF3填表_置外文本",
+        "runtimeName": "CEF3填表_置外文本",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "CEF3框架_取主框架/取焦点框架/按标识取框架/按名称取框架/取父框架 返回的受管框架句柄；框架被销毁或句柄已释放后再操作返回稳定错误。"
+          },
+          {
+            "name": "选择器",
+            "type": "wideString",
+            "description": "CSS 选择器文本，如 \"#submit\" 或 \"input[name=q]\"；匹配多个元素时用序号选择。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "同一选择器匹配结果中的元素下标，从 0 起；传 -1 取首个。超出匹配数量时命令静默不生效（返回失败）。"
+          },
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要写入的纯文本内容。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3填表_置外文本(1, \"演示参数2\", 1, \"演示参数4\")"
+    },
+    {
+      "index": 40,
+      "name": "CEF3填表_置内代码",
+      "aliases": [],
+      "signature": "CEF3填表_置内代码(框架句柄, 选择器, 序号, 代码文本)",
+      "description": "设置匹配元素的 innerHTML，可写入标签结构。",
+      "insertText": "CEF3填表_置内代码($1, \"$2\", $3, \"$4\")",
+      "returnType": "整数型",
+      "visibility": "default",
+      "binding": {
+        "command": "CEF3填表_置内代码",
+        "runtimeName": "CEF3填表_置内代码",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "CEF3框架_取主框架/取焦点框架/按标识取框架/按名称取框架/取父框架 返回的受管框架句柄；框架被销毁或句柄已释放后再操作返回稳定错误。"
+          },
+          {
+            "name": "选择器",
+            "type": "wideString",
+            "description": "CSS 选择器文本，如 \"#submit\" 或 \"input[name=q]\"；匹配多个元素时用序号选择。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "同一选择器匹配结果中的元素下标，从 0 起；传 -1 取首个。超出匹配数量时命令静默不生效（返回失败）。"
+          },
+          {
+            "name": "代码文本",
+            "type": "wideString",
+            "description": "要写入的 HTML 片段文本。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3填表_置内代码(1, \"演示参数2\", 1, \"演示参数4\")"
+    },
+    {
+      "index": 41,
+      "name": "CEF3填表_置外代码",
+      "aliases": [],
+      "signature": "CEF3填表_置外代码(框架句柄, 选择器, 序号, 代码文本)",
+      "description": "设置匹配元素的 outerHTML（含元素自身标签），会替换原元素。",
+      "insertText": "CEF3填表_置外代码($1, \"$2\", $3, \"$4\")",
+      "returnType": "整数型",
+      "visibility": "default",
+      "binding": {
+        "command": "CEF3填表_置外代码",
+        "runtimeName": "CEF3填表_置外代码",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "CEF3框架_取主框架/取焦点框架/按标识取框架/按名称取框架/取父框架 返回的受管框架句柄；框架被销毁或句柄已释放后再操作返回稳定错误。"
+          },
+          {
+            "name": "选择器",
+            "type": "wideString",
+            "description": "CSS 选择器文本，如 \"#submit\" 或 \"input[name=q]\"；匹配多个元素时用序号选择。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "同一选择器匹配结果中的元素下标，从 0 起；传 -1 取首个。超出匹配数量时命令静默不生效（返回失败）。"
+          },
+          {
+            "name": "代码文本",
+            "type": "wideString",
+            "description": "要写入的 HTML 片段文本。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3填表_置外代码(1, \"演示参数2\", 1, \"演示参数4\")"
+    },
+    {
+      "index": 42,
+      "name": "CEF3填表_置属性",
+      "aliases": [],
+      "signature": "CEF3填表_置属性(框架句柄, 选择器, 序号, 属性名, 值)",
+      "description": "给匹配元素设置指定 HTML 属性。",
+      "insertText": "CEF3填表_置属性($1, \"$2\", $3, \"$4\", \"$5\")",
+      "returnType": "整数型",
+      "visibility": "default",
+      "binding": {
+        "command": "CEF3填表_置属性",
+        "runtimeName": "CEF3填表_置属性",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "CEF3框架_取主框架/取焦点框架/按标识取框架/按名称取框架/取父框架 返回的受管框架句柄；框架被销毁或句柄已释放后再操作返回稳定错误。"
+          },
+          {
+            "name": "选择器",
+            "type": "wideString",
+            "description": "CSS 选择器文本，如 \"#submit\" 或 \"input[name=q]\"；匹配多个元素时用序号选择。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "同一选择器匹配结果中的元素下标，从 0 起；传 -1 取首个。超出匹配数量时命令静默不生效（返回失败）。"
+          },
+          {
+            "name": "属性名",
+            "type": "wideString",
+            "description": "要设置的 HTML 属性名，如 \"href\"。"
+          },
+          {
+            "name": "值",
+            "type": "wideString",
+            "description": "要写入的文本内容。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3填表_置属性(1, \"演示参数2\", 1, \"演示参数4\", \"演示参数5\")"
+    },
+    {
+      "index": 43,
+      "name": "CEF3填表_触发事件",
+      "aliases": [],
+      "signature": "CEF3填表_触发事件(框架句柄, 选择器, 序号, 事件名, 按键代码)",
+      "description": "在匹配元素上合成 DOM 事件；事件名如 click、dblclick、keydown、change、input，键盘类事件的按键代码回车传 13。",
+      "insertText": "CEF3填表_触发事件($1, \"$2\", $3, \"$4\", $5)",
+      "returnType": "整数型",
+      "visibility": "default",
+      "binding": {
+        "command": "CEF3填表_触发事件",
+        "runtimeName": "CEF3填表_触发事件",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "CEF3框架_取主框架/取焦点框架/按标识取框架/按名称取框架/取父框架 返回的受管框架句柄；框架被销毁或句柄已释放后再操作返回稳定错误。"
+          },
+          {
+            "name": "选择器",
+            "type": "wideString",
+            "description": "CSS 选择器文本，如 \"#submit\" 或 \"input[name=q]\"；匹配多个元素时用序号选择。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "同一选择器匹配结果中的元素下标，从 0 起；传 -1 取首个。超出匹配数量时命令静默不生效（返回失败）。"
+          },
+          {
+            "name": "事件名",
+            "type": "wideString",
+            "description": "要合成的 DOM 事件名，如 click、dblclick、keydown、change、input。"
+          },
+          {
+            "name": "按键代码",
+            "type": "int",
+            "description": "键盘类事件的虚拟键码，回车传 13。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3填表_触发事件(1, \"演示参数2\", 1, \"演示事件\", 1)"
     }
   ]
 }

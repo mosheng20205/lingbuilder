@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.755Z",
+  "generatedAt": "2026-10-19T03:18:58.696Z",
   "module": {
     "id": "lingbuilder.config.registry",
     "name": "用户注册表模块",
@@ -22,15 +22,18 @@
         "parameters": [
           {
             "name": "子键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "HKEY_CURRENT_USER 下的子键路径，不带根键名前缀；写入时子键不存在会自动创建。"
           },
           {
             "name": "值名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "子键下的值名称；读文本只接受 REG_SZ 与 REG_EXPAND_SZ，读整数只接受 REG_DWORD。"
           },
           {
             "name": "默认值",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "值不存在、类型不符或内容为空时返回的兜底文本。"
           }
         ],
         "returnType": "wideString",
@@ -51,15 +54,18 @@
         "parameters": [
           {
             "name": "子键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "HKEY_CURRENT_USER 下的子键路径，不带根键名前缀；写入时子键不存在会自动创建。"
           },
           {
             "name": "值名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "子键下的值名称；读文本只接受 REG_SZ 与 REG_EXPAND_SZ，读整数只接受 REG_DWORD。"
           },
           {
             "name": "默认值",
-            "type": "int"
+            "type": "int",
+            "description": "值不存在或不是 REG_DWORD 时返回的兜底整数。"
           }
         ],
         "returnType": "int",
@@ -80,15 +86,18 @@
         "parameters": [
           {
             "name": "子键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "HKEY_CURRENT_USER 下的子键路径，不带根键名前缀；写入时子键不存在会自动创建。"
           },
           {
             "name": "值名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要写入的值名称。"
           },
           {
             "name": "值",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "保存的字符串，以 REG_SZ 类型写入，读取时不做环境变量展开。"
           }
         ],
         "returnType": "bool",
@@ -109,15 +118,18 @@
         "parameters": [
           {
             "name": "子键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "HKEY_CURRENT_USER 下的子键路径，不带根键名前缀；写入时子键不存在会自动创建。"
           },
           {
             "name": "值名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要写入的值名称。"
           },
           {
             "name": "值",
-            "type": "int"
+            "type": "int",
+            "description": "保存的整数，以 REG_DWORD 类型写入。"
           }
         ],
         "returnType": "bool",
@@ -138,11 +150,13 @@
         "parameters": [
           {
             "name": "子键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "HKEY_CURRENT_USER 下的子键路径，不带根键名前缀；写入时子键不存在会自动创建。"
           },
           {
             "name": "值名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要删除的值名称；子键本身保留。"
           }
         ],
         "returnType": "bool",
@@ -163,11 +177,13 @@
         "parameters": [
           {
             "name": "子键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "HKEY_CURRENT_USER 下的子键路径，不带根键名前缀；写入时子键不存在会自动创建。"
           },
           {
             "name": "值名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要检查的值名称，任意数据类型都算存在。"
           }
         ],
         "returnType": "bool",

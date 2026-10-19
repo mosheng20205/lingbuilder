@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-25T22:05:22.470Z",
+  "generatedAt": "2026-10-19T03:18:58.868Z",
   "module": {
     "id": "lingbuilder.std.map",
     "name": "哈希表与栈模块",

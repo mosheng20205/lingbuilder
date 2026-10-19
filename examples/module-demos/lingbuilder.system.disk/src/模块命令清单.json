@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.986Z",
+  "generatedAt": "2026-10-19T03:18:58.878Z",
   "module": {
     "id": "lingbuilder.system.disk",
     "name": "磁盘信息模块",
@@ -23,7 +23,8 @@
         "parameters": [
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "用于定位所属卷的路径，可以是文件、目录或盘符根，空文本按当前目录处理；解析失败时命令按说明返回失败值。"
           }
         ],
         "returnType": "longLong",
@@ -46,7 +47,8 @@
         "parameters": [
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "用于定位所属卷的路径，可以是文件、目录或盘符根，空文本按当前目录处理；解析失败时命令按说明返回失败值。"
           }
         ],
         "returnType": "longLong",
@@ -68,7 +70,8 @@
         "parameters": [
           {
             "name": "根路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "用于定位所属卷的路径，可以是文件、目录或盘符根，空文本按当前目录处理；解析失败时命令按说明返回失败值。"
           }
         ],
         "returnType": "wideString",
@@ -90,7 +93,8 @@
         "parameters": [
           {
             "name": "根路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "用于定位所属卷的路径，可以是文件、目录或盘符根，空文本按当前目录处理；解析失败时命令按说明返回失败值。"
           }
         ],
         "returnType": "wideString",
@@ -112,7 +116,8 @@
         "parameters": [
           {
             "name": "根路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "用于定位所属卷的路径，可以是文件、目录或盘符根，空文本按当前目录处理；解析失败时命令按说明返回失败值。"
           }
         ],
         "returnType": "int",
@@ -134,7 +139,8 @@
         "parameters": [
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "用于定位所属卷的路径，可以是文件、目录或盘符根，空文本按当前目录处理；解析失败时命令按说明返回失败值。"
           }
         ],
         "returnType": "longLong",
@@ -156,7 +162,8 @@
         "parameters": [
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "用于定位所属卷的路径，可以是文件、目录或盘符根，空文本按当前目录处理；解析失败时命令按说明返回失败值。"
           }
         ],
         "returnType": "longLong",
@@ -178,7 +185,8 @@
         "parameters": [
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "用于定位所属卷的路径，可以是文件、目录或盘符根，空文本按当前目录处理；解析失败时命令按说明返回失败值。"
           }
         ],
         "returnType": "longLong",
@@ -200,7 +208,8 @@
         "parameters": [
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "用于定位所属卷的路径，可以是文件、目录或盘符根，空文本按当前目录处理；解析失败时命令按说明返回失败值。"
           }
         ],
         "returnType": "longLong",
@@ -222,7 +231,8 @@
         "parameters": [
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "用于定位所属卷的路径，可以是文件、目录或盘符根，空文本按当前目录处理；解析失败时命令按说明返回失败值。"
           }
         ],
         "returnType": "double",
@@ -244,7 +254,8 @@
         "parameters": [
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "用于定位所属卷的路径，可以是文件、目录或盘符根，空文本按当前目录处理；解析失败时命令按说明返回失败值。"
           }
         ],
         "returnType": "磁盘容量信息",
@@ -266,7 +277,8 @@
         "parameters": [
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "用于定位所属卷的路径，可以是文件、目录或盘符根，空文本按当前目录处理；解析失败时命令按说明返回失败值。"
           }
         ],
         "returnType": "磁盘卷信息",
@@ -320,7 +332,8 @@
         "parameters": [
           {
             "name": "卷GUID路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "?Volume{GUID} 形式的卷路径；传入普通路径时运行时会先解析为所属卷的 GUID 路径。"
           }
         ],
         "returnType": "磁盘路径列表",
@@ -342,7 +355,8 @@
         "parameters": [
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "用于定位所属卷的路径，可以是文件、目录或盘符根，空文本按当前目录处理；解析失败时命令按说明返回失败值。"
           }
         ],
         "returnType": "wideString",
@@ -364,7 +378,8 @@
         "parameters": [
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "用于定位所属卷的路径，可以是文件、目录或盘符根，空文本按当前目录处理；解析失败时命令按说明返回失败值。"
           }
         ],
         "returnType": "wideString",
@@ -386,7 +401,8 @@
         "parameters": [
           {
             "name": "根路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "用于定位所属卷的路径，可以是文件、目录或盘符根，空文本按当前目录处理；解析失败时命令按说明返回失败值。"
           }
         ],
         "returnType": "wideString",
@@ -408,7 +424,8 @@
         "parameters": [
           {
             "name": "根路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "用于定位所属卷的路径，可以是文件、目录或盘符根，空文本按当前目录处理；解析失败时命令按说明返回失败值。"
           }
         ],
         "returnType": "longLong",
@@ -430,7 +447,8 @@
         "parameters": [
           {
             "name": "根路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "用于定位所属卷的路径，可以是文件、目录或盘符根，空文本按当前目录处理；解析失败时命令按说明返回失败值。"
           }
         ],
         "returnType": "longLong",
@@ -452,7 +470,8 @@
         "parameters": [
           {
             "name": "根路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "用于定位所属卷的路径，可以是文件、目录或盘符根，空文本按当前目录处理；解析失败时命令按说明返回失败值。"
           }
         ],
         "returnType": "int",
@@ -474,7 +493,8 @@
         "parameters": [
           {
             "name": "根路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "用于定位所属卷的路径，可以是文件、目录或盘符根，空文本按当前目录处理；解析失败时命令按说明返回失败值。"
           }
         ],
         "returnType": "bool",
@@ -496,11 +516,13 @@
         "parameters": [
           {
             "name": "根路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "用于定位所属卷的路径，可以是文件、目录或盘符根，空文本按当前目录处理；解析失败时命令按说明返回失败值。"
           },
           {
             "name": "能力名称",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要查询的 FILE_* 能力名称，支持中文名或英文名，例如 压缩、稀疏文件、重解析点、命名流、加密、ACL、硬链接、事务、USN、DAX；无法识别时返回假并记录未知能力错误。"
           }
         ],
         "returnType": "bool",
@@ -538,7 +560,8 @@
         "parameters": [
           {
             "name": "磁盘编号",
-            "type": "int"
+            "type": "int",
+            "description": "PhysicalDrive 编号，从 0 开始，与 磁盘_枚举物理磁盘 返回的磁盘编号一致；查询只申请只读权限。"
           }
         ],
         "returnType": "物理磁盘信息"
@@ -559,7 +582,8 @@
         "parameters": [
           {
             "name": "磁盘编号",
-            "type": "int"
+            "type": "int",
+            "description": "PhysicalDrive 编号，从 0 开始，与 磁盘_枚举物理磁盘 返回的磁盘编号一致；查询只申请只读权限。"
           }
         ],
         "returnType": "磁盘分区信息列表"

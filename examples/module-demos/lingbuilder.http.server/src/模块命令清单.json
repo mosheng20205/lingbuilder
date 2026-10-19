@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-11T10:16:40.215Z",
+  "generatedAt": "2026-10-19T03:18:58.755Z",
   "module": {
     "id": "lingbuilder.http.server",
     "name": "HTTP 服务端模块",
-    "version": "2.1.0",
-    "description": "提供受管 HTTP/1.1 服务端、后台多连接处理、路由（含工作线程直回的静态路由）、完整请求读取、可配置响应、资源限制、连接轮转和运行状态。"
+    "version": "2.3.0",
+    "description": "提供受管 HTTP/1.1 服务端、后台多连接处理、路由（含工作线程直回的静态路由）、完整请求读取、可配置响应、SSE 单向推送（服务端 → 客户端持续下发事件流）、离线接口文档（OpenAPI 3.0.3 规范 + Swagger UI 可交互调试页）、资源限制、连接轮转和运行状态。"
   },
-  "commandCount": 51,
+  "commandCount": 63,
   "commands": [
     {
       "index": 1,
@@ -1458,6 +1458,423 @@
     },
     {
       "index": 47,
+      "name": "HTTP_SSE_开始",
+      "signature": "HTTP_SSE_开始(请求)",
+      "description": "把当前请求升级为 SSE（Server-Sent Events）单向推送通道：立即发送 200 与 text/event-stream 响应头并保持连接，请求处理器返回后连接不断开；之后用 HTTP_SSE_推送/推送事件 随时向该客户端单向下发数据，HTTP_SSE_结束 或客户端断开时关闭。必须在发送任何普通响应之前调用；同一请求只能开始一次；开始前用 HTTP_设置响应头 追加的头（如跨域 Allow-Origin）会随响应发出，Content-Type 由运行时强制为 text/event-stream。",
+      "insertText": "HTTP_SSE_开始($1)",
+      "returnType": "逻辑型",
+      "category": "推送",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_SSE_开始",
+        "runtimeName": "HTTP_SSE_开始",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP请求",
+            "description": "请求处理器内 HTTP_取当前请求() 返回的请求句柄，仅在本次请求处理期间有效。必须是尚未发送响应的当前请求。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "HTTP_SSE_开始(示例值)",
+        "description": "把当前请求升级为 SSE（Server-Sent Events）单向推送通道：立即发送 200 与 text/event-stream 响应头并保持连接，请求处理器返回后连接不断开；之后用 HTTP_SSE_推送/推送事件 随时向该客户端单向下发数据，HTTP_SSE_结束 或客户端断开时关闭。必须在发送任何普通响应之前调用；同一请求只能开始一次；开始前用 HTTP_设置响应头 追加的头（如跨域 Allow-Origin）会随响应发出，Content-Type 由运行时强制为 text/event-stream。"
+      },
+      "demoInvocation": "HTTP_SSE_开始(0)"
+    },
+    {
+      "index": 48,
+      "name": "HTTP_SSE_推送",
+      "signature": "HTTP_SSE_推送(请求, 数据)",
+      "description": "向已开始 SSE 的客户端推送一条匿名事件（客户端 message 事件或默认监听接收）；数据按 UTF-8 发送，包含换行时自动拆分为多条 data: 行；客户端已断开时返回假，可用 HTTP_SSE_是否连接 提前探测。",
+      "insertText": "HTTP_SSE_推送($1, \"$2\")",
+      "returnType": "逻辑型",
+      "category": "推送",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_SSE_推送",
+        "runtimeName": "HTTP_SSE_推送",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP请求",
+            "description": "HTTP_SSE_开始 成功返回的请求句柄；会话被 HTTP_SSE_结束 关闭或客户端断开后句柄失效。"
+          },
+          {
+            "name": "数据",
+            "type": "wideString",
+            "description": "事件数据文本，按 UTF-8 编码；可包含换行，运行时按 SSE 规范拆分为多条 data: 行。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP_SSE_推送(示例值, \"示例值\")",
+        "description": "向已开始 SSE 的客户端推送一条匿名事件（客户端 message 事件或默认监听接收）；数据按 UTF-8 发送，包含换行时自动拆分为多条 data: 行；客户端已断开时返回假，可用 HTTP_SSE_是否连接 提前探测。"
+      },
+      "demoInvocation": "HTTP_SSE_推送(0, \"演示参数2\")"
+    },
+    {
+      "index": 49,
+      "name": "HTTP_SSE_推送事件",
+      "signature": "HTTP_SSE_推送事件(请求, 事件名, 数据)",
+      "description": "向已开始 SSE 的客户端推送一条具名事件（写入 event: 字段），浏览器端用 EventSource 的 addEventListener(事件名) 定点接收；事件名中的换行会被剔除，数据规则与 HTTP_SSE_推送 相同。",
+      "insertText": "HTTP_SSE_推送事件($1, \"tick\", \"$3\")",
+      "returnType": "逻辑型",
+      "category": "推送",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_SSE_推送事件",
+        "runtimeName": "HTTP_SSE_推送事件",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP请求",
+            "description": "HTTP_SSE_开始 成功返回的请求句柄；会话被 HTTP_SSE_结束 关闭或客户端断开后句柄失效。"
+          },
+          {
+            "name": "事件名",
+            "type": "wideString",
+            "description": "SSE event 字段名，如 \"tick\"、\"notice\"；空文本等同匿名事件；换行字符会被剔除。"
+          },
+          {
+            "name": "数据",
+            "type": "wideString",
+            "description": "事件数据文本，按 UTF-8 编码；可包含换行，运行时按 SSE 规范拆分为多条 data: 行。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP_SSE_推送事件(示例值, \"tick\", \"示例值\")",
+        "description": "向已开始 SSE 的客户端推送一条具名事件（写入 event: 字段），浏览器端用 EventSource 的 addEventListener(事件名) 定点接收；事件名中的换行会被剔除，数据规则与 HTTP_SSE_推送 相同。"
+      },
+      "demoInvocation": "HTTP_SSE_推送事件(0, \"演示事件\", \"演示参数3\")"
+    },
+    {
+      "index": 50,
+      "name": "HTTP_SSE_推送心跳",
+      "signature": "HTTP_SSE_推送心跳(请求)",
+      "description": "向已开始 SSE 的客户端发送一条注释行（: ping），不产生任何客户端事件；用于保活：长时间无数据的连接可能被浏览器、代理或中间设备超时断开，建议每 15～30 秒推送一次心跳。",
+      "insertText": "HTTP_SSE_推送心跳($1)",
+      "returnType": "逻辑型",
+      "category": "推送",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_SSE_推送心跳",
+        "runtimeName": "HTTP_SSE_推送心跳",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP请求",
+            "description": "HTTP_SSE_开始 成功返回的请求句柄；会话被 HTTP_SSE_结束 关闭或客户端断开后句柄失效。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "HTTP_SSE_推送心跳()",
+        "description": "向已开始 SSE 的客户端发送一条注释行（: ping），不产生任何客户端事件；用于保活：长时间无数据的连接可能被浏览器、代理或中间设备超时断开，建议每 15～30 秒推送一次心跳。"
+      },
+      "demoInvocation": "HTTP_SSE_推送心跳(0)"
+    },
+    {
+      "index": 51,
+      "name": "HTTP_SSE_结束",
+      "signature": "HTTP_SSE_结束(请求)",
+      "description": "主动关闭该 SSE 连接并结束会话；浏览器端 EventSource 会按自身重连策略自动重连（重新触发请求处理器）。重复结束返回假。",
+      "insertText": "HTTP_SSE_结束($1)",
+      "returnType": "逻辑型",
+      "category": "推送",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_SSE_结束",
+        "runtimeName": "HTTP_SSE_结束",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP请求",
+            "description": "HTTP_SSE_开始 成功返回的请求句柄；会话被 HTTP_SSE_结束 关闭或客户端断开后句柄失效。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "HTTP_SSE_结束()",
+        "description": "主动关闭该 SSE 连接并结束会话；浏览器端 EventSource 会按自身重连策略自动重连（重新触发请求处理器）。重复结束返回假。"
+      },
+      "demoInvocation": "HTTP_SSE_结束(0)"
+    },
+    {
+      "index": 52,
+      "name": "HTTP_SSE_是否连接",
+      "signature": "HTTP_SSE_是否连接(请求)",
+      "description": "探测 SSE 会话是否仍然在线（对端未关闭连接）；检测到客户端断开时会自动结算并关闭该会话，此后该请求句柄失效。适用于推送前检查，避免向已断开的连接写入。",
+      "insertText": "HTTP_SSE_是否连接($1)",
+      "returnType": "逻辑型",
+      "category": "推送",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_SSE_是否连接",
+        "runtimeName": "HTTP_SSE_是否连接",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP请求",
+            "description": "HTTP_SSE_开始 成功返回的请求句柄；会话被 HTTP_SSE_结束 关闭或客户端断开后句柄失效。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "HTTP_SSE_是否连接()",
+        "description": "探测 SSE 会话是否仍然在线（对端未关闭连接）；检测到客户端断开时会自动结算并关闭该会话，此后该请求句柄失效。适用于推送前检查，避免向已断开的连接写入。"
+      },
+      "demoInvocation": "HTTP_SSE_是否连接(0)"
+    },
+    {
+      "index": 53,
+      "name": "HTTP_SSE_取连接数",
+      "signature": "HTTP_SSE_取连接数(服务端)",
+      "description": "返回该服务端当前存活的 SSE 推送会话数量；配合把请求句柄存入项目变量/数组，可实现「连接时登记、断开时清理」的广播模型。",
+      "insertText": "HTTP_SSE_取连接数($1)",
+      "returnType": "整数型",
+      "category": "推送",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_SSE_取连接数",
+        "runtimeName": "HTTP_SSE_取连接数",
+        "parameters": [
+          {
+            "name": "服务端",
+            "type": "HTTP服务端",
+            "description": "HTTP_创建服务 返回的服务端句柄。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "raw",
+        "example": "HTTP_SSE_取连接数()",
+        "description": "返回该服务端当前存活的 SSE 推送会话数量；配合把请求句柄存入项目变量/数组，可实现「连接时登记、断开时清理」的广播模型。"
+      },
+      "demoInvocation": "HTTP_SSE_取连接数(0)"
+    },
+    {
+      "index": 54,
+      "name": "HTTP_启用接口文档",
+      "signature": "HTTP_启用接口文档(服务端, 路径前缀, 标题)",
+      "description": "在路径前缀（如 \"/docs\"）挂一套离线接口文档：浏览器打开 前缀 即得可交互 Swagger UI 页面，前缀+/openapi.json 是 OpenAPI 3.0.3 规范，Try it out 直接调用真实接口；标题显示在文档页与规范 info.title，空文本用「接口文档」。页面与脚本资源全部内嵌随包分发、无任何 CDN 依赖；文档路由由工作线程直接回应、不占 UI 线程。红线：路径前缀必须以 / 开头且不支持 /* 通配；前缀及 前缀/openapi.json、前缀/swagger-ui-bundle.js、前缀/swagger-ui.css 与已有显式路由冲突时返回假且不覆盖用户路由；重复启用同前缀整体覆盖文档路由；资源地址按 前缀 绝对路径写入页面，页面地址不要带尾斜杠。",
+      "insertText": "HTTP_启用接口文档($1, \"/docs\", \"我的接口文档\")",
+      "returnType": "逻辑型",
+      "category": "文档",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_启用接口文档",
+        "runtimeName": "HTTP_启用接口文档",
+        "parameters": [
+          {
+            "name": "服务端",
+            "type": "HTTP服务端",
+            "description": "HTTP_创建服务 返回的服务端句柄。"
+          },
+          {
+            "name": "路径前缀",
+            "type": "wideString",
+            "description": "文档页挂载路径，必须以 / 开头的精确路径，如 \"/docs\"；不支持 /* 通配；末尾多余斜杠会被剔除。"
+          },
+          {
+            "name": "标题",
+            "type": "wideString",
+            "description": "文档页标题与 OpenAPI info.title；空文本用「接口文档」。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP_启用接口文档(示例值, \"/docs\", \"我的接口文档\")",
+        "description": "在路径前缀（如 \"/docs\"）挂一套离线接口文档：浏览器打开 前缀 即得可交互 Swagger UI 页面，前缀+/openapi.json 是 OpenAPI 3.0.3 规范，Try it out 直接调用真实接口；标题显示在文档页与规范 info.title，空文本用「接口文档」。页面与脚本资源全部内嵌随包分发、无任何 CDN 依赖；文档路由由工作线程直接回应、不占 UI 线程。红线：路径前缀必须以 / 开头且不支持 /* 通配；前缀及 前缀/openapi.json、前缀/swagger-ui-bundle.js、前缀/swagger-ui.css 与已有显式路由冲突时返回假且不覆盖用户路由；重复启用同前缀整体覆盖文档路由；资源地址按 前缀 绝对路径写入页面，页面地址不要带尾斜杠。"
+      },
+      "demoInvocation": "HTTP_启用接口文档(0, \"module-demo-temp.txt\", \"演示参数3\")"
+    },
+    {
+      "index": 55,
+      "name": "HTTP_登记接口",
+      "signature": "HTTP_登记接口(服务端, 方法, 路径, 名称, 说明)",
+      "description": "把一条真实接口登记进接口文档：方法与路径必须和 HTTP_添加路由/HTTP_添加静态路由 登记的真实路由一字不差，名称显示为接口标题（summary），说明显示为接口描述（description）。路径支持 {参数} 占位（如 /user/{id}，配合 HTTP_登记接口参数 登记路径参数）；/* 前缀通配路由请登记一个代表性具体路径并写进说明。红线：方法必须写具体值（GET、POST 等），不支持 *；必须先 HTTP_启用接口文档；重复登记同方法同路径时名称与说明覆盖、已登记的参数与示例保留。",
+      "insertText": "HTTP_登记接口($1, \"GET\", \"/api/health\", \"健康检查\", \"返回服务运行状态\")",
+      "returnType": "逻辑型",
+      "category": "文档",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_登记接口",
+        "runtimeName": "HTTP_登记接口",
+        "parameters": [
+          {
+            "name": "服务端",
+            "type": "HTTP服务端",
+            "description": "HTTP_创建服务 返回的服务端句柄。"
+          },
+          {
+            "name": "方法",
+            "type": "wideString",
+            "description": "HTTP 方法文本，大小写不敏感（自动转大写），如 GET、POST；不支持 * 通配。"
+          },
+          {
+            "name": "路径",
+            "type": "wideString",
+            "description": "接口路径，必须以 / 开头，与真实路由一字不差；支持 {参数} 占位（OpenAPI 路径参数形态）；不支持 /* 通配。"
+          },
+          {
+            "name": "名称",
+            "type": "wideString",
+            "description": "接口名称（summary），如「查询用户」；空文本时用「方法 路径」代替。"
+          },
+          {
+            "name": "说明",
+            "type": "wideString",
+            "description": "接口说明（description），可写请求/响应约定与红线；空文本不写该字段。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP_登记接口(示例值, \"GET\", \"/api/health\", \"健康检查\", \"返回服务运行状态\")",
+        "description": "把一条真实接口登记进接口文档：方法与路径必须和 HTTP_添加路由/HTTP_添加静态路由 登记的真实路由一字不差，名称显示为接口标题（summary），说明显示为接口描述（description）。路径支持 {参数} 占位（如 /user/{id}，配合 HTTP_登记接口参数 登记路径参数）；/* 前缀通配路由请登记一个代表性具体路径并写进说明。红线：方法必须写具体值（GET、POST 等），不支持 *；必须先 HTTP_启用接口文档；重复登记同方法同路径时名称与说明覆盖、已登记的参数与示例保留。"
+      },
+      "demoInvocation": "HTTP_登记接口(0, \"演示参数2\", \"module-demo-temp.txt\", \"演示参数4\", \"演示参数5\")"
+    },
+    {
+      "index": 56,
+      "name": "HTTP_登记接口参数",
+      "signature": "HTTP_登记接口参数(服务端, 方法, 路径, 参数位置, 参数名, 说明, 示例值, 必填)",
+      "description": "给已登记的接口追加一个参数说明，让 Try it out 可以预填示例值直接调试；参数位置用模块常量：#接口参数_路径（路径里 {名称} 占位）、#接口参数_查询（URL 查询参数）、#接口参数_请求头。红线：必须先用 HTTP_登记接口 登记同方法同路径的接口；路径参数强制必填（OpenAPI 规范要求）；同名同位置参数重复登记时覆盖。",
+      "insertText": "HTTP_登记接口参数($1, \"GET\", \"/user/{id}\", #接口参数_路径, \"id\", \"用户编号\", \"42\", 真)",
+      "returnType": "逻辑型",
+      "category": "文档",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_登记接口参数",
+        "runtimeName": "HTTP_登记接口参数",
+        "parameters": [
+          {
+            "name": "服务端",
+            "type": "HTTP服务端",
+            "description": "HTTP_创建服务 返回的服务端句柄。"
+          },
+          {
+            "name": "方法",
+            "type": "wideString",
+            "description": "接口方法，与 HTTP_登记接口 保持一致，大小写不敏感。"
+          },
+          {
+            "name": "路径",
+            "type": "wideString",
+            "description": "接口路径，与 HTTP_登记接口 保持一致。"
+          },
+          {
+            "name": "参数位置",
+            "type": "int",
+            "description": "参数位置常量：#接口参数_路径 / #接口参数_查询 / #接口参数_请求头。"
+          },
+          {
+            "name": "参数名",
+            "type": "wideString",
+            "description": "参数名称；路径参数必须与路径里的 {名称} 占位一致。"
+          },
+          {
+            "name": "说明",
+            "type": "wideString",
+            "description": "参数说明，显示在文档与调试面板；空文本用参数名代替。"
+          },
+          {
+            "name": "示例值",
+            "type": "wideString",
+            "description": "示例值，Try it out 预填；空文本表示无示例。"
+          },
+          {
+            "name": "必填",
+            "type": "bool",
+            "description": "是否必填；路径参数强制必填，本参数只对查询参数与请求头生效。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP_登记接口参数(示例值, \"GET\", \"/user/{id}\", #接口参数_路径, \"id\", \"用户编号\", \"42\", 真)",
+        "description": "给已登记的接口追加一个参数说明，让 Try it out 可以预填示例值直接调试；参数位置用模块常量：#接口参数_路径（路径里 {名称} 占位）、#接口参数_查询（URL 查询参数）、#接口参数_请求头。红线：必须先用 HTTP_登记接口 登记同方法同路径的接口；路径参数强制必填（OpenAPI 规范要求）；同名同位置参数重复登记时覆盖。"
+      },
+      "demoInvocation": "HTTP_登记接口参数(0, \"演示参数2\", \"module-demo-temp.txt\", 1, \"演示参数5\", \"演示参数6\", \"演示参数7\", 真)"
+    },
+    {
+      "index": 57,
+      "name": "HTTP_登记接口示例",
+      "signature": "HTTP_登记接口示例(服务端, 方法, 路径, 请求体示例, 响应示例, 响应内容类型)",
+      "description": "给已登记的接口补请求体与响应示例：请求体示例进入 OpenAPI requestBody（Try it out 预填），响应示例进入 200 响应；请求体示例必须是合法 JSON 文本（运行时不校验语法，原样嵌入规范）。红线：必须先用 HTTP_登记接口 登记同方法同路径的接口；请求体示例与响应示例不能同时为空；响应内容类型空文本按 application/json 处理。",
+      "insertText": "HTTP_登记接口示例($1, \"POST\", \"/api/user\", \"{\\\"姓名\\\":\\\"张三\\\"}\", \"{\\\"ok\\\":true}\", \"\")",
+      "returnType": "逻辑型",
+      "category": "文档",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_登记接口示例",
+        "runtimeName": "HTTP_登记接口示例",
+        "parameters": [
+          {
+            "name": "服务端",
+            "type": "HTTP服务端",
+            "description": "HTTP_创建服务 返回的服务端句柄。"
+          },
+          {
+            "name": "方法",
+            "type": "wideString",
+            "description": "接口方法，与 HTTP_登记接口 保持一致，大小写不敏感。"
+          },
+          {
+            "name": "路径",
+            "type": "wideString",
+            "description": "接口路径，与 HTTP_登记接口 保持一致。"
+          },
+          {
+            "name": "请求体示例",
+            "type": "wideString",
+            "description": "JSON 文本示例，Try it out 预填；空文本表示该接口无请求体示例。"
+          },
+          {
+            "name": "响应示例",
+            "type": "wideString",
+            "description": "响应正文示例文本；空文本表示不登记响应示例。"
+          },
+          {
+            "name": "响应内容类型",
+            "type": "wideString",
+            "description": "响应 Content-Type，如 \"application/json\"；空文本按 application/json 处理。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP_登记接口示例(示例值, \"POST\", \"/api/user\", \"{\\\"姓名\\\":\\\"张三\\\"}\", \"{\\\"ok\\\":true}\", \"\")",
+        "description": "给已登记的接口补请求体与响应示例：请求体示例进入 OpenAPI requestBody（Try it out 预填），响应示例进入 200 响应；请求体示例必须是合法 JSON 文本（运行时不校验语法，原样嵌入规范）。红线：必须先用 HTTP_登记接口 登记同方法同路径的接口；请求体示例与响应示例不能同时为空；响应内容类型空文本按 application/json 处理。"
+      },
+      "demoInvocation": "HTTP_登记接口示例(0, \"演示参数2\", \"module-demo-temp.txt\", \"演示参数4\", \"演示参数5\", \"演示参数6\")"
+    },
+    {
+      "index": 58,
+      "name": "HTTP_取接口文档JSON",
+      "signature": "HTTP_取接口文档JSON(服务端)",
+      "description": "按当前登记生成 OpenAPI 3.0.3 规范 JSON 文本并返回；servers 为 \"/\"（页面同源，与监听地址端口解耦）。可配合文件写入命令把规范存盘，交付前端团队或导入接口管理平台；未启用接口文档时返回空文本。",
+      "insertText": "HTTP_取接口文档JSON($1)",
+      "returnType": "文本型",
+      "category": "文档",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_取接口文档JSON",
+        "runtimeName": "HTTP_取接口文档JSON",
+        "parameters": [
+          {
+            "name": "服务端",
+            "type": "HTTP服务端",
+            "description": "HTTP_创建服务 返回的服务端句柄。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "raw",
+        "example": "HTTP_取接口文档JSON()",
+        "description": "按当前登记生成 OpenAPI 3.0.3 规范 JSON 文本并返回；servers 为 \"/\"（页面同源，与监听地址端口解耦）。可配合文件写入命令把规范存盘，交付前端团队或导入接口管理平台；未启用接口文档时返回空文本。"
+      },
+      "demoInvocation": "HTTP_取接口文档JSON(0)"
+    },
+    {
+      "index": 59,
       "name": "HTTP_启动服务",
       "signature": "HTTP_启动服务(端口)",
       "description": "旧版单服务兼容入口；在 127.0.0.1 启动后台服务，建议新代码使用受管服务 API。",
@@ -1484,7 +1901,7 @@
       "demoInvocation": "HTTP_启动服务(1)"
     },
     {
-      "index": 48,
+      "index": 60,
       "name": "HTTP_等待请求",
       "signature": "HTTP_等待请求()",
       "description": "旧版阻塞兼容入口；等待一个请求并返回原始请求文本，新代码应使用请求处理器。",
@@ -1505,7 +1922,7 @@
       "demoInvocation": "HTTP_等待请求()"
     },
     {
-      "index": 49,
+      "index": 61,
       "name": "HTTP_等待请求到调试输出",
       "signature": "HTTP_等待请求到调试输出()",
       "description": "旧版阻塞兼容入口；等待请求并输出原始内容。",
@@ -1526,7 +1943,7 @@
       "demoInvocation": "HTTP_等待请求到调试输出()"
     },
     {
-      "index": 50,
+      "index": 62,
       "name": "HTTP_回复文本",
       "signature": "HTTP_回复文本(内容)",
       "description": "旧版兼容入口；向最近等待或当前回调请求发送 200 文本响应。",
@@ -1553,7 +1970,7 @@
       "demoInvocation": "HTTP_回复文本(\"演示参数1\")"
     },
     {
-      "index": 51,
+      "index": 63,
       "name": "HTTP_关闭服务",
       "signature": "HTTP_关闭服务()",
       "description": "旧版兼容入口；停止并销毁旧版默认服务。",

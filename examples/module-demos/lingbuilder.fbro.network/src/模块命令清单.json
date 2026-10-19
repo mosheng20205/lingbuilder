@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.810Z",
+  "generatedAt": "2026-10-19T03:18:58.737Z",
   "module": {
     "id": "lingbuilder.fbro.network",
     "name": "FBro高级网络模块",
-    "version": "2.1.0",
-    "description": "提供显式启用的代理与认证高级 API。"
+    "version": "2.2.0",
+    "description": "提供显式启用的代理与认证高级 API，以及基于 Chromium 网络栈的纯协议 HTTP 请求响应读取（下载块事件领取、响应对象/响应头读取）。"
   },
-  "commandCount": 2,
+  "commandCount": 23,
   "commands": [
     {
       "index": 1,
@@ -28,17 +28,21 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "代理地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "代理地址，格式 \"scheme://host:port\"，如 \"http://127.0.0.1:8080\"。"
           }
         ],
         "returnType": "int",
@@ -65,31 +69,711 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "代理地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "代理地址，格式 \"scheme://host:port\"，如 \"http://127.0.0.1:8080\"。"
           },
           {
             "name": "用户名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "代理认证用户名；代理不要求认证时传空文本。"
           },
           {
             "name": "密码",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "代理认证密码；代理不要求认证时传空文本。"
           }
         ],
         "returnType": "int",
         "encoding": "wide"
       },
       "demoInvocation": "FBro网络_设置代理认证(演示FBroBrowser控件, \"https://example.com\", \"演示参数3\", \"演示参数4\")"
+    },
+    {
+      "index": 3,
+      "name": "FBro服务器_创建",
+      "aliases": [
+        "LB_FBro_ServerCreateAsync"
+      ],
+      "signature": "FBro服务器_创建(控件名, 监听地址, 端口, 最大连接数)",
+      "description": "在指定浏览器实例上创建内嵌 HTTP/WebSocket 服务器；任务结果包含 server 句柄与 address，服务器事件派发给该浏览器实例。",
+      "insertText": "FBro服务器_创建($1, \"$2\", $3, $4)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro服务器_创建",
+        "runtimeName": "FBro服务器_创建",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual",
+              "resource"
+            ],
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "监听地址",
+            "type": "wideString",
+            "description": "服务器监听地址，如 \"127.0.0.1\"；实际监听地址见任务结果 address 字段。"
+          },
+          {
+            "name": "端口",
+            "type": "int",
+            "description": "TCP 监听端口 1~65535。"
+          },
+          {
+            "name": "最大连接数",
+            "type": "int",
+            "description": "允许的最大并发连接数。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro服务器_创建(演示FBroBrowser控件, \"https://example.com\", 1, 1)"
+    },
+    {
+      "index": 4,
+      "name": "FBro服务器_发送WebSocket文本",
+      "aliases": [
+        "LB_FBro_ServerSendWebSocketMessage"
+      ],
+      "signature": "FBro服务器_发送WebSocket文本(服务器句柄, 连接ID, 文本)",
+      "description": "向指定连接发送 WebSocket 文本帧（UTF-8）；自动投递到服务器 IO 线程。",
+      "insertText": "FBro服务器_发送WebSocket文本($1, $2, \"$3\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro服务器_发送WebSocket文本",
+        "runtimeName": "FBro服务器_发送WebSocket文本",
+        "parameters": [
+          {
+            "name": "服务器句柄",
+            "type": "longLong",
+            "description": "“FBro服务器_创建”任务结果 server 字段携带的内嵌服务器句柄；关闭后失效。"
+          },
+          {
+            "name": "连接ID",
+            "type": "int",
+            "description": "服务器事件字段 connectionId 携带的连接编号。"
+          },
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要发送的文本内容（按 UTF-8 传输）。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro服务器_发送WebSocket文本(1, 1, \"演示参数3\")"
+    },
+    {
+      "index": 5,
+      "name": "FBro服务器_发送WebSocket缓冲",
+      "aliases": [
+        "LB_FBro_ServerSendWebSocketBuffer"
+      ],
+      "signature": "FBro服务器_发送WebSocket缓冲(服务器句柄, 连接ID, 缓冲句柄)",
+      "description": "向指定连接发送 WebSocket 二进制帧（受管缓冲）。",
+      "insertText": "FBro服务器_发送WebSocket缓冲($1, $2, $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro服务器_发送WebSocket缓冲",
+        "runtimeName": "FBro服务器_发送WebSocket缓冲",
+        "parameters": [
+          {
+            "name": "服务器句柄",
+            "type": "longLong",
+            "description": "“FBro服务器_创建”任务结果 server 字段携带的内嵌服务器句柄；关闭后失效。"
+          },
+          {
+            "name": "连接ID",
+            "type": "int",
+            "description": "服务器事件字段 connectionId 携带的连接编号。"
+          },
+          {
+            "name": "缓冲句柄",
+            "type": "longLong",
+            "description": "“FBro缓冲_从文本”“FBro任务_取缓冲”等返回的受管缓冲句柄；释放后再用返回负错误码。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro服务器_发送WebSocket缓冲(1, 1, 1)"
+    },
+    {
+      "index": 6,
+      "name": "FBro服务器_取地址",
+      "aliases": [
+        "LB_FBro_ServerGetAddress"
+      ],
+      "signature": "FBro服务器_取地址(服务器句柄)",
+      "description": "返回服务器监听地址。",
+      "insertText": "FBro服务器_取地址($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro服务器_取地址",
+        "runtimeName": "FBro服务器_取地址",
+        "parameters": [
+          {
+            "name": "服务器句柄",
+            "type": "longLong",
+            "description": "“FBro服务器_创建”任务结果 server 字段携带的内嵌服务器句柄；关闭后失效。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro服务器_取地址(1)"
+    },
+    {
+      "index": 7,
+      "name": "FBro服务器_是否存在连接",
+      "aliases": [
+        "LB_FBro_ServerHasConnection"
+      ],
+      "signature": "FBro服务器_是否存在连接(服务器句柄, 连接ID)",
+      "description": "判断指定连接是否仍然有效。",
+      "insertText": "FBro服务器_是否存在连接($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro服务器_是否存在连接",
+        "runtimeName": "FBro服务器_是否存在连接",
+        "parameters": [
+          {
+            "name": "服务器句柄",
+            "type": "longLong",
+            "description": "“FBro服务器_创建”任务结果 server 字段携带的内嵌服务器句柄；关闭后失效。"
+          },
+          {
+            "name": "连接ID",
+            "type": "int",
+            "description": "服务器事件字段 connectionId 携带的连接编号。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro服务器_是否存在连接(1, 1)"
+    },
+    {
+      "index": 8,
+      "name": "FBro服务器_关闭",
+      "aliases": [
+        "LB_FBro_ServerShutdown"
+      ],
+      "signature": "FBro服务器_关闭(服务器句柄)",
+      "description": "关闭内嵌服务器并释放监听。",
+      "insertText": "FBro服务器_关闭($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro服务器_关闭",
+        "runtimeName": "FBro服务器_关闭",
+        "parameters": [
+          {
+            "name": "服务器句柄",
+            "type": "longLong",
+            "description": "“FBro服务器_创建”任务结果 server 字段携带的内嵌服务器句柄；关闭后失效。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro服务器_关闭(1)"
+    },
+    {
+      "index": 9,
+      "name": "FBro页面_发送文本",
+      "aliases": [
+        "LB_FBro_SocketServerSendByBrowser"
+      ],
+      "signature": "FBro页面_发送文本(控件名, 通道名, 文本)",
+      "description": "按通道名把文本推送给页面内 WebSocket 拦截挂钩脚本（UTF-8 传输）；用于篡改/回发工作流。",
+      "insertText": "FBro页面_发送文本($1, \"$2\", \"$3\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro页面_发送文本",
+        "runtimeName": "FBro页面_发送文本",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual",
+              "resource"
+            ],
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "通道名",
+            "type": "wideString",
+            "description": "页面拦截挂钩脚本使用的通道名称，须与页面侧注册的通道一致。"
+          },
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要发送的文本内容（按 UTF-8 传输）。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro页面_发送文本(演示FBroBrowser控件, \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 10,
+      "name": "FBro页面_发送缓冲",
+      "aliases": [
+        "LB_FBro_SocketServerSendByBrowserBuffer"
+      ],
+      "signature": "FBro页面_发送缓冲(控件名, 通道名, 缓冲句柄)",
+      "description": "按通道名把受管缓冲字节推送给页面内拦截挂钩脚本。",
+      "insertText": "FBro页面_发送缓冲($1, \"$2\", $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro页面_发送缓冲",
+        "runtimeName": "FBro页面_发送缓冲",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual",
+              "resource"
+            ],
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "通道名",
+            "type": "wideString",
+            "description": "页面拦截挂钩脚本使用的通道名称，须与页面侧注册的通道一致。"
+          },
+          {
+            "name": "缓冲句柄",
+            "type": "longLong",
+            "description": "“FBro缓冲_从文本”“FBro任务_取缓冲”等返回的受管缓冲句柄；释放后再用返回负错误码。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro页面_发送缓冲(演示FBroBrowser控件, \"演示参数2\", 1)"
+    },
+    {
+      "index": 11,
+      "name": "FBro页面_客户端发送文本",
+      "aliases": [
+        "LB_FBro_SocketClientSendByBrowser"
+      ],
+      "signature": "FBro页面_客户端发送文本(控件名, 通道名, 文本)",
+      "description": "按通道名把文本经客户端拦截通道推送给页面挂钩脚本。",
+      "insertText": "FBro页面_客户端发送文本($1, \"$2\", \"$3\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro页面_客户端发送文本",
+        "runtimeName": "FBro页面_客户端发送文本",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual",
+              "resource"
+            ],
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "通道名",
+            "type": "wideString",
+            "description": "页面拦截挂钩脚本使用的通道名称，须与页面侧注册的通道一致。"
+          },
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要发送的文本内容（按 UTF-8 传输）。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro页面_客户端发送文本(演示FBroBrowser控件, \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 12,
+      "name": "FBro页面_客户端发送缓冲",
+      "aliases": [
+        "LB_FBro_SocketClientSendByBrowserBuffer"
+      ],
+      "signature": "FBro页面_客户端发送缓冲(控件名, 通道名, 缓冲句柄)",
+      "description": "按通道名把受管缓冲字节经客户端拦截通道推送给页面挂钩脚本。",
+      "insertText": "FBro页面_客户端发送缓冲($1, \"$2\", $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro页面_客户端发送缓冲",
+        "runtimeName": "FBro页面_客户端发送缓冲",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual",
+              "resource"
+            ],
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "通道名",
+            "type": "wideString",
+            "description": "页面拦截挂钩脚本使用的通道名称，须与页面侧注册的通道一致。"
+          },
+          {
+            "name": "缓冲句柄",
+            "type": "longLong",
+            "description": "“FBro缓冲_从文本”“FBro任务_取缓冲”等返回的受管缓冲句柄；释放后再用返回负错误码。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro页面_客户端发送缓冲(演示FBroBrowser控件, \"演示参数2\", 1)"
+    },
+    {
+      "index": 13,
+      "name": "FBroWS客户端_是否空",
+      "aliases": [
+        "LB_FBro_WssIsNull"
+      ],
+      "signature": "FBroWS客户端_是否空(WS客户端句柄)",
+      "description": "判断拦截事件下发的 WebSocket 客户端句柄是否为空。",
+      "insertText": "FBroWS客户端_是否空($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBroWS客户端_是否空",
+        "runtimeName": "FBroWS客户端_是否空",
+        "parameters": [
+          {
+            "name": "WS客户端句柄",
+            "type": "longLong",
+            "description": "WebSocket 拦截事件字段 websocket 携带的受管客户端句柄；为 0 表示当前没有客户端。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBroWS客户端_是否空(1)"
+    },
+    {
+      "index": 14,
+      "name": "FBroWS客户端_取地址",
+      "aliases": [
+        "LB_FBro_WssGetAddress"
+      ],
+      "signature": "FBroWS客户端_取地址(WS客户端句柄)",
+      "description": "读取被拦截 WebSocket 客户端的连接地址。",
+      "insertText": "FBroWS客户端_取地址($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBroWS客户端_取地址",
+        "runtimeName": "FBroWS客户端_取地址",
+        "parameters": [
+          {
+            "name": "WS客户端句柄",
+            "type": "longLong",
+            "description": "WebSocket 拦截事件字段 websocket 携带的受管客户端句柄；为 0 表示当前没有客户端。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBroWS客户端_取地址(1)"
+    },
+    {
+      "index": 15,
+      "name": "FBroWS客户端_取协议",
+      "aliases": [
+        "LB_FBro_WssGetProtocol"
+      ],
+      "signature": "FBroWS客户端_取协议(WS客户端句柄)",
+      "description": "读取被拦截 WebSocket 客户端的子协议。",
+      "insertText": "FBroWS客户端_取协议($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBroWS客户端_取协议",
+        "runtimeName": "FBroWS客户端_取协议",
+        "parameters": [
+          {
+            "name": "WS客户端句柄",
+            "type": "longLong",
+            "description": "WebSocket 拦截事件字段 websocket 携带的受管客户端句柄；为 0 表示当前没有客户端。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBroWS客户端_取协议(1)"
+    },
+    {
+      "index": 16,
+      "name": "FBroWS客户端_取扩展",
+      "aliases": [
+        "LB_FBro_WssGetExtensions"
+      ],
+      "signature": "FBroWS客户端_取扩展(WS客户端句柄)",
+      "description": "读取被拦截 WebSocket 客户端的扩展协商结果。",
+      "insertText": "FBroWS客户端_取扩展($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBroWS客户端_取扩展",
+        "runtimeName": "FBroWS客户端_取扩展",
+        "parameters": [
+          {
+            "name": "WS客户端句柄",
+            "type": "longLong",
+            "description": "WebSocket 拦截事件字段 websocket 携带的受管客户端句柄；为 0 表示当前没有客户端。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBroWS客户端_取扩展(1)"
+    },
+    {
+      "index": 17,
+      "name": "FBroWS客户端_发送文本",
+      "aliases": [
+        "LB_FBro_WssSend"
+      ],
+      "signature": "FBroWS客户端_发送文本(WS客户端句柄, 文本)",
+      "description": "通过被拦截的 WebSocket 客户端发送文本帧。",
+      "insertText": "FBroWS客户端_发送文本($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBroWS客户端_发送文本",
+        "runtimeName": "FBroWS客户端_发送文本",
+        "parameters": [
+          {
+            "name": "WS客户端句柄",
+            "type": "longLong",
+            "description": "WebSocket 拦截事件字段 websocket 携带的受管客户端句柄；为 0 表示当前没有客户端。"
+          },
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要发送的文本内容（按 UTF-8 传输）。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBroWS客户端_发送文本(1, \"演示参数2\")"
+    },
+    {
+      "index": 18,
+      "name": "FBroWS客户端_发送缓冲",
+      "aliases": [
+        "LB_FBro_WssSendBuffer"
+      ],
+      "signature": "FBroWS客户端_发送缓冲(WS客户端句柄, 缓冲句柄)",
+      "description": "通过被拦截的 WebSocket 客户端发送二进制帧（受管缓冲）。",
+      "insertText": "FBroWS客户端_发送缓冲($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBroWS客户端_发送缓冲",
+        "runtimeName": "FBroWS客户端_发送缓冲",
+        "parameters": [
+          {
+            "name": "WS客户端句柄",
+            "type": "longLong",
+            "description": "WebSocket 拦截事件字段 websocket 携带的受管客户端句柄；为 0 表示当前没有客户端。"
+          },
+          {
+            "name": "缓冲句柄",
+            "type": "longLong",
+            "description": "“FBro缓冲_从文本”“FBro任务_取缓冲”等返回的受管缓冲句柄；释放后再用返回负错误码。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBroWS客户端_发送缓冲(1, 1)"
+    },
+    {
+      "index": 19,
+      "name": "FBro异步请求_取响应对象",
+      "aliases": [
+        "LB_FBro_UrlRequestGetResponse"
+      ],
+      "signature": "FBro异步请求_取响应对象(URL请求句柄)",
+      "description": "取得 URL 请求的响应对象句柄；必须在请求完成（FBro异步请求_发起 的任务进入完成）之后调用，请求未完成或无响应返回 0。响应头/状态码用 FBro响应_取状态码、FBro响应_取协议头、FBro响应_取协议头映射JSON 读取，用完 FBro对象_释放。受管句柄判空只能 <> 0，禁止 > 0（按长整数打印恒为负数）。",
+      "insertText": "FBro异步请求_取响应对象($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro异步请求_取响应对象",
+        "runtimeName": "FBro异步请求_取响应对象",
+        "parameters": [
+          {
+            "name": "URL请求句柄",
+            "type": "longLong",
+            "description": "异步 URL 请求任务结果中 urlRequest 字段的受管请求句柄（或 FBro任务_取对象 直取）；用 FBro异步请求_取状态/取响应对象/取消 操作。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro异步请求_取响应对象(1)"
+    },
+    {
+      "index": 20,
+      "name": "FBro异步请求_取消",
+      "aliases": [
+        "LB_FBro_UrlRequestCancel"
+      ],
+      "signature": "FBro异步请求_取消(URL请求句柄)",
+      "description": "取消进行中的 URL 请求（Chromium 网络栈中断）；已完成请求无副作用。取消后下载数据事件停止投递。",
+      "insertText": "FBro异步请求_取消($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro异步请求_取消",
+        "runtimeName": "FBro异步请求_取消",
+        "parameters": [
+          {
+            "name": "URL请求句柄",
+            "type": "longLong",
+            "description": "异步 URL 请求任务结果中 urlRequest 字段的受管请求句柄（或 FBro任务_取对象 直取）；用 FBro异步请求_取状态/取响应对象/取消 操作。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro异步请求_取消(1)"
+    },
+    {
+      "index": 21,
+      "name": "FBro网络_取下载数据事件",
+      "aliases": [
+        "LB_FBro_UrlRequestNextDownloadData"
+      ],
+      "signature": "FBro网络_取下载数据事件(任务ID)",
+      "description": "领取（或预约）纯协议请求的下一个下载块事件；参数是 FBro异步请求_发起 返回的任务句柄。返回事件任务句柄：任务结果为 {\"kind\":\"downloadData\",\"size\":N}，用 FBro网络_取下载块 取回字节（一次性）。事件未到达时任务保持进行中（预约）；请求完成后队列已排空时领取立即得到失败任务（FBro任务_取状态=3），排空循环以「状态 <> 2」收尾即可。",
+      "insertText": "FBro网络_取下载数据事件($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro网络_取下载数据事件",
+        "runtimeName": "FBro网络_取下载数据事件",
+        "parameters": [
+          {
+            "name": "任务ID",
+            "type": "longLong",
+            "description": "“FBro异步请求_发起”返回的请求任务句柄，或“FBro网络_取下载数据事件”返回的事件任务句柄；释放后再使用返回负错误码。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro网络_取下载数据事件(1)"
+    },
+    {
+      "index": 22,
+      "name": "FBro网络_取下载块",
+      "aliases": [
+        "LB_FBro_TaskTakeUrlRequestBufferResult"
+      ],
+      "signature": "FBro网络_取下载块(任务ID)",
+      "description": "从 FBro网络_取下载数据事件 返回的事件任务取回受管字节缓冲（一次性，重复提取返回 0）；返回 0 表示任务未成功或缓冲已提取。配合 FBro缓冲_转十六进制 拼接收集、FBro缓冲_保存文件 落盘。块按原始字节交付（Chromium 不自动解压，务必先设 Accept-Encoding: identity）；多块正文先拼接十六进制再一次性解码，禁止逐块转文本（块边界会切开 UTF-8 字符）。",
+      "insertText": "FBro网络_取下载块($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro网络_取下载块",
+        "runtimeName": "FBro网络_取下载块",
+        "parameters": [
+          {
+            "name": "任务ID",
+            "type": "longLong",
+            "description": "“FBro异步请求_发起”返回的请求任务句柄，或“FBro网络_取下载数据事件”返回的事件任务句柄；释放后再使用返回负错误码。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro网络_取下载块(1)"
+    },
+    {
+      "index": 23,
+      "name": "FBro网络_实例发起请求",
+      "signature": "FBro网络_实例发起请求(实例句柄, 请求句柄)",
+      "description": "在 FBro_后台创建 返回的实例句柄上异步发起受管 URL 请求（控制台/纯代码无控件场景用；窗口项目带控件的用 FBro异步请求_发起）；返回任务句柄即完成事件，任务结果 JSON 含 urlRequest/status/error/cached，FBro任务_取对象 直取 URL 请求句柄。请求头务必先设 Accept-Encoding: identity；多步流程先声明（不带初始化）后按序赋值。实例句柄无效返回 0。",
+      "insertText": "FBro网络_实例发起请求($1, $2)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro网络_实例发起请求",
+        "runtimeName": "FBro网络_实例发起请求",
+        "parameters": [
+          {
+            "name": "实例句柄",
+            "type": "longLong",
+            "description": "“FBro_后台创建”返回的后台实例句柄（长整数）；实例关闭或进程退出后失效。"
+          },
+          {
+            "name": "请求句柄",
+            "type": "longLong",
+            "description": "“FBro请求_创建”创建的受管请求对象句柄；发起后请求对象只读。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro网络_实例发起请求(1, 1)"
     }
   ]
 }

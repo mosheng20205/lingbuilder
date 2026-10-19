@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.989Z",
+  "generatedAt": "2026-10-19T03:18:58.879Z",
   "module": {
     "id": "lingbuilder.system.info",
     "name": "系统信息模块",
     "version": "1.0.0",
     "description": "读取当前 Windows、计算机、用户、处理器和内存信息。"
   },
-  "commandCount": 7,
+  "commandCount": 8,
   "commands": [
     {
       "index": 1,
@@ -116,13 +116,30 @@
         "parameters": [
           {
             "name": "名称",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "环境变量名称，Windows 下不区分大小写；变量不存在时返回空文本。"
           }
         ],
         "returnType": "wideString",
         "encoding": "wide"
       },
       "demoInvocation": "系统_取环境变量(\"演示参数1\")"
+    },
+    {
+      "index": 8,
+      "name": "系统_是否管理员",
+      "signature": "系统_是否管理员()",
+      "description": "判断当前进程是否以管理员组身份运行（AllocateAndInitializeSid + CheckTokenMembership）。读取系统进程内存、关机等受保护操作前建议先自检，避免把“没权限”误判为“没有数据”。",
+      "insertText": "系统_是否管理员()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "系统_是否管理员",
+        "runtimeName": "系统_是否管理员",
+        "parameters": [],
+        "returnType": "bool",
+        "example": "系统_是否管理员()"
+      },
+      "demoInvocation": "系统_是否管理员()"
     }
   ]
 }

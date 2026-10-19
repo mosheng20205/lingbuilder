@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.801Z",
+  "generatedAt": "2026-10-19T03:18:58.730Z",
   "module": {
     "id": "lingbuilder.fbro.automation",
     "name": "FBro自动化模块",
     "version": "2.1.0",
     "description": "提供受管异步 JavaScript 任务与类型化 Frame 操作。"
   },
-  "commandCount": 25,
+  "commandCount": 72,
   "commands": [
     {
       "index": 1,
@@ -28,17 +28,21 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "脚本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要执行的 JavaScript 源码文本。"
           }
         ],
         "returnType": "longLong",
@@ -65,13 +69,16 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "longLong",
@@ -98,13 +105,16 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "longLong",
@@ -131,17 +141,21 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "标识",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "框架官方字符串标识，可从“FBro框架_取标识列表JSON”获得。"
           }
         ],
         "returnType": "longLong",
@@ -168,17 +182,21 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           },
           {
             "name": "名称",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "框架名称，可从“FBro框架_取名称列表JSON”获得。"
           }
         ],
         "returnType": "longLong",
@@ -205,13 +223,16 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "wideString",
@@ -238,13 +259,16 @@
             "name": "控件名",
             "type": "controlRef",
             "controlTypes": [
-              "FBroBrowser"
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
             ],
             "scope": "currentWindow",
             "controlKinds": [
-              "visual"
+              "visual",
+              "resource"
             ],
-            "runtimeRepresentation": "wideName"
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
           }
         ],
         "returnType": "wideString",
@@ -269,7 +293,8 @@
         "parameters": [
           {
             "name": "框架句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
           }
         ],
         "returnType": "int"
@@ -293,7 +318,8 @@
         "parameters": [
           {
             "name": "框架句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
           }
         ],
         "returnType": "int"
@@ -317,7 +343,8 @@
         "parameters": [
           {
             "name": "框架句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
           }
         ],
         "returnType": "int"
@@ -341,7 +368,8 @@
         "parameters": [
           {
             "name": "框架句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
           }
         ],
         "returnType": "wideString"
@@ -365,7 +393,8 @@
         "parameters": [
           {
             "name": "框架句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
           }
         ],
         "returnType": "wideString"
@@ -389,7 +418,8 @@
         "parameters": [
           {
             "name": "框架句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
           }
         ],
         "returnType": "wideString"
@@ -413,7 +443,8 @@
         "parameters": [
           {
             "name": "框架句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
           }
         ],
         "returnType": "longLong"
@@ -437,7 +468,8 @@
         "parameters": [
           {
             "name": "框架句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
           }
         ],
         "returnType": "longLong"
@@ -461,7 +493,8 @@
         "parameters": [
           {
             "name": "框架句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
           }
         ],
         "returnType": "int"
@@ -485,7 +518,8 @@
         "parameters": [
           {
             "name": "框架句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
           }
         ],
         "returnType": "int"
@@ -509,7 +543,8 @@
         "parameters": [
           {
             "name": "框架句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
           }
         ],
         "returnType": "int"
@@ -533,7 +568,8 @@
         "parameters": [
           {
             "name": "框架句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
           }
         ],
         "returnType": "int"
@@ -557,7 +593,8 @@
         "parameters": [
           {
             "name": "框架句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
           }
         ],
         "returnType": "int"
@@ -581,7 +618,8 @@
         "parameters": [
           {
             "name": "框架句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
           }
         ],
         "returnType": "int"
@@ -605,7 +643,8 @@
         "parameters": [
           {
             "name": "框架句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
           }
         ],
         "returnType": "int"
@@ -629,7 +668,8 @@
         "parameters": [
           {
             "name": "框架句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
           }
         ],
         "returnType": "int"
@@ -653,11 +693,13 @@
         "parameters": [
           {
             "name": "框架句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
           },
           {
             "name": "地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要让该框架载入的完整 URL（含协议）。"
           }
         ],
         "returnType": "int",
@@ -682,25 +724,1656 @@
         "parameters": [
           {
             "name": "框架句柄",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
           },
           {
             "name": "脚本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要执行的 JavaScript 源码文本。"
           },
           {
             "name": "脚本地址",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "模拟脚本来源 URL，仅用于错误定位信息；可传空文本。"
           },
           {
             "name": "起始行",
-            "type": "int"
+            "type": "int",
+            "description": "配合脚本地址在错误信息中定位行号的起始行号，一般传 1。"
           }
         ],
         "returnType": "int",
         "encoding": "wide"
       },
       "demoInvocation": "FBro框架_执行JS(1, \"演示参数2\", \"https://example.com\", 1)"
+    },
+    {
+      "index": 26,
+      "name": "FBro框架_载入请求",
+      "aliases": [
+        "LB_FBro_FrameLoadRequest"
+      ],
+      "signature": "FBro框架_载入请求(框架句柄, 请求句柄)",
+      "description": "让指定框架按受管请求对象载入（URL、方法、头与提交体）。",
+      "insertText": "FBro框架_载入请求($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro框架_载入请求",
+        "runtimeName": "FBro框架_载入请求",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
+          },
+          {
+            "name": "请求句柄",
+            "type": "longLong",
+            "description": "“FBro请求_创建”创建的受管请求对象句柄。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro框架_载入请求(1, 1)"
+    },
+    {
+      "index": 27,
+      "name": "FBro框架_发送进程消息",
+      "aliases": [
+        "LB_FBro_FrameSendProcessMessage"
+      ],
+      "signature": "FBro框架_发送进程消息(框架句柄, 目标进程, 消息句柄)",
+      "description": "向目标进程发送进程消息；目标进程 0=浏览器进程、1=渲染进程。",
+      "insertText": "FBro框架_发送进程消息($1, $2, $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro框架_发送进程消息",
+        "runtimeName": "FBro框架_发送进程消息",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
+          },
+          {
+            "name": "目标进程",
+            "type": "int",
+            "description": "消息目标进程：0 浏览器进程、1 渲染进程。"
+          },
+          {
+            "name": "消息句柄",
+            "type": "longLong",
+            "description": "“FBro消息_创建”创建的受管进程消息句柄。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro框架_发送进程消息(1, 1, 1)"
+    },
+    {
+      "index": 28,
+      "name": "FBro框架_创建URL请求",
+      "aliases": [
+        "LB_FBro_FrameCreateUrlRequestAsync"
+      ],
+      "signature": "FBro框架_创建URL请求(框架句柄, 请求句柄)",
+      "description": "在框架所属上下文中异步发起 URL 请求；任务结果包含 urlRequest 句柄与 status/error/cached 字段。",
+      "insertText": "FBro框架_创建URL请求($1, $2)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro框架_创建URL请求",
+        "runtimeName": "FBro框架_创建URL请求",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
+          },
+          {
+            "name": "请求句柄",
+            "type": "longLong",
+            "description": "“FBro请求_创建”创建的受管请求对象句柄。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro框架_创建URL请求(1, 1)"
+    },
+    {
+      "index": 29,
+      "name": "FBro异步请求_发起",
+      "aliases": [
+        "LB_FBro_UrlRequestStartAsync"
+      ],
+      "signature": "FBro异步请求_发起(控件名, 请求句柄)",
+      "description": "使用指定浏览器会话上下文异步发起受管 URL 请求（Chromium 网络栈直发，TLS/H2 指纹与内核浏览器一致，适合纯协议直连接口）；任务结果包含 urlRequest 句柄、status、error 与 cached。本任务同时是请求的完成事件：FBro任务_等待 后可直接取响应对象；下载数据要在任务进行中用 FBro网络_取下载数据事件 领取。请求头务必先设 Accept-Encoding: identity（Chromium 不自动解压正文）。多步流程必须先声明不带初始化的局部变量再按序赋值（带初始化声明会被提升到子程序最前，设置类调用会被排到发起之后而失败，请求发起后对象只读）。",
+      "insertText": "FBro异步请求_发起($1, $2)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro异步请求_发起",
+        "runtimeName": "FBro异步请求_发起",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser",
+              "FBroHeadlessBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual",
+              "resource"
+            ],
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件或设计器资源名称（不能加引号），只在当前窗口内解析、且类型必须是 FBroBrowser、FBroHeadlessBrowser；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "请求句柄",
+            "type": "longLong",
+            "description": "“FBro请求_创建”创建的受管请求对象句柄。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro异步请求_发起(演示FBroBrowser控件, 1)"
+    },
+    {
+      "index": 30,
+      "name": "FBro异步请求_取状态",
+      "aliases": [
+        "LB_FBro_UrlRequestGetStatus"
+      ],
+      "signature": "FBro异步请求_取状态(URL请求句柄)",
+      "description": "读取 URL 请求官方状态（1=未知 2=进行中 3=成功 4=失败）。",
+      "insertText": "FBro异步请求_取状态($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro异步请求_取状态",
+        "runtimeName": "FBro异步请求_取状态",
+        "parameters": [
+          {
+            "name": "URL请求句柄",
+            "type": "longLong",
+            "description": "异步 URL 请求任务结果中 urlRequest 字段的受管请求句柄；用 FBro异步请求_取状态 等命令查询。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro异步请求_取状态(1)"
+    },
+    {
+      "index": 31,
+      "name": "FBro异步请求_取原请求",
+      "aliases": [
+        "LB_FBro_UrlRequestGetRequestObject"
+      ],
+      "signature": "FBro异步请求_取原请求(URL请求句柄)",
+      "description": "取得 URL 请求对应的受管请求对象句柄。",
+      "insertText": "FBro异步请求_取原请求($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro异步请求_取原请求",
+        "runtimeName": "FBro异步请求_取原请求",
+        "parameters": [
+          {
+            "name": "URL请求句柄",
+            "type": "longLong",
+            "description": "异步 URL 请求任务结果中 urlRequest 字段的受管请求句柄；用 FBro异步请求_取状态 等命令查询。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro异步请求_取原请求(1)"
+    },
+    {
+      "index": 32,
+      "name": "FBro填表_点击元素",
+      "aliases": [
+        "LB_FBro_FrameTianBiaoClick"
+      ],
+      "signature": "FBro填表_点击元素(框架句柄, 选择器, 序号)",
+      "description": "按 CSS 选择器点击第 index 个匹配元素（从 0 起）。",
+      "insertText": "FBro填表_点击元素($1, \"$2\", $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro填表_点击元素",
+        "runtimeName": "FBro填表_点击元素",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
+          },
+          {
+            "name": "选择器",
+            "type": "wideString",
+            "description": "CSS 选择器文本，如 \"#submit\" 或 \"input[name=q]\"；匹配多个元素时用序号选择。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "同选择器匹配结果中的元素下标，从 0 起；超出匹配数量时失败。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro填表_点击元素(1, \"演示参数2\", 1)"
+    },
+    {
+      "index": 33,
+      "name": "FBro填表_滚动到元素",
+      "aliases": [
+        "LB_FBro_FrameTianBiaoScrollIntoView"
+      ],
+      "signature": "FBro填表_滚动到元素(框架句柄, 选择器, 序号, 滚到顶部)",
+      "description": "把匹配元素滚动到可视区域；滚到顶部为真时贴顶，否则尽量贴底。",
+      "insertText": "FBro填表_滚动到元素($1, \"$2\", $3, 假)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro填表_滚动到元素",
+        "runtimeName": "FBro填表_滚动到元素",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
+          },
+          {
+            "name": "选择器",
+            "type": "wideString",
+            "description": "CSS 选择器文本，如 \"#submit\" 或 \"input[name=q]\"；匹配多个元素时用序号选择。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "同选择器匹配结果中的元素下标，从 0 起；超出匹配数量时失败。"
+          },
+          {
+            "name": "滚到顶部",
+            "type": "bool",
+            "description": "真=滚动到元素顶部对齐，假=尽量贴底对齐。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro填表_滚动到元素(1, \"演示参数2\", 1, 真)"
+    },
+    {
+      "index": 34,
+      "name": "FBro填表_聚焦元素",
+      "aliases": [
+        "LB_FBro_FrameTianBiaoSetFocus"
+      ],
+      "signature": "FBro填表_聚焦元素(框架句柄, 选择器, 序号, 是否聚焦)",
+      "description": "设置匹配元素的输入焦点。",
+      "insertText": "FBro填表_聚焦元素($1, \"$2\", $3, 假)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro填表_聚焦元素",
+        "runtimeName": "FBro填表_聚焦元素",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
+          },
+          {
+            "name": "选择器",
+            "type": "wideString",
+            "description": "CSS 选择器文本，如 \"#submit\" 或 \"input[name=q]\"；匹配多个元素时用序号选择。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "同选择器匹配结果中的元素下标，从 0 起；超出匹配数量时失败。"
+          },
+          {
+            "name": "是否聚焦",
+            "type": "bool",
+            "description": "真=聚焦该元素，假=移除焦点。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro填表_聚焦元素(1, \"演示参数2\", 1, 真)"
+    },
+    {
+      "index": 35,
+      "name": "FBro填表_赋值",
+      "aliases": [
+        "LB_FBro_FrameTianBiaoSetValue"
+      ],
+      "signature": "FBro填表_赋值(框架句柄, 选择器, 序号, 值)",
+      "description": "设置匹配元素的值（等效表单赋值）。",
+      "insertText": "FBro填表_赋值($1, \"$2\", $3, \"$4\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro填表_赋值",
+        "runtimeName": "FBro填表_赋值",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
+          },
+          {
+            "name": "选择器",
+            "type": "wideString",
+            "description": "CSS 选择器文本，如 \"#submit\" 或 \"input[name=q]\"；匹配多个元素时用序号选择。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "同选择器匹配结果中的元素下标，从 0 起；超出匹配数量时失败。"
+          },
+          {
+            "name": "值",
+            "type": "wideString",
+            "description": "要写入的表单值文本。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro填表_赋值(1, \"演示参数2\", 1, \"演示参数4\")"
+    },
+    {
+      "index": 36,
+      "name": "FBro填表_取值",
+      "aliases": [
+        "LB_FBro_FrameTianBiaoGetValueAsync"
+      ],
+      "signature": "FBro填表_取值(框架句柄, 选择器, 序号)",
+      "description": "读取匹配元素的值；内部等待任务完成后返回 JSON 结果。",
+      "insertText": "FBro填表_取值($1, \"$2\", $3)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro填表_取值",
+        "runtimeName": "FBro填表_取值",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
+          },
+          {
+            "name": "选择器",
+            "type": "wideString",
+            "description": "CSS 选择器文本，如 \"#submit\" 或 \"input[name=q]\"；匹配多个元素时用序号选择。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "同选择器匹配结果中的元素下标，从 0 起；超出匹配数量时失败。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro填表_取值(1, \"演示参数2\", 1)"
+    },
+    {
+      "index": 37,
+      "name": "FBro填表_取坐标",
+      "aliases": [
+        "LB_FBro_FrameTianBiaoGetPointAsync"
+      ],
+      "signature": "FBro填表_取坐标(框架句柄, 选择器, 序号)",
+      "description": "读取匹配元素页面坐标；内部等待任务完成后返回 JSON 结果。",
+      "insertText": "FBro填表_取坐标($1, \"$2\", $3)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro填表_取坐标",
+        "runtimeName": "FBro填表_取坐标",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
+          },
+          {
+            "name": "选择器",
+            "type": "wideString",
+            "description": "CSS 选择器文本，如 \"#submit\" 或 \"input[name=q]\"；匹配多个元素时用序号选择。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "同选择器匹配结果中的元素下标，从 0 起；超出匹配数量时失败。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro填表_取坐标(1, \"演示参数2\", 1)"
+    },
+    {
+      "index": 38,
+      "name": "FBro填表_置选择框",
+      "aliases": [
+        "LB_FBro_FrameTianBiaoSetChecked"
+      ],
+      "signature": "FBro填表_置选择框(框架句柄, 选择器, 序号, 是否选中)",
+      "description": "设置匹配复选框/单选框的勾选状态（同步，发后即忘）。",
+      "insertText": "FBro填表_置选择框($1, \"$2\", $3, 假)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro填表_置选择框",
+        "runtimeName": "FBro填表_置选择框",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
+          },
+          {
+            "name": "选择器",
+            "type": "wideString",
+            "description": "CSS 选择器文本，如 \"#submit\" 或 \"input[name=q]\"；匹配多个元素时用序号选择。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "同选择器匹配结果中的元素下标，从 0 起；超出匹配数量时失败。"
+          },
+          {
+            "name": "是否选中",
+            "type": "bool",
+            "description": "真=勾选，假=取消勾选。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro填表_置选择框(1, \"演示参数2\", 1, 真)"
+    },
+    {
+      "index": 39,
+      "name": "FBro填表_取选择框",
+      "aliases": [
+        "LB_FBro_FrameTianBiaoGetCheckedAsync"
+      ],
+      "signature": "FBro填表_取选择框(框架句柄, 选择器, 序号)",
+      "description": "读取匹配元素勾选状态；内部等待任务完成后返回 JSON 结果。",
+      "insertText": "FBro填表_取选择框($1, \"$2\", $3)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro填表_取选择框",
+        "runtimeName": "FBro填表_取选择框",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
+          },
+          {
+            "name": "选择器",
+            "type": "wideString",
+            "description": "CSS 选择器文本，如 \"#submit\" 或 \"input[name=q]\"；匹配多个元素时用序号选择。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "同选择器匹配结果中的元素下标，从 0 起；超出匹配数量时失败。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro填表_取选择框(1, \"演示参数2\", 1)"
+    },
+    {
+      "index": 40,
+      "name": "FBro填表_置选择项",
+      "aliases": [
+        "LB_FBro_FrameTianBiaoSetSelected"
+      ],
+      "signature": "FBro填表_置选择项(框架句柄, 选择器, 序号, 选项序号)",
+      "description": "把匹配下拉框选中第选项序号个 option（从 0 起）。",
+      "insertText": "FBro填表_置选择项($1, \"$2\", $3, $4)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro填表_置选择项",
+        "runtimeName": "FBro填表_置选择项",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
+          },
+          {
+            "name": "选择器",
+            "type": "wideString",
+            "description": "CSS 选择器文本，如 \"#submit\" 或 \"input[name=q]\"；匹配多个元素时用序号选择。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "同选择器匹配结果中的元素下标，从 0 起；超出匹配数量时失败。"
+          },
+          {
+            "name": "选项序号",
+            "type": "int",
+            "description": "下拉框 option 下标，从 0 起。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro填表_置选择项(1, \"演示参数2\", 1, 1)"
+    },
+    {
+      "index": 41,
+      "name": "FBro填表_取选择项",
+      "aliases": [
+        "LB_FBro_FrameTianBiaoGetSelectedAsync"
+      ],
+      "signature": "FBro填表_取选择项(框架句柄, 选择器, 序号)",
+      "description": "读取匹配下拉框当前选中项序号；内部等待任务完成后返回 JSON 结果。",
+      "insertText": "FBro填表_取选择项($1, \"$2\", $3)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro填表_取选择项",
+        "runtimeName": "FBro填表_取选择项",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
+          },
+          {
+            "name": "选择器",
+            "type": "wideString",
+            "description": "CSS 选择器文本，如 \"#submit\" 或 \"input[name=q]\"；匹配多个元素时用序号选择。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "同选择器匹配结果中的元素下标，从 0 起；超出匹配数量时失败。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro填表_取选择项(1, \"演示参数2\", 1)"
+    },
+    {
+      "index": 42,
+      "name": "FBro填表_置内文本",
+      "aliases": [
+        "LB_FBro_FrameTianBiaoSetInnerText"
+      ],
+      "signature": "FBro填表_置内文本(框架句柄, 选择器, 序号, 文本)",
+      "description": "设置匹配元素 innerText。",
+      "insertText": "FBro填表_置内文本($1, \"$2\", $3, \"$4\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro填表_置内文本",
+        "runtimeName": "FBro填表_置内文本",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
+          },
+          {
+            "name": "选择器",
+            "type": "wideString",
+            "description": "CSS 选择器文本，如 \"#submit\" 或 \"input[name=q]\"；匹配多个元素时用序号选择。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "同选择器匹配结果中的元素下标，从 0 起；超出匹配数量时失败。"
+          },
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要写入的纯文本内容。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro填表_置内文本(1, \"演示参数2\", 1, \"演示参数4\")"
+    },
+    {
+      "index": 43,
+      "name": "FBro填表_取内文本",
+      "aliases": [
+        "LB_FBro_FrameTianBiaoGetInnerTextAsync"
+      ],
+      "signature": "FBro填表_取内文本(框架句柄, 选择器, 序号)",
+      "description": "读取匹配元素 innerText；内部等待任务完成后返回 JSON 结果。",
+      "insertText": "FBro填表_取内文本($1, \"$2\", $3)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro填表_取内文本",
+        "runtimeName": "FBro填表_取内文本",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
+          },
+          {
+            "name": "选择器",
+            "type": "wideString",
+            "description": "CSS 选择器文本，如 \"#submit\" 或 \"input[name=q]\"；匹配多个元素时用序号选择。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "同选择器匹配结果中的元素下标，从 0 起；超出匹配数量时失败。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro填表_取内文本(1, \"演示参数2\", 1)"
+    },
+    {
+      "index": 44,
+      "name": "FBro填表_置外文本",
+      "aliases": [
+        "LB_FBro_FrameTianBiaoSetOuterText"
+      ],
+      "signature": "FBro填表_置外文本(框架句柄, 选择器, 序号, 文本)",
+      "description": "设置匹配元素 outerText。",
+      "insertText": "FBro填表_置外文本($1, \"$2\", $3, \"$4\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro填表_置外文本",
+        "runtimeName": "FBro填表_置外文本",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
+          },
+          {
+            "name": "选择器",
+            "type": "wideString",
+            "description": "CSS 选择器文本，如 \"#submit\" 或 \"input[name=q]\"；匹配多个元素时用序号选择。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "同选择器匹配结果中的元素下标，从 0 起；超出匹配数量时失败。"
+          },
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要写入的纯文本内容。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro填表_置外文本(1, \"演示参数2\", 1, \"演示参数4\")"
+    },
+    {
+      "index": 45,
+      "name": "FBro填表_取外文本",
+      "aliases": [
+        "LB_FBro_FrameTianBiaoGetOuterTextAsync"
+      ],
+      "signature": "FBro填表_取外文本(框架句柄, 选择器, 序号)",
+      "description": "读取匹配元素 outerText；内部等待任务完成后返回 JSON 结果。",
+      "insertText": "FBro填表_取外文本($1, \"$2\", $3)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro填表_取外文本",
+        "runtimeName": "FBro填表_取外文本",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
+          },
+          {
+            "name": "选择器",
+            "type": "wideString",
+            "description": "CSS 选择器文本，如 \"#submit\" 或 \"input[name=q]\"；匹配多个元素时用序号选择。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "同选择器匹配结果中的元素下标，从 0 起；超出匹配数量时失败。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro填表_取外文本(1, \"演示参数2\", 1)"
+    },
+    {
+      "index": 46,
+      "name": "FBro填表_置内代码",
+      "aliases": [
+        "LB_FBro_FrameTianBiaoSetInnerHTML"
+      ],
+      "signature": "FBro填表_置内代码(框架句柄, 选择器, 序号, 代码文本)",
+      "description": "设置匹配元素 innerHTML（富文本/标签结构）。",
+      "insertText": "FBro填表_置内代码($1, \"$2\", $3, \"$4\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro填表_置内代码",
+        "runtimeName": "FBro填表_置内代码",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
+          },
+          {
+            "name": "选择器",
+            "type": "wideString",
+            "description": "CSS 选择器文本，如 \"#submit\" 或 \"input[name=q]\"；匹配多个元素时用序号选择。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "同选择器匹配结果中的元素下标，从 0 起；超出匹配数量时失败。"
+          },
+          {
+            "name": "代码文本",
+            "type": "wideString",
+            "description": "要写入的 HTML 片段文本。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro填表_置内代码(1, \"演示参数2\", 1, \"演示参数4\")"
+    },
+    {
+      "index": 47,
+      "name": "FBro填表_取内代码",
+      "aliases": [
+        "LB_FBro_FrameTianBiaoGetInnerHTMLAsync"
+      ],
+      "signature": "FBro填表_取内代码(框架句柄, 选择器, 序号)",
+      "description": "读取匹配元素 innerHTML；内部等待任务完成后返回 JSON 结果。",
+      "insertText": "FBro填表_取内代码($1, \"$2\", $3)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro填表_取内代码",
+        "runtimeName": "FBro填表_取内代码",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
+          },
+          {
+            "name": "选择器",
+            "type": "wideString",
+            "description": "CSS 选择器文本，如 \"#submit\" 或 \"input[name=q]\"；匹配多个元素时用序号选择。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "同选择器匹配结果中的元素下标，从 0 起；超出匹配数量时失败。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro填表_取内代码(1, \"演示参数2\", 1)"
+    },
+    {
+      "index": 48,
+      "name": "FBro填表_置外代码",
+      "aliases": [
+        "LB_FBro_FrameTianBiaoSetOuterHTML"
+      ],
+      "signature": "FBro填表_置外代码(框架句柄, 选择器, 序号, 代码文本)",
+      "description": "设置匹配元素 outerHTML（含元素自身标签）。",
+      "insertText": "FBro填表_置外代码($1, \"$2\", $3, \"$4\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro填表_置外代码",
+        "runtimeName": "FBro填表_置外代码",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
+          },
+          {
+            "name": "选择器",
+            "type": "wideString",
+            "description": "CSS 选择器文本，如 \"#submit\" 或 \"input[name=q]\"；匹配多个元素时用序号选择。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "同选择器匹配结果中的元素下标，从 0 起；超出匹配数量时失败。"
+          },
+          {
+            "name": "代码文本",
+            "type": "wideString",
+            "description": "要写入的 HTML 片段文本。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro填表_置外代码(1, \"演示参数2\", 1, \"演示参数4\")"
+    },
+    {
+      "index": 49,
+      "name": "FBro填表_取外代码",
+      "aliases": [
+        "LB_FBro_FrameTianBiaoGetOuterHTMLAsync"
+      ],
+      "signature": "FBro填表_取外代码(框架句柄, 选择器, 序号)",
+      "description": "读取匹配元素 outerHTML；内部等待任务完成后返回 JSON 结果。",
+      "insertText": "FBro填表_取外代码($1, \"$2\", $3)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro填表_取外代码",
+        "runtimeName": "FBro填表_取外代码",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
+          },
+          {
+            "name": "选择器",
+            "type": "wideString",
+            "description": "CSS 选择器文本，如 \"#submit\" 或 \"input[name=q]\"；匹配多个元素时用序号选择。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "同选择器匹配结果中的元素下标，从 0 起；超出匹配数量时失败。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro填表_取外代码(1, \"演示参数2\", 1)"
+    },
+    {
+      "index": 50,
+      "name": "FBro填表_置属性",
+      "aliases": [
+        "LB_FBro_FrameTianBiaoSetAttribute"
+      ],
+      "signature": "FBro填表_置属性(框架句柄, 选择器, 序号, 属性名, 值)",
+      "description": "设置匹配元素的指定属性。",
+      "insertText": "FBro填表_置属性($1, \"$2\", $3, \"$4\", \"$5\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro填表_置属性",
+        "runtimeName": "FBro填表_置属性",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
+          },
+          {
+            "name": "选择器",
+            "type": "wideString",
+            "description": "CSS 选择器文本，如 \"#submit\" 或 \"input[name=q]\"；匹配多个元素时用序号选择。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "同选择器匹配结果中的元素下标，从 0 起；超出匹配数量时失败。"
+          },
+          {
+            "name": "属性名",
+            "type": "wideString",
+            "description": "要读取或设置的 HTML 属性名，如 \"href\"。"
+          },
+          {
+            "name": "值",
+            "type": "wideString",
+            "description": "要写入的表单值文本。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro填表_置属性(1, \"演示参数2\", 1, \"演示参数4\", \"演示参数5\")"
+    },
+    {
+      "index": 51,
+      "name": "FBro填表_取属性",
+      "aliases": [
+        "LB_FBro_FrameTianBiaoGetAttributeAsync"
+      ],
+      "signature": "FBro填表_取属性(框架句柄, 选择器, 序号, 属性名)",
+      "description": "读取匹配元素的指定属性；内部等待任务完成后返回 JSON 结果。",
+      "insertText": "FBro填表_取属性($1, \"$2\", $3, \"$4\")",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro填表_取属性",
+        "runtimeName": "FBro填表_取属性",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
+          },
+          {
+            "name": "选择器",
+            "type": "wideString",
+            "description": "CSS 选择器文本，如 \"#submit\" 或 \"input[name=q]\"；匹配多个元素时用序号选择。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "同选择器匹配结果中的元素下标，从 0 起；超出匹配数量时失败。"
+          },
+          {
+            "name": "属性名",
+            "type": "wideString",
+            "description": "要读取或设置的 HTML 属性名，如 \"href\"。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro填表_取属性(1, \"演示参数2\", 1, \"演示参数4\")"
+    },
+    {
+      "index": 52,
+      "name": "FBro填表_元素是否存在",
+      "aliases": [
+        "LB_FBro_FrameTianBiaoHasAttributeAsync"
+      ],
+      "signature": "FBro填表_元素是否存在(框架句柄, 选择器, 序号)",
+      "description": "判断匹配元素是否存在；内部等待任务完成后返回 JSON 结果。",
+      "insertText": "FBro填表_元素是否存在($1, \"$2\", $3)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro填表_元素是否存在",
+        "runtimeName": "FBro填表_元素是否存在",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
+          },
+          {
+            "name": "选择器",
+            "type": "wideString",
+            "description": "CSS 选择器文本，如 \"#submit\" 或 \"input[name=q]\"；匹配多个元素时用序号选择。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "同选择器匹配结果中的元素下标，从 0 起；超出匹配数量时失败。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro填表_元素是否存在(1, \"演示参数2\", 1)"
+    },
+    {
+      "index": 53,
+      "name": "FBro填表_触发事件",
+      "aliases": [
+        "LB_FBro_FrameTianBiaoDispatchEvent"
+      ],
+      "signature": "FBro填表_触发事件(框架句柄, 选择器, 序号, 事件名, 按键代码)",
+      "description": "在匹配元素上合成 DOM 事件；事件名如 onclick、ondblclick、keydown、change、input，按键代码回车传 13。",
+      "insertText": "FBro填表_触发事件($1, \"$2\", $3, \"$4\", $5)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro填表_触发事件",
+        "runtimeName": "FBro填表_触发事件",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
+          },
+          {
+            "name": "选择器",
+            "type": "wideString",
+            "description": "CSS 选择器文本，如 \"#submit\" 或 \"input[name=q]\"；匹配多个元素时用序号选择。"
+          },
+          {
+            "name": "序号",
+            "type": "int",
+            "description": "同选择器匹配结果中的元素下标，从 0 起；超出匹配数量时失败。"
+          },
+          {
+            "name": "事件名",
+            "type": "wideString",
+            "description": "要合成的 DOM 事件名，如 onclick、ondblclick、keydown、change、input。"
+          },
+          {
+            "name": "按键代码",
+            "type": "int",
+            "description": "键盘类事件的虚拟键码，回车传 13。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro填表_触发事件(1, \"演示参数2\", 1, \"演示事件\", 1)"
+    },
+    {
+      "index": 54,
+      "name": "FBro框架_取源码",
+      "aliases": [
+        "LB_FBro_FrameGetSourceAsync"
+      ],
+      "signature": "FBro框架_取源码(框架句柄)",
+      "description": "异步取框架完整 HTML 源码；用 FBro任务_等待 + FBro任务_取缓冲 取 UTF-8 字节缓冲，再 FBro缓冲_保存文件 或 FBro缓冲_转文本。",
+      "insertText": "FBro框架_取源码($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro框架_取源码",
+        "runtimeName": "FBro框架_取源码",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro框架_取源码(1)"
+    },
+    {
+      "index": 55,
+      "name": "FBro框架_取文本",
+      "aliases": [
+        "LB_FBro_FrameGetTextAsync"
+      ],
+      "signature": "FBro框架_取文本(框架句柄)",
+      "description": "异步取框架可见文本；用 FBro任务_等待 + FBro任务_取缓冲 取 UTF-8 字节缓冲，再 FBro缓冲_转文本。",
+      "insertText": "FBro框架_取文本($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro框架_取文本",
+        "runtimeName": "FBro框架_取文本",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro框架_取文本(1)"
+    },
+    {
+      "index": 56,
+      "name": "FBro框架_遍历DOM",
+      "aliases": [
+        "LB_FBro_FrameVisitDomAsync"
+      ],
+      "signature": "FBro框架_遍历DOM(框架句柄, 最大深度, 最大节点数)",
+      "description": "按官方 VisitDOM 遍历框架 DOM 并序列化为受管快照；内部等待任务完成，返回快照句柄（0=失败），节点用 FBro遍历_* 按序号访问；深度/节点数传 0 使用默认值（16/4000）。",
+      "insertText": "FBro框架_遍历DOM($1, $2, $3)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro框架_遍历DOM",
+        "runtimeName": "FBro框架_遍历DOM",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
+          },
+          {
+            "name": "最大深度",
+            "type": "int",
+            "description": "DOM 遍历最大嵌套深度；0 使用默认值 16。"
+          },
+          {
+            "name": "最大节点数",
+            "type": "int",
+            "description": "DOM 快照最多捕获的节点总数；0 使用默认值 4000。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro框架_遍历DOM(1, 1, 1)"
+    },
+    {
+      "index": 57,
+      "name": "FBro遍历_取标题",
+      "aliases": [
+        "LB_FBro_DomGetTitle"
+      ],
+      "signature": "FBro遍历_取标题(快照句柄)",
+      "description": "读取 DOM 快照对应的页面标题。",
+      "insertText": "FBro遍历_取标题($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro遍历_取标题",
+        "runtimeName": "FBro遍历_取标题",
+        "parameters": [
+          {
+            "name": "快照句柄",
+            "type": "longLong",
+            "description": "“FBro框架_遍历DOM”返回的 DOM 快照受管句柄，0 表示遍历失败；内容是遍历时刻的静态数据。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro遍历_取标题(1)"
+    },
+    {
+      "index": 58,
+      "name": "FBro遍历_取基础地址",
+      "aliases": [
+        "LB_FBro_DomGetBaseUrl"
+      ],
+      "signature": "FBro遍历_取基础地址(快照句柄)",
+      "description": "读取 DOM 快照对应文档的基础地址。",
+      "insertText": "FBro遍历_取基础地址($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro遍历_取基础地址",
+        "runtimeName": "FBro遍历_取基础地址",
+        "parameters": [
+          {
+            "name": "快照句柄",
+            "type": "longLong",
+            "description": "“FBro框架_遍历DOM”返回的 DOM 快照受管句柄，0 表示遍历失败；内容是遍历时刻的静态数据。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro遍历_取基础地址(1)"
+    },
+    {
+      "index": 59,
+      "name": "FBro遍历_取节点数",
+      "aliases": [
+        "LB_FBro_DomGetNodeCount"
+      ],
+      "signature": "FBro遍历_取节点数(快照句柄)",
+      "description": "返回 DOM 快照捕获的节点总数。",
+      "insertText": "FBro遍历_取节点数($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro遍历_取节点数",
+        "runtimeName": "FBro遍历_取节点数",
+        "parameters": [
+          {
+            "name": "快照句柄",
+            "type": "longLong",
+            "description": "“FBro框架_遍历DOM”返回的 DOM 快照受管句柄，0 表示遍历失败；内容是遍历时刻的静态数据。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro遍历_取节点数(1)"
+    },
+    {
+      "index": 60,
+      "name": "FBro遍历_取节点类型",
+      "aliases": [
+        "LB_FBro_DomGetNodeType"
+      ],
+      "signature": "FBro遍历_取节点类型(快照句柄, 节点序号)",
+      "description": "读取节点官方类型（0 未定义、1 元素、2 文本、3 注释等）。",
+      "insertText": "FBro遍历_取节点类型($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro遍历_取节点类型",
+        "runtimeName": "FBro遍历_取节点类型",
+        "parameters": [
+          {
+            "name": "快照句柄",
+            "type": "longLong",
+            "description": "“FBro框架_遍历DOM”返回的 DOM 快照受管句柄，0 表示遍历失败；内容是遍历时刻的静态数据。"
+          },
+          {
+            "name": "节点序号",
+            "type": "int",
+            "description": "快照节点下标，从 0 起、小于“FBro遍历_取节点数”；越界返回负错误码。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro遍历_取节点类型(1, 1)"
+    },
+    {
+      "index": 61,
+      "name": "FBro遍历_取节点路径",
+      "aliases": [
+        "LB_FBro_DomGetNodePath"
+      ],
+      "signature": "FBro遍历_取节点路径(快照句柄, 节点序号)",
+      "description": "读取节点路径 JSON（如 [0,2,1]，从 Body 起逐层子序号）；可传给按路径写回命令。",
+      "insertText": "FBro遍历_取节点路径($1, $2)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro遍历_取节点路径",
+        "runtimeName": "FBro遍历_取节点路径",
+        "parameters": [
+          {
+            "name": "快照句柄",
+            "type": "longLong",
+            "description": "“FBro框架_遍历DOM”返回的 DOM 快照受管句柄，0 表示遍历失败；内容是遍历时刻的静态数据。"
+          },
+          {
+            "name": "节点序号",
+            "type": "int",
+            "description": "快照节点下标，从 0 起、小于“FBro遍历_取节点数”；越界返回负错误码。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro遍历_取节点路径(1, 1)"
+    },
+    {
+      "index": 62,
+      "name": "FBro遍历_取节点名称",
+      "aliases": [
+        "LB_FBro_DomGetNodeName"
+      ],
+      "signature": "FBro遍历_取节点名称(快照句柄, 节点序号)",
+      "description": "读取节点名称（元素标签名小写或特殊节点名）。",
+      "insertText": "FBro遍历_取节点名称($1, $2)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro遍历_取节点名称",
+        "runtimeName": "FBro遍历_取节点名称",
+        "parameters": [
+          {
+            "name": "快照句柄",
+            "type": "longLong",
+            "description": "“FBro框架_遍历DOM”返回的 DOM 快照受管句柄，0 表示遍历失败；内容是遍历时刻的静态数据。"
+          },
+          {
+            "name": "节点序号",
+            "type": "int",
+            "description": "快照节点下标，从 0 起、小于“FBro遍历_取节点数”；越界返回负错误码。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro遍历_取节点名称(1, 1)"
+    },
+    {
+      "index": 63,
+      "name": "FBro遍历_取节点值",
+      "aliases": [
+        "LB_FBro_DomGetNodeValue"
+      ],
+      "signature": "FBro遍历_取节点值(快照句柄, 节点序号)",
+      "description": "读取节点值（文本/注释节点内容）。",
+      "insertText": "FBro遍历_取节点值($1, $2)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro遍历_取节点值",
+        "runtimeName": "FBro遍历_取节点值",
+        "parameters": [
+          {
+            "name": "快照句柄",
+            "type": "longLong",
+            "description": "“FBro框架_遍历DOM”返回的 DOM 快照受管句柄，0 表示遍历失败；内容是遍历时刻的静态数据。"
+          },
+          {
+            "name": "节点序号",
+            "type": "int",
+            "description": "快照节点下标，从 0 起、小于“FBro遍历_取节点数”；越界返回负错误码。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro遍历_取节点值(1, 1)"
+    },
+    {
+      "index": 64,
+      "name": "FBro遍历_取节点内部文本",
+      "aliases": [
+        "LB_FBro_DomGetNodeInnerText"
+      ],
+      "signature": "FBro遍历_取节点内部文本(快照句柄, 节点序号)",
+      "description": "读取元素的 innerText（超长截断到 4096 字符）。",
+      "insertText": "FBro遍历_取节点内部文本($1, $2)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro遍历_取节点内部文本",
+        "runtimeName": "FBro遍历_取节点内部文本",
+        "parameters": [
+          {
+            "name": "快照句柄",
+            "type": "longLong",
+            "description": "“FBro框架_遍历DOM”返回的 DOM 快照受管句柄，0 表示遍历失败；内容是遍历时刻的静态数据。"
+          },
+          {
+            "name": "节点序号",
+            "type": "int",
+            "description": "快照节点下标，从 0 起、小于“FBro遍历_取节点数”；越界返回负错误码。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro遍历_取节点内部文本(1, 1)"
+    },
+    {
+      "index": 65,
+      "name": "FBro遍历_取节点属性数",
+      "aliases": [
+        "LB_FBro_DomGetNodeAttributeCount"
+      ],
+      "signature": "FBro遍历_取节点属性数(快照句柄, 节点序号)",
+      "description": "返回元素节点捕获的属性个数。",
+      "insertText": "FBro遍历_取节点属性数($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro遍历_取节点属性数",
+        "runtimeName": "FBro遍历_取节点属性数",
+        "parameters": [
+          {
+            "name": "快照句柄",
+            "type": "longLong",
+            "description": "“FBro框架_遍历DOM”返回的 DOM 快照受管句柄，0 表示遍历失败；内容是遍历时刻的静态数据。"
+          },
+          {
+            "name": "节点序号",
+            "type": "int",
+            "description": "快照节点下标，从 0 起、小于“FBro遍历_取节点数”；越界返回负错误码。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro遍历_取节点属性数(1, 1)"
+    },
+    {
+      "index": 66,
+      "name": "FBro遍历_取节点属性名",
+      "aliases": [
+        "LB_FBro_DomGetNodeAttributeName"
+      ],
+      "signature": "FBro遍历_取节点属性名(快照句柄, 节点序号, 属性序号)",
+      "description": "按序号读取元素属性名。",
+      "insertText": "FBro遍历_取节点属性名($1, $2, $3)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro遍历_取节点属性名",
+        "runtimeName": "FBro遍历_取节点属性名",
+        "parameters": [
+          {
+            "name": "快照句柄",
+            "type": "longLong",
+            "description": "“FBro框架_遍历DOM”返回的 DOM 快照受管句柄，0 表示遍历失败；内容是遍历时刻的静态数据。"
+          },
+          {
+            "name": "节点序号",
+            "type": "int",
+            "description": "快照节点下标，从 0 起、小于“FBro遍历_取节点数”；越界返回负错误码。"
+          },
+          {
+            "name": "属性序号",
+            "type": "int",
+            "description": "元素属性下标，从 0 起、小于“FBro遍历_取节点属性数”；越界返回负错误码或空文本。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro遍历_取节点属性名(1, 1, 1)"
+    },
+    {
+      "index": 67,
+      "name": "FBro遍历_取节点属性值",
+      "aliases": [
+        "LB_FBro_DomGetNodeAttributeValue"
+      ],
+      "signature": "FBro遍历_取节点属性值(快照句柄, 节点序号, 属性序号)",
+      "description": "按序号读取元素属性值。",
+      "insertText": "FBro遍历_取节点属性值($1, $2, $3)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro遍历_取节点属性值",
+        "runtimeName": "FBro遍历_取节点属性值",
+        "parameters": [
+          {
+            "name": "快照句柄",
+            "type": "longLong",
+            "description": "“FBro框架_遍历DOM”返回的 DOM 快照受管句柄，0 表示遍历失败；内容是遍历时刻的静态数据。"
+          },
+          {
+            "name": "节点序号",
+            "type": "int",
+            "description": "快照节点下标，从 0 起、小于“FBro遍历_取节点数”；越界返回负错误码。"
+          },
+          {
+            "name": "属性序号",
+            "type": "int",
+            "description": "元素属性下标，从 0 起、小于“FBro遍历_取节点属性数”；越界返回负错误码或空文本。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro遍历_取节点属性值(1, 1, 1)"
+    },
+    {
+      "index": 68,
+      "name": "FBro遍历_取节点属性",
+      "aliases": [
+        "LB_FBro_DomGetNodeAttributeByName"
+      ],
+      "signature": "FBro遍历_取节点属性(快照句柄, 节点序号, 属性名)",
+      "description": "按名称读取元素属性值；不存在返回空文本。",
+      "insertText": "FBro遍历_取节点属性($1, $2, \"$3\")",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro遍历_取节点属性",
+        "runtimeName": "FBro遍历_取节点属性",
+        "parameters": [
+          {
+            "name": "快照句柄",
+            "type": "longLong",
+            "description": "“FBro框架_遍历DOM”返回的 DOM 快照受管句柄，0 表示遍历失败；内容是遍历时刻的静态数据。"
+          },
+          {
+            "name": "节点序号",
+            "type": "int",
+            "description": "快照节点下标，从 0 起、小于“FBro遍历_取节点数”；越界返回负错误码。"
+          },
+          {
+            "name": "属性名",
+            "type": "wideString",
+            "description": "要读取或设置的 HTML 属性名，如 \"href\"。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro遍历_取节点属性(1, 1, \"演示参数3\")"
+    },
+    {
+      "index": 69,
+      "name": "FBro遍历_取焦点节点路径",
+      "aliases": [
+        "LB_FBro_DomGetFocusedPath"
+      ],
+      "signature": "FBro遍历_取焦点节点路径(快照句柄)",
+      "description": "读取遍历当时的焦点节点路径 JSON；无焦点节点返回空。",
+      "insertText": "FBro遍历_取焦点节点路径($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro遍历_取焦点节点路径",
+        "runtimeName": "FBro遍历_取焦点节点路径",
+        "parameters": [
+          {
+            "name": "快照句柄",
+            "type": "longLong",
+            "description": "“FBro框架_遍历DOM”返回的 DOM 快照受管句柄，0 表示遍历失败；内容是遍历时刻的静态数据。"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro遍历_取焦点节点路径(1)"
+    },
+    {
+      "index": 70,
+      "name": "FBro遍历_按路径取序号",
+      "aliases": [
+        "LB_FBro_DomFindNodeByPath"
+      ],
+      "signature": "FBro遍历_按路径取序号(快照句柄, 路径JSON)",
+      "description": "把节点路径 JSON 换算成节点序号；未找到返回 -1。",
+      "insertText": "FBro遍历_按路径取序号($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro遍历_按路径取序号",
+        "runtimeName": "FBro遍历_按路径取序号",
+        "parameters": [
+          {
+            "name": "快照句柄",
+            "type": "longLong",
+            "description": "“FBro框架_遍历DOM”返回的 DOM 快照受管句柄，0 表示遍历失败；内容是遍历时刻的静态数据。"
+          },
+          {
+            "name": "路径JSON",
+            "type": "wideString",
+            "description": "“FBro遍历_取节点路径”返回的节点路径 JSON，如 \"[0,2,1]\"。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro遍历_按路径取序号(1, \"module-demo-temp.txt\")"
+    },
+    {
+      "index": 71,
+      "name": "FBro遍历_按路径设属性",
+      "aliases": [
+        "LB_FBro_DomSetAttributeByPathAsync"
+      ],
+      "signature": "FBro遍历_按路径设属性(框架句柄, 路径JSON, 属性名, 属性值)",
+      "description": "重新遍历定位路径节点并设置元素属性；内部等待任务完成，返回 1=成功。",
+      "insertText": "FBro遍历_按路径设属性($1, \"$2\", \"$3\", \"$4\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro遍历_按路径设属性",
+        "runtimeName": "FBro遍历_按路径设属性",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
+          },
+          {
+            "name": "路径JSON",
+            "type": "wideString",
+            "description": "“FBro遍历_取节点路径”返回的节点路径 JSON，如 \"[0,2,1]\"。"
+          },
+          {
+            "name": "属性名",
+            "type": "wideString",
+            "description": "要读取或设置的 HTML 属性名，如 \"href\"。"
+          },
+          {
+            "name": "属性值",
+            "type": "wideString",
+            "description": "要写入的属性值文本。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro遍历_按路径设属性(1, \"module-demo-temp.txt\", \"演示参数3\", \"演示参数4\")"
+    },
+    {
+      "index": 72,
+      "name": "FBro遍历_按路径赋值",
+      "aliases": [
+        "LB_FBro_DomSetValueByPathAsync"
+      ],
+      "signature": "FBro遍历_按路径赋值(框架句柄, 路径JSON, 值)",
+      "description": "重新遍历定位路径节点并写入节点值（表单赋值语义）；内部等待任务完成，返回 1=成功。",
+      "insertText": "FBro遍历_按路径赋值($1, \"$2\", \"$3\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro遍历_按路径赋值",
+        "runtimeName": "FBro遍历_按路径赋值",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong",
+            "description": "“FBro框架_取主框架”“FBro框架_按标识取框架”等命令返回的受管框架句柄；框架销毁后失效，无效句柄返回负错误码。"
+          },
+          {
+            "name": "路径JSON",
+            "type": "wideString",
+            "description": "“FBro遍历_取节点路径”返回的节点路径 JSON，如 \"[0,2,1]\"。"
+          },
+          {
+            "name": "值",
+            "type": "wideString",
+            "description": "要写入的表单值文本。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro遍历_按路径赋值(1, \"module-demo-temp.txt\", \"演示参数3\")"
     }
   ]
 }

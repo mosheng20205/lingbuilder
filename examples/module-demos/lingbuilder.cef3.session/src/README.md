@@ -1,7 +1,7 @@
 # CEF3会话模块完整演示
 
 - 模块 ID：`lingbuilder.cef3.session`
-- 版本：`3.0.0-alpha.3`
+- 版本：`3.0.0-alpha.4`
 - 类型：LingBuilder 内置模块
 - 命令数：19
 - 设计器控件数：0

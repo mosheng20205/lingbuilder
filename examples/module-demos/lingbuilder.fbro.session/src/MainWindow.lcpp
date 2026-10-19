@@ -7,12 +7,12 @@
 类 MainWindow : 公开 窗口
     事件 _MainWindow_创建完毕()
         控件_设置选择项(命令分组选项卡, 0)
-        控件_设置文本(演示状态, "FBro会话模块：10 条命令，默认处于安全预览模式。")
+        控件_设置文本(演示状态, "FBro会话模块：14 条命令，默认处于安全预览模式。")
         调试输出("已加载模块演示：lingbuilder.fbro.session")
     结束
 
     事件 _运行第01组_被单击()
-        控件_设置文本(演示状态, "命令 1–10：FBro会话_取Cookie 至 FBro会话_异步清理全局缓存；源码内含完整签名、参数、返回值与调用。")
+        控件_设置文本(演示状态, "命令 1–14：FBro会话_取Cookie 至 FBro会话_使用上下文重建；源码内含完整签名、参数、返回值与调用。")
         如果 (控件_取勾选(允许实际执行))
             // 命令ID：FBro会话_取Cookie
             // [1] FBro会话_取Cookie(控件名, 地址)
@@ -64,8 +64,28 @@
             // 功能：异步清理所有 FBro 实例共享的全局缓存数据。
             // 参数：来源:wideString，移除标志:int，配额标志:int；返回：longLong；可见性：advanced
             FBro会话_异步清理全局缓存("演示参数1", 1, 1)
+            // 命令ID：FBro会话_是否全局上下文
+            // [11] FBro会话_是否全局上下文(控件名)
+            // 功能：判断指定浏览器使用的 RequestContext 是否为全局上下文；独立 Profile 返回 0。
+            // 参数：控件名:controlRef；返回：int；可见性：advanced
+            FBro会话_是否全局上下文(演示FBroBrowser控件)
+            // 命令ID：FBro会话_取上下文缓存路径
+            // [12] FBro会话_取上下文缓存路径(控件名)
+            // 功能：返回 RequestContext 缓存路径 JSON（global 与 cachePath 字段）；全局上下文同样返回其真实路径。
+            // 参数：控件名:controlRef；返回：wideString；可见性：advanced
+            FBro会话_取上下文缓存路径(演示FBroBrowser控件)
+            // 命令ID：FBro会话_创建上下文
+            // [13] FBro会话_创建上下文(设置JSON)
+            // 功能：运行时创建独立 RequestContext（设置 JSON：cachePath、persistSessionCookies、acceptLanguageList、cookieableSchemesList、cookieableSchemesExcludeDefaults）；任务结果包含 context 句柄，可传给 FBro会话_使用上下文重建。
+            // 参数：设置JSON:wideString；返回：longLong；可见性：advanced
+            FBro会话_创建上下文("{}")
+            // 命令ID：FBro会话_使用上下文重建
+            // [14] FBro会话_使用上下文重建(控件名, 上下文句柄)
+            // 功能：让浏览器改用指定 RequestContext 原地重建：先关闭旧浏览器，关闭完成后自动以新上下文重启（指纹多 profile 场景）。
+            // 参数：控件名:controlRef，上下文句柄:longLong；返回：int；可见性：advanced
+            FBro会话_使用上下文重建(演示FBroBrowser控件, 1)
         如果结束
-        调试输出("已查看 命令 1–10：FBro会话_取Cookie 至 FBro会话_异步清理全局缓存；勾选允许实际执行后会使用演示参数调用。")
+        调试输出("已查看 命令 1–14：FBro会话_取Cookie 至 FBro会话_使用上下文重建；勾选允许实际执行后会使用演示参数调用。")
     结束
 
 结束类

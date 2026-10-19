@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-17T14:05:10.185Z",
+  "generatedAt": "2026-10-19T03:18:58.714Z",
   "module": {
     "id": "lingbuilder.data.json",
     "name": "JSON 数据模块",
@@ -23,7 +23,8 @@
         "parameters": [
           {
             "name": "JSON文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要解析或校验的 JSON 文本，必须符合 RFC 8259；输入上限 16 MiB、嵌套上限 256 层，超限判为失败。"
           }
         ],
         "returnType": "bool",
@@ -46,7 +47,8 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要转义的普通文本；只输出 JSON 字符串内部内容，不含外层双引号。"
           }
         ],
         "returnType": "wideString",
@@ -68,7 +70,8 @@
         "parameters": [
           {
             "name": "转义内容",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "已按 JSON 规则转义的字符串内容，不含外层双引号；转义序列非法时返回空文本并记录错误。"
           }
         ],
         "returnType": "wideString",
@@ -90,7 +93,8 @@
         "parameters": [
           {
             "name": "JSON文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要解析或校验的 JSON 文本，必须符合 RFC 8259；输入上限 16 MiB、嵌套上限 256 层，超限判为失败。"
           }
         ],
         "returnType": "JSON值",
@@ -113,7 +117,8 @@
         "parameters": [
           {
             "name": "JSON值",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "JSON_解析、JSON_创建* 或 JSON_对象_取 等命令返回的 JSON值句柄；句柄为 0 或已释放时命令返回失败值。句柄无效时返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -135,11 +140,13 @@
         "parameters": [
           {
             "name": "JSON值",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "JSON_解析、JSON_创建* 或 JSON_对象_取 等命令返回的 JSON值句柄；句柄为 0 或已释放时命令返回失败值。"
           },
           {
             "name": "缩进空格",
-            "type": "int"
+            "type": "int",
+            "description": "缩进空格数，0 到 16；超出范围返回空文本并记录中文错误。"
           }
         ],
         "returnType": "wideString",
@@ -161,11 +168,13 @@
         "parameters": [
           {
             "name": "JSON文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要解析或校验的 JSON 文本，必须符合 RFC 8259；输入上限 16 MiB、嵌套上限 256 层，超限判为失败。"
           },
           {
             "name": "缩进空格",
-            "type": "int"
+            "type": "int",
+            "description": "缩进空格数，0 到 16；超出范围返回空文本并记录中文错误。"
           }
         ],
         "returnType": "wideString",
@@ -187,7 +196,8 @@
         "parameters": [
           {
             "name": "JSON文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要解析或校验的 JSON 文本，必须符合 RFC 8259；输入上限 16 MiB、嵌套上限 256 层，超限判为失败。"
           }
         ],
         "returnType": "wideString",
@@ -226,7 +236,8 @@
         "parameters": [
           {
             "name": "JSON值",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "JSON_解析、JSON_创建* 或 JSON_对象_取 等命令返回的 JSON值句柄；句柄为 0 或已释放时命令返回失败值。句柄无效时返回 0。"
           }
         ],
         "returnType": "JSON值"
@@ -247,7 +258,8 @@
         "parameters": [
           {
             "name": "JSON值",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "要释放的 JSON值句柄；传 0、重复释放或释放已失效句柄都安全返回假。"
           }
         ],
         "returnType": "bool"
@@ -268,7 +280,8 @@
         "parameters": [
           {
             "name": "JSON值",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "JSON_解析、JSON_创建* 或 JSON_对象_取 等命令返回的 JSON值句柄；句柄为 0 或已释放时命令返回失败值。"
           }
         ],
         "returnType": "wideString",
@@ -290,7 +303,8 @@
         "parameters": [
           {
             "name": "JSON值",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "JSON_解析、JSON_创建* 或 JSON_对象_取 等命令返回的 JSON值句柄；句柄为 0 或已释放时命令返回失败值。"
           }
         ],
         "returnType": "bool"
@@ -311,7 +325,8 @@
         "parameters": [
           {
             "name": "JSON值",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "JSON_解析、JSON_创建* 或 JSON_对象_取 等命令返回的 JSON值句柄；句柄为 0 或已释放时命令返回失败值。"
           }
         ],
         "returnType": "bool"
@@ -332,7 +347,8 @@
         "parameters": [
           {
             "name": "JSON值",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "JSON_解析、JSON_创建* 或 JSON_对象_取 等命令返回的 JSON值句柄；句柄为 0 或已释放时命令返回失败值。"
           }
         ],
         "returnType": "bool"
@@ -353,7 +369,8 @@
         "parameters": [
           {
             "name": "JSON值",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "JSON_解析、JSON_创建* 或 JSON_对象_取 等命令返回的 JSON值句柄；句柄为 0 或已释放时命令返回失败值。"
           }
         ],
         "returnType": "bool"
@@ -374,7 +391,8 @@
         "parameters": [
           {
             "name": "JSON值",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "JSON_解析、JSON_创建* 或 JSON_对象_取 等命令返回的 JSON值句柄；句柄为 0 或已释放时命令返回失败值。"
           }
         ],
         "returnType": "bool"
@@ -395,7 +413,8 @@
         "parameters": [
           {
             "name": "JSON值",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "JSON_解析、JSON_创建* 或 JSON_对象_取 等命令返回的 JSON值句柄；句柄为 0 或已释放时命令返回失败值。"
           }
         ],
         "returnType": "bool"
@@ -464,7 +483,8 @@
         "parameters": [
           {
             "name": "文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "作为 JSON 字符串值的原始文本，运行时自动完成转义。"
           }
         ],
         "returnType": "JSON值",
@@ -486,7 +506,8 @@
         "parameters": [
           {
             "name": "数值",
-            "type": "int"
+            "type": "int",
+            "description": "保存为 JSON 数字的 32 位整数值。"
           }
         ],
         "returnType": "JSON值"
@@ -507,7 +528,8 @@
         "parameters": [
           {
             "name": "数值",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "保存为 JSON 数字的 64 位整数值，以十进制文本保存，不会因双精度转换丢失精度。"
           }
         ],
         "returnType": "JSON值"
@@ -528,7 +550,8 @@
         "parameters": [
           {
             "name": "数值",
-            "type": "double"
+            "type": "double",
+            "description": "要保存的双精度数值；NaN 和无穷大无法表示为合法 JSON，返回句柄 0。"
           }
         ],
         "returnType": "JSON值"
@@ -549,7 +572,8 @@
         "parameters": [
           {
             "name": "数值",
-            "type": "bool"
+            "type": "bool",
+            "description": "真或假，对应生成 JSON 的 true 或 false。"
           }
         ],
         "returnType": "JSON值"
@@ -570,11 +594,13 @@
         "parameters": [
           {
             "name": "JSON值",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "JSON_解析、JSON_创建* 或 JSON_对象_取 等命令返回的 JSON值句柄；句柄为 0 或已释放时命令返回失败值。"
           },
           {
             "name": "默认值",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "句柄不是文本值时返回的兜底文本。"
           }
         ],
         "returnType": "wideString",
@@ -596,11 +622,13 @@
         "parameters": [
           {
             "name": "JSON值",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "JSON_解析、JSON_创建* 或 JSON_对象_取 等命令返回的 JSON值句柄；句柄为 0 或已释放时命令返回失败值。"
           },
           {
             "name": "默认值",
-            "type": "int"
+            "type": "int",
+            "description": "值不是 32 位整数或超出整数范围时返回的兜底整数。"
           }
         ],
         "returnType": "int"
@@ -621,11 +649,13 @@
         "parameters": [
           {
             "name": "JSON值",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "JSON_解析、JSON_创建* 或 JSON_对象_取 等命令返回的 JSON值句柄；句柄为 0 或已释放时命令返回失败值。"
           },
           {
             "name": "默认值",
-            "type": "longLong"
+            "type": "longLong",
+            "description": "值不是 64 位整数或超出范围时返回的兜底长整数。"
           }
         ],
         "returnType": "longLong"
@@ -646,11 +676,13 @@
         "parameters": [
           {
             "name": "JSON值",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "JSON_解析、JSON_创建* 或 JSON_对象_取 等命令返回的 JSON值句柄；句柄为 0 或已释放时命令返回失败值。"
           },
           {
             "name": "默认值",
-            "type": "double"
+            "type": "double",
+            "description": "值不是有限数字或类型不符时返回的兜底数值。"
           }
         ],
         "returnType": "double"
@@ -671,11 +703,13 @@
         "parameters": [
           {
             "name": "JSON值",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "JSON_解析、JSON_创建* 或 JSON_对象_取 等命令返回的 JSON值句柄；句柄为 0 或已释放时命令返回失败值。"
           },
           {
             "name": "默认值",
-            "type": "bool"
+            "type": "bool",
+            "description": "值不是 JSON 逻辑值时返回的兜底逻辑值。"
           }
         ],
         "returnType": "bool"
@@ -696,7 +730,8 @@
         "parameters": [
           {
             "name": "对象",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "要统计的 JSON值句柄；不是对象时返回 -1。"
           }
         ],
         "returnType": "int"
@@ -717,11 +752,13 @@
         "parameters": [
           {
             "name": "对象",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "要查询的 JSON值句柄；不是对象时返回假。"
           },
           {
             "name": "键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "对象成员名称，区分大小写，按 UTF-16 文本原样保存。"
           }
         ],
         "returnType": "bool",
@@ -743,11 +780,13 @@
         "parameters": [
           {
             "name": "对象",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "要读取的 JSON值句柄；不是对象时返回 0。"
           },
           {
             "name": "键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要读取的成员名称，区分大小写；键不存在返回 0，返回的深度副本需要单独 JSON_释放。"
           }
         ],
         "returnType": "JSON值",
@@ -769,15 +808,18 @@
         "parameters": [
           {
             "name": "对象",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "要修改的 JSON值句柄；不是对象时返回假。"
           },
           {
             "name": "键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "对象成员名称，区分大小写，按 UTF-16 文本原样保存。"
           },
           {
             "name": "值",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "要写入的 JSON值句柄，写入时做深度复制，之后可以立即释放源句柄。"
           }
         ],
         "returnType": "bool",
@@ -799,11 +841,13 @@
         "parameters": [
           {
             "name": "对象",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "要修改的 JSON值句柄；不是对象时返回假。"
           },
           {
             "name": "键",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要删除的成员名称；键不存在时返回假。"
           }
         ],
         "returnType": "bool",
@@ -825,7 +869,8 @@
         "parameters": [
           {
             "name": "对象",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "要清空全部成员的 JSON值句柄；不是对象时返回假。"
           }
         ],
         "returnType": "bool"
@@ -846,7 +891,8 @@
         "parameters": [
           {
             "name": "对象",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "要取键列表的 JSON值句柄；不是对象时返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -868,7 +914,8 @@
         "parameters": [
           {
             "name": "数组",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "要统计的 JSON值句柄；不是数组时返回 -1。"
           }
         ],
         "returnType": "int"
@@ -889,11 +936,13 @@
         "parameters": [
           {
             "name": "数组",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "要读取的 JSON值句柄；不是数组时返回 0。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "元素索引，从 0 起；越界时返回 0，返回的深度副本需要单独 JSON_释放。"
           }
         ],
         "returnType": "JSON值"
@@ -914,11 +963,13 @@
         "parameters": [
           {
             "name": "数组",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "要追加元素的 JSON值句柄；不是数组时返回假。"
           },
           {
             "name": "值",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "要写入的 JSON值句柄，写入时做深度复制，之后可以立即释放源句柄。"
           }
         ],
         "returnType": "bool"
@@ -939,15 +990,18 @@
         "parameters": [
           {
             "name": "数组",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "要插入元素的 JSON值句柄；不是数组时返回假。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "插入位置的元素索引，从 0 起，等于数组长度时等价于追加；更大或为负返回假。"
           },
           {
             "name": "值",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "要写入的 JSON值句柄，写入时做深度复制，之后可以立即释放源句柄。"
           }
         ],
         "returnType": "bool"
@@ -968,15 +1022,18 @@
         "parameters": [
           {
             "name": "数组",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "要替换元素的 JSON值句柄；不是数组时返回假。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "要替换的元素索引，从 0 起；越界返回假且不会自动扩容。"
           },
           {
             "name": "值",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "要写入的 JSON值句柄，写入时做深度复制，之后可以立即释放源句柄。"
           }
         ],
         "returnType": "bool"
@@ -997,11 +1054,13 @@
         "parameters": [
           {
             "name": "数组",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "要删除元素的 JSON值句柄；不是数组时返回假。"
           },
           {
             "name": "索引",
-            "type": "int"
+            "type": "int",
+            "description": "要删除的元素索引，从 0 起；越界返回假。"
           }
         ],
         "returnType": "bool"
@@ -1022,7 +1081,8 @@
         "parameters": [
           {
             "name": "数组",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "要清空全部元素的 JSON值句柄；不是数组时返回假。"
           }
         ],
         "returnType": "bool"
@@ -1043,11 +1103,13 @@
         "parameters": [
           {
             "name": "JSON值",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "JSON_解析、JSON_创建* 或 JSON_对象_取 等命令返回的 JSON值句柄；句柄为 0 或已释放时命令返回失败值。"
           },
           {
             "name": "指针",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "RFC 6901 JSON Pointer，例如 /user/name；必须为空文本或以 / 开头，~0 代表波浪号、~1 代表斜杠。路径不存在时返回 0，返回的深度副本需要单独 JSON_释放。"
           }
         ],
         "returnType": "JSON值",
@@ -1069,19 +1131,23 @@
         "parameters": [
           {
             "name": "JSON值",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "JSON_解析、JSON_创建* 或 JSON_对象_取 等命令返回的 JSON值句柄；句柄为 0 或已释放时命令返回失败值。"
           },
           {
             "name": "指针",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "RFC 6901 JSON Pointer，例如 /user/name；必须为空文本或以 / 开头，~0 代表波浪号、~1 代表斜杠。末级索引等于数组长度时按追加处理。"
           },
           {
             "name": "值",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "要写入的 JSON值句柄，写入时做深度复制，之后可以立即释放源句柄。"
           },
           {
             "name": "创建中间对象",
-            "type": "bool"
+            "type": "bool",
+            "description": "传假时路径中间的层级必须已存在；传真才会在缺失的对象层级自动创建对象成员，数组结构不会被猜测创建。"
           }
         ],
         "returnType": "bool",
@@ -1103,11 +1169,13 @@
         "parameters": [
           {
             "name": "JSON值",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "JSON_解析、JSON_创建* 或 JSON_对象_取 等命令返回的 JSON值句柄；句柄为 0 或已释放时命令返回失败值。"
           },
           {
             "name": "指针",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "RFC 6901 JSON Pointer，例如 /user/name；必须为空文本或以 / 开头，~0 代表波浪号、~1 代表斜杠。空文本表示根值。"
           }
         ],
         "returnType": "bool",
@@ -1129,11 +1197,13 @@
         "parameters": [
           {
             "name": "JSON值",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "JSON_解析、JSON_创建* 或 JSON_对象_取 等命令返回的 JSON值句柄；句柄为 0 或已释放时命令返回失败值。"
           },
           {
             "name": "合并补丁JSON",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "RFC 7396 Merge Patch 文本，必须是合法 JSON；补丁中的 null 表示删除对应成员。"
           }
         ],
         "returnType": "bool",
@@ -1155,11 +1225,13 @@
         "parameters": [
           {
             "name": "JSON值",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "JSON_解析、JSON_创建* 或 JSON_对象_取 等命令返回的 JSON值句柄；句柄为 0 或已释放时命令返回失败值。"
           },
           {
             "name": "补丁JSON",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "RFC 6902 补丁数组文本，op 支持 add、remove、replace、move、copy、test；任一操作失败则整体不生效。"
           }
         ],
         "returnType": "bool",
@@ -1181,11 +1253,13 @@
         "parameters": [
           {
             "name": "源JSON值",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "作为差异起点的 JSON值句柄。"
           },
           {
             "name": "目标JSON值",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "作为差异目标的 JSON值句柄；数组变化生成整数组替换操作。"
           }
         ],
         "returnType": "wideString",
@@ -1207,11 +1281,13 @@
         "parameters": [
           {
             "name": "JSON值",
-            "type": "JSON值"
+            "type": "JSON值",
+            "description": "JSON_解析、JSON_创建* 或 JSON_对象_取 等命令返回的 JSON值句柄；句柄为 0 或已释放时命令返回失败值。"
           },
           {
             "name": "SchemaJSON",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "描述校验规则的 Schema JSON 文本；支持 type、const、enum、对象属性与 required、additionalProperties、数组 items 与长度与 uniqueItems、字符串长度与 pattern、数值范围与 multipleOf，以及 allOf、anyOf、oneOf、not。"
           }
         ],
         "returnType": "bool",
@@ -1233,11 +1309,13 @@
         "parameters": [
           {
             "name": "JSON文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "顶层必须是对象的 JSON 文本；解析失败返回空文本。"
           },
           {
             "name": "字段名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要读取的顶层成员名，不做嵌套路径查找。"
           }
         ],
         "returnType": "wideString",
@@ -1259,15 +1337,18 @@
         "parameters": [
           {
             "name": "JSON文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "顶层必须是对象的 JSON 文本；解析失败返回默认值。"
           },
           {
             "name": "字段名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要读取的顶层成员名。"
           },
           {
             "name": "默认值",
-            "type": "int"
+            "type": "int",
+            "description": "成员缺失或不是整数时返回的兜底整数。"
           }
         ],
         "returnType": "int",
@@ -1289,15 +1370,18 @@
         "parameters": [
           {
             "name": "JSON文本",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "顶层必须是对象的 JSON 文本；解析失败返回默认值。"
           },
           {
             "name": "字段名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要读取的顶层成员名。"
           },
           {
             "name": "默认值",
-            "type": "bool"
+            "type": "bool",
+            "description": "成员缺失或不是逻辑值时返回的兜底逻辑值。"
           }
         ],
         "returnType": "bool",

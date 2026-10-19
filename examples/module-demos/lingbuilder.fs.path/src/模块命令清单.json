@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-07T08:51:35.836Z",
+  "generatedAt": "2026-10-19T03:18:58.753Z",
   "module": {
     "id": "lingbuilder.fs.path",
     "name": "路径处理模块",
@@ -22,11 +22,13 @@
         "parameters": [
           {
             "name": "基础路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "路径的前半段。"
           },
           {
             "name": "子路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "接在后面的子路径；为绝对路径时会直接替换前半段，结果已做词法规范化。"
           }
         ],
         "returnType": "wideString",
@@ -48,7 +50,8 @@
         "parameters": [
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要取末段的路径；以分隔符结尾时返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -69,7 +72,8 @@
         "parameters": [
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要取父目录的路径；只有一段时返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -90,7 +94,8 @@
         "parameters": [
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要取后缀的路径；返回值含前导点号，没有后缀时返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -111,11 +116,13 @@
         "parameters": [
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "待改后缀的路径，纯词法处理，不校验文件是否存在。"
           },
           {
             "name": "新扩展名",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "新的扩展名，含前导点号例如 .txt；空文本表示去掉原有扩展名。"
           }
         ],
         "returnType": "wideString",
@@ -136,7 +143,8 @@
         "parameters": [
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要转换的路径；相对路径以当前工作目录为基准，无法解析时返回空文本。"
           }
         ],
         "returnType": "wideString",
@@ -157,7 +165,8 @@
         "parameters": [
           {
             "name": "路径",
-            "type": "wideString"
+            "type": "wideString",
+            "description": "要规范化的路径；只做词法整理，去掉点段和冗余分隔符，不访问文件系统。"
           }
         ],
         "returnType": "wideString",
