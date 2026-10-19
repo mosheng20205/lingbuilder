@@ -4282,6 +4282,8 @@ app.delete("/api/source-control/remotes/:name", async (req, res) => sourceContro
 app.post("/api/source-control/fetch", async (req, res) => sourceControlAction(res, () => gitService.fetch(req.body?.remote)));
 app.post("/api/source-control/pull", async (req, res) => sourceControlAction(res, () => gitService.pull(req.body?.remote, req.body?.branch, req.body?.strategy)));
 app.post("/api/source-control/push", async (req, res) => sourceControlAction(res, () => gitService.push(req.body?.remote, req.body?.branch, Boolean(req.body?.setUpstream))));
+app.post("/api/source-control/sync", async (req, res) => sourceControlAction(res, () => gitService.sync(String(req.body?.remote || "origin"))));
+app.post("/api/source-control/untrack", async (req, res) => sourceControlAction(res, () => gitService.untrack(req.body?.paths)));
 app.post("/api/source-control/merge", async (req, res) => sourceControlAction(res, () => gitService.merge(req.body?.branch)));
 app.post("/api/source-control/rebase", async (req, res) => sourceControlAction(res, () => gitService.rebase(req.body?.branch)));
 app.get("/api/source-control/conflicts", async (_req, res) => sourceControlAction(res, () => gitService.conflicts()));

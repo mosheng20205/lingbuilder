@@ -167,6 +167,7 @@ export default function SourceControlPanel({
   const files = (status?.files || []) as FileStatus[];
   const stagedPaths = useMemo(() => files.filter(file => Boolean(file.indexStatus) && file.indexStatus !== '?').map(file => file.path), [files]);
   const workingPaths = useMemo(() => files.filter(file => Boolean(file.workingTreeStatus)).map(file => file.path), [files]);
+  const managedTrackedPaths = useMemo(() => status?.managedTrackedFiles || [], [status]);
 
   const loadBranches = () => void perform(async () => {
     const [branchList, tagList] = await Promise.all([
@@ -192,6 +193,21 @@ export default function SourceControlPanel({
   const loadRemote = () => void perform(async () => {
     setRemotes(await request<Remote[]>('/api/source-control/remotes'));
     setDetail('remote');
+  });
+  const syncBranch = () => {
+    const upstream = status?.upstream || '';
+    void perform(async () => {
+      const remote = upstream.includes('/') ? upstream.slice(0, upstream.indexOf('/')) : 'origin';
+      await mutate('sync', { remote });
+    }, { success: `已同步 ${upstream}` });
+  };
+  const untrackManagedFiles = () => openDialog({
+    title: '从 Git 索引移除 IDE 管理文件',
+    description: `下列 ${managedTrackedPaths.length} 个文件位于 IDE 管理目录（.lingbuilder / .lingbuilder-build），已被 Git 跟踪并会继续被提交推送。从索引移除后：本地文件保留不动；提交并推送后，仓库和其他设备上将不再包含这些文件。`,
+    submitLabel: '从索引移除',
+    danger: true,
+    fields: [],
+    onSubmit: async () => { await mutate('untrack', { paths: managedTrackedPaths }); }
   });
   const readConflicts = useCallback(async () => {
     const nextFiles = await request<FileStatus[]>('/api/source-control/conflicts');
@@ -484,12 +500,16 @@ export default function SourceControlPanel({
             <span className="min-w-0 flex-1 truncate opacity-70" title={`跟踪远程分支 ${status.upstream}`}>→ {status.upstream}</span>
             {status.ahead > 0 && <span className="shrink-0 font-semibold text-emerald-500" title={`领先远程 ${status.ahead} 个提交`}>↑{status.ahead}</span>}
             {status.behind > 0 && <span className="shrink-0 font-semibold text-amber-500" title={`落后远程 ${status.behind} 个提交`}>↓{status.behind}</span>}
-            <button type="button" disabled={busy} onClick={loadRemote} className="ml-auto shrink-0 rounded px-1 py-0.5 text-[#007ACC] hover:bg-black/10" title="打开远程同步视图：获取、拉取、推送、修改远程地址">远程同步</button>
+            <button type="button" disabled={busy} onClick={syncBranch} className="ml-auto shrink-0 rounded px-1 py-0.5 text-[#007ACC] hover:bg-black/10" title="一键同步当前分支：获取远程更新 → 快进拉取 → 推送本地提交">同步</button>
+            <button type="button" disabled={busy} onClick={loadRemote} className="shrink-0 rounded px-1 py-0.5 text-[#007ACC] hover:bg-black/10" title="打开远程同步视图：获取、拉取、推送、修改远程地址">远程同步</button>
           </>) : (<>
             <span className="min-w-0 flex-1 truncate opacity-60">本地分支，未跟踪远程</span>
             <button type="button" disabled={busy} onClick={loadRemote} className="ml-auto shrink-0 rounded px-1 py-0.5 text-amber-500 underline decoration-dotted underline-offset-2 hover:bg-black/10" title="打开远程同步视图，添加或修改远程仓库推送地址">未设置推送地址，点击配置 →</button>
           </>)}
         </div>
+        {managedTrackedPaths.length > 0 && <button type="button" disabled={busy} onClick={untrackManagedFiles} className="mb-2 w-full rounded bg-amber-500/10 p-2 text-left text-amber-500 hover:bg-amber-500/20" title="把 IDE 管理目录中已被 Git 跟踪的文件移出索引（本地文件保留）">
+          IDE 管理目录中有 {managedTrackedPaths.length} 个文件已被 Git 跟踪，会继续被提交推送。点击从索引移除（保留本地文件）→
+        </button>}
         <label htmlFor="git-commit-message" className="mb-1 block font-semibold">提交说明</label>
         <textarea id="git-commit-message" value={message} onChange={event => setMessage(event.target.value)} placeholder="输入提交说明（必填）" rows={3} maxLength={4000} className={`mb-1 w-full resize-y rounded border border-inherit px-2 py-1.5 text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#007ACC] ${isDarkMode ? 'bg-black/20' : 'bg-white'}`} />
         <button disabled={busy || !message.trim() || (stagedPaths.length === 0 && workingPaths.length === 0)} onClick={() => void perform(async () => { if (stagedPaths.length === 0 && workingPaths.length > 0) await mutate('stage.all', {}); await mutate('commit', { message }); setMessage(''); }, { success: '提交完成' })} title={stagedPaths.length === 0 && workingPaths.length > 0 ? '当前没有已暂存文件，将先把全部修改加入暂存区再提交' : '提交暂存区中的全部更改'} className="mb-3 w-full rounded bg-[#007ACC] px-2 py-1.5 text-[11px] font-semibold text-white hover:bg-[#1687cf] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 disabled:cursor-not-allowed disabled:opacity-40">{stagedPaths.length === 0 && workingPaths.length > 0 ? '暂存全部并提交' : '提交已暂存更改'}</button>

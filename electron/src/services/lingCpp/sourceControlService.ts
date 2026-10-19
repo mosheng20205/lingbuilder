@@ -17,6 +17,8 @@ export type SourceControlMutation =
   | 'fetch'
   | 'pull'
   | 'push'
+  | 'sync'
+  | 'untrack'
   | 'merge'
   | 'rebase'
   | 'conflict.resolve'
@@ -81,6 +83,8 @@ function mutationRoute(operation: SourceControlMutation, payload: Record<string,
     case 'fetch': return post('/api/source-control/fetch');
     case 'pull': return post('/api/source-control/pull');
     case 'push': return post('/api/source-control/push');
+    case 'sync': return post('/api/source-control/sync');
+    case 'untrack': return post('/api/source-control/untrack');
     case 'merge': return post('/api/source-control/merge');
     case 'rebase': return post('/api/source-control/rebase');
     case 'conflict.resolve': return post('/api/source-control/conflicts/resolve');

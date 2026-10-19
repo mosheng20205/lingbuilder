@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { GitService } from '../src/services/sourceControl/gitService';
+import { GitService, translateGitError } from '../src/services/sourceControl/gitService';
 
 const exec = promisify(execFile);
 async function git(cwd: string, args: string[]) { return await exec('git', args, { cwd, windowsHide: true, encoding: 'utf8' }); }
@@ -13,7 +13,7 @@ async function git(cwd: string, args: string[]) { return await exec('git', args,
 test('Git service stages, unstages, commits, branches, reads history and blame in a real repository', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-git-')); t.after(() => fs.rm(root, { recursive: true, force: true }));
   await git(root, ['init', '--initial-branch=main']); await git(root, ['config', 'user.name', 'LingBuilder Test']); await git(root, ['config', 'user.email', 'test@lingbuilder.local']);
-  await fs.writeFile(path.join(root, 'main.lcpp'), '第一行\n第二行\n', 'utf8'); await git(root, ['add', 'main.lcpp']); await git(root, ['commit', '-m', '初始提交']);
+  await fs.writeFile(path.join(root, '.gitignore'), '/.lingbuilder/\n/.lingbuilder-build/\n', 'utf8'); await fs.writeFile(path.join(root, 'main.lcpp'), '第一行\n第二行\n', 'utf8'); await git(root, ['add', '.']); await git(root, ['commit', '-m', '初始提交']);
   const service = new GitService(root); assert.equal((await service.status()).branch, 'main');
   await fs.appendFile(path.join(root, 'main.lcpp'), '第三行\n'); await fs.writeFile(path.join(root, 'notes.txt'), '说明\n');
   let status = await service.status(); assert.equal(status.files.length, 2); assert.equal(status.files.find(item => item.path === 'main.lcpp')?.workingTreeStatus, 'M');
@@ -42,6 +42,7 @@ test('Git service initializes an unborn repository, previews staged and working 
   assert.equal((await service.status()).isRepository, false);
   let status = await service.init('main'); assert.equal(status.isRepository, true); assert.equal(status.branch, 'main');
   await git(root, ['config', 'user.name', 'Complete']); await git(root, ['config', 'user.email', 'complete@example.com']);
+  await service.stage(['.gitignore']); await service.commit('初始化忽略规则');
 
   await fs.writeFile(path.join(root, 'new.txt'), '第一行\n第二行\n', 'utf8');
   status = await service.status(); assert.equal(status.files[0].workingTreeStatus, '?');
@@ -62,7 +63,7 @@ test('Git service scopes status and path operations to a nested workspace', asyn
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-git-nested-')); t.after(() => fs.rm(root, { recursive: true, force: true }));
   const workspace = path.join(root, 'sub'); await fs.mkdir(workspace);
   await git(root, ['init', '--initial-branch=main']); await git(root, ['config', 'user.name', 'Nested']); await git(root, ['config', 'user.email', 'nested@example.com']);
-  await fs.writeFile(path.join(root, 'outside.txt'), 'base\n'); await fs.writeFile(path.join(workspace, 'inside.txt'), 'base\n'); await git(root, ['add', '.']); await git(root, ['commit', '-m', 'base']);
+  await fs.writeFile(path.join(root, 'outside.txt'), 'base\n'); await fs.writeFile(path.join(workspace, '.gitignore'), '/.lingbuilder/\n/.lingbuilder-build/\n', 'utf8'); await fs.writeFile(path.join(workspace, 'inside.txt'), 'base\n'); await git(root, ['add', '.']); await git(root, ['commit', '-m', 'base']);
   await fs.appendFile(path.join(root, 'outside.txt'), 'outside\n'); await fs.appendFile(path.join(workspace, 'inside.txt'), 'inside\n');
 
   const service = new GitService(workspace); const status = await service.status();
@@ -75,7 +76,7 @@ test('Git service scopes status and path operations to a nested workspace', asyn
 test('Git service manages stashes end to end with validation', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-git-stash-')); t.after(() => fs.rm(root, { recursive: true, force: true }));
   await git(root, ['init', '--initial-branch=main']); await git(root, ['config', 'core.autocrlf', 'false']); await git(root, ['config', 'user.name', 'Stash']); await git(root, ['config', 'user.email', 'stash@example.com']);
-  await fs.writeFile(path.join(root, 'main.lcpp'), '第一版\n', 'utf8'); await git(root, ['add', 'main.lcpp']); await git(root, ['commit', '-m', '初始']);
+  await fs.writeFile(path.join(root, '.gitignore'), '/.lingbuilder/\n/.lingbuilder-build/\n', 'utf8'); await fs.writeFile(path.join(root, 'main.lcpp'), '第一版\n', 'utf8'); await git(root, ['add', '.']); await git(root, ['commit', '-m', '初始']);
   const service = new GitService(root);
   await assert.rejects(service.stashSave(''), /没有可贮藏的更改/u);
   await assert.rejects(service.stashApply(1000), /贮藏索引/u);
@@ -153,9 +154,9 @@ test('Git service stages and unstages everything including unborn repositories v
 
   await fs.writeFile(path.join(root, 'a.txt'), 'a\n', 'utf8'); await fs.writeFile(path.join(root, 'b.txt'), 'b\n', 'utf8');
   let status = await service.stageAll();
-  assert.equal(status.files.length, 2); assert.equal(status.files.every(item => item.indexStatus === 'A'), true);
+  assert.equal(status.files.length, 3); assert.equal(status.files.every(item => item.indexStatus === 'A'), true);
   status = await service.unstageAll();
-  assert.equal(status.files.length, 2); assert.equal(status.files.every(item => item.workingTreeStatus === '?'), true);
+  assert.equal(status.files.length, 3); assert.equal(status.files.every(item => item.workingTreeStatus === '?'), true);
 
   await service.stageAll(); await service.commit('首个提交');
   await fs.appendFile(path.join(root, 'a.txt'), '修改\n'); await fs.writeFile(path.join(root, 'c.txt'), 'c\n', 'utf8');
@@ -170,7 +171,7 @@ test('Git service bulk stage and unstage respect a nested workspace scope', asyn
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-git-bulk-nested-')); t.after(() => fs.rm(root, { recursive: true, force: true }));
   const workspace = path.join(root, 'sub'); await fs.mkdir(workspace);
   await git(root, ['init', '--initial-branch=main']); await git(root, ['config', 'core.autocrlf', 'false']); await git(root, ['config', 'user.name', 'Nested']); await git(root, ['config', 'user.email', 'nested@example.com']);
-  await fs.writeFile(path.join(root, 'outside.txt'), 'base\n'); await fs.writeFile(path.join(workspace, 'inside.txt'), 'base\n'); await git(root, ['add', '.']); await git(root, ['commit', '-m', 'base']);
+  await fs.writeFile(path.join(root, 'outside.txt'), 'base\n'); await fs.writeFile(path.join(workspace, '.gitignore'), '/.lingbuilder/\n/.lingbuilder-build/\n', 'utf8'); await fs.writeFile(path.join(workspace, 'inside.txt'), 'base\n'); await git(root, ['add', '.']); await git(root, ['commit', '-m', 'base']);
   await fs.appendFile(path.join(root, 'outside.txt'), 'outside\n'); await fs.appendFile(path.join(workspace, 'inside.txt'), 'inside\n');
 
   const service = new GitService(workspace);
@@ -181,4 +182,127 @@ test('Git service bulk stage and unstage respect a nested workspace scope', asyn
   status = await service.unstageAll();
   assert.equal(status.files.find(item => item.path === 'inside.txt')?.workingTreeStatus, 'M');
   assert.equal(status.files.find(item => item.path === 'inside.txt')?.indexStatus, '');
+});
+
+test('Git service auto-ignores LingBuilder managed directories in the workspace .gitignore', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-git-ignore-')); t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await git(root, ['init', '--initial-branch=main']); await git(root, ['config', 'core.autocrlf', 'false']); await git(root, ['config', 'user.name', 'Ignore']); await git(root, ['config', 'user.email', 'ignore@example.com']);
+  await fs.writeFile(path.join(root, 'main.lcpp'), '第一行\n', 'utf8'); await git(root, ['add', 'main.lcpp']); await git(root, ['commit', '-m', '初始']);
+  const service = new GitService(root);
+
+  await fs.mkdir(path.join(root, '.lingbuilder'), { recursive: true });
+  await fs.writeFile(path.join(root, '.lingbuilder', 'ai-bridge-log.jsonl'), '日志\n', 'utf8');
+  await fs.mkdir(path.join(root, '.lingbuilder-build'), { recursive: true });
+  await fs.writeFile(path.join(root, '.lingbuilder-build', 'out.bin'), '产物\n', 'utf8');
+  await fs.writeFile(path.join(root, '用户源码.lcpp'), '保留\n', 'utf8');
+
+  const status = await service.status();
+  assert.equal(status.files.some(item => item.path.startsWith('.lingbuilder')), false);
+  assert.equal(status.files.some(item => item.path === '用户源码.lcpp'), true);
+  const gitignore = await fs.readFile(path.join(root, '.gitignore'), 'utf8');
+  assert.match(gitignore, /# LingBuilder IDE 管理目录/u);
+  assert.match(gitignore, /^\/\.lingbuilder\/$/mu);
+  assert.match(gitignore, /^\/\.lingbuilder-build\/$/mu);
+
+  await service.status();
+  const afterSecondRead = await fs.readFile(path.join(root, '.gitignore'), 'utf8');
+  assert.equal(afterSecondRead, gitignore);
+
+  await fs.appendFile(path.join(root, '.gitignore'), 'node_modules/\n', 'utf8');
+  await service.status();
+  const preserved = await fs.readFile(path.join(root, '.gitignore'), 'utf8');
+  assert.match(preserved, /node_modules\//u);
+  assert.equal(preserved.match(/# LingBuilder IDE 管理目录/gu)?.length, 1);
+
+  await fs.writeFile(path.join(root, '.gitignore'), 'dist\n.lingbuilder/\n', 'utf8');
+  await service.status();
+  const variant = await fs.readFile(path.join(root, '.gitignore'), 'utf8');
+  assert.equal(variant.match(/^.lingbuilder\/$/mu)?.length, 1);
+  assert.match(variant, /^\/\.lingbuilder-build\/$/mu);
+
+  const staged = await service.stageAll();
+  assert.equal(staged.files.every(item => item.path !== '.gitignore' || item.indexStatus === 'A'), true);
+  assert.equal(staged.files.some(item => item.path.startsWith('.lingbuilder')), false);
+  const committed = await service.commit('忽略 IDE 目录');
+  assert.equal(committed.status.files.some(item => item.path.startsWith('.lingbuilder')), false);
+});
+
+test('Git service writes managed ignore entries into a nested workspace without touching the repository root', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-git-ignore-nested-')); t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const workspace = path.join(root, 'sub'); await fs.mkdir(workspace);
+  await git(root, ['init', '--initial-branch=main']); await git(root, ['config', 'user.name', 'Nested']); await git(root, ['config', 'user.email', 'nested@example.com']);
+  await fs.writeFile(path.join(root, 'base.txt'), 'base\n'); await fs.writeFile(path.join(workspace, 'inside.txt'), 'base\n'); await git(root, ['add', '.']); await git(root, ['commit', '-m', 'base']);
+  await fs.mkdir(path.join(workspace, '.lingbuilder'), { recursive: true });
+  await fs.writeFile(path.join(workspace, '.lingbuilder', 'cache.bin'), '缓存\n', 'utf8');
+  await fs.appendFile(path.join(workspace, 'inside.txt'), '改动\n', 'utf8');
+
+  const service = new GitService(workspace);
+  const status = await service.status();
+  assert.equal(status.files.some(item => item.path.startsWith('.lingbuilder')), false);
+  assert.equal(status.files.some(item => item.path === 'inside.txt'), true);
+  assert.match(await fs.readFile(path.join(workspace, '.gitignore'), 'utf8'), /^\/\.lingbuilder\/$/mu);
+  await assert.rejects(fs.stat(path.join(root, '.gitignore')), /ENOENT/u);
+});
+
+test('Git service reports tracked managed files and untracks them while keeping local copies', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-git-untrack-')); t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await git(root, ['init', '--initial-branch=main']); await git(root, ['config', 'core.autocrlf', 'false']); await git(root, ['config', 'user.name', 'Untrack']); await git(root, ['config', 'user.email', 'untrack@example.com']);
+  await fs.mkdir(path.join(root, '.lingbuilder'), { recursive: true });
+  await fs.writeFile(path.join(root, '.lingbuilder', 'cache.bin'), '缓存\n', 'utf8');
+  await fs.writeFile(path.join(root, 'main.lcpp'), '第一行\n', 'utf8');
+  await git(root, ['add', '.']); await git(root, ['commit', '-m', '初始']);
+  const service = new GitService(root);
+
+  let status = await service.status();
+  assert.deepEqual(status.managedTrackedFiles, ['.lingbuilder/cache.bin']);
+
+  status = await service.untrack(['.lingbuilder/cache.bin']);
+  assert.deepEqual(status.managedTrackedFiles, []);
+  const deletion = status.files.find(item => item.path === '.lingbuilder/cache.bin');
+  assert.equal(deletion?.indexStatus, 'D');
+  assert.match(await fs.readFile(path.join(root, '.lingbuilder', 'cache.bin'), 'utf8'), /缓存/u);
+
+  await service.commit('移除 IDE 管理文件');
+  status = await service.status();
+  assert.equal(status.files.some(item => item.path.startsWith('.lingbuilder')), false);
+  assert.match(await fs.readFile(path.join(root, '.lingbuilder', 'cache.bin'), 'utf8'), /缓存/u);
+  await assert.rejects(service.untrack(['../outside.txt']), /不能超出/u);
+});
+
+test('Git service sync fetches, fast-forwards and pushes the current branch in one step', async t => {
+  const parent = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-git-sync-')); t.after(() => fs.rm(parent, { recursive: true, force: true }));
+  const root = path.join(parent, 'workspace'); const bare = path.join(parent, 'remote.git'); const second = path.join(parent, 'second');
+  await fs.mkdir(root);
+  await git(parent, ['init', '--bare', bare]);
+  await git(root, ['init', '--initial-branch=main']); await git(root, ['config', 'core.autocrlf', 'false']); await git(root, ['config', 'user.name', 'Sync']); await git(root, ['config', 'user.email', 'sync@example.com']);
+  await fs.writeFile(path.join(root, 'main.lcpp'), '第一行\n', 'utf8');
+  const service = new GitService(root);
+  await service.stage(['main.lcpp']); await service.commit('初始');
+  await service.addRemote('origin', bare.replace(/\\/gu, '/'));
+
+  let status = await service.sync('origin');
+  assert.equal(status.upstream, 'origin/main'); assert.equal(status.ahead, 0);
+  const bareLog = await git(bare, ['log', '--oneline']); assert.match(bareLog.stdout, /初始/u);
+
+  await git(parent, ['clone', bare.replace(/\\/gu, '/'), second.replace(/\\/gu, '/')]);
+  await git(second, ['config', 'user.name', 'Second']); await git(second, ['config', 'user.email', 'second@example.com']);
+  await fs.writeFile(path.join(second, 'other.txt'), '远程新提交\n', 'utf8'); await git(second, ['add', '.']); await git(second, ['commit', '-m', '远程更新']);
+  await git(second, ['push']);
+
+  status = await service.sync('origin');
+  assert.equal(status.behind, 0); assert.equal(status.ahead, 0);
+  assert.match(await fs.readFile(path.join(root, 'other.txt'), 'utf8'), /远程新提交/u);
+});
+
+test('Git service translates common git failures into Chinese remediation hints', () => {
+  assert.match(translateGitError('! [rejected]        main -> main (fetch first)') || '', /推送被拒绝/u);
+  assert.match(translateGitError('fatal: Not possible to fast-forward, aborting.') || '', /快进拉取/u);
+  assert.match(translateGitError('error: Your local changes to the following files would be overwritten by merge') || '', /贮藏/u);
+  assert.match(translateGitError('fatal: Authentication failed for https://gitee.com/a/b.git/') || '', /认证失败/u);
+  assert.match(translateGitError('fatal: could not read Username for https://github.com: terminal prompts disabled') || '', /认证失败/u);
+  assert.match(translateGitError('fatal: unable to access https://gitee.com/a/b.git/: Failed to connect to 127.0.0.1') || '', /无法连接/u);
+  assert.match(translateGitError('fatal: Could not read from remote repository.\n\nPlease make sure you have the correct access rights and the repository exists.') || '', /认证失败/u);
+  assert.match(translateGitError('error: src refspec main does not match any') || '', /提交/u);
+  assert.match(translateGitError('fatal: repository https://example.com/x.git/ not found') || '', /远程仓库不存在/u);
+  assert.equal(translateGitError('fatal: 完全未知的自定义错误'), undefined);
 });

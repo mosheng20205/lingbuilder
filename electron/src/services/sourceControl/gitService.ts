@@ -5,7 +5,7 @@ import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 export interface GitFileStatus { path: string; indexStatus: string; workingTreeStatus: string; originalPath?: string }
-export interface GitStatus { isRepository: boolean; branch: string; upstream?: string; ahead: number; behind: number; files: GitFileStatus[]; error?: string }
+export interface GitStatus { isRepository: boolean; branch: string; upstream?: string; ahead: number; behind: number; files: GitFileStatus[]; managedTrackedFiles?: string[]; error?: string }
 export interface GitBranch { name: string; current: boolean; commit: string; subject: string }
 export interface GitCommit { hash: string; shortHash: string; parents: string[]; authorName: string; authorEmail: string; authoredAt: string; subject: string; refs: string[] }
 export interface GitBlameLine { line: number; hash: string; author: string; authorEmail: string; authoredAt: string; summary: string; text: string }
@@ -19,14 +19,39 @@ export interface PullRequestProvider { create(input: { repository: string; head:
 type Runner = (args: string[], options?: { timeout?: number }) => Promise<{ stdout: string; stderr: string }>;
 
 const MAX_DIFF_BYTES = 2 * 1024 * 1024;
+// IDE 管理目录（运行数据、模块安装、构建产物）不入库：status 读取时确保它们出现在工作区根 .gitignore。
+const IDE_MANAGED_IGNORE_ENTRIES: readonly string[] = ['/.lingbuilder/', '/.lingbuilder-build/'];
+const IDE_MANAGED_IGNORE_MARKER = '# LingBuilder IDE 管理目录（IDE 自动维护：运行数据与构建产物不入库）';
+// 忽略规则对已被跟踪的文件无效：status 同时回报 IDE 管理目录中已被跟踪的文件清单（上限与 validatePaths 的 500 对齐），供面板一键从索引移除。
+const MAX_MANAGED_TRACKED_FILES = 500;
+
+export function translateGitError(raw: string): string | undefined {
+  const text = String(raw || '').toLowerCase();
+  const rules: Array<[RegExp, string]> = [
+    [/! \[rejected\]/u, '推送被拒绝：远程分支包含本地没有的新提交。请先点「获取」，再点「快进拉取」，成功后重新推送；若本地与远程历史分叉，请用「合并…」或「变基…」整合后重试。'],
+    [/not possible to fast-forward/u, '无法快进拉取：本地与远程提交历史分叉。请使用「合并…」或「变基…」整合远程更新后重试。'],
+    [/your local changes.*would be overwritten|please (?:commit|stash) your changes/u, '该操作会覆盖本地未提交的修改：请先提交当前更改，或使用「贮藏更改」保存后再试。'],
+    [/authentication failed|permission denied \(publickey\)|could not read username|could not read from remote repository|terminal prompts disabled|http 40[13]|access denied|invalid credentials|incorrect credentials/u, '远程仓库认证失败：请在 Windows「凭据管理器」更新该远程（Gitee/GitHub 等）的账号凭据或访问令牌，并确认账号有推送权限；SSH 方式请确认公钥已配置。'],
+    [/could not resolve host/u, '无法解析远程仓库地址：请检查网络连接与远程地址拼写。'],
+    [/failed to connect|connection timed out|connection was reset|unable to access/u, '无法连接远程仓库：请检查网络、代理或防火墙设置后重试。'],
+    [/repository(?: .+)? not found|does not appear to be a git repository/u, '远程仓库不存在或当前账号没有访问权限：请核对远程地址。'],
+    [/src refspec .* does not match any/u, '当前分支还没有任何提交：请先提交一次更改，再进行推送或同步。'],
+    [/no such remote/u, '找不到该远程仓库：请打开「远程同步」视图核对远程名称。'],
+    [/! \[remote rejected\]/u, '远程服务器拒绝了推送：常见原因是分支保护规则或账号权限不足，详情见下方原始输出。']
+  ];
+  for (const [pattern, hint] of rules) if (pattern.test(text)) return hint;
+  return undefined;
+}
 
 export class GitService {
   private rootPromise: Promise<string> | undefined;
+  private ignoreEnsurePromise: Promise<void> | undefined;
   constructor(private readonly workspaceRoot: string, private readonly runner?: Runner, private readonly pullRequestProvider: PullRequestProvider = new GhCliPullRequestProvider()) {}
 
   async status(): Promise<GitStatus> {
     try {
       const scope = await this.repositoryScope();
+      await this.ensureIdeManagedIgnore(scope.workspace);
       const args = ['status', '--porcelain=v1', '-z', '--branch', '--untracked-files=all'];
       if (scope.repoRelativeWorkspace) args.push('--', scope.repoRelativeWorkspace);
       const output = await this.run(args);
@@ -44,7 +69,7 @@ export class GitService {
         if (originalRepoPath) item.originalPath = toWorkspaceRelativeGitPath(originalRepoPath, scope.repoRelativeWorkspace);
         files.push(item);
       }
-      return { isRepository: true, ...branchInfo, files };
+      return { isRepository: true, ...branchInfo, files, managedTrackedFiles: await this.managedTrackedFiles(scope) };
     } catch (error) { return { isRepository: false, branch: '', ahead: 0, behind: 0, files: [], error: message(error, '无法读取 Git 状态。') }; }
   }
 
@@ -65,6 +90,7 @@ export class GitService {
   async stage(paths: string[]): Promise<GitStatus> { await this.runPathCommand(['add', '--'], paths); return await this.status(); }
   async stageAll(): Promise<GitStatus> {
     const scope = await this.repositoryScope();
+    await this.ensureIdeManagedIgnore(scope.workspace);
     const args = ['add', '--all'];
     if (scope.repoRelativeWorkspace) args.push('--', scope.repoRelativeWorkspace);
     await this.run(args, undefined, 300_000);
@@ -86,6 +112,20 @@ export class GitService {
     try { await this.run(['restore', '--staged', '--'], await this.validatePaths(paths)); }
     catch { await this.run(['reset', '--quiet', 'HEAD', '--'], await this.validatePaths(paths)); }
     if (!repo) throw new Error('当前目录不是 Git 仓库。'); return await this.status();
+  }
+
+  async untrack(paths: string[]): Promise<GitStatus> {
+    const validated = await this.validatePaths(paths);
+    await this.run(['rm', '--cached', '-r', '--quiet', '--'], validated);
+    return await this.status();
+  }
+
+  async sync(remote: string): Promise<GitStatus> {
+    const remoteName = validateRemoteName(remote);
+    await this.run(['fetch', '--prune', remoteName], undefined, 120_000);
+    let current = await this.status();
+    if (current.behind > 0) current = await this.pull(remoteName, current.branch, 'ff-only');
+    return await this.push(remoteName, current.branch, !current.upstream);
   }
 
   async commit(commitMessage: string): Promise<{ commit: GitCommit; status: GitStatus }> {
@@ -289,9 +329,37 @@ export class GitService {
     catch (error: any) { if (error?.code !== 'ENOENT') throw error; }
     return absolute;
   }
-  private async repositoryScope(): Promise<{ repo: string; repoRelativeWorkspace: string }> {
+  private async repositoryScope(): Promise<{ repo: string; repoRelativeWorkspace: string; workspace: string }> {
     const [repo, workspace] = await Promise.all([this.repositoryRoot(), fs.realpath(this.workspaceRoot)]);
-    return { repo, repoRelativeWorkspace: normalizeGitPath(path.relative(repo, workspace)) };
+    return { repo, repoRelativeWorkspace: normalizeGitPath(path.relative(repo, workspace)), workspace };
+  }
+  private async managedTrackedFiles(scope: { repoRelativeWorkspace: string }): Promise<string[]> {
+    try {
+      const prefix = scope.repoRelativeWorkspace ? `${scope.repoRelativeWorkspace}/` : '';
+      const args = ['ls-files', '-z', '--', ...IDE_MANAGED_IGNORE_ENTRIES.map(entry => `${prefix}${entry.slice(1).replace(/\/$/u, '')}`)];
+      const output = await this.run(args);
+      return output.stdout.split('\0').filter(Boolean).map(normalizeGitPath)
+        .map(repoPath => toWorkspaceRelativeGitPath(repoPath, scope.repoRelativeWorkspace))
+        .filter((value): value is string => value !== undefined)
+        .slice(0, MAX_MANAGED_TRACKED_FILES);
+    } catch { return []; }
+  }
+  private async ensureIdeManagedIgnore(workspace: string): Promise<void> {
+    if (!this.ignoreEnsurePromise) {
+      this.ignoreEnsurePromise = this.appendIdeManagedIgnoreEntries(workspace).finally(() => { this.ignoreEnsurePromise = undefined; });
+    }
+    return this.ignoreEnsurePromise;
+  }
+  private async appendIdeManagedIgnoreEntries(workspace: string): Promise<void> {
+    try {
+      const gitignorePath = path.join(workspace, '.gitignore');
+      const existing = await fs.readFile(gitignorePath, 'utf8').catch((error: { code?: string }) => { if (error?.code === 'ENOENT') return ''; throw error; });
+      const lines = new Set(existing.split(/\r?\n/u).map(line => line.trim()));
+      const missing = IDE_MANAGED_IGNORE_ENTRIES.filter(entry => !(lines.has(entry) || lines.has(entry.slice(1)) || lines.has(entry.replace(/\/$/u, '')) || lines.has(entry.slice(1).replace(/\/$/u, ''))));
+      if (!missing.length) return;
+      const separator = existing && !existing.endsWith('\n') ? '\n' : '';
+      await fs.appendFile(gitignorePath, `${separator}${IDE_MANAGED_IGNORE_MARKER}\n${missing.join('\n')}\n`, 'utf8');
+    } catch { /* .gitignore 不可读写或工作区异常时静默跳过，不能影响 Git 状态读取。 */ }
   }
   private async repositoryRoot(): Promise<string> {
     this.rootPromise ||= (async () => {
@@ -304,7 +372,11 @@ export class GitService {
   private async run(args: string[], trailing?: string[], timeout = 20_000): Promise<{ stdout: string; stderr: string }> { const root = await this.repositoryRoot(); return await this.execute([...args, ...(trailing || [])], root, timeout); }
   private async execute(args: string[], cwd: string, timeout: number): Promise<{ stdout: string; stderr: string }> {
     try { return this.runner ? await this.runner(args, { timeout }) : await execFileAsync('git', args, { cwd, timeout, windowsHide: true, maxBuffer: 8 * 1024 * 1024, encoding: 'utf8' }) as { stdout: string; stderr: string }; }
-    catch (error: any) { throw new Error(String(error?.stderr || error?.message || 'Git 命令执行失败。').trim()); }
+    catch (error: any) {
+      const raw = String(error?.stderr || error?.message || 'Git 命令执行失败。').trim();
+      const hint = translateGitError(raw);
+      throw new Error(hint ? `${hint}\n\n原始输出：\n${raw}` : raw);
+    }
   }
 }
 

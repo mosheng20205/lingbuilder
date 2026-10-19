@@ -56,6 +56,8 @@ test('source control panel surfaces remote address entry and bulk staging action
   const panel = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/SourceControlPanel.tsx'), 'utf8');
   assert.match(panel, /未设置推送地址，点击配置/u); assert.match(panel, /远程同步<\/button>/u);
   assert.match(panel, /跟踪远程分支/u); assert.match(panel, /远程仓库（推送\/拉取地址设置）/u);
+  assert.match(panel, /mutate\('sync'/u); assert.match(panel, /一键同步当前分支/u); assert.match(panel, /已同步 /u);
+  assert.match(panel, /managedTrackedFiles/u); assert.match(panel, /mutate\('untrack'/u); assert.match(panel, /从索引移除（保留本地文件）/u); assert.match(panel, /本地文件保留不动/u);
   assert.match(panel, /mutate\('stage\.all'/u); assert.match(panel, /mutate\('unstage\.all'/u);
   assert.match(panel, />全部暂存</u); assert.match(panel, />全部取消暂存</u);
   assert.match(panel, /暂存全部并提交/u);
