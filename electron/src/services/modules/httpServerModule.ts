@@ -14,7 +14,7 @@ interface HttpServerCommandSpec {
   parameters: ModuleCommandBindingParameter[];
   returnType: ModuleCommandValueType;
   returnLabel: string;
-  category: '服务' | '路由' | '请求' | '响应' | '推送' | '状态' | '兼容';
+  category: '服务' | '路由' | '请求' | '响应' | '推送' | '状态' | '文档' | '兼容';
   insertText?: string;
   example?: string;
   visibility?: 'default' | 'advanced' | 'internal';
@@ -271,6 +271,31 @@ const specs: HttpServerCommandSpec[] = [
     returnType: 'int', returnLabel: '整数型', category: '推送'
   },
   {
+    name: 'HTTP_启用接口文档', signature: 'HTTP_启用接口文档(服务端, 路径前缀, 标题)', description: '在路径前缀（如 "/docs"）挂一套离线接口文档：浏览器打开 前缀 即得可交互 Swagger UI 页面，前缀+/openapi.json 是 OpenAPI 3.0.3 规范，Try it out 直接调用真实接口；标题显示在文档页与规范 info.title，空文本用「接口文档」。页面与脚本资源全部内嵌随包分发、无任何 CDN 依赖；文档路由由工作线程直接回应、不占 UI 线程。红线：路径前缀必须以 / 开头且不支持 /* 通配；前缀及 前缀/openapi.json、前缀/swagger-ui-bundle.js、前缀/swagger-ui.css 与已有显式路由冲突时返回假且不覆盖用户路由；重复启用同前缀整体覆盖文档路由；资源地址按 前缀 绝对路径写入页面，页面地址不要带尾斜杠。',
+    parameters: [parameter('服务端', 'HTTP服务端', serverHandle), parameter('路径前缀', 'wideString', '文档页挂载路径，必须以 / 开头的精确路径，如 "/docs"；不支持 /* 通配；末尾多余斜杠会被剔除。'), parameter('标题', 'wideString', '文档页标题与 OpenAPI info.title；空文本用「接口文档」。')],
+    returnType: 'bool', returnLabel: '逻辑型', category: '文档', insertText: 'HTTP_启用接口文档($1, "/docs", "我的接口文档")'
+  },
+  {
+    name: 'HTTP_登记接口', signature: 'HTTP_登记接口(服务端, 方法, 路径, 名称, 说明)', description: '把一条真实接口登记进接口文档：方法与路径必须和 HTTP_添加路由/HTTP_添加静态路由 登记的真实路由一字不差，名称显示为接口标题（summary），说明显示为接口描述（description）。路径支持 {参数} 占位（如 /user/{id}，配合 HTTP_登记接口参数 登记路径参数）；/* 前缀通配路由请登记一个代表性具体路径并写进说明。红线：方法必须写具体值（GET、POST 等），不支持 *；必须先 HTTP_启用接口文档；重复登记同方法同路径时名称与说明覆盖、已登记的参数与示例保留。',
+    parameters: [parameter('服务端', 'HTTP服务端', serverHandle), parameter('方法', 'wideString', 'HTTP 方法文本，大小写不敏感（自动转大写），如 GET、POST；不支持 * 通配。'), parameter('路径', 'wideString', '接口路径，必须以 / 开头，与真实路由一字不差；支持 {参数} 占位（OpenAPI 路径参数形态）；不支持 /* 通配。'), parameter('名称', 'wideString', '接口名称（summary），如「查询用户」；空文本时用「方法 路径」代替。'), parameter('说明', 'wideString', '接口说明（description），可写请求/响应约定与红线；空文本不写该字段。')],
+    returnType: 'bool', returnLabel: '逻辑型', category: '文档', insertText: 'HTTP_登记接口($1, "GET", "/api/health", "健康检查", "返回服务运行状态")'
+  },
+  {
+    name: 'HTTP_登记接口参数', signature: 'HTTP_登记接口参数(服务端, 方法, 路径, 参数位置, 参数名, 说明, 示例值, 必填)', description: '给已登记的接口追加一个参数说明，让 Try it out 可以预填示例值直接调试；参数位置用模块常量：#接口参数_路径（路径里 {名称} 占位）、#接口参数_查询（URL 查询参数）、#接口参数_请求头。红线：必须先用 HTTP_登记接口 登记同方法同路径的接口；路径参数强制必填（OpenAPI 规范要求）；同名同位置参数重复登记时覆盖。',
+    parameters: [parameter('服务端', 'HTTP服务端', serverHandle), parameter('方法', 'wideString', '接口方法，与 HTTP_登记接口 保持一致，大小写不敏感。'), parameter('路径', 'wideString', '接口路径，与 HTTP_登记接口 保持一致。'), parameter('参数位置', 'int', '参数位置常量：#接口参数_路径 / #接口参数_查询 / #接口参数_请求头。'), parameter('参数名', 'wideString', '参数名称；路径参数必须与路径里的 {名称} 占位一致。'), parameter('说明', 'wideString', '参数说明，显示在文档与调试面板；空文本用参数名代替。'), parameter('示例值', 'wideString', '示例值，Try it out 预填；空文本表示无示例。'), parameter('必填', 'bool', '是否必填；路径参数强制必填，本参数只对查询参数与请求头生效。')],
+    returnType: 'bool', returnLabel: '逻辑型', category: '文档', insertText: 'HTTP_登记接口参数($1, "GET", "/user/{id}", #接口参数_路径, "id", "用户编号", "42", 真)'
+  },
+  {
+    name: 'HTTP_登记接口示例', signature: 'HTTP_登记接口示例(服务端, 方法, 路径, 请求体示例, 响应示例, 响应内容类型)', description: '给已登记的接口补请求体与响应示例：请求体示例进入 OpenAPI requestBody（Try it out 预填），响应示例进入 200 响应；请求体示例必须是合法 JSON 文本（运行时不校验语法，原样嵌入规范）。红线：必须先用 HTTP_登记接口 登记同方法同路径的接口；请求体示例与响应示例不能同时为空；响应内容类型空文本按 application/json 处理。',
+    parameters: [parameter('服务端', 'HTTP服务端', serverHandle), parameter('方法', 'wideString', '接口方法，与 HTTP_登记接口 保持一致，大小写不敏感。'), parameter('路径', 'wideString', '接口路径，与 HTTP_登记接口 保持一致。'), parameter('请求体示例', 'wideString', 'JSON 文本示例，Try it out 预填；空文本表示该接口无请求体示例。'), parameter('响应示例', 'wideString', '响应正文示例文本；空文本表示不登记响应示例。'), parameter('响应内容类型', 'wideString', '响应 Content-Type，如 "application/json"；空文本按 application/json 处理。')],
+    returnType: 'bool', returnLabel: '逻辑型', category: '文档', insertText: 'HTTP_登记接口示例($1, "POST", "/api/user", "{\\"姓名\\":\\"张三\\"}", "{\\"ok\\":true}", "")'
+  },
+  {
+    name: 'HTTP_取接口文档JSON', signature: 'HTTP_取接口文档JSON(服务端)', description: '按当前登记生成 OpenAPI 3.0.3 规范 JSON 文本并返回；servers 为 "/"（页面同源，与监听地址端口解耦）。可配合文件写入命令把规范存盘，交付前端团队或导入接口管理平台；未启用接口文档时返回空文本。',
+    parameters: [parameter('服务端', 'HTTP服务端', serverHandle)],
+    returnType: 'wideString', returnLabel: '文本型', category: '文档'
+  },
+  {
     name: 'HTTP_启动服务', signature: 'HTTP_启动服务(端口)', description: '旧版单服务兼容入口；在 127.0.0.1 启动后台服务，建议新代码使用受管服务 API。',
     parameters: [parameter('端口', 'int', '在 127.0.0.1 上监听的端口，0 到 65535。')], returnType: 'int', returnLabel: '整数型', category: '兼容', visibility: 'advanced'
   },
@@ -323,16 +348,21 @@ export const HTTP_SERVER_MODULE: LingBuilderModuleManifest = {
   schemaVersion: 2,
   id: 'lingbuilder.http.server',
   name: 'HTTP 服务端模块',
-  version: '2.2.0',
+  version: '2.3.0',
   category: '网络',
-  description: '提供受管 HTTP/1.1 服务端、后台多连接处理、路由（含工作线程直回的静态路由）、完整请求读取、可配置响应、SSE 单向推送（服务端 → 客户端持续下发事件流）、资源限制、连接轮转和运行状态。',
+  description: '提供受管 HTTP/1.1 服务端、后台多连接处理、路由（含工作线程直回的静态路由）、完整请求读取、可配置响应、SSE 单向推送（服务端 → 客户端持续下发事件流）、离线接口文档（OpenAPI 3.0.3 规范 + Swagger UI 可交互调试页）、资源限制、连接轮转和运行状态。',
   author: 'LingBuilder',
-  tags: ['内置', '网络', 'HTTP', '服务端', 'HTTP/1.1', '路由', '静态路由', 'SSE', '单向推送', '受管并发'],
+  tags: ['内置', '网络', 'HTTP', '服务端', 'HTTP/1.1', '路由', '静态路由', 'SSE', '单向推送', '接口文档', 'OpenAPI', 'Swagger UI', '受管并发'],
   contributes: {
     commands: specs.map(contribution),
     types: [
       { name: 'HTTP服务端', description: '进程内不复用的受管 HTTP 服务端 ID，不暴露原生 SOCKET。', cppType: 'long long' },
       { name: 'HTTP请求', description: '仅在请求生命周期内有效的受管 HTTP 请求 ID。', cppType: 'long long' }
+    ],
+    constants: [
+      { name: '接口参数_路径', type: '整数型', value: 1, description: 'HTTP_登记接口参数 的参数位置：路径占位参数（路径里的 {名称}），OpenAPI in=path，强制必填。' },
+      { name: '接口参数_查询', type: '整数型', value: 2, description: 'HTTP_登记接口参数 的参数位置：URL 查询参数（?名称=值），OpenAPI in=query。' },
+      { name: '接口参数_请求头', type: '整数型', value: 3, description: 'HTTP_登记接口参数 的参数位置：请求头，OpenAPI in=header。' }
     ],
     snippets: [
       {
@@ -354,6 +384,11 @@ export const HTTP_SERVER_MODULE: LingBuilderModuleManifest = {
         label: 'HTTP SSE 单向推送（服务端 → 客户端）',
         insertText: 'HTTP服务端 服务 = HTTP_创建服务()\nHTTP_配置服务(服务, "127.0.0.1", 8080, 4, 256)\nHTTP_添加路由(服务, "GET", "/events", &处理订阅)\nHTTP_启动(服务)\n\n空 处理订阅()\n    HTTP请求 请求 = HTTP_取当前请求()\n    HTTP_设置响应头(请求, "Access-Control-Allow-Origin", "*")\n    HTTP_SSE_开始(请求)\n    HTTP_SSE_推送事件(请求, "hello", "连接成功")',
         description: '浏览器 EventSource 订阅 /events 后连接保持；把请求句柄存入变量或数组，之后在时钟、按钮或任意线程里随时 HTTP_SSE_推送/推送事件 下发，HTTP_SSE_结束 关闭。'
+      },
+      {
+        label: 'HTTP 接口文档一站托管（OpenAPI + Swagger UI）',
+        insertText: 'HTTP服务端 服务 = HTTP_创建服务()\nHTTP_配置服务(服务, "127.0.0.1", 8080, 4, 256)\nHTTP_启用接口文档(服务, "/docs", "演示服务")\nHTTP_添加静态路由(服务, "GET", "/api/health", "{\\"ok\\":true}", "application/json; charset=utf-8")\nHTTP_添加路由(服务, "POST", "/api/user", &处理创建用户)\nHTTP_登记接口(服务, "GET", "/api/health", "健康检查", "返回服务运行状态")\nHTTP_登记接口(服务, "POST", "/api/user", "创建用户", "提交 JSON 建档，返回创建结果")\nHTTP_登记接口示例(服务, "POST", "/api/user", "{\\"姓名\\":\\"张三\\"}", "{\\"ok\\":true}", "")\nHTTP_启动(服务)',
+        description: '启用接口文档后浏览器打开 /docs 即得可交互文档页（离线 Swagger UI，无 CDN），Try it out 直接调用真实接口；登记接口的方法路径必须与真实路由一字不差，HTTP_取接口文档JSON 可把规范存盘交付前端。'
       }
     ],
     docs: [{ title: 'HTTP 服务端模块使用说明', path: 'docs/modules/http-server/README.md' }]

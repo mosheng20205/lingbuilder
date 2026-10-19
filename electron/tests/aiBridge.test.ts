@@ -266,6 +266,11 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.match(String(client.getInstructions() || ''), /ODBC_取列文本/u, 'instructions 必须给出 ODBC 按列读文本命令');
     assert.match(String(client.getInstructions() || ''), /ODBC_查询关闭/u, 'instructions 必须钉住结果集用完必须关闭的红线');
     assert.match(String(client.getInstructions() || ''), /ODBC_转义文本/u, 'instructions 必须给出拼 SQL 前的单引号转义命令');
+    assert.match(String(client.getInstructions() || ''), /字节集_取数据地址/u, 'instructions 必须给出字节集取数据地址命令（DLL 指针整数互操作）');
+    assert.match(String(client.getInstructions() || ''), /文本_取数据地址/u, 'instructions 必须给出文本取数据地址命令');
+    assert.match(String(client.getInstructions() || ''), /只在当条语句内有效/u, 'instructions 必须钉住取数据地址的生命周期红线');
+    assert.match(String(client.getInstructions() || ''), /对齐 = 1\/2\/4\/8\/16/u, 'instructions 必须给出 DLL 结构体打包对齐声明写法');
+    assert.match(String(client.getInstructions() || ''), /定长数组/u, 'instructions 必须给出 DLL 结构体定长数组字段口径');
     assert.match(String(client.getInstructions() || ''), /控件_设置只读/u, 'instructions 必须给出编辑框运行期只读命令（替代 @ 内联 EM_SETREADONLY）');
     assert.match(String(client.getInstructions() || ''), /控件_设置密码输入/u, 'instructions 必须给出编辑框运行期密码掩码命令');
     assert.match(String(client.getInstructions() || ''), /控件_设置提示文字/u, 'instructions 必须给出运行期占位提示命令');
@@ -339,6 +344,11 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.match(String(client.getInstructions() || ''), /HTTP_添加静态路由/u, 'instructions 必须引导外部 AI 服务端项目优先静态路由');
     assert.match(String(client.getInstructions() || ''), /HTTP_SSE_推送事件\(请求, 事件名, 数据\)/u, 'instructions 必须给出 SSE 单向推送命令族口径');
     assert.match(String(client.getInstructions() || ''), /SSE 与普通响应互斥/u, 'instructions 必须钉住 SSE 与普通响应互斥红线');
+    assert.match(String(client.getInstructions() || ''), /HTTP_启用接口文档\(服务, "\/docs", 标题\)/u, 'instructions 必须给出接口文档一站托管口径');
+    assert.match(String(client.getInstructions() || ''), /openapi\.json/u, 'instructions 必须写明 OpenAPI 规范地址（前缀/openapi.json）');
+    assert.match(String(client.getInstructions() || ''), /无 CDN 依赖/u, 'instructions 必须钉住接口文档离线内嵌红线');
+    assert.match(String(client.getInstructions() || ''), /登记的方法路径必须与真实路由一字不差/u, 'instructions 必须钉住登记与真实路由一致红线');
+    assert.match(String(client.getInstructions() || ''), /HTTP_取接口文档JSON\(服务\)/u, 'instructions 必须给出规范导出命令');
     assert.match(String(client.getInstructions() || ''), /HTTP_设置连接轮转/u, 'instructions 必须告知外部 AI 连接轮转可配（高负载放宽强制关闭阈值）');
     assert.match(String(client.getInstructions() || ''), /HTTP客户端_请求置Cookie/u, 'instructions 必须告知外部 AI http-client 2.1 的 Cookie 注入口（区别于自动罐开关）');
     assert.match(String(client.getInstructions() || ''), /workspace\.list 的返回首项/u, 'instructions 必须教外部 AI 先自省工作区（P2 工作区错位自查）');

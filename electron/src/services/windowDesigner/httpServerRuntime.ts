@@ -1,4 +1,5 @@
 import { InstalledModule } from '../modules/types';
+import { HTTP_SWAGGER_UI_BUNDLE_JS, HTTP_SWAGGER_UI_CSS, HTTP_SWAGGER_UI_VERSION } from './httpSwaggerUiInline.generated';
 
 export const HTTP_SERVER_MODULE_ID = 'lingbuilder.http.server';
 
@@ -7,14 +8,34 @@ export function generateHttpServerRuntime(enabledModules: InstalledModule[]): st
   return HTTP_SERVER_RUNTIME;
 }
 
-export function generateHttpServerWindowMethods(enabledModules: InstalledModule[]): string {
-  if (!enabledModules.some(module => module.manifest.id === HTTP_SERVER_MODULE_ID)) return '';
-  return HTTP_SERVER_WINDOW_METHODS;
+// 族门控：仅当项目源码实际调用 HTTP_启用接口文档 时，才把 Swagger UI 离线资源（约 1.7MB）
+// 拼进生成工程；未用文档的 http.server 项目生成体积零增长。调用方用
+// programUsesHttpDocsCommands（lingCppWin32Project.ts）扫描全部语句得出 docsUsed。
+export function generateHttpServerDocsRuntime(enabledModules: InstalledModule[], docsUsed: boolean): string {
+  if (!docsUsed || !enabledModules.some(module => module.manifest.id === HTTP_SERVER_MODULE_ID)) return '';
+  return `// HTTP 接口文档离线资源：Swagger UI ${HTTP_SWAGGER_UI_VERSION}（UTF-8 字节集，生成自 scripts/generate-http-swagger-ui.ts）。
+static const unsigned char kLingBuilderSwaggerUiJsBytes[] = {${toCppByteArray(Buffer.from(HTTP_SWAGGER_UI_BUNDLE_JS, 'utf8'))}};
+static const size_t kLingBuilderSwaggerUiJsSize = sizeof(kLingBuilderSwaggerUiJsBytes);
+static const unsigned char kLingBuilderSwaggerUiCssBytes[] = {${toCppByteArray(Buffer.from(HTTP_SWAGGER_UI_CSS, 'utf8'))}};
+static const size_t kLingBuilderSwaggerUiCssSize = sizeof(kLingBuilderSwaggerUiCssBytes);
+`;
 }
 
-export function generateHttpServerGlobalMethods(enabledModules: InstalledModule[]): string {
+function toCppByteArray(bytes: Buffer): string {
+  const values: string[] = [];
+  for (const value of bytes) values.push(String(value));
+  return values.join(',');
+}
+
+export function generateHttpServerWindowMethods(enabledModules: InstalledModule[], docsUsed = false): string {
   if (!enabledModules.some(module => module.manifest.id === HTTP_SERVER_MODULE_ID)) return '';
-  return HTTP_SERVER_WINDOW_METHODS
+  return docsUsed ? HTTP_SERVER_WINDOW_METHODS + HTTP_SERVER_DOCS_WINDOW_METHODS : HTTP_SERVER_WINDOW_METHODS;
+}
+
+export function generateHttpServerGlobalMethods(enabledModules: InstalledModule[], docsUsed = false): string {
+  if (!enabledModules.some(module => module.manifest.id === HTTP_SERVER_MODULE_ID)) return '';
+  const methods = docsUsed ? HTTP_SERVER_WINDOW_METHODS + HTTP_SERVER_DOCS_WINDOW_METHODS : HTTP_SERVER_WINDOW_METHODS;
+  return methods
     .replaceAll('httpServerRuntime_', 'g_httpServerRuntime')
     .replace(/^    /gmu, 'static ');
 }
@@ -160,9 +181,11 @@ public:
         auto server = FindServer(id);
         if (!server) return Fail(L"HTTP 服务端句柄无效。");
         std::lock_guard<std::mutex> lock(server->mutex);
-        server->routes.clear();
+        // 文档内置路由（/docs 页面、swagger-ui 资源、openapi.json）不属于显式路由，清空时保留。
+        server->routes.erase(std::remove_if(server->routes.begin(), server->routes.end(), [](const Route& item) { return !item.docRoute; }), server->routes.end());
         return true;
     }
+
 
     bool Start(long long id) {
         auto server = FindServer(id);
@@ -489,12 +512,21 @@ private:
         Response response; mutable std::mutex mutex; std::condition_variable changed;
     };
     struct StaticResponse { int status = 200; std::string body; std::wstring filePath, contentType = L"text/plain; charset=utf-8", downloadName; };
-    struct Route { std::wstring method, pattern, handler; std::shared_ptr<StaticResponse> staticResponse; };
+    struct Route { std::wstring method, pattern, handler; std::shared_ptr<StaticResponse> staticResponse; bool docRoute = false; };
+    // 接口文档登记（HTTP_启用接口文档/登记接口/登记接口参数/登记接口示例）：声明性数据，
+    // 只影响 /openapi.json 与 /docs 页面内容，不参与路由分发校验。
+    struct DocParam { int in = 0; std::wstring name, description, example; bool required = false; };
+    struct DocApi {
+        std::wstring method, path, name, description, requestExample, responseExample, responseContentType = L"application/json";
+        std::vector<DocParam> params;
+    };
+    struct DocInfo { bool enabled = false; std::wstring prefix, title = L"接口文档"; std::vector<DocApi> apis; };
     struct Connection { SOCKET socket = INVALID_SOCKET; std::wstring address; int port = 0; };
     struct Server {
         long long id = 0; std::wstring address = L"127.0.0.1", defaultHandler, lastError; int configuredPort = 0, actualPort = 0, workerCount = 4, queueLimit = 256, timeoutMs = 30000;
         size_t maxHeaderBytes = 64 * 1024, maxBodyBytes = 16 * 1024 * 1024; bool allowExternal = false, legacy = false;
         std::vector<Route> routes; std::atomic<bool> running{false}, stopping{false}; std::atomic<int> activeConnections{0}; std::atomic<long long> totalRequests{0}; std::atomic<long long> rotationLimit{100}; std::atomic<int> sseSessions{0};
+        DocInfo doc;
         SOCKET listenSocket = INVALID_SOCKET; std::thread acceptThread; std::vector<std::thread> workers; std::deque<Connection> queue; std::set<SOCKET> activeSockets;
         std::deque<long long> legacyRequests; mutable std::mutex mutex, lifecycleMutex; std::condition_variable queueChanged, legacyChanged;
     };
@@ -506,6 +538,202 @@ private:
     bool FailLocked(const std::wstring& message) const { lastError_ = message; return false; }
     static bool ServerFail(const std::shared_ptr<Server>& server, const std::wstring& message) { server->lastError = message; return false; }
 
+public:
+    // —— 接口文档（OpenAPI 3.0.3 + 离线 Swagger UI，HTTP_启用接口文档 命令族）——
+    static std::wstring DocInLabel(int position) { return position == 1 ? L"path" : position == 2 ? L"query" : L"header"; }
+    static bool DocPrefixPatternHits(const std::wstring& pattern, const std::wstring& path) {
+        if (pattern.size() < 2 || pattern.compare(pattern.size() - 2, 2, L"/*") != 0) return false;
+        const std::wstring base = pattern.substr(0, pattern.size() - 1);
+        return path.size() >= base.size() && path.compare(0, base.size(), base) == 0;
+    }
+    static void DocReplaceAll(std::string& text, const std::string& from, const std::string& to) {
+        size_t at = 0;
+        while ((at = text.find(from, at)) != std::string::npos) { text.replace(at, from.size(), to); at += to.size(); }
+    }
+    static DocApi* FindDocApiLockedMutable(Server& server, const std::wstring& method, const std::wstring& path) {
+        for (auto& item : server.doc.apis) if (item.method == method && item.path == path) return &item;
+        return nullptr;
+    }
+    void RefreshDocsRouteLocked(const std::shared_ptr<Server>& server) {
+        if (!server->doc.enabled) return;
+        auto response = std::make_shared<StaticResponse>();
+        response->body = LB_WideToUtf8(BuildDocsJsonLocked(*server).c_str());
+        response->contentType = L"application/json; charset=utf-8";
+        UpsertRoute(server, { L"GET", server->doc.prefix + L"/openapi.json", L"", response, true });
+    }
+    // OpenAPI 3.0.3 文档；只产出 summary/description/parameters/示例，schema 恒 string（一期不做对象建模）。
+    static std::wstring BuildDocsJsonLocked(const Server& server) {
+        std::wstring out = L"{\"openapi\":\"3.0.3\",\"info\":{\"title\":\"" + JsonEscape(server.doc.title) + L"\",\"version\":\"1.0.0\"},\"servers\":[{\"url\":\"/\"}],\"paths\":{";
+        bool firstPath = true;
+        for (size_t index = 0; index < server.doc.apis.size(); ++index) {
+            const DocApi& api = server.doc.apis[index];
+            bool clustered = false;
+            for (size_t prior = 0; prior < index; ++prior) if (server.doc.apis[prior].path == api.path) { clustered = true; break; }
+            if (clustered) continue;
+            if (!firstPath) out += L",";
+            firstPath = false;
+            out += L"\"" + JsonEscape(api.path) + L"\":{";
+            bool firstMethod = true;
+            for (size_t next = index; next < server.doc.apis.size(); ++next) {
+                const DocApi& item = server.doc.apis[next];
+                if (item.path != api.path) continue;
+                if (!firstMethod) out += L",";
+                firstMethod = false;
+                out += L"\"" + Lower(item.method) + L"\":{\"summary\":\"" + JsonEscape(item.name.empty() ? item.method + L" " + item.path : item.name) + L"\"";
+                if (!item.description.empty()) out += L",\"description\":\"" + JsonEscape(item.description) + L"\"";
+                if (!item.params.empty()) {
+                    out += L",\"parameters\":[";
+                    bool firstParam = true;
+                    for (const auto& param : item.params) {
+                        if (!firstParam) out += L",";
+                        firstParam = false;
+                        out += L"{\"name\":\"" + JsonEscape(param.name) + L"\",\"in\":\"" + DocInLabel(param.in) + L"\",\"required\":" + (param.required ? L"true" : L"false")
+                            + L",\"description\":\"" + JsonEscape(param.description.empty() ? param.name : param.description)
+                            + L"\",\"schema\":{\"type\":\"string\"},\"example\":\"" + JsonEscape(param.example) + L"\"}";
+                    }
+                    out += L"]";
+                }
+                if (!item.requestExample.empty()) {
+                    out += L",\"requestBody\":{\"required\":false,\"content\":{\"application/json\":{\"example\":\"" + JsonEscape(item.requestExample) + L"\"}}}";
+                }
+                out += L",\"responses\":{\"200\":{\"description\":\"成功\"";
+                if (!item.responseExample.empty()) {
+                    out += L",\"content\":{\"" + JsonEscape(item.responseContentType.empty() ? L"application/json" : item.responseContentType) + L"\":{\"example\":\"" + JsonEscape(item.responseExample) + L"\"}}";
+                }
+                out += L"}}}";
+            }
+            out += L"}";
+        }
+        out += L"}}";
+        return out;
+    }
+    bool EnableDocs(long long id, const wchar_t* prefix, const wchar_t* title, const unsigned char* jsBytes, size_t jsSize, const unsigned char* cssBytes, size_t cssSize) {
+        auto server = FindServer(id);
+        if (!server) return Fail(L"HTTP 服务端句柄无效。");
+        std::wstring docPrefix = prefix ? prefix : L"";
+        std::lock_guard<std::mutex> lock(server->mutex);
+        if (!jsBytes || jsSize == 0 || !cssBytes || cssSize == 0) return ServerFail(server, L"HTTP 接口文档离线资源缺失，请重新生成工程。");
+        while (docPrefix.size() > 1 && docPrefix.back() == L'/') docPrefix.pop_back();
+        if (docPrefix.empty() || docPrefix[0] != L'/') return ServerFail(server, L"HTTP 接口文档路径前缀必须以 / 开头，如 \"/docs\"。");
+        if (docPrefix.find(L'*') != std::wstring::npos) return ServerFail(server, L"HTTP 接口文档路径前缀不支持 * 通配，请填写精确路径，如 \"/docs\"。");
+        const std::wstring specPath = docPrefix + L"/openapi.json";
+        const std::wstring jsPath = docPrefix + L"/swagger-ui-bundle.js";
+        const std::wstring cssPath = docPrefix + L"/swagger-ui.css";
+        for (const auto& route : server->routes) {
+            if (route.docRoute) continue;
+            if (route.method != L"GET" && route.method != L"*") continue;
+            if (route.pattern == docPrefix || route.pattern == specPath || route.pattern == jsPath || route.pattern == cssPath
+                || DocPrefixPatternHits(route.pattern, docPrefix) || DocPrefixPatternHits(route.pattern, specPath)
+                || DocPrefixPatternHits(route.pattern, jsPath) || DocPrefixPatternHits(route.pattern, cssPath)) {
+                return ServerFail(server, L"HTTP 接口文档路径与已有路由冲突：请更换前缀，或先移除同路径的显式路由。");
+            }
+        }
+        // 重复启用：移除全部旧文档路由后整体覆盖注册。
+        server->routes.erase(std::remove_if(server->routes.begin(), server->routes.end(), [](const Route& item) { return item.docRoute; }), server->routes.end());
+        std::string titleUtf8 = LB_WideToUtf8(title && title[0] ? title : server->doc.title.c_str());
+        DocReplaceAll(titleUtf8, "<", "&lt;");
+        std::string page = "<!DOCTYPE html>\n<html lang=\"zh-CN\">\n<head>\n<meta charset=\"UTF-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>";
+        page += titleUtf8;
+        page += "</title>\n<link rel=\"icon\" href=\"data:,\">\n<link rel=\"stylesheet\" href=\"";
+        page += LB_WideToUtf8(cssPath.c_str());
+        page += "\">\n</head>\n<body>\n<div id=\"swagger-ui\"></div>\n<script src=\"";
+        page += LB_WideToUtf8(jsPath.c_str());
+        page += "\"></script>\n<script>\nwindow.addEventListener('DOMContentLoaded', function () {\n  window.ui = SwaggerUIBundle({\n    url: '";
+        page += LB_WideToUtf8(specPath.c_str());
+        page += "',\n    dom_id: '#swagger-ui',\n    docExpansion: 'list',\n    defaultModelsExpandDepth: -1,\n    tryItOutEnabled: true\n  });\n});\n</script>\n</body>\n</html>\n";
+        auto pageResponse = std::make_shared<StaticResponse>();
+        pageResponse->body = std::move(page);
+        pageResponse->contentType = L"text/html; charset=utf-8";
+        UpsertRoute(server, { L"GET", docPrefix, L"", pageResponse, true });
+        auto jsResponse = std::make_shared<StaticResponse>();
+        jsResponse->body.assign(reinterpret_cast<const char*>(jsBytes), jsSize);
+        jsResponse->contentType = L"text/javascript; charset=utf-8";
+        UpsertRoute(server, { L"GET", jsPath, L"", jsResponse, true });
+        auto cssResponse = std::make_shared<StaticResponse>();
+        cssResponse->body.assign(reinterpret_cast<const char*>(cssBytes), cssSize);
+        cssResponse->contentType = L"text/css; charset=utf-8";
+        UpsertRoute(server, { L"GET", cssPath, L"", cssResponse, true });
+        server->doc.enabled = true;
+        server->doc.prefix = docPrefix;
+        if (title && title[0]) server->doc.title = title;
+        RefreshDocsRouteLocked(server);
+        return true;
+    }
+    bool RegisterApi(long long id, const wchar_t* method, const wchar_t* path, const wchar_t* name, const wchar_t* description) {
+        auto server = FindServer(id);
+        if (!server) return Fail(L"HTTP 服务端句柄无效。");
+        std::wstring routeMethod = Upper(method ? method : L"");
+        std::wstring routePath = path ? path : L"";
+        std::lock_guard<std::mutex> lock(server->mutex);
+        if (!server->doc.enabled) return ServerFail(server, L"请先调用 HTTP_启用接口文档 启用接口文档，再登记接口。");
+        if (routeMethod.empty() || routeMethod == L"*") return ServerFail(server, L"HTTP_登记接口 必须写具体方法（GET、POST 等），不支持 * 通配。");
+        if (!IsMethodToken(routeMethod)) return ServerFail(server, L"HTTP_登记接口 的方法包含非法字符。");
+        if (routePath.empty() || routePath[0] != L'/') return ServerFail(server, L"HTTP_登记接口 的路径必须以 / 开头。");
+        if (routePath.find(L'*') != std::wstring::npos) return ServerFail(server, L"HTTP_登记接口 的路径不支持 * 通配，请登记具体路径或代表性路径。");
+        auto found = std::find_if(server->doc.apis.begin(), server->doc.apis.end(), [&](const DocApi& item) { return item.method == routeMethod && item.path == routePath; });
+        if (found != server->doc.apis.end()) {
+            // 重复登记：名称与说明覆盖，已登记的参数与示例保留。
+            found->name = name ? name : L"";
+            found->description = description ? description : L"";
+        } else {
+            server->doc.apis.push_back({ routeMethod, routePath, name ? name : L"", description ? description : L"" });
+        }
+        RefreshDocsRouteLocked(server);
+        return true;
+    }
+    bool RegisterApiParam(long long id, const wchar_t* method, const wchar_t* path, int position, const wchar_t* name, const wchar_t* description, const wchar_t* example, bool required) {
+        auto server = FindServer(id);
+        if (!server) return Fail(L"HTTP 服务端句柄无效。");
+        std::wstring routeMethod = Upper(method ? method : L"");
+        std::wstring routePath = path ? path : L"";
+        std::lock_guard<std::mutex> lock(server->mutex);
+        if (!server->doc.enabled) return ServerFail(server, L"请先调用 HTTP_启用接口文档 启用接口文档，再登记参数。");
+        if (position < 1 || position > 3) return ServerFail(server, L"HTTP_登记接口参数 的参数位置必须是 #接口参数_路径、#接口参数_查询 或 #接口参数_请求头。");
+        if (!name || !name[0]) return ServerFail(server, L"HTTP_登记接口参数 的参数名不能为空。");
+        DocApi* api = FindDocApiLockedMutable(*server, routeMethod, routePath);
+        if (!api) return ServerFail(server, L"HTTP_登记接口参数 找不到对应接口：请先用 HTTP_登记接口 登记同方法同路径的接口。");
+        DocParam param;
+        param.in = position;
+        param.name = name;
+        param.description = description ? description : L"";
+        param.example = example ? example : L"";
+        param.required = position == 1 ? true : required;
+        auto found = std::find_if(api->params.begin(), api->params.end(), [&](const DocParam& item) { return item.in == param.in && item.name == param.name; });
+        if (found != api->params.end()) *found = param;
+        else api->params.push_back(std::move(param));
+        RefreshDocsRouteLocked(server);
+        return true;
+    }
+    bool RegisterApiExample(long long id, const wchar_t* method, const wchar_t* path, const wchar_t* requestExample, const wchar_t* responseExample, const wchar_t* responseContentType) {
+        auto server = FindServer(id);
+        if (!server) return Fail(L"HTTP 服务端句柄无效。");
+        std::wstring routeMethod = Upper(method ? method : L"");
+        std::wstring routePath = path ? path : L"";
+        std::lock_guard<std::mutex> lock(server->mutex);
+        if (!server->doc.enabled) return ServerFail(server, L"请先调用 HTTP_启用接口文档 启用接口文档，再登记示例。");
+        DocApi* api = FindDocApiLockedMutable(*server, routeMethod, routePath);
+        if (!api) return ServerFail(server, L"HTTP_登记接口示例 找不到对应接口：请先用 HTTP_登记接口 登记同方法同路径的接口。");
+        const bool hasRequest = requestExample && requestExample[0];
+        const bool hasResponse = responseExample && responseExample[0];
+        if (!hasRequest && !hasResponse) return ServerFail(server, L"HTTP_登记接口示例 的请求体示例与响应示例不能同时为空。");
+        if (hasRequest) api->requestExample = requestExample;
+        if (hasResponse) {
+            api->responseExample = responseExample;
+            if (responseContentType && responseContentType[0]) api->responseContentType = responseContentType;
+            else if (api->responseContentType.empty()) api->responseContentType = L"application/json";
+        }
+        RefreshDocsRouteLocked(server);
+        return true;
+    }
+    std::wstring DocsJson(long long id) const {
+        auto server = FindServer(id);
+        if (!server) return L"";
+        std::lock_guard<std::mutex> lock(server->mutex);
+        if (!server->doc.enabled) return L"";
+        return BuildDocsJsonLocked(*server);
+    }
+
+private:
     // —— SSE 会话内部管理 ——
     static void CloseSseSocketLocked(const std::shared_ptr<Request>& request) {
         if (request->socket != INVALID_SOCKET) { shutdown(request->socket, SD_BOTH); closesocket(request->socket); request->socket = INVALID_SOCKET; }
@@ -992,4 +1220,14 @@ const HTTP_SERVER_WINDOW_METHODS = String.raw`
     bool HTTP_SSE_结束(long long request) { return httpServerRuntime_.SseEnd(request); }
     bool HTTP_SSE_是否连接(long long request) { return httpServerRuntime_.SseConnected(request); }
     int HTTP_SSE_取连接数(long long server) { return httpServerRuntime_.SseSessions(server); }
+`;
+
+// 接口文档命令族门面：仅当项目源码实际调用 HTTP_启用接口文档 时随族门控拼入
+// （kLingBuilderSwaggerUi*Bytes 同门控，见 generateHttpServerDocsRuntime）。
+const HTTP_SERVER_DOCS_WINDOW_METHODS = String.raw`
+    bool HTTP_启用接口文档(long long server, const wchar_t* prefix, const wchar_t* title) { return httpServerRuntime_.EnableDocs(server, prefix, title, kLingBuilderSwaggerUiJsBytes, sizeof(kLingBuilderSwaggerUiJsBytes), kLingBuilderSwaggerUiCssBytes, sizeof(kLingBuilderSwaggerUiCssBytes)); }
+    bool HTTP_登记接口(long long server, const wchar_t* method, const wchar_t* path, const wchar_t* name, const wchar_t* description) { return httpServerRuntime_.RegisterApi(server, method, path, name, description); }
+    bool HTTP_登记接口参数(long long server, const wchar_t* method, const wchar_t* path, int position, const wchar_t* name, const wchar_t* description, const wchar_t* example, bool required) { return httpServerRuntime_.RegisterApiParam(server, method, path, position, name, description, example, required); }
+    bool HTTP_登记接口示例(long long server, const wchar_t* method, const wchar_t* path, const wchar_t* requestExample, const wchar_t* responseExample, const wchar_t* responseContentType) { return httpServerRuntime_.RegisterApiExample(server, method, path, requestExample, responseExample, responseContentType); }
+    const wchar_t* HTTP_取接口文档JSON(long long server) { return httpServerRuntime_.ReturnText(httpServerRuntime_.DocsJson(server)); }
 `;
