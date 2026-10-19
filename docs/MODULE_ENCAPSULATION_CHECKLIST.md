@@ -2,7 +2,7 @@
 
 更新时间：2026-09-29
 
-本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **103 个内置模块、4153 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
+本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **103 个内置模块、4160 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
 
 - `schemaVersion: 2`。
 - `contributes.commands` 与 `bindings.commands` 一一对应。
@@ -14,9 +14,9 @@
 
 | 状态 | 模块 ID | 名称 | 命令数 |
 |---|---|---|---:|
- 已封装 | `lingbuilder.std.text` | 文本处理模块 | 29 |
+ 已封装 | `lingbuilder.std.text` | 文本处理模块 | 30 |
 | 已封装 | `lingbuilder.std.array` | 数组操作模块 | 13 |
- 已封装 | `lingbuilder.std.bytes` | 字节与十六进制模块 | 26 |
+ 已封装 | `lingbuilder.std.bytes` | 字节与十六进制模块 | 27 |
 已封装 | `lingbuilder.std.encoding` | 编码转换模块 | 32 |
 | 已封装（1.2.0 位运算族） | `lingbuilder.std.math` | 数学与随机模块 | 28 | 64 位补码位模式位运算 10 条（与/或/异或/取反/左右移/算术右移/循环左移32/取字节/位测试），移位位数对 64 取模 |
 | 已封装 | `lingbuilder.std.datetime` | 日期时间模块 | 22 |
@@ -173,7 +173,7 @@ OpenCV 模块保留基础 GDI+ 图像模块并作为新增高级能力。公开�
  已有 | `lingbuilder.threading` | 多线程模块 | 66 |
  已有 | `lingbuilder.cron` | 定时任务模块 | 29 |
 | 已完整封装 | `lingbuilder.websocket.client` | WebSocket 客户端模块 2.0（WinHTTP 受管多连接、wss/TLS 与自动重连） | 51 |
-| 已完整封装 | `lingbuilder.http.server` | HTTP 服务端模块 2.2（受管多连接 HTTP/1.1、动态/静态路由、SSE 单向推送、连接轮转与完整请求/响应） | 58 |
+| 已完整封装 | `lingbuilder.http.server` | HTTP 服务端模块 2.3（受管多连接 HTTP/1.1、动态/静态路由、SSE 单向推送、离线接口文档 OpenAPI 3.0.3 + Swagger UI、连接轮转与完整请求/响应） | 63 |
 | 已完整封装 | `lingbuilder.websocket.server` | WebSocket 服务端模块 2.0（RFC 6455 受管多客户端） | 50 |
 | 已完整封装 | `lingbuilder.sunnynet` | 网络中间件模块 1.0（SunnyNet 抓包改写：HTTP/HTTPS/WS/TCP/UDP、根证书解密、全量请求/响应头枚举与请求/响应体字节集、进程代理/SOCKS 按进程/上游代理（全局与按请求、socks5 可带账密）/系统代理；驱动常驻免重启） | 73 |
 
