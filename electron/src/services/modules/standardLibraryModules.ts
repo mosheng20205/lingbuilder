@@ -35,7 +35,7 @@ const regexSeparatorArg = '拼接各匹配结果之间插入的文本，允许�
 const textModule = createStandardModule({
   id: 'lingbuilder.std.text',
   name: '文本处理模块',
-  version: '1.3.0',
+  version: '1.4.0',
   category: '其他',
   description: '提供 Unicode 文本查找、截取、替换、修剪、大小写转换、定宽填充（按显示列数）与数组合并能力。索引统一从 0 开始。',
   tags: ['文本', 'Unicode'],
@@ -74,6 +74,9 @@ const textModule = createStandardModule({
     { name: '文本_居中', signature: '文本_居中(文本, 目标显示宽度, 填充字符)', description: '居中补齐：按显示宽度在两侧补到目标宽度，左侧分到多余的半列（左侧宽度取剩余列数的一半向下取整），已够宽时原样返回。', insertText: '文本_居中("$1", 10)', parameters: [{ name: '文本', type: 'wideString', description: srcTextRanged}, { name: '目标显示宽度', type: 'int', description: '目标显示宽度，单位是显示列数而不是字符数：中日韩全角字符占 2 列、组合符号占 0 列、其余占 1 列；文本当前显示宽度已达到或超过该值时原样返回。'}, { name: '填充字符', type: 'wideString', optional: true, defaultValue: ' ', description: '补在两侧的文本，省略时为半角空格；只取首个字符重复，剩余列数不足一个填充字符宽度时少补一次。'}], returnType: 'wideString', example: '调试输出("[" + 文本_居中("标题", 12) + "]")' },
     { name: '文本_取显示宽度', signature: '文本_取显示宽度(文本, 中日韩按 2 列)', description: '返回文本在等宽字体下占用的显示列数（不是字符数）；制表符和换行等控制字符按 0 列计算。', insertText: '文本_取显示宽度("$1")', parameters: [{ name: '文本', type: 'wideString', description: srcTextRanged}, { name: '中日韩按 2 列', type: 'bool', optional: true, defaultValue: true, description: '传真（省略时）按终端惯例计算：中日韩全角字符 2 列、组合符号 0 列、其余 1 列；传假时每个字符一律算 1 列（等价于 文本_取长度，用于只按字符数对齐的场合）。'}], returnType: 'int', example: '调试输出(文本_取显示宽度("莫生网店"))' },
     { name: '文本_连接', signature: '文本_连接(文本数组, 分隔符, 起始下标, 数量)', description: '用分隔符把数组区间内的成员依次连成一段文本（文本_分割 的反向操作），拼接 JSON/CSV 记录时不必再手写「首个元素不加逗号」的累加逻辑。', insertText: '文本_连接($1, "$2")', parameters: [{ name: '文本数组', type: 'array', description: arrayArg}, { name: '分隔符', type: 'wideString', description: '连接各成员时插入的文本，允许空文本；分隔符不参与成员内容。'}, { name: '起始下标', type: 'int', optional: true, defaultValue: 0, description: '从哪个成员开始连接，索引从 0 起；省略或小于 0 时按 0 处理，不小于成员数时返回空文本。'}, { name: '数量', type: 'int', optional: true, defaultValue: -1, description: '最多连接的成员个数；省略或小于等于 0 表示从起始下标一直连到末尾，超出时只连到末尾。'}], returnType: 'wideString', example: '局部 文本型 名单[]\n数组_加入成员(名单, "a")\n调试输出(文本_连接(名单, ","))' },
+    // 取数据地址命令：把缓冲区首地址递给 DLL 命令的 指针整数 形参，替代易语言 取变量数据地址。
+    // 红线与规则手册同步维护：地址只在同步调用内有效，变量重赋值/作用域结束后失效，禁止长期持有。
+    { name: '文本_取数据地址', signature: '文本_取数据地址(文本)', description: '返回文本变量宽字符缓冲区的内存地址（长整数型），用于直接递给 DLL 命令的 指针整数 形参（wchar_t*/指针宽度参数），配合项目 DLL 命令声明完成原生互操作。⚠️ 传变量时地址直达该变量的字符缓冲区；传拼接结果或字面量时地址只在当条语句内有效，一律不要保存后延迟使用。', insertText: '文本_取数据地址($1)', parameters: [{ name: '文本', type: 'wideString', description: '要取地址的文本；传变量时得到该变量字符缓冲区的地址，空文本返回有效的空串地址。'}], returnType: 'longLong', example: '局部 文本型 缓冲\n缓冲 = "LingBuilder"\n调试输出(文本_取数据地址(缓冲) > 0)' },
     // Pro 专享演示命令：access: 'pro' 使命令进入 Pro 命令门禁（未授权构建阻断、编辑器 warning、补全带标记）。
     { name: '文本_倒序', access: 'pro', signature: '文本_倒序(文本)', description: '【Pro 专享】把文本按字符逆序排列后返回；Pro 会员可用。', insertText: '文本_倒序("$1")', parameters: [{ name: '文本', type: 'wideString', description: '要逆序的源文本；按 UTF-16 码元逆序，空文本返回空文本。'}], returnType: 'wideString', example: '调试输出(文本_倒序("LingBuilder"))' }  ]
 });
@@ -81,7 +84,7 @@ const textModule = createStandardModule({
 const bytesModule = createStandardModule({
   id: 'lingbuilder.std.bytes',
   name: '字节与十六进制模块',
-  version: '1.3.0',
+  version: '1.4.0',
   category: '其他',
   description: '通过安全文本接口提供 UTF-8 字节长度、十六进制编解码和数值进制文本转换。',
   tags: ['字节', '十六进制'],
@@ -135,7 +138,10 @@ const byteArrayOperationsModule = createStandardModule({
     { name: '字节集_字节序反转', signature: '字节集_字节序反转(数据, 每元素字节数)', description: '把字节集按固定宽度元素逐个反转字节顺序（bswap）：宽度 4 即 32 位字 bswap，宽度 2/8 同理；返回反转后的新字节集，源数据不变。', insertText: '字节集_字节序反转($1, 4)', parameters: [{ name: '数据', type: 'bytes', description: '要反转的字节集；空字节集返回空字节集。'}, { name: '每元素字节数', type: 'int', description: '元素宽度，只允许 1、2、4、8；其它值原样返回（不改动）。末尾不足一个完整元素的字节保持原样。'}], returnType: 'bytes', example: '调试输出(字节集_到十六进制文本(字节集_字节序反转(字节集_十六进制解码("12345678ABCD"), 4)))' },
     { name: '字节集_异或', signature: '字节集_异或(甲, 乙)', description: '把两个字节集按位置逐字节异或，返回新字节集；输出长度取两段中较短者（等长输入即整体异或，RC4/分组加密轮密钥异或用它）。任一为空返回空字节集。', insertText: '字节集_异或($1, $2)', parameters: [{ name: '甲', type: 'bytes', description: '参与异或的第一段字节集。'}, { name: '乙', type: 'bytes', description: '参与异或的第二段字节集；输出长度 = 较短一方的长度，较长一方的尾部不参与。'}], returnType: 'bytes' },
     { name: '字节集_按表映射', signature: '字节集_按表映射(数据, 映射表)', description: '用 256 项映射表批量替换每个字节（结果[i] = 映射表[数据[i]]），AES S 盒/逆 S 盒每块每轮一次查表搞定，不必逐字节循环。', insertText: '字节集_按表映射($1, $2)', parameters: [{ name: '数据', type: 'bytes', description: '要映射的字节集；空字节集返回空字节集。'}, { name: '映射表', type: 'bytes', description: '必须恰好 256 字节的映射表字节集，下标即输入字节值、内容即输出字节值；长度不是 256 时返回空字节集。'}], returnType: 'bytes' },
-    { name: '字节集_逐字循环左移32', signature: '字节集_逐字循环左移32(数据, 位数, 大端)', description: '把字节集按 32 位字逐个循环左移（rotl）后返回新字节集，一次调用完成整段字的移位；MD5/SM3 轮函数、AES RotWord 类操作用它。源数据不变。', insertText: '字节集_逐字循环左移32($1, 7, 假)', parameters: [{ name: '数据', type: 'bytes', description: '要移位的字节集；末尾不足 4 字节的尾巴保持原样。'}, { name: '位数', type: 'int', description: '循环左移位数，按补码对 32 取模（0 到 31 生效）；0 位原样返回副本。'}, { name: '大端', type: 'bool', optional: true, defaultValue: false, description: '传真按大端解释每个 32 位字，传假按小端解释（MD5/x86 常用）；省略时为假。字内字节序与写出顺序一致。'}], returnType: 'bytes' }
+    { name: '字节集_逐字循环左移32', signature: '字节集_逐字循环左移32(数据, 位数, 大端)', description: '把字节集按 32 位字逐个循环左移（rotl）后返回新字节集，一次调用完成整段字的移位；MD5/SM3 轮函数、AES RotWord 类操作用它。源数据不变。', insertText: '字节集_逐字循环左移32($1, 7, 假)', parameters: [{ name: '数据', type: 'bytes', description: '要移位的字节集；末尾不足 4 字节的尾巴保持原样。'}, { name: '位数', type: 'int', description: '循环左移位数，按补码对 32 取模（0 到 31 生效）；0 位原样返回副本。'}, { name: '大端', type: 'bool', optional: true, defaultValue: false, description: '传真按大端解释每个 32 位字，传假按小端解释（MD5/x86 常用）；省略时为假。字内字节序与写出顺序一致。'}], returnType: 'bytes' },
+    // 取数据地址命令（2026-10-18）：把字节集数据首地址递给 DLL 命令的 指针整数 形参。
+    // 红线与规则手册同步维护：按引用转发不拷贝；重定义/清空/销毁后旧地址立即失效，禁止长期持有。
+    { name: '字节集_取数据地址', signature: '字节集_取数据地址(数据)', description: '返回字节集数据首地址（长整数型，空字节集返回 0），用于直接递给 DLL 命令的 指针整数 形参（void*/字节指针），配合项目 DLL 命令声明完成原生互操作；按引用转发不拷贝。⚠️ 数组重定义、清空或所在变量销毁后旧地址立即失效，一律不要保存后延迟使用；需要长期保存请复制字节集。', insertText: '字节集_取数据地址($1)', parameters: [{ name: '数据', type: 'bytes', description: '要取地址的字节集；传变量时得到该变量数据缓冲区的地址，空字节集返回 0。'}], returnType: 'longLong', example: '局部 字节集 数据\n数据 = 字节集_十六进制解码("AABB")\n调试输出(字节集_取数据地址(数据) > 0)' }
   ],
   snippets: [{
     label: '字级字节集处理（32 位字算法）',

@@ -467,6 +467,40 @@ test('LingCpp parses scoped local variables and diagnoses undeclared or incompat
   assert.ok(useBeforeDeclarationDiagnostics.some(diagnostic => diagnostic.id.includes('undeclared-variable') && diagnostic.message.includes('ret')));
 });
 
+test('有损隐式转换在同类别窄化时给出编辑期 warning，且不与既有赋值 error 重复', () => {
+  const source = [
+    '类 MainWindow : 公开 窗体',
+    '    事件 _按钮1_被单击()',
+    '        局部 整数型 计数',
+    '        局部 小数型 比例 = 0.75',
+    '        计数 = 比例',
+    '        局部 长整数型 大数',
+    '        计数 = 大数',
+    '        局部 双精度小数型 精确值 = 比例',
+    '        局部 单精度小数型 近似值 = 精确值',
+    '        局部 单精度小数型 直接量 = 1.25',
+    '        局部 文本型 名称 = "abc"',
+    '        局部 长整数型 原样 = 大数',
+    '        局部 整数型 复制 = 计数',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const diagnostics = getLingCppSemanticDiagnostics(source, undefined, 'src/MainWindow.lcpp');
+  const warnings = diagnostics.filter(item => item.level === 'warning' && item.id.startsWith('lingcpp-lossy-conversion-'));
+  // 只报两处同类别窄化：长整数→整数（L7）与 双精度→单精度（L9）；字面量初始化（L10）与赋值本身（L5）不掺入。
+  assert.deepEqual(warnings.map(item => item.line), [7, 9]);
+  assert.match(warnings[0].message, /长整数型/);
+  assert.match(warnings[0].message, /整数型/);
+  assert.match(warnings[0].suggestion, /长整数型/u);
+  assert.match(warnings[1].message, /单精度小数型/u);
+  assert.match(warnings[1].suggestion, /双精度小数型/u);
+  // 小数→整数赋值由既有 error 检查报告，不得再叠加同义 warning。
+  assert.ok(diagnostics.some(item => item.level === 'error' && item.message.includes('不能把 小数型 赋值给 整数型')));
+  assert.equal(warnings.length, 2);
+  // warnings 不随构建门禁阻断：级别不是 error。
+  warnings.forEach(item => assert.equal(item.level, 'warning'));
+});
+
 test('LingCpp supports typed runtime control locals, parameters, returns and current-window completion', () => {
   const modules: InstalledModule[] = ['lingbuilder.win32.basic', 'lingbuilder.win32.common-controls'].map(id => ({
     manifest: BUILTIN_MODULES.find(item => item.id === id)!,
@@ -6096,6 +6130,110 @@ test('LingCpp project DLL declarations reject boundary-unsafe types and paths', 
   assert.match(messages, /DLL 路径必须是项目内相对的 \.dll 文件/u);
   const serviceMessages = getProjectDllCommandsDiagnostics(source, 'src/项目DLL命令.lcpp').map(item => item.message).join('\n');
   assert.match(serviceMessages, /不能跨 DLL 边界/u);
+});
+
+test('项目 DLL 结构体支持定长数组字段与对齐声明，并生成合法 C 数组声明', () => {
+  const source = [
+    'DLL命令库 SensorDll',
+    '  Win32 = "dll/Win32/SensorDll.dll"',
+    '  x64 = "dll/x64/SensorDll.dll"',
+    '  结构体 采样报告',
+    '    对齐 = 1',
+    '    整数型 序号',
+    '    字节型 摘要[16]',
+    '    整数型 通道[4]',
+    '    文本型 设备名[260]',
+    '  结束结构体',
+    '  整数型 读取报告(采样报告 报告)',
+    '结束DLL命令库'
+  ].join('\n');
+  const parsed = parseLingCpp(source);
+  assert.equal(parsed.program.diagnostics.filter(item => item.level === 'error').length, 0, parsed.program.diagnostics.map(item => item.message).join('\n'));
+  const structItem = parsed.program.dllLibraries[0]?.structs[0];
+  assert.equal(structItem?.packAlignment, 1);
+  assert.deepEqual(structItem?.fields.map(field => [field.type, field.arrayLength]), [
+    ['整数型', undefined],
+    ['字节型', 16],
+    ['整数型', 4],
+    ['文本型', 260]
+  ]);
+  const diagnostics = getProjectDllCommandsDiagnostics(source, 'src/项目DLL命令.lcpp');
+  assert.equal(diagnostics.filter(item => item.level === 'error').length, 0, diagnostics.map(item => item.message).join('\n'));
+
+  // 头文件发射：数组长度必须落在声明符（`类型 名[N];`），`类型[N] 名;` 是 C2059；对齐用 pack 包住。
+  const header = generateProjectDllDeclarationHeader(parsed.program.dllLibraries || []);
+  assert.match(header, /#pragma pack\(push, 1\)\r?\ntypedef struct 采样报告 \{/u);
+  assert.match(header, /unsigned char 摘要\[16\];/u);
+  assert.match(header, /int 通道\[4\];/u);
+  assert.match(header, /wchar_t 设备名\[260\];/u);
+  assert.match(header, /#pragma pack\(pop\)/u);
+  assert.doesNotMatch(header, /unsigned char\[16\]/u);
+
+  // 数组字段的取/置命令带 下标 参数；标量字段保持两参形态。
+  const module = createProjectDllDeclarationModule(parsed.program.dllLibraries || [], 'some-project');
+  const bindingByName = new Map((module?.manifest.bindings?.commands || []).map(binding => [binding.command, binding]));
+  assert.deepEqual(bindingByName.get('采样报告_取摘要')?.parameters?.map(parameter => parameter.type), ['longLong', 'int']);
+  assert.deepEqual(bindingByName.get('采样报告_置摘要')?.parameters?.map(parameter => parameter.type), ['longLong', 'int', 'int']);
+  assert.deepEqual(bindingByName.get('采样报告_取序号')?.parameters?.map(parameter => parameter.type), ['longLong']);
+  assert.equal(bindingByName.get('采样报告_取摘要')?.returnType, 'int');
+  // 文本型定长字段的取/置不受影响。
+  assert.equal(bindingByName.get('采样报告_取设备名')?.returnType, 'wideString');
+
+  // 序列化回写：数组长度与对齐声明都保留，重解析零诊断。
+  const serialized = serializeProjectDllCommandLibraries('项目DLL命令', parsed.program.dllLibraries || []);
+  assert.match(serialized, /对齐 = 1/u);
+  assert.match(serialized, /字节型 摘要\[16\]/u);
+  const reparsed = parseLingCpp(serialized);
+  assert.equal(reparsed.program.diagnostics.filter(item => item.level === 'error').length, 0, reparsed.program.diagnostics.map(item => item.message).join('\n'));
+  assert.equal(reparsed.program.dllLibraries[0]?.structs[0]?.packAlignment, 1);
+  assert.equal(reparsed.program.dllLibraries[0]?.structs[0]?.fields[1]?.arrayLength, 16);
+});
+
+test('项目 DLL 结构体拒绝非法数组长度与非法对齐声明', () => {
+  const badLength = [
+    'DLL命令库 SensorDll',
+    '  Win32 = "dll/Win32/SensorDll.dll"',
+    '  结构体 采样报告',
+    '    字节型 摘要[0]',
+    '  结束结构体',
+    '  整数型 读取报告(采样报告 报告)',
+    '结束DLL命令库'
+  ].join('\n');
+  assert.match(
+    getProjectDllCommandsDiagnostics(badLength, 'src/项目DLL命令.lcpp').map(item => item.message).join('\n'),
+    /数组长度 0 超出范围/u
+  );
+
+  const badAlignment = [
+    'DLL命令库 SensorDll',
+    '  Win32 = "dll/Win32/SensorDll.dll"',
+    '  结构体 采样报告',
+    '    对齐 = 3',
+    '    整数型 序号',
+    '  结束结构体',
+    '  整数型 读取报告(采样报告 报告)',
+    '结束DLL命令库'
+  ].join('\n');
+  assert.match(
+    getProjectDllCommandsDiagnostics(badAlignment, 'src/项目DLL命令.lcpp').map(item => item.message).join('\n'),
+    /对齐值 3 不支持/u
+  );
+
+  // 别名结构体布局由 SDK 头文件自管，对齐声明必须报错而不是静默无效。
+  const aliasWithAlignment = [
+    'DLL命令库 SystemDll',
+    '  系统 = 真',
+    '  头文件 = tlhelp32.h',
+    '  结构体 进程快照 = PROCESSENTRY32W',
+    '    对齐 = 4',
+    '  结束结构体',
+    '  整数型 快照进程(整数型 快照句柄)',
+    '结束DLL命令库'
+  ].join('\n');
+  assert.match(
+    getProjectDllCommandsDiagnostics(aliasWithAlignment, 'src/项目DLL命令.lcpp').map(item => item.message).join('\n'),
+    /别名结构体 进程快照 不能声明对齐/u
+  );
 });
 
 test('Project DLL declarations support aliases, system DLLs, byRef parameters and remarks', () => {

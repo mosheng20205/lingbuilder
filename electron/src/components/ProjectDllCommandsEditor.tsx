@@ -540,7 +540,7 @@ export default function ProjectDllCommandsEditor(props: ProjectDllCommandsEditor
             <div key={`struct-${structItem.name}`} className={`border p-3 text-xs ${surface}`}>
               <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                 <span className="min-w-0 font-semibold" style={{ color: typeColor }}>
-                  结构体 {structItem.name}{structItem.aliasTypeName ? ` = ${structItem.aliasTypeName}` : ''}
+                  结构体 {structItem.name}{structItem.aliasTypeName ? ` = ${structItem.aliasTypeName}` : ''}{structItem.packAlignment !== undefined ? ` · 对齐 ${structItem.packAlignment}` : ''}
                 </span>
                 <span className="shrink-0 opacity-60">只读 · 通过文本或 AI 编辑</span>
               </div>
@@ -556,7 +556,7 @@ export default function ProjectDllCommandsEditor(props: ProjectDllCommandsEditor
                 ))}
               </div>
               <div className="mt-2 opacity-60">
-                命令端用法：{structItem.name}_创建() 创建句柄、{structItem.name}_取字段 / _置字段 访问成员、{structItem.name}_销毁() 释放、{structItem.name}_取大小() 供 dwSize 类字段赋值。
+                命令端用法：{structItem.name}_创建() 创建句柄、{structItem.name}_取字段 / _置字段 访问成员（定长数组字段多带 下标 参数）、{structItem.name}_销毁() 释放、{structItem.name}_取大小() 供 dwSize 类字段赋值。
               </div>
             </div>
           ))}

@@ -157,6 +157,7 @@ export type LingCppAstNodeKind =
   | 'dll-command'
   | 'dll-arch'
   | 'dll-struct'
+  | 'dll-struct-align'
   | 'dll-struct-field'
   | 'class'
   | 'access'
@@ -298,7 +299,10 @@ export interface LingCppDllArchitectureFile {
 export interface LingCppDllStructField {
   name: string;
   type: string;
-  /** 文本型字段必须给定宽字符数组长度（如 szExeFile[260] 的 260）；其余类型不支持。 */
+  /**
+   * 定长数组长度（如 szExeFile[260]、digest[16]）：文本型字段必须声明；
+   * 数值/字节/逻辑/指针整数字段可选声明，生成 C 数组并按 下标 提供取/置命令。
+   */
   arrayLength?: number;
   note?: string;
   line: number;
@@ -313,6 +317,11 @@ export interface LingCppDllStruct {
    * （需配合「头文件 = xxx.h」引入 SDK 头文件）。系统 DLL 命令的结构体参数必须用别名写法。
    */
   aliasTypeName?: string;
+  /**
+   * 结构体内的「对齐 = N」声明：生成 #pragma pack(push, N) 包住定义，用于复刻按 N 字节打包的
+   * SDK 结构体布局；仅对定义结构体有效（别名结构体由 SDK 头文件自管布局，声明即诊断报错）。
+   */
+  packAlignment?: number;
   fields: LingCppDllStructField[];
 }
 

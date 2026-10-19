@@ -266,6 +266,13 @@ const wchar_t* 文本_插入(const wchar_t* text, int position, const wchar_t* i
     return LB_ReturnText(std::move(value));
 }
 
+// 取数据地址命令：返回文本缓冲区首地址（长整数型），供 DLL 命令的 指针整数 形参直接使用。
+// 实参为变量时地址直达调用端变量的字符缓冲区（LingCppWideArg 归一按引用转发，不拷贝）；
+// 传入拼接结果或字面量时地址只在当条语句内有效，不得保存后延迟使用。
+long long 文本_取数据地址(const wchar_t* text) {
+    return static_cast<long long>(reinterpret_cast<uintptr_t>(text ? text : L""));
+}
+
 // Pro 专享演示命令（access: 'pro'）：使用资格由 IDE 的 Pro 命令门禁在生成前拦截，运行时本体与普通命令无异。
 const wchar_t* 文本_倒序(const wchar_t* text) {
     std::wstring value = LB_Wide(text);
@@ -523,6 +530,12 @@ std::vector<unsigned char> 字节集_拼接(const std::vector<unsigned char>& fi
 
 int 字节集_取字节(const std::vector<unsigned char>& bytes, int index) {
     return index >= 0 && static_cast<size_t>(index) < bytes.size() ? bytes[static_cast<size_t>(index)] : -1;
+}
+
+// 取数据地址命令：返回字节集数据首地址（长整数型），供 DLL 命令的 指针整数 形参直接使用；
+// 按引用转发不拷贝，空字节集返回 0。数组重定义/清空/销毁后旧地址立即失效，不得长期持有。
+long long 字节集_取数据地址(const std::vector<unsigned char>& bytes) {
+    return bytes.empty() ? 0 : static_cast<long long>(reinterpret_cast<uintptr_t>(bytes.data()));
 }
 
 bool 字节集_置字节(std::vector<unsigned char>& bytes, int index, int value) {

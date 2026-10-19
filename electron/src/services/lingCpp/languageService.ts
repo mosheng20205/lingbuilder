@@ -331,6 +331,7 @@ export function getLingCppSemanticDiagnostics(
   diagnostics.push(...getCronDiagnostics(source, parsed.program, moduleContext, effectiveGlobals));
   diagnostics.push(...getArrayCommandDiagnostics(parsed.program, moduleContext, effectiveGlobals, effectiveTypes));
   diagnostics.push(...getModuleCommandArgumentTypeDiagnostics(parsed.program, moduleContext, effectiveConstants, effectiveGlobals, effectiveTypes, splitLines(source)));
+  diagnostics.push(...getLossyImplicitConversionDiagnostics(parsed.program, moduleContext, effectiveConstants, effectiveGlobals, effectiveTypes, splitLines(source)));
   diagnostics.push(...getModuleProCommandDiagnostics(parsed.program, moduleContext, splitLines(source), options));
   diagnostics.push(...getUnknownCommandDiagnostics(parsed.program, moduleContext, projectFunctions, splitLines(source), options));
   diagnostics.push(...getUnterminatedStringLiteralDiagnostics(parsed));
@@ -4336,6 +4337,130 @@ function getModuleCommandArgumentTypeDiagnostics(
             });
           });
         });
+      });
+    });
+  });
+  return diagnostics;
+}
+
+/** 有损隐式转换的提示文案：只覆盖既有「不能把 X 赋值给 Y」error 检查不拦的同类别窄化
+ * （长整数→整数溢出、整数→字节回绕、双精度→单精度掉精度）；小数→整数已由该 error 覆盖，不重复报告。 */
+function matchLossyConversionHint(
+  targetType: string,
+  valueType: string,
+  moduleTypeCategories: LingCppModuleTypeCategories,
+  valueText: string
+): { message: string; suggestion: string } | undefined {
+  const targetCategory = lingCppTypeCategory(targetType, moduleTypeCategories);
+  const valueCategory = lingCppTypeCategory(valueType, moduleTypeCategories);
+  if (targetCategory === 'integer' && valueCategory === 'decimal') return undefined;
+  if (targetType === '整数型' && valueType === '长整数型') {
+    return {
+      message: '把长整数型（64 位）赋给整数型（32 位）在数值超出 ±2147483647 时会被静默截断。',
+      suggestion: '变量改用 长整数型，或确认数值范围不会超界后忽略本提示。'
+    };
+  }
+  if (targetType === '字节型' && targetCategory === 'integer' && valueCategory === 'integer') {
+    return {
+      message: `把 ${valueType} 赋给字节型只保留低 8 位（0～255 之外的值会回绕）。`,
+      suggestion: '如需按位截取请显式写 位_取字节(数值, 0)；确认只取低 8 位可忽略本提示。'
+    };
+  }
+  if (targetCategory === 'decimal' && valueCategory === 'decimal' && targetType === '单精度小数型'
+    && (valueType === '双精度小数型' || valueType === '小数型')) {
+    // 数值字面量是单精度变量的常规初始化写法，逐处提示只会制造噪音；只对双精度表达式/变量提示。
+    if (/^-?\d+(?:\.\d+)?$/u.test(valueText.trim())) return undefined;
+    return {
+      message: '把双精度小数型赋给单精度小数型会损失精度（有效数字从约 15 位降到 7 位）。',
+      suggestion: '变量改用 双精度小数型 或 小数型，或确认精度要求后忽略本提示。'
+    };
+  }
+  return undefined;
+}
+
+/**
+ * 有损隐式转换警告（编辑期 warning，不参与任何构建门禁）：
+ * `目标 = 表达式` 与 `局部 声明 = 初值` 中，同类别窄化（长整数→整数溢出、整数→字节回绕、
+ * 双精度→单精度掉精度）给出中文提示；小数→整数这类跨类别赋值由既有 error 级赋值检查报告，不重复。
+ * 只在两侧类型都可信（变量/字面量/已知命令返回）时报告，一行最多一条；@ 行、多行文本块与
+ * 控件容器伪类型一律跳过——生成器对它们有专属处理，不能凭中文类型表下结论。
+ */
+function getLossyImplicitConversionDiagnostics(
+  program: LingCppProgram,
+  moduleContext: LingCppModuleContext | undefined,
+  constants: LingCppConstant[],
+  globals: LingCppGlobalVariable[],
+  projectTypes?: LingCppProjectTypeContext,
+  sourceLines: string[] = []
+): LingCppDiagnostic[] {
+  const moduleTypeCategories = buildModuleTypeCategories(moduleContext);
+  const globalTypes = projectSymbolTypes(constants, globals);
+  const owners: Array<{ members: LingCppClass['members']; methods: LingCppClass['methods'] }> = [
+    ...program.classes.map(cls => ({ members: cls.members, methods: cls.methods })),
+    ...program.functionLibraries.map(library => ({ members: [], methods: library.methods }))
+  ];
+  const assignmentRe = /^([\p{L}_][\p{L}\p{N}_.]*(?:\s*\[[^\]]+\])?)\s*=(?![=])\s*(.+)$/u;
+  // 控制流行（如果/循环/返回等）不是赋值，先按关键字排除，避免把条件里的 == 误拆。
+  const controlFlowRe = /^(?:如果|否则|计次循环|判断循环|当循环|先判断后循环|选择|分支|默认|返回|跳出|继续循环|尝试|捕获|最终|抛出|结束)/u;
+
+  const diagnostics: LingCppDiagnostic[] = [];
+  const reportedLines = new Set<number>();
+  owners.forEach(owner => {
+    owner.methods.forEach(method => {
+      const baseScopeTypes = new Map<string, string>(globalTypes);
+      owner.members.forEach(member => baseScopeTypes.set(
+        normalizeIdentifier(member.name),
+        member.isArray ? `${member.type}[]` : member.type
+      ));
+      method.parameters.forEach(parameter => baseScopeTypes.set(normalizeIdentifier(parameter.name), parameter.type));
+      const orderedLocals = [...(method.locals || [])].sort((left, right) => left.line - right.line);
+      const consider = (
+        line: number,
+        targetText: string,
+        targetDeclaredType: string | undefined,
+        valueText: string,
+        scopeTypes: Map<string, string>
+      ) => {
+        if (reportedLines.has(line) || !valueText || valueText.trim().startsWith('@')) return;
+        const targetType = targetDeclaredType
+          ? normalizeLingCppValueType(targetDeclaredType)
+          : normalizeLingCppValueType(inferLingCppExpressionType(targetText, scopeTypes, moduleContext, new Map(), projectTypes));
+        const valueType = normalizeLingCppValueType(inferLingCppExpressionType(valueText, scopeTypes, moduleContext, new Map(), projectTypes));
+        if (!targetType || !valueType || targetType === valueType) return;
+        if (targetType === '控件容器' || valueType === '控件容器') return;
+        if (isLingCppArrayParameterType(targetType) || isLingCppArrayParameterType(valueType)) return;
+        const hint = matchLossyConversionHint(targetType, valueType, moduleTypeCategories, valueText);
+        if (!hint) return;
+        reportedLines.add(line);
+        const rawLine = sourceLines[line - 1] || `${targetText} = ${valueText}`;
+        diagnostics.push({
+          id: `lingcpp-lossy-conversion-${line}`,
+          line,
+          range: { startLine: line, startColumn: 1, endLine: line, endColumn: rawLine.length + 1 },
+          level: 'warning',
+          message: hint.message,
+          codeSnippet: rawLine.trim(),
+          suggestion: hint.suggestion
+        });
+      };
+      method.statements.forEach(statement => {
+        // 多行文本块内容不透明（endLine 标记）、注释与 @ 行不是 .lcpp 赋值，先豁免再匹配。
+        if (isLingCppCommentLine(statement.text) || statement.endLine) return;
+        const assignment = statement.text.match(assignmentRe);
+        if (!assignment || controlFlowRe.test(statement.text)) return;
+        const scopeTypes = new Map<string, string>(baseScopeTypes);
+        orderedLocals
+          .filter(local => local.line < statement.line)
+          .forEach(local => scopeTypes.set(normalizeIdentifier(local.name), local.isArray ? `${local.type}[]` : local.type));
+        consider(statement.line, assignment[1] || '', undefined, (assignment[2] || '').trim(), scopeTypes);
+      });
+      orderedLocals.forEach(local => {
+        if (!local.initialValue || local.initialValue.trim().startsWith('@')) return;
+        const scopeTypes = new Map<string, string>(baseScopeTypes);
+        orderedLocals
+          .filter(other => other.line < local.line)
+          .forEach(other => scopeTypes.set(normalizeIdentifier(other.name), other.isArray ? `${other.type}[]` : other.type));
+        consider(local.line, local.name, local.type, local.initialValue.trim(), scopeTypes);
       });
     });
   });

@@ -74,7 +74,7 @@ import {
   generateHttpClientRuntime,
   generateHttpClientWindowMethods
 } from './httpClientRuntime';
-import { generateHttpServerGlobalMethods, generateHttpServerRuntime, generateHttpServerWindowMethods } from './httpServerRuntime';
+import { generateHttpServerDocsRuntime, generateHttpServerGlobalMethods, generateHttpServerRuntime, generateHttpServerWindowMethods } from './httpServerRuntime';
 import { generateSunnyNetGlobalMethods, generateSunnyNetRuntime, generateSunnyNetWindowMethods } from './sunnyNetRuntime';
 import { generateProtobufRuntime } from './protobufRuntime';
 import { generateAria2Runtime } from './aria2Runtime';
@@ -2595,13 +2595,15 @@ function generateNewEmojiMainCpp(
     aria2Runtime
   ].filter(Boolean);
   const httpServerRuntime = generateHttpServerRuntime(enabledModules);
+  const httpServerDocsUsed = programUsesHttpDocsCommands(program);
+  const httpServerDocsRuntime = generateHttpServerDocsRuntime(enabledModules, httpServerDocsUsed);
   const sunnyNetRuntime = generateSunnyNetRuntime(enabledModules);
   const httpClientGlobalMethodDeclarations = generateHttpClientGlobalMethodDeclarations(enabledModules);
   const httpClientGlobalMethods = generateHttpClientGlobalMethods(enabledModules);
   const builtinLibraryCommonRuntime = (builtinLibraryFragments.length > 0 || httpServerRuntime || httpClientRuntime || sunnyNetRuntime) ? BUILTIN_LIBRARY_COMMON_RUNTIME : '';
   const sharedTableRuntime = generateSharedTableRuntime(enabledModules.map(module => module.manifest.id));
   const builtinLibraryRuntime = builtinLibraryFragments.join('\n');
-  const httpServerGlobalMethods = generateHttpServerGlobalMethods(enabledModules);
+  const httpServerGlobalMethods = generateHttpServerGlobalMethods(enabledModules, httpServerDocsUsed);
   const sunnyNetGlobalMethods = generateSunnyNetGlobalMethods(enabledModules);
   const webSocketClientRuntime = generateWebSocketClientRuntime(enabledModules);
   const webSocketClientGlobalMethodDeclarations = generateWebSocketClientGlobalMethodDeclarations(enabledModules);
@@ -3450,6 +3452,8 @@ ${httpClientRuntime}
 
 ${httpServerRuntime}
 
+${httpServerDocsRuntime}
+
 ${sunnyNetRuntime}
 
 ${webSocketClientRuntime}
@@ -4188,6 +4192,8 @@ ${webSocketHandlerDeclarations}
 ${httpClientIntegration}
 
 ${httpServerRuntime}
+
+${httpServerDocsRuntime}
 
 ${sunnyNetIntegration}
 
@@ -10545,6 +10551,32 @@ function resolvePureLogicDllEligibility(
   return { eligible: true, reason: '' };
 }
 
+// HTTP 接口文档族门控：判断项目源码是否实际调用 HTTP_启用接口文档。扫描范围＝主源文本、
+// 功能库/类方法的语句文本、项目全局变量初值；命中才把 Swagger UI 离线资源拼进生成工程。
+const HTTP_DOCS_COMMAND_PATTERN = /(?<![\p{L}\p{N}_])HTTP_启用接口文档\s*[（(]/u;
+
+function programUsesHttpDocsCommands(program: LingCppProgram): boolean {
+  if (HTTP_DOCS_COMMAND_PATTERN.test(program.source)) return true;
+  for (const library of program.functionLibraries) {
+    for (const method of library.methods) {
+      for (const statement of method.statements) {
+        if (HTTP_DOCS_COMMAND_PATTERN.test(statement.text)) return true;
+      }
+    }
+  }
+  for (const klass of program.classes) {
+    for (const method of klass.methods) {
+      for (const statement of method.statements) {
+        if (HTTP_DOCS_COMMAND_PATTERN.test(statement.text)) return true;
+      }
+    }
+  }
+  for (const global of program.globals) {
+    if (global.initialValue && HTTP_DOCS_COMMAND_PATTERN.test(global.initialValue)) return true;
+  }
+  return false;
+}
+
 /**
  * 收集纯逻辑 DLL 用户代码实际引用的运行时函数名（种子集合）：
  * 扫描聚合源码全部语句（含 @ 内嵌 C++ 行、全局变量初始化、事件体），把命中的模块命令
@@ -11111,6 +11143,8 @@ function generateMainCpp(
   const comWndProcCase = generateComWndProcCase(enabledModules);
   const comCleanupLine = comWindowMethods ? '        COM_关闭全部();' : '';
   const httpServerRuntime = generateHttpServerRuntime(enabledModules);
+  const httpServerDocsUsed = programUsesHttpDocsCommands(program);
+  const httpServerDocsRuntime = generateHttpServerDocsRuntime(enabledModules, httpServerDocsUsed);
   const sunnyNetRuntime = generateSunnyNetRuntime(enabledModules);
   const builtinLibraryCommonRuntimeRaw = (builtinLibraryFragments.length > 0 || httpServerRuntime || httpClientRuntime || sunnyNetRuntime) ? BUILTIN_LIBRARY_COMMON_RUNTIME : '';
   const sharedTableRuntime = generateSharedTableRuntime(enabledModules.map(module => module.manifest.id));
@@ -11140,7 +11174,7 @@ function generateMainCpp(
     : '';
   const httpClientWindowField = httpClientRuntime ? '    LingHttpClientRuntime httpClientRuntime_;' : '';
   const httpClientShutdown = httpClientRuntime ? '        httpClientRuntime_.Shutdown();' : '';
-  const httpServerWindowMethods = generateHttpServerWindowMethods(enabledModules);
+  const httpServerWindowMethods = generateHttpServerWindowMethods(enabledModules, httpServerDocsUsed);
   const httpServerConstructorInitializer = httpServerRuntime
     ? `,\n          httpServerRuntime_([this](long long requestId) { return hwnd_ && PostMessageW(hwnd_, WM_LINGBUILDER_HTTP_SERVER_REQUEST, static_cast<WPARAM>(requestId), 0) != FALSE; })`
     : '';
@@ -13092,6 +13126,8 @@ ${cronRuntime}
 ${httpClientRuntime}
 
 ${httpServerRuntime}
+
+${httpServerDocsRuntime}
 
 ${sunnyNetRuntime}
 

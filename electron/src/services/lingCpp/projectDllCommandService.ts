@@ -72,7 +72,7 @@ export function resolveDllBoundaryPointerType(chineseType: string): string | und
 }
 
 /**
- * 结构体字段支持的类型 → C++ 类型。「指针整数」= uintptr_t（随位数），用于 SDK 结构体里的
+ * 结构体字段支持的类型 → C++ 元素类型。「指针整数」= uintptr_t（随位数），用于 SDK 结构体里的
  * ULONG_PTR/HANDLE 尺寸字段，保证 Win32 与 x64 布局都正确。
  */
 export const DLL_STRUCT_FIELD_TYPE_MAP: Record<string, string> = {
@@ -85,12 +85,35 @@ export const DLL_STRUCT_FIELD_TYPE_MAP: Record<string, string> = {
   '指针整数': 'uintptr_t'
 };
 
-/** 结构体字段的 C++ 类型；文本型字段必须带定长（wchar_t[N]），未支持类型返回 undefined。 */
-export function resolveDllStructFieldCppType(field: LingCppDllStructField): string | undefined {
-  if (field.type === '文本型') {
-    return field.arrayLength !== undefined && field.arrayLength > 0 ? `wchar_t[${field.arrayLength}]` : undefined;
-  }
+/** 结构体字段数组元素上限：SDK 结构体常见 [260]/[16]，留足余量同时挡住误填的超大常量。 */
+export const DLL_STRUCT_FIELD_ARRAY_MAX = 1048576;
+
+/** 字段是否是定长数组字段（文本型定长与数值型定长数组统一判定）。 */
+export function isDllStructFieldArray(field: LingCppDllStructField): boolean {
+  return (field.arrayLength ?? 0) > 0;
+}
+
+/** 结构体字段的 C++ 元素类型；文本型 → wchar_t，未支持类型返回 undefined。 */
+export function resolveDllStructFieldElementType(field: LingCppDllStructField): string | undefined {
+  if (field.type === '文本型') return 'wchar_t';
   return DLL_STRUCT_FIELD_TYPE_MAP[field.type];
+}
+
+/**
+ * 结构体字段的完整 C++ 声明体（`类型 名[长度];` 形态）。
+ * 数组长度必须写在声明符里（`unsigned char digest[16];`）：写成 `类型[长度] 名;` 是 C2059 语法错误。
+ */
+export function formatDllStructFieldDeclaration(field: LingCppDllStructField): string | undefined {
+  const elementType = resolveDllStructFieldElementType(field);
+  if (!elementType) return undefined;
+  if (field.type === '文本型') {
+    // 文本型必须声明定长才可生成；长度合法性由声明诊断负责。
+    return field.arrayLength !== undefined && field.arrayLength > 0
+      ? `wchar_t ${field.name}[${field.arrayLength}]`
+      : undefined;
+  }
+  if (isDllStructFieldArray(field)) return `${elementType} ${field.name}[${field.arrayLength}]`;
+  return `${elementType} ${field.name}`;
 }
 
 /** 结构体字段对应的调用端中文类型（自动取/置命令的参数与返回类型）。 */
@@ -243,8 +266,8 @@ export function getProjectDllCommandsDiagnostics(sourceCode: string, filePath: s
         });
       }
       structItem.fields.forEach(field => {
-        const cppType = resolveDllStructFieldCppType(field);
-        if (!cppType) {
+        const declaration = formatDllStructFieldDeclaration(field);
+        if (!declaration) {
           diagnostics.push({
             id: `project-dll-${field.line}-${diagnosticSequence += 1}`,
             line: field.line,
@@ -253,10 +276,46 @@ export function getProjectDllCommandsDiagnostics(sourceCode: string, filePath: s
             codeSnippet: field.name,
             suggestion: field.type === '文本型'
               ? '文本型字段必须声明定长，例如 `文本型 szExeFile[260]`。'
-              : '字段仅支持：整数型、长整数型、小数型、单精度小数型、逻辑型、字节型、指针整数、文本型[定长]。'
+              : '字段仅支持：整数型、长整数型、小数型、单精度小数型、逻辑型、字节型、指针整数、文本型[定长]；以上类型均可加定长数组（如 `字节型 digest[16]`）。'
+          });
+          return;
+        }
+        if (field.arrayLength !== undefined && (field.arrayLength < 1 || field.arrayLength > DLL_STRUCT_FIELD_ARRAY_MAX)) {
+          diagnostics.push({
+            id: `project-dll-${field.line}-${diagnosticSequence += 1}`,
+            line: field.line,
+            level: 'error',
+            message: `结构体 ${structItem.name} 的字段「${field.name}」数组长度 ${field.arrayLength} 超出范围。`,
+            codeSnippet: field.name,
+            suggestion: `数组长度必须在 1 到 ${DLL_STRUCT_FIELD_ARRAY_MAX} 之间；SDK 结构体常见取值是 260、16、64。`
           });
         }
       });
+    });
+    // 对齐声明校验：别名结构体的布局由 SDK 头文件自管，pack 无效果；pack 值必须是 MSVC 支持的 1/2/4/8/16。
+    library.structs.forEach(structItem => {
+      if (structItem.packAlignment === undefined) return;
+      if (structItem.aliasTypeName) {
+        diagnostics.push({
+          id: `project-dll-${structItem.line}-${diagnosticSequence += 1}`,
+          line: structItem.line,
+          level: 'error',
+          message: `别名结构体 ${structItem.name} 不能声明对齐。`,
+          codeSnippet: structItem.name,
+          suggestion: '别名结构体直接使用 SDK 真实类型，布局由 SDK 头文件管理；请删除「对齐 = ...」行，需要自定义布局请改为定义结构体。'
+        });
+        return;
+      }
+      if (![1, 2, 4, 8, 16].includes(structItem.packAlignment)) {
+        diagnostics.push({
+          id: `project-dll-${structItem.line}-${diagnosticSequence += 1}`,
+          line: structItem.line,
+          level: 'error',
+          message: `结构体 ${structItem.name} 的对齐值 ${structItem.packAlignment} 不支持。`,
+          codeSnippet: structItem.name,
+          suggestion: '对齐值仅支持 1、2、4、8、16（MSVC #pragma pack 支持值）；不写该行则按编译器默认对齐。'
+        });
+      }
     });
     // 系统 DLL（user32/kernel32 等）链接系统导入库，不需要架构文件映射，豁免缺架构诊断。
     if (!library.isSystem && !library.archFiles.length) {
@@ -412,20 +471,25 @@ const buildProjectDllStructAccessorCommands = (structItem: LingCppDllStruct) => 
   structItem.fields.forEach(field => {
     const callerType = resolveDllStructFieldCallerType(field);
     const fieldNote = field.note ? `（${field.note}）` : '';
+    // 定长数组字段：取/置命令带 下标 参数（从 0 起，越界安全），不扩展 .lcpp 表达式语言。
+    const isArrayField = field.type !== '文本型' && isDllStructFieldArray(field);
+    const readParameters = isArrayField ? '(句柄, 下标)' : '(句柄)';
+    const writeParameters = isArrayField ? '(句柄, 下标, 值)' : '(句柄, 值)';
+    const arrayNote = isArrayField ? '；下标从 0 起，越界时读取返回零值、写入忽略。' : '。';
     commands.push({
       name: `${prefix}取${field.name}`,
-      signature: `${prefix}取${field.name}(句柄)`,
-      description: `读取 ${structItem.name} 的 ${field.name} 字段${fieldNote}。`,
-      insertText: `${prefix}取${field.name}()`,
+      signature: `${prefix}取${field.name}${readParameters}`,
+      description: `读取 ${structItem.name} 的 ${field.name} 字段${fieldNote}${arrayNote}`,
+      insertText: `${prefix}取${field.name}(${isArrayField ? '句柄, 0' : ''})`,
       returnType: callerType,
       category: '其他',
       visibility: 'default'
     });
     commands.push({
       name: `${prefix}置${field.name}`,
-      signature: `${prefix}置${field.name}(句柄, 值)`,
-      description: `写入 ${structItem.name} 的 ${field.name} 字段${fieldNote}。`,
-      insertText: `${prefix}置${field.name}()`,
+      signature: `${prefix}置${field.name}${writeParameters}`,
+      description: `写入 ${structItem.name} 的 ${field.name} 字段${fieldNote}${arrayNote}`,
+      insertText: `${prefix}置${field.name}(${isArrayField ? '句柄, 0, ' : ''})`,
       returnType: '空',
       category: '其他',
       visibility: 'default'
@@ -433,21 +497,29 @@ const buildProjectDllStructAccessorCommands = (structItem: LingCppDllStruct) => 
     bindings.push({
       command: `${prefix}取${field.name}`,
       runtimeName: `${prefix}取${field.name}`,
-      parameters: [{ name: '句柄', type: 'longLong' }],
+      parameters: isArrayField
+        ? [{ name: '句柄', type: 'longLong' }, { name: '下标', type: 'int' }]
+        : [{ name: '句柄', type: 'longLong' }],
       returnType: toStructAccessorAbi(callerType),
       encoding: 'wide',
-      example: `${prefix}取${field.name}(句柄)`
+      example: `${prefix}取${field.name}(句柄${isArrayField ? ', 0' : ''})`
     });
     bindings.push({
       command: `${prefix}置${field.name}`,
       runtimeName: `${prefix}置${field.name}`,
-      parameters: [
-        { name: '句柄', type: 'longLong' },
-        { name: '值', type: toStructAccessorAbi(callerType) }
-      ],
+      parameters: isArrayField
+        ? [
+            { name: '句柄', type: 'longLong' },
+            { name: '下标', type: 'int' },
+            { name: '值', type: toStructAccessorAbi(callerType) }
+          ]
+        : [
+            { name: '句柄', type: 'longLong' },
+            { name: '值', type: toStructAccessorAbi(callerType) }
+          ],
       returnType: 'void',
       encoding: 'wide',
-      example: `${prefix}置${field.name}(句柄, 值)`
+      example: `${prefix}置${field.name}(句柄${isArrayField ? ', 0' : ''}, 值)`
     });
   });
   return { commands, bindings };
@@ -607,14 +679,20 @@ export function generateProjectDllDeclarationHeader(dllLibraries: LingCppDllLibr
     ...sdkHeaders.map(header => `#include <${header}>`),
     ''
   ];
-  // 定义结构体：字段布局按声明生成，须与 DLL 侧约定逐字节一致。
+  // 定义结构体：字段布局按声明生成，须与 DLL 侧约定逐字节一致；
+  // 「对齐 = N」用 #pragma pack(push, N) 包住定义，复刻按 N 字节打包的 SDK 结构体。
   definedStructs.forEach(structItem => {
+    const packLines = structItem.packAlignment && structItem.packAlignment > 0
+      ? [`#pragma pack(push, ${structItem.packAlignment})`]
+      : [];
+    packLines.forEach(item => lines.push(item));
     lines.push(`typedef struct ${structItem.name} {`);
     structItem.fields.forEach(field => {
       const note = field.note ? ` // ${field.note}` : '';
-      lines.push(`    ${resolveDllStructFieldCppType(field) || 'unsigned char'} ${field.name};${note}`);
+      lines.push(`    ${formatDllStructFieldDeclaration(field) || 'unsigned char'};${note}`);
     });
     lines.push(`} ${structItem.name};`);
+    if (packLines.length > 0) lines.push('#pragma pack(pop)');
     lines.push('');
   });
   // 别名结构体：C++ 侧直接使用 SDK 真实类型（类型由 SDK 头文件提供）。
@@ -767,8 +845,23 @@ function generateProjectDllStructAccessorHeader(dllLibraries: LingCppDllLibrary[
     lines.push('}');
     lines.push('');
     structItem.fields.forEach(field => {
-      const fieldCpp = resolveDllStructFieldCppType(field) || 'unsigned char';
+      const fieldCpp = resolveDllStructFieldElementType(field) || 'unsigned char';
       const zeroValue = field.type === '逻辑型' ? 'false' : field.type === '小数型' ? '0.0' : field.type === '单精度小数型' ? '0.0f' : field.type === '文本型' ? 'L""' : '0';
+      if (field.type !== '文本型' && isDllStructFieldArray(field)) {
+        // 定长数组字段：取/置按 下标 访问单个元素，越界安全返回/忽略，不扩展 .lcpp 表达式语言。
+        const length = field.arrayLength || 0;
+        lines.push(`inline ${fieldCpp} ${prefix}取${field.name}(long long lbHandle, int lbIndex) {`);
+        lines.push(`    if (!lbHandle || lbIndex < 0 || lbIndex >= ${length}) return ${zeroValue};`);
+        lines.push(`    return reinterpret_cast<${cppName}*>(lbHandle)->${field.name}[lbIndex];`);
+        lines.push('}');
+        lines.push('');
+        lines.push(`inline void ${prefix}置${field.name}(long long lbHandle, int lbIndex, ${fieldCpp} lbValue) {`);
+        lines.push(`    if (!lbHandle || lbIndex < 0 || lbIndex >= ${length}) return;`);
+        lines.push(`    reinterpret_cast<${cppName}*>(lbHandle)->${field.name}[lbIndex] = lbValue;`);
+        lines.push('}');
+        lines.push('');
+        return;
+      }
       lines.push(`inline ${field.type === '文本型' ? 'const wchar_t*' : fieldCpp} ${prefix}取${field.name}(long long lbHandle) {`);
       lines.push(`    return lbHandle ? reinterpret_cast<${cppName}*>(lbHandle)->${field.name} : ${zeroValue};`);
       lines.push('}');
@@ -871,6 +964,7 @@ export function serializeProjectDllCommandLibraries(packageName: string, dllLibr
     });
     (library.structs || []).forEach(structItem => {
       lines.push('', `  结构体 ${structItem.name}${structItem.aliasTypeName ? ` = ${structItem.aliasTypeName}` : ''}`);
+      if (structItem.packAlignment !== undefined) lines.push(`  对齐 = ${structItem.packAlignment}`);
       structItem.fields.forEach(field => {
         const length = field.arrayLength !== undefined ? `[${field.arrayLength}]` : '';
         const note = field.note ? ` // ${field.note}` : '';

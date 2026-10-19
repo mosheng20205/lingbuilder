@@ -186,6 +186,8 @@ const FUNCTION_LIBRARY_RE = new RegExp(`^功能库\\s+(${TYPE_NAME_SOURCE})$`, '
 const DLL_LIBRARY_RE = new RegExp(`^DLL命令库\\s+(${TYPE_NAME_SOURCE})$`, 'u');
 const DLL_STRUCT_RE = new RegExp(`^结构体\\s+(${TYPE_NAME_SOURCE})(?:\\s*=\\s*(${TYPE_NAME_SOURCE}))?$`, 'u');
 const DLL_SDK_HEADER_RE = /^头文件\s*=\s*([A-Za-z0-9_][A-Za-z0-9_./]*)$/u;
+/** 结构体内的「对齐 = N」行：声明 #pragma pack(N) 打包对齐，用于复刻按 N 字节打包的 SDK 结构体。 */
+const DLL_STRUCT_ALIGN_RE = /^对齐\s*=\s*(\d+)$/u;
 const DLL_STRUCT_FIELD_RE = new RegExp(`^(${TYPE_NAME_SOURCE})\\s+(${TYPE_NAME_SOURCE})(?:\\s*\\[\\s*(\\d+)\\s*\\])?(?:\\s*//\\s*(.*))?$`, 'u');
 const DLL_ARCH_RE = /^(Win32|x64)\s*=\s*["“]([^"”]+)["”]$/u;
 const DLL_SYSTEM_RE = /^系统\s*=\s*真$/u;
@@ -397,6 +399,19 @@ export function parseLingCpp(source: string): LingCppParseResult {
           currentDllStruct = null;
           return;
         }
+        const structAlignMatch = trimmed.match(DLL_STRUCT_ALIGN_RE);
+        if (structAlignMatch) {
+          const alignment = Number.parseInt(structAlignMatch[1] || '', 10);
+          if (currentDllStruct.packAlignment !== undefined) {
+            diagnostics.push(createDiagnostic('error', lineNumber, line, `结构体 ${currentDllStruct.name} 重复声明对齐。`, '一个结构体只支持一行 `对齐 = N`，请删除多余行。'));
+          } else {
+            currentDllStruct.packAlignment = alignment;
+          }
+          pushNode(createAstNode('dll-struct-align', trimmed, lineNumber, line, currentDllLibraryNode?.id, {
+            detail: `打包对齐 #pragma pack(${alignment})`
+          }), currentDllLibraryNode);
+          return;
+        }
         const structFieldMatch = trimmed.match(DLL_STRUCT_FIELD_RE);
         if (structFieldMatch) {
           const fieldType = structFieldMatch[1] || '';
@@ -416,7 +431,7 @@ export function parseLingCpp(source: string): LingCppParseResult {
           }), currentDllLibraryNode);
           return;
         }
-        diagnostics.push(createDiagnostic('error', lineNumber, line, '无法识别的结构体字段行。', '格式：`类型 字段名`、定长文本 `文本型 字段名[260]`，用 `结束结构体` 收尾。'));
+        diagnostics.push(createDiagnostic('error', lineNumber, line, '无法识别的结构体字段行。', '格式：`类型 字段名`、定长文本 `文本型 字段名[260]`、定长数组 `字节型 字段名[16]`，用 `结束结构体` 收尾；库级声明 `对齐 = 1/2/4/8/16` 可指定打包对齐。'));
         return;
       }
       if (DLL_SYSTEM_RE.test(trimmed)) {
