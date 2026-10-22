@@ -1,0 +1,77 @@
+add device 1: /dev/input/event8
+  name:     "kona-mtp-snd-card USB_3_5 Jack"
+  events:
+    SW  (0005): SW_HEADPHONE_INSERT   SW_MICROPHONE_INSERT  0014                 
+  input props:
+    <none>
+add device 2: /dev/input/event7
+  name:     "kona-mtp-snd-card Button Jack"
+  events:
+    KEY (0001): KEY_MEDIA             BTN_1                 BTN_2                 BTN_3                
+                BTN_4                 BTN_5                
+  input props:
+    <none>
+add device 3: /dev/input/event6
+  name:     "kona-mtp-snd-card Headset Jack"
+  events:
+    SW  (0005): SW_HEADPHONE_INSERT   SW_MICROPHONE_INSERT  SW_LINEOUT_INSERT     SW_JACK_PHYSICAL_INS    
+                0011                  0012                  0013                  0014                 
+  input props:
+    <none>
+add device 4: /dev/input/event1
+  name:     "qpnp_pon"
+  events:
+    KEY (0001): KEY_VOLUMEDOWN        KEY_POWER            
+  input props:
+    <none>
+add device 5: /dev/input/event5
+  name:     "fts"
+  events:
+    KEY (0001): KEY_W                 KEY_E                 KEY_O                 KEY_LEFTBRACE        
+                KEY_RIGHTBRACE        KEY_S                 KEY_F                 KEY_L                
+                KEY_Z                 KEY_C                 KEY_V                 KEY_M                
+                KEY_F1                KEY_F2                KEY_F3                KEY_F4               
+                KEY_F5                KEY_UP                KEY_LEFT              KEY_RIGHT            
+                KEY_DOWN              KEY_WAKEUP            KEY_WWW               BTN_TOOL_FINGER      
+                BTN_TOUCH             0152                  KEY_GOTO             
+    ABS (0003): ABS_MT_SLOT           : value 0, min 0, max 9, fuzz 0, flat 0, resolution 0
+                ABS_MT_TOUCH_MAJOR    : value 0, min 0, max 1080, fuzz 0, flat 0, resolution 0
+                ABS_MT_TOUCH_MINOR    : value 0, min 0, max 2340, fuzz 0, flat 0, resolution 0
+                ABS_MT_WIDTH_MAJOR    : value 0, min 0, max 127, fuzz 0, flat 0, resolution 0
+                ABS_MT_WIDTH_MINOR    : value 0, min 0, max 127, fuzz 0, flat 0, resolution 0
+                ABS_MT_ORIENTATION    : value 0, min -90, max 90, fuzz 0, flat 0, resolution 0
+                ABS_MT_POSITION_X     : value 0, min 0, max 1079, fuzz 0, flat 0, resolution 0
+                ABS_MT_POSITION_Y     : value 0, min 0, max 2339, fuzz 0, flat 0, resolution 0
+                ABS_MT_TRACKING_ID    : value 0, min 0, max 65535, fuzz 0, flat 0, resolution 0
+                ABS_MT_DISTANCE       : value 0, min 0, max 127, fuzz 0, flat 0, resolution 0
+  input props:
+    INPUT_PROP_DIRECT
+add device 6: /dev/input/event0
+  name:     "xiaomi-touch"
+  events:
+    KEY (0001): BTN_MISC              0153                 
+  input props:
+    <none>
+add device 7: /dev/input/event2
+  name:     "uinput-goodix"
+  events:
+    KEY (0001): KEY_HOME              KEY_UP                KEY_LEFT              KEY_RIGHT            
+                KEY_DOWN              KEY_VOLUMEDOWN        KEY_VOLUMEUP          KEY_POWER            
+                KEY_MENU              KEY_BACK              KEY_CAMERA            KEY_CHAT             
+                KEY_SEARCH           
+  input props:
+    <none>
+add device 8: /dev/input/event3
+  name:     "aw8697_haptic"
+  events:
+    FF  (0015): FF_RUMBLE             FF_PERIODIC           FF_CONSTANT           FF_CUSTOM            
+                FF_GAIN              
+  input props:
+    <none>
+add device 9: /dev/input/event4
+  name:     "gpio-keys"
+  events:
+    KEY (0001): KEY_VOLUMEUP         
+    SW  (0005): SW_LID               
+  input props:
+    <none>

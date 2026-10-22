@@ -1,0 +1,567 @@
+INPUT MANAGER (dumpsys input)
+
+Input Manager State:
+  Interactive: true
+  System UI Visibility: 0x8708
+  Pointer Speed: 0
+  Pointer Gestures Enabled: true
+  Show Touches: false
+  Pointer Capture Enabled: false
+
+Event Hub State:
+  BuiltInKeyboardId: 4
+  Devices:
+    -1: Virtual
+      Classes: 0x40000023
+      Path: <virtual>
+      Enabled: true
+      Descriptor: a718a782d34bc767f4689c232d64d527998ea7fd
+      Location: 
+      ControllerNumber: 0
+      UniqueId: <virtual>
+      Identifier: bus=0x0000, vendor=0x0000, product=0x0000, version=0x0000
+      KeyLayoutFile: /system/usr/keylayout/Generic.kl
+      KeyCharacterMapFile: /system/usr/keychars/Virtual.kcm
+      ConfigurationFile: 
+      HaveKeyboardLayoutOverlay: false
+      VideoDevice: <none>
+    1: sdm845-tavil-snd-card Button Jack
+      Classes: 0x00000001
+      Path: /dev/input/event5
+      Enabled: true
+      Descriptor: 00baf25cfe85ebd9815ca090f69a8f6744d357a3
+      Location: ALSA
+      ControllerNumber: 0
+      UniqueId: 
+      Identifier: bus=0x0000, vendor=0x0000, product=0x0000, version=0x0000
+      KeyLayoutFile: /system/usr/keylayout/Generic.kl
+      KeyCharacterMapFile: /system/usr/keychars/Generic.kcm
+      ConfigurationFile: 
+      HaveKeyboardLayoutOverlay: false
+      VideoDevice: <none>
+    2: sdm845-tavil-snd-card Headset Jack
+      Classes: 0x00000080
+      Path: /dev/input/event4
+      Enabled: true
+      Descriptor: ea777451c748a04c2919b995d0ed98dcd5cf348e
+      Location: ALSA
+      ControllerNumber: 0
+      UniqueId: 
+      Identifier: bus=0x0000, vendor=0x0000, product=0x0000, version=0x0000
+      KeyLayoutFile: 
+      KeyCharacterMapFile: 
+      ConfigurationFile: 
+      HaveKeyboardLayoutOverlay: false
+      VideoDevice: <none>
+    3: qpnp_pon
+      Classes: 0x00000001
+      Path: /dev/input/event0
+      Enabled: true
+      Descriptor: fb60d4f4370f5dbe8267b63d38dea852987571ab
+      Location: qpnp_pon/input0
+      ControllerNumber: 0
+      UniqueId: 
+      Identifier: bus=0x0000, vendor=0x0000, product=0x0000, version=0x0000
+      KeyLayoutFile: /system/usr/keylayout/Generic.kl
+      KeyCharacterMapFile: /system/usr/keychars/Generic.kcm
+      ConfigurationFile: 
+      HaveKeyboardLayoutOverlay: false
+      VideoDevice: <none>
+    4: uinput-goodix (aka device 0 - built-in keyboard)
+      Classes: 0x00000001
+      Path: /dev/input/event1
+      Enabled: true
+      Descriptor: 8862082f14a8ccadb800e6ec8548cd896f6332c2
+      Location: 
+      ControllerNumber: 0
+      UniqueId: 
+      Identifier: bus=0x0000, vendor=0x0000, product=0x0000, version=0x0000
+      KeyLayoutFile: /system/usr/keylayout/uinput-goodix.kl
+      KeyCharacterMapFile: /system/usr/keychars/Generic.kcm
+      ConfigurationFile: /system/usr/idc/uinput-goodix.idc
+      HaveKeyboardLayoutOverlay: false
+      VideoDevice: <none>
+    5: fts
+      Classes: 0x00000015
+      Path: /dev/input/event3
+      Enabled: true
+      Descriptor: ddfb717d907e8defcc82f81ba273111db984c56a
+      Location: fts/input0
+      ControllerNumber: 0
+      UniqueId: 
+      Identifier: bus=0x0018, vendor=0x0001, product=0x0002, version=0x0100
+      KeyLayoutFile: /system/usr/keylayout/Generic.kl
+      KeyCharacterMapFile: /system/usr/keychars/Generic.kcm
+      ConfigurationFile: 
+      HaveKeyboardLayoutOverlay: false
+      VideoDevice: <none>
+    6: gpio-keys
+      Classes: 0x00000081
+      Path: /dev/input/event2
+      Enabled: true
+      Descriptor: 485d69228e24f5e46da1598745890b214130dbc4
+      Location: gpio-keys/input0
+      ControllerNumber: 0
+      UniqueId: 
+      Identifier: bus=0x0019, vendor=0x0001, product=0x0001, version=0x0100
+      KeyLayoutFile: /system/usr/keylayout/gpio-keys.kl
+      KeyCharacterMapFile: /system/usr/keychars/Generic.kcm
+      ConfigurationFile: 
+      HaveKeyboardLayoutOverlay: false
+      VideoDevice: <none>
+    7: 
+      Classes: 0x80000008
+      Path: /dev/input/event6
+      Enabled: true
+      Descriptor: e0a64cf073fe65701d1f13bc0b96bd55bed4f6d6
+      Location: 
+      ControllerNumber: 0
+      UniqueId: 
+      Identifier: bus=0x0003, vendor=0xffff, product=0xffff, version=0x0000
+      KeyLayoutFile: 
+      KeyCharacterMapFile: 
+      ConfigurationFile: 
+      HaveKeyboardLayoutOverlay: false
+      VideoDevice: <none>
+    9: 
+      Classes: 0x80000014
+      Path: /dev/input/event7
+      Enabled: true
+      Descriptor: 7160d84618ef844cedbce657f1846696d71909ca
+      Location: 
+      ControllerNumber: 0
+      UniqueId: 
+      Identifier: bus=0x0003, vendor=0xffff, product=0xffff, version=0x0000
+      KeyLayoutFile: 
+      KeyCharacterMapFile: 
+      ConfigurationFile: 
+      HaveKeyboardLayoutOverlay: false
+      VideoDevice: <none>
+  Unattached video devices:
+    <none>
+
+Input Reader State:
+  Device -1: Virtual
+    Generation: 2
+    IsExternal: false
+    AssociatedDisplayPort: <none>
+    HasMic:     false
+    Sources: 0x00000301
+    KeyboardType: 2
+    Keyboard Input Mapper:
+      Parameters:
+        OrientationAware: false
+        HandlesKeyRepeat: false
+      KeyboardType: 2
+      Orientation: 0
+      KeyDowns: 0 keys currently down
+      MetaState: 0x0
+      DownTime: 0
+  Device 0: uinput-goodix
+    Generation: 8
+    IsExternal: false
+    AssociatedDisplayPort: <none>
+    HasMic:     false
+    Sources: 0x00000101
+    KeyboardType: 1
+    Keyboard Input Mapper:
+      Parameters:
+        OrientationAware: true
+        HandlesKeyRepeat: false
+      KeyboardType: 1
+      Orientation: 0
+      KeyDowns: 0 keys currently down
+      MetaState: 0x0
+      DownTime: 0
+  Device 1: sdm845-tavil-snd-card Button Jack
+    Generation: 14
+    IsExternal: false
+    AssociatedDisplayPort: <none>
+    HasMic:     false
+    Sources: 0x00000101
+    KeyboardType: 1
+    Keyboard Input Mapper:
+      Parameters:
+        OrientationAware: false
+        HandlesKeyRepeat: false
+      KeyboardType: 1
+      Orientation: 0
+      KeyDowns: 0 keys currently down
+      MetaState: 0x0
+      DownTime: 0
+  Device 2: sdm845-tavil-snd-card Headset Jack
+    Generation: 12
+    IsExternal: false
+    AssociatedDisplayPort: <none>
+    HasMic:     false
+    Sources: 0x80000000
+    KeyboardType: 0
+    Switch Input Mapper:
+      SwitchValues: 0
+  Device 3: qpnp_pon
+    Generation: 10
+    IsExternal: false
+    AssociatedDisplayPort: <none>
+    HasMic:     false
+    Sources: 0x00000101
+    KeyboardType: 1
+    Keyboard Input Mapper:
+      Parameters:
+        OrientationAware: false
+        HandlesKeyRepeat: false
+      KeyboardType: 1
+      Orientation: 0
+      KeyDowns: 0 keys currently down
+      MetaState: 0x0
+      DownTime: 334088684502000
+  Device 5: fts
+    Generation: 16
+    IsExternal: false
+    AssociatedDisplayPort: <none>
+    HasMic:     false
+    Sources: 0x00001103
+    KeyboardType: 1
+    Motion Ranges:
+      X: source=0x00001002, min=0.000, max=1079.000, flat=0.000, fuzz=0.000, resolution=0.000
+      Y: source=0x00001002, min=0.000, max=2247.000, flat=0.000, fuzz=0.000, resolution=0.000
+      PRESSURE: source=0x00001002, min=0.000, max=1.000, flat=0.000, fuzz=0.000, resolution=0.000
+      SIZE: source=0x00001002, min=0.000, max=1.000, flat=0.000, fuzz=0.000, resolution=0.000
+      TOUCH_MAJOR: source=0x00001002, min=0.000, max=2493.974, flat=0.000, fuzz=0.000, resolution=0.000
+      TOUCH_MINOR: source=0x00001002, min=0.000, max=2493.974, flat=0.000, fuzz=0.000, resolution=0.000
+      TOOL_MAJOR: source=0x00001002, min=0.000, max=2493.974, flat=0.000, fuzz=0.000, resolution=0.000
+      TOOL_MINOR: source=0x00001002, min=0.000, max=2493.974, flat=0.000, fuzz=0.000, resolution=0.000
+      DISTANCE: source=0x00001002, min=0.000, max=127.000, flat=0.000, fuzz=0.000, resolution=0.000
+    Keyboard Input Mapper:
+      Parameters:
+        OrientationAware: false
+        HandlesKeyRepeat: false
+      KeyboardType: 1
+      Orientation: 0
+      KeyDowns: 0 keys currently down
+      MetaState: 0x0
+      DownTime: 0
+    Touch Input Mapper (mode - direct):
+      Parameters:
+        GestureMode: multi-touch
+        DeviceType: touchScreen
+        AssociatedDisplay: hasAssociatedDisplay=true, isExternal=false, displayId=''
+        OrientationAware: true
+      Raw Touch Axes:
+        X: min=0, max=1079, flat=0, fuzz=0, resolution=0
+        Y: min=0, max=2247, flat=0, fuzz=0, resolution=0
+        Pressure: unknown range
+        TouchMajor: min=0, max=127, flat=0, fuzz=0, resolution=0
+        TouchMinor: min=0, max=127, flat=0, fuzz=0, resolution=0
+        ToolMajor: unknown range
+        ToolMinor: unknown range
+        Orientation: unknown range
+        Distance: min=0, max=127, flat=0, fuzz=0, resolution=0
+        TiltX: unknown range
+        TiltY: unknown range
+        TrackingId: min=0, max=65535, flat=0, fuzz=0, resolution=0
+        Slot: min=0, max=9, flat=0, fuzz=0, resolution=0
+      Calibration:
+        touch.size.calibration: geometric
+        touch.pressure.calibration: none
+        touch.orientation.calibration: none
+        touch.distance.calibration: scaled
+        touch.coverage.calibration: none
+      Affine Transformation:
+        X scale: 1.000
+        X ymix: 0.000
+        X offset: 0.000
+        Y xmix: 0.000
+        Y scale: 1.000
+        Y offset: 0.000
+      Viewport INTERNAL: displayId=0, uniqueId=local:19260309953136513, port=129, orientation=0, logicalFrame=[0, 0, 1080, 2248], physicalFrame=[0, 0, 1080, 2248], deviceSize=[1080, 2248]
+      SurfaceWidth: 1080px
+      SurfaceHeight: 2248px
+      SurfaceLeft: 0
+      SurfaceTop: 0
+      PhysicalWidth: 1080px
+      PhysicalHeight: 2248px
+      PhysicalLeft: 0
+      PhysicalTop: 0
+      SurfaceOrientation: 0
+      Translation and Scaling Factors:
+        XTranslate: 0.000
+        YTranslate: 0.000
+        XScale: 1.000
+        YScale: 1.000
+        XPrecision: 1.000
+        YPrecision: 1.000
+        GeometricScale: 1.000
+        PressureScale: 0.000
+        SizeScale: 0.008
+        OrientationScale: 0.000
+        DistanceScale: 1.000
+        HaveTilt: false
+        TiltXCenter: 0.000
+        TiltXScale: 0.000
+        TiltYCenter: 0.000
+        TiltYScale: 0.000
+      Last Raw Button State: 0x00000000
+      Last Raw Touch: pointerCount=0
+      Last Cooked Button State: 0x00000000
+      Last Cooked Touch: pointerCount=0
+      Stylus Fusion:
+        ExternalStylusConnected: false
+        External Stylus ID: -1
+        External Stylus Data Timeout: 9223372036854775807
+      External Stylus State:
+        When: 9223372036854775807
+        Pressure: 0.000000
+        Button State: 0x00000000
+        Tool Type: 0
+  Device 6: gpio-keys
+    Generation: 4
+    IsExternal: false
+    AssociatedDisplayPort: <none>
+    HasMic:     false
+    Sources: 0x80000101
+    KeyboardType: 1
+    Switch Input Mapper:
+      SwitchValues: 0
+    Keyboard Input Mapper:
+      Parameters:
+        OrientationAware: false
+        HandlesKeyRepeat: false
+      KeyboardType: 1
+      Orientation: 0
+      KeyDowns: 0 keys currently down
+      MetaState: 0x0
+      DownTime: 0
+  Device 7: 
+    Generation: 18
+    IsExternal: true
+    AssociatedDisplayPort: <none>
+    HasMic:     false
+    Sources: 0x00002002
+    KeyboardType: 0
+    Motion Ranges:
+      X: source=0x00002002, min=0.000, max=1079.000, flat=0.000, fuzz=0.000, resolution=0.000
+      Y: source=0x00002002, min=0.000, max=2247.000, flat=0.000, fuzz=0.000, resolution=0.000
+      PRESSURE: source=0x00002002, min=0.000, max=1.000, flat=0.000, fuzz=0.000, resolution=0.000
+    Cursor Input Mapper:
+      Parameters:
+        HasAssociatedDisplay: true
+        Mode: pointer
+        OrientationAware: false
+      XScale: 1.000
+      YScale: 1.000
+      XPrecision: 1.000
+      YPrecision: 1.000
+      HaveVWheel: false
+      HaveHWheel: false
+      VWheelScale: 1.000
+      HWheelScale: 1.000
+      Orientation: 0
+      ButtonState: 0x00000000
+      Down: false
+      DownTime: 336850814266000
+  Device 9: 
+    Generation: 25
+    IsExternal: true
+    AssociatedDisplayPort: <none>
+    HasMic:     false
+    Sources: 0x00001002
+    KeyboardType: 0
+    Motion Ranges:
+      X: source=0x00001002, min=0.000, max=1079.000, flat=0.000, fuzz=0.000, resolution=0.000
+      Y: source=0x00001002, min=0.000, max=2247.000, flat=0.000, fuzz=0.000, resolution=0.000
+      PRESSURE: source=0x00001002, min=0.000, max=1.000, flat=0.000, fuzz=0.000, resolution=0.000
+    Touch Input Mapper (mode - direct):
+      Parameters:
+        GestureMode: multi-touch
+        DeviceType: touchScreen
+        AssociatedDisplay: hasAssociatedDisplay=true, isExternal=true, displayId=''
+        OrientationAware: true
+      Raw Touch Axes:
+        X: min=0, max=32767, flat=0, fuzz=0, resolution=0
+        Y: min=0, max=32767, flat=0, fuzz=0, resolution=0
+        Pressure: unknown range
+        TouchMajor: unknown range
+        TouchMinor: unknown range
+        ToolMajor: unknown range
+        ToolMinor: unknown range
+        Orientation: unknown range
+        Distance: unknown range
+        TiltX: unknown range
+        TiltY: unknown range
+        TrackingId: min=0, max=65535, flat=0, fuzz=0, resolution=0
+        Slot: min=0, max=9, flat=0, fuzz=0, resolution=0
+      Calibration:
+        touch.size.calibration: none
+        touch.pressure.calibration: none
+        touch.orientation.calibration: none
+        touch.distance.calibration: none
+        touch.coverage.calibration: none
+      Affine Transformation:
+        X scale: 1.000
+        X ymix: 0.000
+        X offset: 0.000
+        Y xmix: 0.000
+        Y scale: 1.000
+        Y offset: 0.000
+      Viewport INTERNAL: displayId=0, uniqueId=local:19260309953136513, port=129, orientation=0, logicalFrame=[0, 0, 1080, 2248], physicalFrame=[0, 0, 1080, 2248], deviceSize=[1080, 2248]
+      SurfaceWidth: 1080px
+      SurfaceHeight: 2248px
+      SurfaceLeft: 0
+      SurfaceTop: 0
+      PhysicalWidth: 1080px
+      PhysicalHeight: 2248px
+      PhysicalLeft: 0
+      PhysicalTop: 0
+      SurfaceOrientation: 0
+      Translation and Scaling Factors:
+        XTranslate: 0.000
+        YTranslate: 0.000
+        XScale: 0.033
+        YScale: 0.069
+        XPrecision: 30.341
+        YPrecision: 14.577
+        GeometricScale: 0.051
+        PressureScale: 0.000
+        SizeScale: 0.000
+        OrientationScale: 0.000
+        DistanceScale: 0.000
+        HaveTilt: false
+        TiltXCenter: 0.000
+        TiltXScale: 0.000
+        TiltYCenter: 0.000
+        TiltYScale: 0.000
+      Last Raw Button State: 0x00000000
+      Last Raw Touch: pointerCount=0
+      Last Cooked Button State: 0x00000000
+      Last Cooked Touch: pointerCount=0
+      Stylus Fusion:
+        ExternalStylusConnected: false
+        External Stylus ID: -1
+        External Stylus Data Timeout: 9223372036854775807
+      External Stylus State:
+        When: 9223372036854775807
+        Pressure: 0.000000
+        Button State: 0x00000000
+        Tool Type: 0
+  Configuration:
+    ExcludedDeviceNames: []
+    VirtualKeyQuietTime: 100.0ms
+    PointerVelocityControlParameters: scale=1.000, lowThreshold=500.000, highThreshold=3000.000, acceleration=3.000
+    WheelVelocityControlParameters: scale=1.000, lowThreshold=15.000, highThreshold=50.000, acceleration=4.000
+    PointerGesture:
+      Enabled: true
+      QuietInterval: 100.0ms
+      DragMinSwitchSpeed: 50.0px/s
+      TapInterval: 150.0ms
+      TapDragInterval: 300.0ms
+      TapSlop: 20.0px
+      MultitouchSettleInterval: 100.0ms
+      MultitouchMinDistance: 15.0px
+      SwipeTransitionAngleCosine: 0.3
+      SwipeMaxWidthRatio: 0.2
+      MovementSpeedRatio: 0.8
+      ZoomSpeedRatio: 0.3
+      Viewports:
+        Viewport INTERNAL: displayId=0, uniqueId=local:19260309953136513, port=129, orientation=0, logicalFrame=[0, 0, 1080, 2248], physicalFrame=[0, 0, 1080, 2248], deviceSize=[1080, 2248]
+
+Input Classifier State:
+  Motion Classifier:
+    <nullptr>
+
+Input Dispatcher State:
+  DispatchEnabled: true
+  DispatchFrozen: false
+  InputFilterEnabled: false
+  FocusedDisplayId: 0
+  FocusedApplications:
+    displayId=0, name='AppWindowToken{3e0ac0b token=Token{ffc9fda ActivityRecord{149ffef u0 com.miui.home/.launcher.Launcher t1}}}', dispatchingTimeout=8000.000ms
+  FocusedWindows:
+    displayId=0, name='Window{4e18f49 u0 com.miui.home/com.miui.home.launcher.Launcher}'
+  TouchStatesByDisplay:
+    0: down=false, split=false, deviceId=7, source=0x00002002
+      Windows: <none>
+  Display: 0
+    Windows:
+      0: name='Window{a5fa37 u0 NavigationBar}', displayId=0, portalToDisplayId=-1, paused=false, hasFocus=false, hasWallpaper=false, visible=true, canReceiveKeys=false, flags=0x01840068, type=0x000007e3, layer=0, frame=[0,2118][1080,2248], globalScale=1.000000, windowScale=(1.000000,1.000000), touchableRegion=[0,2118][1080,2248], inputFeatures=0x00000000, ownerPid=9563, ownerUid=1000, dispatchingTimeout=8000.000ms
+      1: name='Window{64e484c u0 Sys2009:com.mfashiongallery.emag/.lks.minusonescreen.overlay.OverlayService}', displayId=0, portalToDisplayId=-1, paused=false, hasFocus=false, hasWallpaper=false, visible=true, canReceiveKeys=false, flags=0x89850118, type=0x000007d9, layer=0, frame=[0,0][1080,2248], globalScale=1.000000, windowScale=(1.000000,1.000000), touchableRegion=[0,0][1080,2248], inputFeatures=0x00000000, ownerPid=16954, ownerUid=10209, dispatchingTimeout=8000.000ms
+      2: name='Window{475eaf8 u0 StatusBar}', displayId=0, portalToDisplayId=-1, paused=false, hasFocus=false, hasWallpaper=false, visible=true, canReceiveKeys=false, flags=0x81840048, type=0x000007d0, layer=0, frame=[0,0][1080,89], globalScale=1.000000, windowScale=(1.000000,1.000000), touchableRegion=[0,0][1080,89], inputFeatures=0x00000000, ownerPid=9563, ownerUid=1000, dispatchingTimeout=8000.000ms
+      3: name='Window{4e18f49 u0 com.miui.home/com.miui.home.launcher.Launcher}', displayId=0, portalToDisplayId=-1, paused=false, hasFocus=true, hasWallpaper=true, visible=true, canReceiveKeys=true, flags=0x85910120, type=0x00000001, layer=0, frame=[0,0][1080,2248], globalScale=1.000000, windowScale=(1.000000,1.000000), touchableRegion=[0,0][1080,2248], inputFeatures=0x00000000, ownerPid=9694, ownerUid=10090, dispatchingTimeout=8000.000ms
+      4: name='Window{f9e2bdf u0 com.android.keyguard.wallpaper.service.MiuiKeyguardPictorialWallpaper}', displayId=0, portalToDisplayId=-1, paused=false, hasFocus=false, hasWallpaper=false, visible=false, canReceiveKeys=false, flags=0x00010318, type=0x000007dd, layer=0, frame=[0,0][1080,2248], globalScale=1.000000, windowScale=(1.000000,1.000000), touchableRegion=[0,0][1080,2248], inputFeatures=0x00000000, ownerPid=9563, ownerUid=1000, dispatchingTimeout=8000.000ms
+      5: name='Window{de5ad17 u0 com.android.systemui.ImageWallpaper}', displayId=0, portalToDisplayId=-1, paused=false, hasFocus=false, hasWallpaper=false, visible=true, canReceiveKeys=false, flags=0x00010318, type=0x000007dd, layer=0, frame=[0,0][1080,2248], globalScale=1.000000, windowScale=(1.000000,1.000000), touchableRegion=[0,0][1080,2248], inputFeatures=0x00000000, ownerPid=9563, ownerUid=1000, dispatchingTimeout=8000.000ms
+  Global monitors in display 0:
+    0: 'PointerEventDispatcher0 (server)', 
+  RecentQueue: length=10
+    MotionEvent, age=671050.2ms
+    MotionEvent, age=671050.2ms
+    MotionEvent, age=671050.2ms
+    KeyEvent, age=363603.0ms
+    DeviceResetEvent(deviceId=8), policyFlags=0x00000000, age=253954.1ms
+    ConfigurationChangedEvent(), policyFlags=0x00000000, age=253954.1ms
+    DeviceResetEvent(deviceId=8), policyFlags=0x00000000, age=251891.4ms
+    ConfigurationChangedEvent(), policyFlags=0x00000000, age=251891.4ms
+    DeviceResetEvent(deviceId=9), policyFlags=0x00000000, age=251871.1ms
+    ConfigurationChangedEvent(), policyFlags=0x00000000, age=251871.1ms
+  PendingEvent: <none>
+  InboundQueue: <empty>
+  ReplacedKeys: <empty>
+  Connections:
+    0: channelName='PointerEventDispatcher0 (server)', windowName='PointerEventDispatcher0 (server)', status=NORMAL, monitor=true, inputPublisherBlocked=false
+      OutboundQueue: <empty>
+      WaitQueue: <empty>
+    1: channelName='2475365 com.android.settings/com.android.settings.Settings$WifiSettingsActivity (server)', windowName='2475365 com.android.settings/com.android.settings.Settings$WifiSettingsActivity (server)', status=NORMAL, monitor=false, inputPublisherBlocked=false
+      OutboundQueue: <empty>
+      WaitQueue: <empty>
+    2: channelName='a827ee9 DockedStackDivider (server)', windowName='a827ee9 DockedStackDivider (server)', status=NORMAL, monitor=false, inputPublisherBlocked=false
+      OutboundQueue: <empty>
+      WaitQueue: <empty>
+    3: channelName='aa22221 AssistPreviewPanel (server)', windowName='aa22221 AssistPreviewPanel (server)', status=NORMAL, monitor=false, inputPublisherBlocked=false
+      OutboundQueue: <empty>
+      WaitQueue: <empty>
+    4: channelName='f5b9f5e Aspect (server)', windowName='f5b9f5e Aspect (server)', status=NORMAL, monitor=false, inputPublisherBlocked=false
+      OutboundQueue: <empty>
+      WaitQueue: <empty>
+    5: channelName='f9e2bdf com.android.keyguard.wallpaper.service.MiuiKeyguardPictorialWallpaper (server)', windowName='f9e2bdf com.android.keyguard.wallpaper.service.MiuiKeyguardPictorialWallpaper (server)', status=NORMAL, monitor=false, inputPublisherBlocked=false
+      OutboundQueue: <empty>
+      WaitQueue: <empty>
+    6: channelName='4e18f49 com.miui.home/com.miui.home.launcher.Launcher (server)', windowName='4e18f49 com.miui.home/com.miui.home.launcher.Launcher (server)', status=NORMAL, monitor=false, inputPublisherBlocked=false
+      OutboundQueue: <empty>
+      WaitQueue: <empty>
+    7: channelName='a5fa37 NavigationBar (server)', windowName='a5fa37 NavigationBar (server)', status=NORMAL, monitor=false, inputPublisherBlocked=false
+      OutboundQueue: <empty>
+      WaitQueue: <empty>
+    8: channelName='475eaf8 StatusBar (server)', windowName='475eaf8 StatusBar (server)', status=NORMAL, monitor=false, inputPublisherBlocked=false
+      OutboundQueue: <empty>
+      WaitQueue: <empty>
+    9: channelName='15b6257 RoundCorner (server)', windowName='15b6257 RoundCorner (server)', status=NORMAL, monitor=false, inputPublisherBlocked=false
+      OutboundQueue: <empty>
+      WaitQueue: <empty>
+    10: channelName='fffd8e3 RoundCorner (server)', windowName='fffd8e3 RoundCorner (server)', status=NORMAL, monitor=false, inputPublisherBlocked=false
+      OutboundQueue: <empty>
+      WaitQueue: <empty>
+    11: channelName='pip_input_consumer (server)', windowName='pip_input_consumer (server)', status=NORMAL, monitor=false, inputPublisherBlocked=false
+      OutboundQueue: <empty>
+      WaitQueue: <empty>
+    12: channelName='d837ef com.android.browser/com.android.browser.homepage.infoflow.InfoFlowVideoActivity (server)', windowName='d837ef com.android.browser/com.android.browser.homepage.infoflow.InfoFlowVideoActivity (server)', status=NORMAL, monitor=false, inputPublisherBlocked=false
+      OutboundQueue: <empty>
+      WaitQueue: <empty>
+    13: channelName='de5ad17 com.android.systemui.ImageWallpaper (server)', windowName='de5ad17 com.android.systemui.ImageWallpaper (server)', status=NORMAL, monitor=false, inputPublisherBlocked=false
+      OutboundQueue: <empty>
+      WaitQueue: <empty>
+    14: channelName='a667ce8 com.android.browser/com.android.browser.BrowserActivity (server)', windowName='a667ce8 com.android.browser/com.android.browser.BrowserActivity (server)', status=NORMAL, monitor=false, inputPublisherBlocked=false
+      OutboundQueue: <empty>
+      WaitQueue: <empty>
+    15: channelName='d41f4f1 com.miui.securitycenter/com.miui.appmanager.ApplicationsDetailsActivity (server)', windowName='d41f4f1 com.miui.securitycenter/com.miui.appmanager.ApplicationsDetailsActivity (server)', status=NORMAL, monitor=false, inputPublisherBlocked=false
+      OutboundQueue: <empty>
+      WaitQueue: <empty>
+    16: channelName='64e484c Sys2009:com.mfashiongallery.emag/.lks.minusonescreen.overlay.OverlayService (server)', windowName='64e484c Sys2009:com.mfashiongallery.emag/.lks.minusonescreen.overlay.OverlayService (server)', status=NORMAL, monitor=false, inputPublisherBlocked=false
+      OutboundQueue: <empty>
+      WaitQueue: <empty>
+    17: channelName='4d5f608 LauncherOverlayWindow:com.miui.personalassistant (server)', windowName='4d5f608 LauncherOverlayWindow:com.miui.personalassistant (server)', status=NORMAL, monitor=false, inputPublisherBlocked=false
+      OutboundQueue: <empty>
+      WaitQueue: <empty>
+  AppSwitch: not pending
+  Configuration:
+    KeyRepeatDelay: 50.0ms
+    KeyRepeatTimeout: 500.0ms
+
+
