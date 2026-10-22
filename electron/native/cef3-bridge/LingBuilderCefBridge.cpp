@@ -11850,7 +11850,14 @@ LB_CEF3_HANDLE CreateBrowserHandle(const LB_CEF3_BROWSER_CONFIG_V4* config, bool
     } else {
       RECT bounds{};
       GetClientRect(state->parent, &bounds);
-      window_info.SetAsChild(state->parent, CefRect(0, 0, bounds.right - bounds.left, bounds.bottom - bounds.top));
+      // CEF 150 把子窗口边界按 DIP 语义处理（内部创建 HWND 时再按父窗口 DPI 乘回物理
+      // 像素）；这里必须把宿主客户区的物理像素先换算成 DIP 再交给 SetAsChild，
+      // 否则 >100% 显示缩放下页面按缩放倍数双重放大并被窗口裁切（200% 实测）。
+      const UINT parentDpi = GetDpiForWindow(state->parent);
+      const UINT dpiRef = parentDpi ? parentDpi : 96;
+      const int dipW = MulDiv(bounds.right - bounds.left, 96, static_cast<int>(dpiRef));
+      const int dipH = MulDiv(bounds.bottom - bounds.top, 96, static_cast<int>(dpiRef));
+      window_info.SetAsChild(state->parent, CefRect(0, 0, dipW > 0 ? dipW : 1, dipH > 0 ? dipH : 1));
     }
     CefBrowserSettings browser_settings{};
     browser_settings.size = sizeof(browser_settings);

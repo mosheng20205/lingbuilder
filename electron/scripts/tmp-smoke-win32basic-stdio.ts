@@ -45,7 +45,7 @@ async function main() {
   };
 
   send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'win32basic-stdio-smoke', version: '1.0.0' } } });
-  const initialized = await waitFor(message => message.id === 1 && message.result, 'initialize');
+  const initialized = await waitFor(message => message.id === 1 && message.result !== undefined, 'initialize');
   const instructions = String((initialized.result as Record<string, unknown>)?.instructions ?? '');
   const keywords: Array<[RegExp, string]> = [
     [/控件_设置只读/u, '运行期只读命令'],
@@ -77,7 +77,7 @@ async function main() {
 
   send({ jsonrpc: '2.0', method: 'notifications/initialized' });
   send({ jsonrpc: '2.0', id: 2, method: 'tools/list' });
-  const toolList = await waitFor(message => message.id === 2 && message.result, 'tools/list');
+  const toolList = await waitFor(message => message.id === 2 && message.result !== undefined, 'tools/list');
   const tools = ((toolList.result as Record<string, unknown>)?.tools ?? []) as Array<{ name: string }>;
   if (tools.length === 25) console.log(`PASS 工具数 25`);
   else { console.error(`FAIL 工具数应为 25，实际 ${tools.length}`); failed += 1; }
@@ -85,7 +85,7 @@ async function main() {
   const newCommands = ['控件_设置只读', '控件_设置密码输入', '控件_设置提示文字', '控件_设置数值范围', '控件_设置不确定进度', '控件_插入项目', '控件_删除项目', '控件_修改项目', '控件_取项目文本', '控件_取项目数量', '控件_设置表项高度', '控件_设置选中颜色', '控件_设置选中标记颜色', '控件_设置边框', '控件_设置标题对齐', '控件_设置文本对齐', '控件_设置填充方式', '控件_播放', '控件_暂停', '控件_设置循环播放', '滑块_置刻度间隔', '滑块_取刻度间隔', '日期时间选择器_置日期', '日期时间选择器_取日期', '日期时间选择器_置显示格式', '月历_置日期', '月历_取日期', '月历_置选中范围', '富文本框_置RTF文本', '富文本框_取RTF文本'];
   const callModuleInfo = async (id: number, moduleId: string, query: string) => {
     send({ jsonrpc: '2.0', id, method: 'tools/call', params: { name: 'lingbuilder.module.info', arguments: { moduleId, query } } });
-    const response = await waitFor(message => message.id === id && message.result, `module.info(${query})`);
+    const response = await waitFor(message => message.id === id && message.result !== undefined, `module.info(${query})`);
     const content = (response.result as Record<string, unknown>)?.content as Array<{ text?: string }> | undefined;
     return JSON.parse(content?.[0]?.text ?? '{}') as { commands?: Array<{ name: string }>; commandsTotal?: number };
   };

@@ -1,5 +1,29 @@
 # LingBuilder 后期优化事项
 
+- 已完成（2026-10-21）：**Win32 通用鼠标事件 MouseMove/MouseUp 补齐（IDE 运行链）**。lingCppWin32Project.ts 运行时模板公共子类分支对全部子类化控件每次 WM_MOUSEMOVE 派发 MouseMove（保留首次 MouseEnter）、WM_LBUTTONUP 释放捕获后派发 MouseUp；DateTimePicker/TabControl/ListBox 特化分支同步。绑定了任一鼠标事件的非 BUTTON 控件按下时 SetCapture（拖出控件仍持续收消息）。事件能力表 COMMON_MOUSE_EVENTS +MouseMove/+MouseUp。审计基线迁移：内置 93d284c2·1d346cf3、全量 1572b865·c595914e、CHECKLIST 计数 4305。
+- 已完成（2026-10-21 同日修复）：**上条引入的按钮 Click 全灭回归**。公共分支在转发 WM_LBUTTONUP 前抢先 `ReleaseCapture()`，同步产生的 WM_CAPTURECHANGED 被标准按钮过程判定为"捕获被抢=点击取消"，按钮按压状态被清除，随后转发的 WM_LBUTTONUP 不再产生 BN_CLICKED——所有 BUTTON 类控件（按钮/复选框/单选）真机与 BM_CLICK 全部无响应（直接 SendMessage(WM_COMMAND) 正常，因为绕过了按钮自身状态机）。修复：BUTTON 先 DefSubclassProc 转发（按钮过程发出 BN_CLICKED）再清理残余捕获，非按钮拖动手势保持原顺序；`tests/windowControlCompleteness.test.ts` 钉子同步改按 `!buttonControl`/`buttonControl` 两条断言。真机双验证：lingbuilder-project-3 编辑框与文本变量 demo，修复前点击零输出零信息框，修复后 调试输出+信息框齐全。
+- 待办：**nativeWin32Project.ts（VS 工程导出模板）无控件子类化、不派发任何鼠标事件**——导出工程里 MouseDown/MouseMove/MouseUp 绑定不生效（Click 族不受影响）。绑定这些事件的项目导出 VS 工程会静默失去拖动手势，需在导出模板补同构子类化派发（与本仓库「IDE 内运行与导出行为一致」红线的已知差距；aoa-viewer 手势当前只在 IDE 运行链生效）。
+- 已完成（2026-10-21 二轮）：**AOA 打开流程硬上限 + 回退快速判定**。`open_by_serial` 入口取一次绝对截止时刻
+  （45 秒）贯穿发现/切换/3 轮重试/等驱动绑定；切换后「原手机节点在 + 无配件节点」持续 5 秒即判回退并立即返回，
+  失败文案按 `AccWaitResult`（Reverted/DriverNotBound/NotAppeared）区分。真机 MI 8 回退场景 5.2 秒返回。
+- 待办（AOA 模块二轮后遗留，2026-10-21 深夜）：
+  ① **`AOA_打开设备` 仍在宿主 UI 线程被调用**：模块已把单次调用压到 ≤45 秒（回退场景 ~5 秒），但 `aoa-viewer`
+     的槽位连接/自动分配仍同步调用，多槽顺序重试会叠加。宿主侧应改为后台线程 + 完成后回调刷状态（属 viewer 工程改造）。
+  ② **FF48（USB 调试复合形态）的 UsbDk 分支未在真机验证**：`reopen_with_usbdk()` 只在「复合设备 + ACCESS」时启用，
+     本机未装 UsbDk（`libusb_set_option` 返回 `LIBUSB_ERROR_NOT_FOUND`、上下文自动回落默认后端，已取证），
+     「已装 UsbDk 时能否打开并读 AOA 2.0」需在实际装了 UsbDk 的机器上验一次。另：即便打开成功，
+     部分机型调试态仍忽略 ACCESSORY_START（MI 8 实测），USB 投屏不可用，届时须走 Wi-Fi。
+  ③ **FF48 的 1 秒诊断本轮未在本机复演**（MI 8 已退出调试态，无法构造该设备形态）：上轮同状态实测 970ms 返回，
+     本轮仅新增 UsbDk 前置尝试（未装时 <20ms），需要时把手机 USB 调试打开即可复验。
+  ④ **华为 NOH-AN00「无调试稳定挂配件模式」全链未复测**（任务当天已拔出）。
+  ⑤ **aoa-viewer 的 USB 断线自愈只做了编译级验证**：`群控库.槽USB掉线`（收帧失败且 `AOA_取错误` 非空 → 关通道+关设备+
+     槽位退回未连接）尚未在真机拔线场景点验，下次联调需确认状态栏文案与 `viewer.log` 的 `usbdown` 行。
+  ⑥ **`AOA_取设备列表` 的「需驱动」仍无法区分「真缺驱动」与「被别的进程占用」**：本进程占用已能如实报「可打开」
+     （会话登记表），跨进程占用仍只能报「需驱动」。若用户反馈困扰，可加只读诊断命令或在描述里补话术（需同步审计基线）。
+  ⑦ **Mi 10 伴侣 App 数据通道收帧 0**（验证时 App 未进推流会话）：通道能开、能收空拍，属对端未发流。
+- 待办（aoa-viewer MirrorDesk，2026-10-21）：①批量/同步操控为占位（灰量按钮），磁贴多选拖框未做；②「自动分配接收」对槽 2~4 也会尝试用序列号输入框的值打开（槽 1 占用后失败走 WS 分支，无害但可优化为跳过已占用序列号）；③截图存 exe 同目录（无时间戳，用自增计数）；④mirrordesk.html 分发依赖 exe 同目录或源码根绝对路径双探测，发布形态应改为随包资源；⑤华为配件「序列号+产品名双空」已走空串兜底打开，但多台空序列号配件同时在线仍会歧义拒开——模块侧按端口路径/PnP 实例消歧未做。
+- 待办（installer.export 与项目 Web 资产，2026-10-21 实锤）：**导出器只收 exe/dll/图标等构建产物，项目自带的 Web 资产（aoa-viewer 的 mirrordesk.html）不进安装包**——本次装机靠手工改 installer.nsi 加 `File "/oname=mirrordesk.html"` + 卸载段 Delete 再 makensis 重编；而 `lingbuilder.installer.export` 每次导出会重新生成 nsi 覆盖手工行。永久解法：构建链把窗口项目源码根的 .html/.css/.js（或模块声明的 webAssets 清单）复制进构建目录并纳入 installer-build-manifest 的文件清单，导出器自然收编；短期用户侧流程=导出后手工补行重编。
+
 - 已完成（2026-10-17）：**`控件_` 运行期专属属性命令第一批（消息层 11 条）、第二批（自绘层 9 条）与第三批（common-controls 10 条）**。
   第一批：只读/密码输入/提示文字/数值范围/不确定进度/表项高度 + 列表项目插入/删除/修改/取项目文本/取项目数量
   （消息层 SendMessage + RuntimeControl 覆盖字段）。第二批：选中颜色（列表框/组合框渐变三色）、选中标记颜色
@@ -707,6 +731,7 @@
 - 已完成（2026-10-01）：构建/运行日志全面精简。清理阶段每项目两行目录合并为「已清理 N 个项目的构建目录…」单行汇总，EBUSY/EPERM/ENOTEMPTY 翻译成中文占用提示并给出修法（`solutionService.cleanProjects`）；解决方案批量构建单阶段单项目不再输出「构建计划/开始构建阶段」，多项目单阶段压成一行「并行生成：A、B」，删除逐项目「正在生成项目 X (id)...」与任务通道「正在生成项目。/任务完成。」播报，收尾行带用时；每项目 9 行路径块压缩为 3 行（生成目录锚点+编译器/构建配置括注、可复制 Visual Studio 工程、产物输出目录），唯一实现 `buildOutputLabel.formatBuildPathSummaryLines`，F5 路由、`runControlledWindowDesignerBuild`、AI Bridge `build.run` 三处共用；编译成功路径经 `buildOutputLabel.formatSuccessCompileChannel` 过滤 `stdout:\nmain.cpp` 式纯回显（含警告/错误关键字的中英文输出保留），资源编译日志移到「编译成功。」之前；失败路径日志与响应结构化字段不受影响。AI Bridge `build.run` 日志同步去掉「C++ 源码目录/可复制生成目录/构建目录内 sln/中间文件目录」派生行。
 - 已完成（2026-10-01 第二批）：构建成功摘要补齐关键路径。`formatBuildPathSummaryLines` 新增可选 `solutionPath`，首行播报「解决方案：<工作区 .lbsln 完整路径>」（经 `solutionEntryFile.findSolutionEntryPath` 解析，解决方案尚未建立时省略该行），三个消费点同步；编译成功后的产物文件路径不再依赖 run 播报——DLL 项目无条件输出「DLL 产物：<.dll 完整路径>」「导入库：<.lib 完整路径>」，exe/控制台项目对称输出「程序产物：<exe 完整路径>」（此前「DLL 产物/导入库」被 `run && outputType==='dll'` 门住，「生成动态库」按钮 run=false 永远看不到产物路径）。同批根治纯逻辑 DLL 拆分形态编译失败：`lingCppWin32Project.ts` 的 `LINGBUILDER_PURE_LOGIC_DLL` 第二对守卫闭合原先内嵌在 `rtSegCefClient` 段尾，而该段只在单文件形态拼接，拆分形态下闭守卫随段消失，runtime.h 带未闭合 `#ifndef` 必现 C1004「发现意外的文件尾」；现闭守卫移到两条装配路径显式拼接（单文件在 CEF3 客户端段后、拆分在 runtime.h 的 windowBaseText 后），黄金基线 `golden:write` 重新生成（diff 仅新增该 `#endif`，其余 8 夹具字节不变）。工具栏「生成 C++」按钮（App.tsx `handleGenerateCpp`）原先写死三行「解析 DSL→生成完毕」假日志且无任何服务端调用，DLL 项目亦显示，纯误导；现 DLL 项目隐藏该按钮与「生成 C++ 宏定义类」菜单项，其余项目改为如实单行提示（真实生成只在 F5/生成解决方案链路发生）。
 - 已完成（2026-10-15）：调试输出轮询防膨胀 + 崩溃远程定位日志。`/api/window-designer/debug-logs` 原先每秒全量读 run.log 并整体重发（App.tsx `pollLogs` 每秒 fetch 全量 + 逐行 trim/diff），大 run.log（AI Bridge 会话构建运行的程序持续输出时可达 MB 级）把渲染层喂出约 130MB/min 的解析垃圾，客户实测膨胀到 V8 堆上限（Tab≈4.4GB）后每约 33 分钟崩溃重载一次（退出码 -1073741795 = 0xC000001D，V8 OOM 自毁指令）。修复：服务端带 `lastSize/lastMtime` 时先 `stat` 短路（无变化零读取零重发，mtime 严格相等——放宽容差会把紧跟上一轮读取的写入漏判成无变化，实测 2ms 即踩中），变化时超过 `DEBUG_LOG_RESPONSE_WINDOW_BYTES`(256KB) 只回传尾部窗口（`truncated:true`，调试输出面板只关心最近内容）；渲染层按 size+mtime 游标轮询、`debugLogs` 封顶 5000 行。同批渲染层诊断闭环：App.tsx 每分钟经 `diagnostic:report`（category `renderer-status`）上报「视图/文件/新手或专业模式/底部面板/文件数/JS堆/DOM 节点数」，主进程存底供崩溃日志引用；`[memory]` 采样留存 Tab 最近 10 次轨迹并在 ≥2500MB 时告警（10 分钟限频）；`render-process-gone` 日志附退出码中文解读（0xC000001D/C0000005/C00000FD/C0000409）、崩溃前内存轨迹与最后渲染层状态——远程用户再崩，日志直接指认页面与根因。`buildLogs`（编辑事务/构建日志）统一裁尾封顶 4000 行；终端缓冲已有 `MAX_BUFFER` 不变。遗留后期项：内存高水位时主动非模态提示用户一键重载（当前只写诊断告警日志）。
+- 已完成（2026-10-21）：编译器探测防误报治理（外部用户反馈：编译偶报「未检测到可用 C++ 编译器」、重试 2~3 次就好，一天 7~8 次）。根因＝旧 `detectCompiler`（server.ts 与 aiBridgeService.ts 各一份复制）单次探测、任何一步（vswhere 查询 / cmd 跑 vcvars64.bat 验证）失败都被 `catch {}` 静默吞掉，杀软拦截进程拉起、VS Installer 后台自更新、系统瞬时繁忙等暂时性故障被误报成「请安装编译器」；且写死回退目录只有 VS2019/2022，装 VS2026（目录名 18）或自定义路径的机器 vswhere 是唯一发现渠道，一抖就误报；x64 构建还会把同一探测原样跑两遍。修复＝收敛唯一实现 `electron/src/services/tasks/compilerDetection.ts`（两处旧复制删除），提供：① 进程内成功缓存按架构复用（只缓存成功；编译失败即失效强制重探，防 VS 升级后拿失效路径）；② 并发构建共享同一次在途探测（并行批次不再同时拉起多个 cmd.exe/vcvars）；③ 全链失败自动重试 1 次（500ms）；④ 每步命令/退出码/耗时/中文结论明细，失败时原样并入构建 logs（F5 路由、生成项目/解决方案、EdgeView 控件预览、AI Bridge build.run 四入口同口径），文案含「暂时性失败请再点一次编译」与「请把本段日志发给开发组」——下次用户反馈可直接按步骤定位是 vswhere 还是 vcvars 哪一步、什么错误码；⑤ vswhere 失败回退目录补 VS2026（目录名 18，与 externalProjectService 口径一致）并叠加 `where.exe vswhere.exe` 定位；⑥ 成功探测不输出任何诊断（formatter 对成功 outcome 返回空）。AI Bridge 侧保留 `detectCompiler` 依赖注入契约（测试注入探测器时诊断恒为空）。回归：`tests/compilerDetection.test.ts` 7 用例（缓存命中/重试成功/全链失败明细/VS2026 回退/PATH cl 优先/失效重探/并发共享，已挂 `test:lingcpp`）；真机验证（本机即 VS2026 社区版）：首次探测 1.4s（vswhere 35ms + vcvars 1417ms）、二次命中缓存 0ms；stdio 冒烟 `scripts/tmp-smoke-compiler-detect-stdio.ts` 8/8（bundle 中文以大写 \u 转义存在，探针须按 `\u`+大写十六进制匹配）。遗留后期项：把环境检查服务（environmentCheckService，30s 总超时）与本次探测共享底层实现；构建日志 UI 对「编译器探测明细」块做折叠呈现。
 - 已完成（B04）：MSVC/GCC/Clang 与链接器输出已结构化解析；生成 C++ 位置按 source map 映射回 `.lcpp`，问题面板可显示错误码、行列并跳转，无法映射时保留原始生成文件位置。
 - 已修复：错误列表跳转同时覆盖专业 Monaco 与中文结构编辑器；点击映射到 `.lcpp` 的构建诊断会打开对应文件，并在新手模式滚动到结构化源码行，路径分隔符差异不会再导致跳转失效。
 - 已修复：设计器已绑定但源码尚缺失的事件不再错误归位到 `.lcpp` 类声明行，也不再用原始文本行号冒充新手结构编辑器的可视行号；问题面板明确标注“待生成事件（类末尾）”，避免给尚不存在的事件显示虚假源码位置。
@@ -1651,6 +1676,10 @@ F5 直接被中文诊断阻断，但状态栏的 `错误列表` 仍显示 `(0)`�
 - 模块 MCP 工具当前只暴露 MCP（stdio + Streamable HTTP 共用），未加 REST 镜像；若后续 AI Bridge REST 客户端需要模块能力，再按「复用同一 AiBridgeService」规则补 `/api/ai-bridge/module/*` 路由。
 - `docs/MODULE_ECOSYSTEM_IMPLEMENTATION.md` 的 manifest 示例仍是 v1 风格（`schemaVersion: 1` + `cppRuntimeName`），与 v2-only 规则存在文档漂移，需要整段改写为 v2 示例（schemaVersion 2 + targets + bindings）。
 - 系统一键生成的自动修正回路目前是「把校验诊断追加进需求重跑一次」的人工触发按钮；后续可评估自动迭代（生成 → 校验失败自动回灌诊断，最多 N 轮）与点数消耗上限控制。
+
+## 模块头文件树与注入开关（2026-10-21）
+
+外部用户（经外部 MCP 的 AI 封装模块）实报三条痛点，当日全部修复：① 模块 `headers` 被生成器无条件 `#include "modules/<id>/<头>"` 注入主程序 main.cpp，第三方头文件树缺基础库/需特殊宏即污染宿主编译——新增清单根级 `injectHeaders`（默认 true 保持旧行为），`false` 时头文件仍随模块复制但不注入 main.cpp，前导区留中文注释说明；② `headers` 只逐文件复制、不递归，google/protobuf 式几十个头文件要逐个列举——新增 `targets[].headerDirs` 整目录递归复制（构建/源码/导出三处模块根）并自动登记包含目录（与 includeDirs 去重，源目录缺失中文诊断）；③ `includeDirs` 声明的目录此前只入 `-I` 不复制，作者在下游 C1083 才知道没拷——现在目录随包存在时自动物化进源码根（与 headerDirs 复制去重，模块专属 SDK 铺设先建好的目标目录跳过），两侧缺失给点名中文诊断并提示改用 headerDirs。清单校验覆盖新字段（`injectHeaders` 非布尔、近形拼错 `headerdir`/`headerdirs`→`headerDirs` 点名）；模块详情公开信息新增「头文件目录」行。哨兵：`tests/modules.test.ts` 注入开关+清单校验用例、`tests/buildPipeline.test.ts` headerDirs/includeDirs 物化用例；文档同步 `docs/模块开发手册.md`「头文件注入开关与整目录头文件树」节与规则手册外部 AI 节。遗留：DLL→模块迁移生成器（moduleSdkService）尚未透传 raw.headerDirs；存量第三方模块若隐性依赖「主程序可见模块头」（@ 内联代码直用模块头类型）需自行评估是否保持默认注入。
 
 ## Visual Studio 工程导出工具集与后置命令修复（2026-09-11）
 

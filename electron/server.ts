@@ -90,7 +90,7 @@ import {
 } from "./src/services/workspace/projectFileState";
 import { createManagedProcessService } from "./src/services/tasks/managedProcessService";
 import { TaskService } from "./src/services/tasks/taskService";
-import { BuildConfigurationService, getBuildCompilerFlags, getModuleTargetId, type BuildConfiguration } from "./src/services/tasks/buildConfigurationService";
+import { BuildConfigurationService, getBuildCompilerFlags, getModuleTargetId, type BuildArchitecture, type BuildConfiguration } from "./src/services/tasks/buildConfigurationService";
 import { resolveExecutableNameParts } from "./src/services/solution/externalProjectService";
 import { isProjectDllCommandsFilePath, createProjectDllDeclarationModuleFromSources } from "./src/services/lingCpp/projectDllCommandService";
 import { materializeProjectDllDeclarationModules } from "./src/services/modules/projectDllMaterializeService";
@@ -100,6 +100,14 @@ import { describeBuildOutputDirectory, formatBuildPathSummaryLines, formatSucces
 import { ClangdService } from "./src/services/lsp/clangdService";
 import { LspWorkspaceEditService } from "./src/services/lsp/lspWorkspaceEditService";
 import { checkDevelopmentEnvironment } from "./src/services/tasks/environmentCheckService";
+import {
+  detectCompilerDetailed,
+  formatCompilerDetectionDiagnostics,
+  invalidateCachedCompiler,
+  type CompilerArchitecture,
+  type CompilerDetectionOutcome,
+  type DetectedCompiler
+} from "./src/services/tasks/compilerDetection";
 import {
   EnvironmentRepairBusyError,
   EnvironmentRepairService,
@@ -1900,15 +1908,29 @@ app.post("/api/window-designer/edge-control-preview", async (req, res) => {
       buildDir, sourceDir, binDir, exportDir, preferredTargetId: getModuleTargetId(buildConfiguration)
     });
     if (modulePlan.blockingDiagnostics.length) return res.status(200).json({ ok: false, stage: "native-dependencies", error: modulePlan.blockingDiagnostics.join("\n"), logs: modulePlan.diagnostics });
-    const compiler = await detectCompiler(buildConfiguration);
-    if (!compiler || compiler.kind !== "msvc") return res.status(200).json({ ok: false, stage: "compiler", error: "EdgeView 独立预览需要 Visual Studio Build Tools / MSVC。", logs: compatibility.messages });
+    const compilerDetection = await detectCompilerWithDiagnostics(buildConfiguration);
+    const compiler = compilerDetection.compiler;
+    if (!compiler || compiler.kind !== "msvc") {
+      return res.status(200).json({
+        ok: false,
+        stage: "compiler",
+        error: "EdgeView 独立预览需要 Visual Studio Build Tools / MSVC。",
+        logs: [
+          ...compatibility.messages,
+          ...(compiler ? [] : formatCompilerDetectionDiagnostics(compilerDetection))
+        ]
+      });
+    }
     const exePath = path.join(binDir, "EdgeViewControlPreview.exe");
     const resourcePath = generated.files.some(file => file.relativePath === WINDOWS_EXECUTABLE_RESOURCE_FILE)
       ? path.join(sourceDir, WINDOWS_EXECUTABLE_RESOURCE_FILE)
       : undefined;
     const compile = await compileWin32Preview(compiler, path.join(sourceDir, "main.cpp"), exePath, objDir, buildDir, modulePlan, buildConfiguration, resourcePath);
     const logs = [...compatibility.messages, ...generated.diagnostics, ...modulePlan.diagnostics, ...compile.logs];
-    if (!compile.ok) return res.status(200).json({ ok: false, stage: "compile", error: "EdgeView 控件预览编译失败。", logs, buildDir });
+    if (!compile.ok) {
+      if (compiler.kind === "msvc") invalidateCachedCompiler(toCompilerArchitecture(buildConfiguration.architecture));
+      return res.status(200).json({ ok: false, stage: "compile", error: "EdgeView 控件预览编译失败。", logs, buildDir });
+    }
     const started = await managedProcessService.start(processKey, exePath, { cwd: binDir, detached: false, windowsHide: false, logFilePath: path.join(buildDir, "run.log") });
     activeEdgeControlPreviewProcessKey = processKey;
     res.json({ ok: true, stage: "run", pid: started.pid, buildDir, exePath, message: `正在独立窗口预览 ${sourceControl.name}。`, logs: [...logs, `已启动 EdgeView 控件预览（PID ${started.pid}）。`] });
@@ -2572,7 +2594,8 @@ app.post("/api/window-designer/build-run", async (req, res) => {
       ]));
     }
 
-    const compiler = await detectCompiler(buildConfiguration);
+    const compilerDetection = await detectCompilerWithDiagnostics(buildConfiguration);
+    const compiler = compilerDetection.compiler;
     if (!compiler) {
       return res.status(200).json({
         ok: false,
@@ -2594,7 +2617,8 @@ app.post("/api/window-designer/build-run", async (req, res) => {
           ...generatedProject.diagnostics,
           ...moduleNativePlan.diagnostics,
           "未检测到可用 C++ 编译器。请安装 Visual Studio Build Tools、MinGW g++ 或 LLVM clang++ 后重试。",
-          "需要的编译器命令之一：cl、g++、clang++。"
+          "需要的编译器命令之一：cl、g++、clang++。",
+          ...formatCompilerDetectionDiagnostics(compilerDetection)
         ]
       });
     }
@@ -2630,6 +2654,9 @@ app.post("/api/window-designer/build-run", async (req, res) => {
     ].filter(Boolean);
 
     if (!compileResult.ok) {
+      // 编译失败即失效编译器缓存：VS 升级/卸载后不拿着失效的 vcvars 路径反复失败，
+      // 下一次构建强制重走完整探测（成功后会重新入缓存）。
+      if (compiler.kind === "msvc") invalidateCachedCompiler(toCompilerArchitecture(buildConfiguration.architecture));
       return res.status(200).json({
         ok: false,
         stage: "compile",
@@ -3265,7 +3292,8 @@ async function runControlledWindowDesignerBuild(options: {
     return createCancelledBuildResult(buildLease, ["已完成源码导出，但任务在编译前被停止。"]);
   }
 
-  const compiler = await detectCompiler(buildConfiguration);
+  const compilerDetection = await detectCompilerWithDiagnostics(buildConfiguration);
+  const compiler = compilerDetection.compiler;
   if (!compiler) {
     return {
       ok: false,
@@ -3287,7 +3315,8 @@ async function runControlledWindowDesignerBuild(options: {
         ...generatedProject.diagnostics,
         ...moduleNativePlan.diagnostics,
         "未检测到可用 C++ 编译器。请安装 Visual Studio Build Tools、MinGW g++ 或 LLVM clang++ 后重试。",
-        "需要的编译器命令之一：cl、g++、clang++。"
+        "需要的编译器命令之一：cl、g++、clang++。",
+        ...formatCompilerDetectionDiagnostics(compilerDetection)
       ]
     };
   }
@@ -3324,6 +3353,9 @@ async function runControlledWindowDesignerBuild(options: {
   ].filter(Boolean);
 
   if (!compileResult.ok) {
+    // 编译失败即失效编译器缓存：VS 升级/卸载后不拿着失效的 vcvars 路径反复失败，
+    // 下一次构建强制重走完整探测（成功后会重新入缓存）。
+    if (compiler.kind === "msvc") invalidateCachedCompiler(toCompilerArchitecture(buildConfiguration.architecture));
     return {
       ok: false,
       stage: "compile",
@@ -3531,11 +3563,18 @@ function assertNoBlockingLingCppDiagnostics(diagnostics: string[]): void {
   throw new Error(`LCPP 项目源码存在阻止构建的错误：\n${diagnostics.join("\n")}`);
 }
 
-type CompilerInfo = {
-  kind: "msvc" | "g++" | "clang++";
-  command: string;
-  setupBatch?: string;
-};
+type CompilerInfo = DetectedCompiler;
+
+function toCompilerArchitecture(architecture: BuildArchitecture): CompilerArchitecture {
+  return architecture === "x64" ? "x64" : "win32";
+}
+
+// 编译器探测唯一实现在 services/tasks/compilerDetection.ts（进程内缓存 + 重试 + 每步诊断）。
+async function detectCompilerWithDiagnostics(configuration?: BuildConfiguration): Promise<CompilerDetectionOutcome> {
+  return await detectCompilerDetailed({
+    architecture: configuration ? toCompilerArchitecture(configuration.architecture) : undefined
+  });
+}
 
 
 // 同项目安装包导出互斥（makensis 与构建并发写同一构建目录会互相踩）。
@@ -4418,98 +4457,6 @@ app.get("/api/window-designer/debug-logs", async (req, res) => {
   }
 });
 
-async function detectCompiler(configuration?: BuildConfiguration): Promise<CompilerInfo | null> {
-  if (configuration?.architecture === "x64") {
-    const x64Setup = await findMsvcSetupBatch("x64");
-    if (x64Setup && await canUseMsvcSetupBatch(x64Setup)) return { kind: "msvc", command: "cl", setupBatch: x64Setup };
-  }
-  try {
-    await execFileAsync("where.exe", ["cl"], { timeout: 4000, windowsHide: true });
-    return { kind: "msvc", command: "cl" };
-  } catch {
-    // MSVC is often installed but not loaded into the current shell.
-  }
-
-  const msvcSetupBatch = await findMsvcSetupBatch(configuration?.architecture === "x64" ? "x64" : "Win32");
-  if (msvcSetupBatch && await canUseMsvcSetupBatch(msvcSetupBatch)) {
-    return { kind: "msvc", command: "cl", setupBatch: msvcSetupBatch };
-  }
-
-  const candidates: CompilerInfo[] = [
-    { kind: "g++", command: "g++" },
-    { kind: "clang++", command: "clang++" }
-  ];
-
-  for (const candidate of candidates) {
-    try {
-      await execFileAsync(candidate.command, ["--version"], { timeout: 4000, windowsHide: true });
-      return candidate;
-    } catch {
-      // Try next compiler.
-    }
-  }
-
-  return null;
-}
-
-async function findMsvcSetupBatch(architecture: "Win32" | "x64" = "Win32"): Promise<string | null> {
-  const installPaths = new Set<string>();
-  const vswherePath = process.env["ProgramFiles(x86)"]
-    ? path.join(process.env["ProgramFiles(x86)"] as string, "Microsoft Visual Studio", "Installer", "vswhere.exe")
-    : "";
-
-  if (vswherePath && await pathExists(vswherePath)) {
-    try {
-      const result = await execFileAsync(vswherePath, ["-latest", "-products", "*", "-property", "installationPath"], {
-        timeout: 5000,
-        windowsHide: true
-      });
-      result.stdout
-        .split(/\r?\n/)
-        .map(line => line.trim())
-        .filter(Boolean)
-        .forEach(line => installPaths.add(line));
-    } catch {
-      // Fall back to common Visual Studio installation folders below.
-    }
-  }
-
-  const programFiles = process.env.ProgramFiles || "C:\\Program Files";
-  const editions = ["BuildTools", "Community", "Professional", "Enterprise"];
-  for (const edition of editions) {
-    installPaths.add(path.join(programFiles, "Microsoft Visual Studio", "2022", edition));
-    installPaths.add(path.join(programFiles, "Microsoft Visual Studio", "2019", edition));
-  }
-
-  for (const installPath of installPaths) {
-    const candidates = [
-      path.join(installPath, "VC", "Auxiliary", "Build", architecture === "x64" ? "vcvars64.bat" : "vcvars32.bat"),
-      path.join(installPath, "Common7", "Tools", "VsDevCmd.bat")
-    ];
-
-    for (const candidate of candidates) {
-      if (await pathExists(candidate)) {
-        return candidate;
-      }
-    }
-  }
-
-  return null;
-}
-
-async function canUseMsvcSetupBatch(setupBatch: string): Promise<boolean> {
-  try {
-    await execFileAsync("cmd.exe", ["/d", "/c", `call ${quoteCmdArg(setupBatch)} >nul && where cl >nul`], {
-      timeout: 15000,
-      windowsHide: true,
-      windowsVerbatimArguments: true
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 /**
  * 编译前清理 bin 内旧产物：默认名（exe/dll 两种）与本次解析名都删。
  * 改过「可执行文件名」后旧名字产物若残留，会被误认为最新构建输出；
@@ -4809,15 +4756,6 @@ function getGeneratedFileLanguage(relativePath: string): "cpp" | "json" | "text"
   if (relativePath.endsWith(".cpp")) return "cpp";
   if (relativePath.endsWith(".json")) return "json";
   return "text";
-}
-
-async function pathExists(value: string): Promise<boolean> {
-  try {
-    await fs.stat(value);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 function sanitizeFilename(value: string): string {

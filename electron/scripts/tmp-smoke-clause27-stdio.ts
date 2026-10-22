@@ -43,7 +43,7 @@ async function main() {
   send({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} });
   const tools = await waitFor(message => message.id === 2);
   const toolList = (tools.result as { tools?: Array<{ name: string }> }).tools || [];
-  const proposeTool = toolList.find(tool => tool.name === 'lingbuilder.edit.propose');
+  const proposeTool = toolList.find(tool => tool.name === 'lingbuilder.edit.propose') as { name: string; inputSchema?: unknown } | undefined;
   const proposeDesc = JSON.stringify(proposeTool?.inputSchema ?? {});
 
   const failures: string[] = [];

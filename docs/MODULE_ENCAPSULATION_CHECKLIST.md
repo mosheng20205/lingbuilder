@@ -1,8 +1,8 @@
 # LingBuilder 模块封装清单
 
-更新时间：2026-09-29
+更新时间：2026-10-19
 
-本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **103 个内置模块、4160 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
+本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **104 个内置模块、4320 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
 
 - `schemaVersion: 2`。
 - `contributes.commands` 与 `bindings.commands` 一一对应。
@@ -114,19 +114,20 @@ MySQL 数据库模块 1.0 通过原生客户端/服务器协议直连 MySQL/Mari
 | 状态 | 模块 ID | 名称 | 命令数 |
 |---|---|---|---:|
 | 已封装 | `lingbuilder.image.core` | 图像基础模块 | 7 |
-| 已封装 | `lingbuilder.image.capture` | 屏幕截图模块 | 3 |
+| 已封装 | `lingbuilder.image.capture` | 屏幕截图模块（文件+字节集双出口） | 6 |
 | 已封装 | `lingbuilder.image.bitmap` | 位图像素模块 | 5 |
 | 已封装 | `lingbuilder.image.icon` | 图标处理模块 | 3 |
-| 已封装 | `lingbuilder.image.recognition` | 基础识图模块 | 5 |
-| 已封装（OpenCV 4.14.0 x64） | `lingbuilder.opencv` | OpenCV 图像处理与单/双缺口候选模块 | 33 |
+| 已封装 | `lingbuilder.image.recognition` | 基础识图模块（文件+字节集双入口，区域/多处/等待族） | 16 |
+| 已封装（OpenCV 4.14.0 x64） | `lingbuilder.opencv` | OpenCV 图像处理与单/双缺口候选模块 | 34 |
 | 已封装（2026-10-01，纯本地 C++ 运行时注入） | `lingbuilder.qrcode` | 二维码模块（生成+识别+闭环自检） | 31 |
+| 已封装（2026-10-20，借用本机微信 4.x OCR 组件，仅 x64） | `lingbuilder.ocr` | 微信OCR识别模块（路径+字节集双入口，行级文本/坐标/置信度，JSON 含字符级坐标） | 19 |
 | 已封装 | `lingbuilder.media.audio` | 基础音频模块 | 7 |
 | 已封装 | `lingbuilder.net.pop3` | 邮件接收模块 | 18 |
 | 已封装 | `lingbuilder.net.imap` | IMAP邮件接收模块 | 15 |
 
 基础识图使用确定性像素遍历，适合找色和小模板。它不是 OCR 或机器学习识别模块。
 
-OpenCV 模块保留基础 GDI+ 图像模块并作为新增高级能力。公开模块只暴露受管图像/结果句柄；隐藏 `lingbuilder.opencv.sdk@4.14.0+bridge.1` 携带 x64 `/MD` Bridge、三个 OpenCV DLL、许可证和 SHA-256 清单。缺口能力仅分析用户提供或已获授权的图像并返回候选，不提供浏览器自动化、拖动或验证提交。
+OpenCV 模块保留基础 GDI+ 图像模块并作为新增高级能力。公开模块只暴露受管图像/结果句柄；隐藏 `lingbuilder.opencv.sdk@4.14.0+bridge.2` 携带 x64 `/MD` Bridge、三个 OpenCV DLL、许可证和 SHA-256 清单。缺口能力仅分析用户提供或已获授权的图像并返回候选，不提供浏览器自动化、拖动或验证提交。
 
 ## 高级和高风险模块
 
@@ -147,8 +148,8 @@ OpenCV 模块保留基础 GDI+ 图像模块并作为新增高级能力。公开�
 
 | 状态 | 模块 ID | 名称 | 命令数 |
 |---|---|---|---:|
-| 已有（1.1.0） | `lingbuilder.win32.basic` | Win32 窗口基础模块 | 241 |
-| 已有 | `lingbuilder.win32.common-controls` | Win32 高级控件模块 | 560 |
+| 已有（1.1.0） | `lingbuilder.win32.basic` | Win32 窗口基础模块 | 244 |
+| 已有 | `lingbuilder.win32.common-controls` | Win32 高级控件模块 | 561 |
 | 已有 | `lingbuilder.edgeview` | EdgeView 浏览器模块 | 321 |
 | 3.0预览 | `lingbuilder.cef3.browser` | CEF3核心浏览器模块（CEF 150 x64） | 64 |
 | 3.0预览 | `lingbuilder.cef3.events` | CEF3事件绑定模块 | 6 |
@@ -177,7 +178,7 @@ OpenCV 模块保留基础 GDI+ 图像模块并作为新增高级能力。公开�
 | 已完整封装 | `lingbuilder.websocket.server` | WebSocket 服务端模块 2.0（RFC 6455 受管多客户端） | 50 |
 | 已完整封装 | `lingbuilder.sunnynet` | 网络中间件模块 1.0（SunnyNet 抓包改写：HTTP/HTTPS/WS/TCP/UDP、根证书解密、全量请求/响应头枚举与请求/响应体字节集、进程代理/SOCKS 按进程/上游代理（全局与按请求、socks5 可带账密）/系统代理；驱动常驻免重启） | 73 |
 
-除 EdgeView 原本已有 x64 target 外，其余仅声明 Win32 的内置系统模块现在会从同一份内置 manifest 自动生成等价 x64 target。外部 `.lbmod` 不使用此自动补齐规则，仍必须自行提供精确架构产物。
+除 EdgeView 原本已有 x64 target 外，其余仅声明 Win32 的内置系统模块现在会从同一份内置 manifest 自动生成等价 x64 target。外部 `.lbmod` 不使用此自动补齐规则，仍必须自行提供精确架构产物；2026-10-20 起只声明单一架构（如仅 x64）的外部模块端到端受支持——生成源码按两个 MSVC 架构 target 的并集输出 `#include`，构建期按当前架构复制声明类文件（库与运行时文件仍严格按架构，绝不跨架构复制或链接），无需为通过生成补写另一架构 target。targets 字段名必须逐字使用 schema 名（`includeDirs`/`headers`/`sources`/`libs`/`runtimeFiles`/`defines`），`includes` 之类近形拼错键会被清单校验直接阻断——这类拼写错误曾导致头文件已复制、`-I` 未生效的 C1083（2026-10-20）。
 
 ## 代码位置
 

@@ -45,7 +45,7 @@ async function main() {
   };
 
   send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'notify-stdio-smoke', version: '1.0.0' } } });
-  const initialized = await waitFor(message => message.id === 1 && message.result, 'initialize');
+  const initialized = await waitFor(message => message.id === 1 && message.result !== undefined, 'initialize');
   const instructions = String((initialized.result as Record<string, unknown>)?.instructions ?? '');
   const keywords: Array<[RegExp, string]> = [
     [/推送_发企业微信文本/u, '企微文本推送命令'],
@@ -75,13 +75,13 @@ async function main() {
 
   send({ jsonrpc: '2.0', method: 'notifications/initialized' });
   send({ jsonrpc: '2.0', id: 2, method: 'tools/list' });
-  const toolList = await waitFor(message => message.id === 2 && message.result, 'tools/list');
+  const toolList = await waitFor(message => message.id === 2 && message.result !== undefined, 'tools/list');
   const tools = ((toolList.result as Record<string, unknown>)?.tools ?? []) as Array<{ name: string }>;
   if (tools.length === 25) console.log(`PASS 工具数 25`);
   else { console.error(`FAIL 工具数应为 25，实际 ${tools.length}`); failed += 1; }
 
   send({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'lingbuilder.module.info', arguments: { moduleId: 'lingbuilder.notify' } } });
-  const infoResponse = await waitFor(message => message.id === 3 && message.result, 'module.info(lingbuilder.notify)');
+  const infoResponse = await waitFor(message => message.id === 3 && message.result !== undefined, 'module.info(lingbuilder.notify)');
   const info = JSON.parse(((infoResponse.result as Record<string, unknown>)?.content as Array<{ text?: string }> | undefined)?.[0]?.text ?? '{}') as {
     commands?: Array<{ name: string }>; commandsTotal?: number; constants?: Array<{ name: string }>; snippets?: Array<{ label: string }>;
   };

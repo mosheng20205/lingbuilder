@@ -1,0 +1,3 @@
+# LingBuilder IDE 管理目录（IDE 自动维护：运行数据与构建产物不入库）
+/.lingbuilder/
+/.lingbuilder-build/
