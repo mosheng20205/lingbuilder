@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { InstalledModule } from './types';
 import { validateModuleRelativePath } from './manifest';
-import { getPreferredModuleTarget, getUnsupportedModuleTargetDiagnostic } from './targetResolver';
+import { getPreferredModuleTarget, getSiblingMsvcTargetId, getUnsupportedModuleTargetDiagnostic } from './targetResolver';
 import { CRYPTO_SDK_MODULE_IDS } from './dataMediaModules';
 import { OPENCV_MODULE_ID, OPENCV_SDK_MODULE_ID, OPENCV_VERSION } from './opencvModules';
 import { PROTOBUF_MODULE_ID } from './protobufModule';
@@ -145,10 +145,17 @@ export async function materializeModuleNativeDependencies(
     // 项目 DLL 命令声明的虚拟模块没有安装目录，由 projectDllMaterializeService 单独物化。
     if (module.isProjectDeclaration) continue;
     const target = getPreferredModuleTarget(module, layout.preferredTargetId);
-    if (!target) {
+    // 头文件/源码声明与架构无关：当前架构缺 target 时回退另一 MSVC 架构复制声明与
+    // 可编译源码，避免生成源码里的 #include 悬空（C1083）；库与运行时文件是真实
+    // 架构产物，绝不跨架构复制或链接。
+    const declarationTarget = target || getPreferredModuleTarget(module, getSiblingMsvcTargetId(layout.preferredTargetId));
+    if (!declarationTarget) {
       const diagnostic = getUnsupportedModuleTargetDiagnostic(module, layout.preferredTargetId);
       if (diagnostic) plan.diagnostics.push(diagnostic);
       continue;
+    }
+    if (!target) {
+      plan.diagnostics.push(`模块 ${module.manifest.name} 未提供兼容目标 ${layout.preferredTargetId}（可用目标：${(module.manifest.targets || []).map(item => item.id).join('、')}）：已按另一架构复制头文件与源码；导入库与运行时文件未复制，当前架构下调用该模块命令会在链接期报错。`);
     }
     if (!module.installPath || module.installPath.startsWith('builtin://')) continue;
 
@@ -158,10 +165,10 @@ export async function materializeModuleNativeDependencies(
     const exportModuleRoot = path.join(layout.exportDir, 'modules', moduleId);
 
     for (const relativePath of unique([
-      ...(target.headers || []),
-      ...(target.sources || []),
-      ...(target.libs || []),
-      ...(target.runtimeFiles || [])
+      ...(declarationTarget.headers || []),
+      ...(declarationTarget.sources || []),
+      ...(target?.libs || []),
+      ...(target?.runtimeFiles || [])
     ])) {
       await copyModuleFile(module, relativePath, buildModuleRoot, plan.diagnostics);
       await copyModuleFile(module, relativePath, exportModuleRoot, plan.diagnostics);
@@ -172,26 +179,54 @@ export async function materializeModuleNativeDependencies(
       await copyModuleFile(module, relativePath, exportModuleRoot, plan.diagnostics);
     }
 
-    for (const relativePath of unique([...(target.headers || []), ...(target.sources || [])])) {
+    for (const relativePath of unique([...(declarationTarget.headers || []), ...(declarationTarget.sources || [])])) {
       await copyModuleFile(module, relativePath, sourceModuleRoot, plan.diagnostics);
     }
 
-    for (const includeDir of target.includeDirs || []) {
+    // headerDirs（2026-10-21）：整目录递归复制的头文件树（如 google/protobuf），作者不必把
+    // 几十个头文件逐个写进 headers；目录本身自动登记为包含目录。
+    for (const headerDir of unique(declarationTarget.headerDirs || [])) {
+      await copyModuleHeaderDirectory(module, headerDir, [buildModuleRoot, sourceModuleRoot, exportModuleRoot], plan.diagnostics);
+      const includeRoot = path.join(sourceModuleRoot, headerDir);
+      if (!plan.includeDirs.includes(includeRoot)) plan.includeDirs.push(includeRoot);
+    }
+    for (const headerDir of unique((module.manifest.targets || []).flatMap(candidate => candidate.headerDirs || []))) {
+      if (declarationTarget.headerDirs?.includes(headerDir)) continue;
+      await copyModuleHeaderDirectory(module, headerDir, [exportModuleRoot], plan.diagnostics);
+    }
+
+    for (const includeDir of declarationTarget.includeDirs || []) {
       if (!validateModuleRelativePath(includeDir)) {
         plan.diagnostics.push(`模块 ${module.manifest.name} 的 includeDirs 包含不安全路径：${includeDir}`);
         continue;
       }
-      plan.includeDirs.push(path.join(sourceModuleRoot, includeDir));
+      // includeDirs 物化（2026-10-21）：目录已随模块打包时整树递归复制进源码根，
+      // 与 headerDirs 的复制结果天然去重（headerDirs 先复制，此处检测到目标已存在即跳过）；
+      // 模块专属物化（SDK 铺设等）先建好的目标目录同样跳过；两侧都不存在才给中文诊断。
+      const targetIncludeRoot = path.join(sourceModuleRoot, includeDir);
+      if (!(await directoryExists(targetIncludeRoot))) {
+        const sourceIncludeRoot = path.join(module.installPath, includeDir);
+        if (await directoryExists(sourceIncludeRoot)) {
+          try {
+            await copyDirectoryRecursive(sourceIncludeRoot, targetIncludeRoot);
+          } catch (error) {
+            plan.diagnostics.push(`复制模块包含目录失败：${module.manifest.name} / ${includeDir} / ${errorMessage(error)}`);
+          }
+        } else if (!directoryCoveredByHeaderDirs(includeDir, declarationTarget.headerDirs)) {
+          plan.diagnostics.push(`模块 ${module.manifest.name} 的 includeDirs 目录在模块包内不存在：${includeDir}；该包含目录将为空，相关 #include 编译期会报 C1083 找不到文件。请确认目录已随 .lbmod 打包，或改用 targets.headerDirs 声明整目录复制的头文件目录。`);
+        }
+      }
+      if (!plan.includeDirs.includes(targetIncludeRoot)) plan.includeDirs.push(targetIncludeRoot);
     }
 
-    for (const header of target.headers || []) {
+    for (const header of declarationTarget.headers || []) {
       const firstSegment = normalizeRelativePath(header).split('/')[0];
       if (firstSegment && !plan.includeDirs.includes(path.join(sourceModuleRoot, firstSegment))) {
         plan.includeDirs.push(path.join(sourceModuleRoot, firstSegment));
       }
     }
 
-    for (const source of target.sources || []) {
+    for (const source of declarationTarget.sources || []) {
       if (!validateModuleRelativePath(source)) {
         plan.diagnostics.push(`模块 ${module.manifest.name} 的源码包含不安全路径：${source}`);
         continue;
@@ -199,32 +234,34 @@ export async function materializeModuleNativeDependencies(
       plan.sourceFiles.push(path.join(sourceModuleRoot, source));
     }
 
-    for (const lib of target.libs || []) {
-      if (!validateModuleRelativePath(lib)) {
-        plan.diagnostics.push(`模块 ${module.manifest.name} 的库文件包含不安全路径：${lib}`);
-        continue;
+    if (target) {
+      for (const lib of target.libs || []) {
+        if (!validateModuleRelativePath(lib)) {
+          plan.diagnostics.push(`模块 ${module.manifest.name} 的库文件包含不安全路径：${lib}`);
+          continue;
+        }
+        if (lib.toLowerCase().endsWith('.lib')) plan.requiresMsvc = true;
+        plan.libFiles.push(path.join(buildModuleRoot, lib));
       }
-      if (lib.toLowerCase().endsWith('.lib')) plan.requiresMsvc = true;
-      plan.libFiles.push(path.join(buildModuleRoot, lib));
-    }
 
-    for (const runtimeFile of target.runtimeFiles || []) {
-      if (!validateModuleRelativePath(runtimeFile)) {
-        plan.diagnostics.push(`模块 ${module.manifest.name} 的运行时文件包含不安全路径：${runtimeFile}`);
-        continue;
-      }
-      const sourcePath = path.join(module.installPath, runtimeFile);
-      const normalizedRuntimeFile = runtimeFile.replaceAll('\\', '/');
-      const runtimePrefix = normalizedRuntimeFile.toLowerCase().startsWith('runtime/')
-        ? normalizedRuntimeFile.slice('runtime/'.length)
-        : path.basename(normalizedRuntimeFile);
-      const targetPath = path.join(layout.binDir, ...runtimePrefix.split('/'));
-      try {
-        await fs.mkdir(path.dirname(targetPath), { recursive: true });
-        await fs.copyFile(sourcePath, targetPath);
-        plan.runtimeFiles.push(targetPath);
-      } catch (error) {
-        plan.diagnostics.push(`复制模块运行时文件失败：${module.manifest.name} / ${runtimeFile} / ${errorMessage(error)}`);
+      for (const runtimeFile of target.runtimeFiles || []) {
+        if (!validateModuleRelativePath(runtimeFile)) {
+          plan.diagnostics.push(`模块 ${module.manifest.name} 的运行时文件包含不安全路径：${runtimeFile}`);
+          continue;
+        }
+        const sourcePath = path.join(module.installPath, runtimeFile);
+        const normalizedRuntimeFile = runtimeFile.replaceAll('\\', '/');
+        const runtimePrefix = normalizedRuntimeFile.toLowerCase().startsWith('runtime/')
+          ? normalizedRuntimeFile.slice('runtime/'.length)
+          : path.basename(normalizedRuntimeFile);
+        const targetPath = path.join(layout.binDir, ...runtimePrefix.split('/'));
+        try {
+          await fs.mkdir(path.dirname(targetPath), { recursive: true });
+          await fs.copyFile(sourcePath, targetPath);
+          plan.runtimeFiles.push(targetPath);
+        } catch (error) {
+          plan.diagnostics.push(`复制模块运行时文件失败：${module.manifest.name} / ${runtimeFile} / ${errorMessage(error)}`);
+        }
       }
     }
   }
@@ -1489,10 +1526,10 @@ async function materializeOpenCvSdk(
     addBlockingDiagnostic(plan, `OpenCV SDK 清单读取失败：${errorMessage(error)}`);
     return;
   }
-  if (manifest.schemaVersion !== 1 || manifest.opencvVersion !== OPENCV_VERSION || manifest.bridgeVersion !== '1.0.0'
-      || manifest.bridgeAbiVersion !== 1 || manifest.architecture !== 'x64' || manifest.toolset !== 'msvc-v143'
+  if (manifest.schemaVersion !== 1 || manifest.opencvVersion !== OPENCV_VERSION || manifest.bridgeVersion !== '1.1.0'
+      || manifest.bridgeAbiVersion !== 1 || manifest.architecture !== 'x64' || (manifest.toolset !== 'msvc-v143' && manifest.toolset !== 'msvc-v145')
       || manifest.runtimeLibrary !== 'MD' || !Array.isArray(manifest.files) || manifest.files.length === 0) {
-    addBlockingDiagnostic(plan, 'OpenCV SDK 清单格式、版本、架构或 CRT 不符合要求。');
+    addBlockingDiagnostic(plan, 'OpenCV SDK 清单格式、版本、架构或 CRT 不符合要求（需要 Bridge 1.1.0，旧包缺少 加载图像字节集 导出）。');
     return;
   }
   for (const entry of manifest.files) {
@@ -1994,6 +2031,46 @@ async function copyModuleFile(
 
 function unique<T>(values: T[]): T[] {
   return [...new Set(values)];
+}
+
+/** headerDirs 条目：整目录递归复制到各目标根；源目录缺失给中文诊断而不是静默吞掉。 */
+async function copyModuleHeaderDirectory(
+  module: InstalledModule,
+  relativeDir: string,
+  targetRoots: string[],
+  diagnostics: string[]
+): Promise<void> {
+  if (!validateModuleRelativePath(relativeDir)) {
+    diagnostics.push(`模块 ${module.manifest.name} 的 headerDirs 包含不安全路径：${relativeDir}`);
+    return;
+  }
+  const sourcePath = path.join(module.installPath, relativeDir);
+  const stat = await fs.stat(sourcePath).catch(() => null);
+  if (!stat?.isDirectory()) {
+    diagnostics.push(`模块 ${module.manifest.name} 的 headerDirs 目录在模块包内不存在：${relativeDir}；请确认目录已随 .lbmod 打包。`);
+    return;
+  }
+  for (const targetRoot of targetRoots) {
+    try {
+      await copyDirectoryRecursive(sourcePath, path.join(targetRoot, relativeDir));
+    } catch (error) {
+      diagnostics.push(`复制模块头文件目录失败：${module.manifest.name} / ${relativeDir} / ${errorMessage(error)}`);
+    }
+  }
+}
+
+/** includeDirs 声明的目录是否已被某个 headerDirs 条目覆盖（避免对同一缺口重复报两条诊断）。 */
+function directoryCoveredByHeaderDirs(includeDir: string, headerDirs: string[] | undefined): boolean {
+  const normalized = includeDir.replace(/\\/g, '/').replace(/\/+$/u, '');
+  return (headerDirs || []).some(headerDir => {
+    const candidate = headerDir.replace(/\\/g, '/').replace(/\/+$/u, '');
+    return normalized === candidate || normalized.startsWith(`${candidate}/`);
+  });
+}
+
+async function directoryExists(value: string): Promise<boolean> {
+  const stat = await fs.stat(value).catch(() => null);
+  return Boolean(stat?.isDirectory());
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {

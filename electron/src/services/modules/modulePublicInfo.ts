@@ -218,6 +218,7 @@ export function collectTargetDependencies(targets: ModuleTargetContribution[]) {
     const rows: Array<{ label: string; values: string[] }> = [
       { label: '目标', values: [`${target.id} · ${target.platform}/${target.toolchain}/${target.arch}`] },
       { label: '头文件', values: target.headers || [] },
+      { label: '头文件目录', values: target.headerDirs || [] },
       { label: '源码', values: target.sources || [] },
       { label: '库文件', values: target.libs || [] },
       { label: '运行时文件', values: target.runtimeFiles || [] },

@@ -6,7 +6,7 @@ const { promisify } = require('node:util');
 
 const execFileAsync = promisify(execFile);
 const OPENCV_VERSION = '4.14.0';
-const BRIDGE_VERSION = '1.0.0';
+const BRIDGE_VERSION = '1.1.0';
 const BRIDGE_ABI_VERSION = 1;
 const MODULE_ID = 'lingbuilder.opencv.sdk';
 const SOURCE_URL = `https://codeload.github.com/opencv/opencv/zip/refs/tags/${OPENCV_VERSION}`;
@@ -53,10 +53,11 @@ async function main() {
   await fs.rm(opencvBuild, { recursive: true, force: true });
   await fs.rm(opencvInstall, { recursive: true, force: true });
   await fs.mkdir(opencvBuild, { recursive: true });
-  console.log('配置 OpenCV 最小 x64 Release 构建…');
+  const toolchain = await detectToolchain();
+  console.log(`配置 OpenCV 最小 x64 Release 构建…（${toolchain.generatorLabel} / 工具集 ${toolchain.toolset}）`);
   await run(cmake, [
     '-S', sourceRoot, '-B', opencvBuild,
-    '-G', 'Visual Studio 17 2022', '-A', 'x64',
+    '-G', toolchain.generatorLabel, '-A', 'x64', '-T', toolchain.toolset,
     `-DCMAKE_INSTALL_PREFIX=${opencvInstall.replace(/\\/g, '/')}`,
     '-DBUILD_SHARED_LIBS=ON',
     '-DBUILD_LIST=core,imgproc,imgcodecs',
@@ -77,7 +78,7 @@ async function main() {
   console.log('构建 LingBuilder OpenCV C ABI Bridge…');
   await run(cmake, [
     '-S', path.join(electronRoot, 'native', 'opencv-bridge'), '-B', bridgeBuild,
-    '-G', 'Visual Studio 17 2022', '-A', 'x64',
+    '-G', toolchain.generatorLabel, '-A', 'x64', '-T', toolchain.toolset,
     `-DOpenCV_DIR=${path.dirname(opencvConfig).replace(/\\/g, '/')}`
   ], workRoot, 10 * 60 * 1000);
   await run(cmake, ['--build', bridgeBuild, '--config', 'Release', '--', '/m'], workRoot, 10 * 60 * 1000);
@@ -114,7 +115,7 @@ async function main() {
     bridgeVersion: BRIDGE_VERSION,
     bridgeAbiVersion: BRIDGE_ABI_VERSION,
     architecture: 'x64',
-    toolset: 'msvc-v143',
+    toolset: `msvc-${toolchain.toolset}`,
     runtimeLibrary: 'MD',
     files: manifestFiles
   }, null, 2) + '\n', 'utf8');
@@ -122,7 +123,7 @@ async function main() {
   await fs.mkdir(path.dirname(outputPackage), { recursive: true });
   await compressArchive(stageRoot, outputPackage);
   if (options.install) await installAtomically(stageRoot, path.join(repoRoot, '.lingbuilder', 'modules', MODULE_ID));
-  console.log(JSON.stringify({ ok: true, moduleId: MODULE_ID, version: `${OPENCV_VERSION}+bridge.1`, outputPackage, installed: options.install }, null, 2));
+  console.log(JSON.stringify({ ok: true, moduleId: MODULE_ID, version: `${OPENCV_VERSION}+bridge.2`, outputPackage, installed: options.install }, null, 2));
 }
 
 function parseArgs(args) {
@@ -142,7 +143,7 @@ function moduleManifest() {
     schemaVersion: 2,
     id: MODULE_ID,
     name: 'LingBuilder OpenCV SDK',
-    version: `${OPENCV_VERSION}+bridge.1`,
+    version: `${OPENCV_VERSION}+bridge.2`,
     category: '图像',
     description: 'OpenCV 4.14.0 x64 /MD 最小运行时与 LingBuilder 稳定 C ABI Bridge，只作为 lingbuilder.opencv 的受管资产模块。',
     author: 'LingBuilder',
@@ -162,6 +163,29 @@ async function assertSourceVersion(sourceRoot) {
   const minor = content.match(/CV_VERSION_MINOR\s+(\d+)/)?.[1];
   const revision = content.match(/CV_VERSION_REVISION\s+(\d+)/)?.[1];
   if (`${major}.${minor}.${revision}` !== OPENCV_VERSION) throw new Error(`OpenCV 源码版本不匹配：${major}.${minor}.${revision}`);
+}
+
+// 本机可能是 VS2022(v143) 或 VS2026(v145)：按 vswhere 最新 C++ 安装下的 PlatformToolsets 目录自适应，
+// 生成器与 -T 工具集联动，避免硬编码 v143 在 VS2026 机器上触发 MSB8020。
+async function detectToolchain() {
+  const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
+  const vswhere = path.join(programFilesX86, 'Microsoft Visual Studio', 'Installer', 'vswhere.exe');
+  let installationPath = '';
+  try {
+    installationPath = (await execFileAsync(vswhere, [
+      '-latest', '-products', '*', '-requires', 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64', '-property', 'installationPath'
+    ], commandOptions())).stdout.trim();
+  } catch { installationPath = ''; }
+  const versionSegment = installationPath.match(/[\\/](\d+)[\\/]/)?.[1] || '17';
+  const toolsetsRoot = path.join(installationPath, 'MSBuild', 'Microsoft', 'VC', versionSegment === '18' ? 'v180' : 'v170', 'Platforms', 'x64', 'PlatformToolsets');
+  let toolset = versionSegment === '18' ? 'v145' : 'v143';
+  try {
+    const entries = await fs.readdir(toolsetsRoot);
+    const candidates = entries.filter(name => /^v\d+$/.test(name)).sort((left, right) => Number(right.slice(1)) - Number(left.slice(1)));
+    if (candidates.length) toolset = candidates[0];
+  } catch { /* 目录不存在时用版本默认值。 */ }
+  const generatorLabel = versionSegment === '18' ? 'Visual Studio 18 2026' : 'Visual Studio 17 2022';
+  return { generatorLabel, toolset, installationPath };
 }
 
 async function findCmake() {

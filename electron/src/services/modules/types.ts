@@ -329,6 +329,11 @@ export interface ModuleTargetContribution {
   includeDirs?: string[];
   sources?: string[];
   headers?: string[];
+  /**
+   * 整目录复制的头文件目录（2026-10-21）：目录随模块包整树递归复制到构建/源码/导出三处
+   * 模块根下，并自动登记为包含目录；引入 google/protobuf 这类多文件头文件树时不必逐文件列举。
+   */
+  headerDirs?: string[];
   libs?: string[];
   defines?: string[];
   runtimeFiles?: string[];
@@ -491,6 +496,13 @@ export interface LingBuilderModuleManifest {
   };
   build?: ModuleBuildContribution;
   targets?: ModuleTargetContribution[];
+  /**
+   * 头文件注入开关（2026-10-21，默认 true 保持旧行为）：false 时模块 headers/headerDirs 仍随
+   * 模块复制、模块源码可用，但生成器不再把 `#include "modules/<id>/<头>"` 注入主程序 main.cpp，
+   * 避免第三方头文件树（缺基础库、需特殊宏）污染宿主编译。需要主程序 @ 内联代码直接使用模块
+   * 头内类型的模块不要关闭。
+   */
+  injectHeaders?: boolean;
   bindings?: ModuleBindingsContribution;
   designer?: ModuleDesignerCatalogContribution;
   publish?: ModulePublishContribution;

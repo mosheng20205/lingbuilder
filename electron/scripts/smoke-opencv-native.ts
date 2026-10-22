@@ -36,6 +36,13 @@ async function main() {
     '        @ long long background = OpenCV_加载图像(L"背景测试.bmp", L"彩色");',
     '        @ long long piece = OpenCV_加载图像(L"滑块测试.bmp", L"彩色");',
     '        @ check(background != 0 && piece != 0);',
+    '        @ FILE* bgFile = nullptr; _wfopen_s(&bgFile, L"背景测试.bmp", L"rb");',
+    '        @ std::vector<unsigned char> bgBytes;',
+    '        @ if (bgFile) { fseek(bgFile, 0, SEEK_END); const long bgSize = ftell(bgFile); fseek(bgFile, 0, SEEK_SET); bgBytes.resize(static_cast<size_t>(bgSize)); fread(bgBytes.data(), 1, bgBytes.size(), bgFile); fclose(bgFile); }',
+    '        @ check(!bgBytes.empty());',
+    '        @ long long fromBytes = OpenCV_加载图像字节集(bgBytes, L"彩色");',
+    '        @ check(fromBytes != 0 && OpenCV_取宽度(fromBytes) == 320 && OpenCV_取高度(fromBytes) == 160);',
+    '        @ OpenCV_释放图像(fromBytes);',
     '        @ check(OpenCV_取宽度(background) == 320 && OpenCV_取高度(background) == 160);',
     '        @ long long gray = OpenCV_灰度化(background);',
     '        @ long long resized = OpenCV_缩放(gray, 160, 80);',
@@ -58,8 +65,8 @@ async function main() {
 
   const generated = generateLingCppNativeWin32Project(project, { enabledModules, lingCppSourceCode: source });
   if (generated.blockingDiagnostics.length) throw new Error(generated.blockingDiagnostics.join('\n'));
-  const generatedCpp = generated.files.find(file => file.relativePath.endsWith('.cpp'))?.content || '';
-  if (!generatedCpp.includes('OpenCV_分析缺口') || !generatedCpp.includes('LB_OCV_AnalyzeGap')) {
+  const generatedCpp = generated.files.filter(file => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath.endsWith('.cpp')).map(file => file.content).join('\n');
+  if (!generatedCpp.includes('OpenCV_分析缺口') || !generatedCpp.includes('LB_OCV_AnalyzeGap') || !generatedCpp.includes('OpenCV_加载图像字节集')) {
     throw new Error('LingCpp 生成结果没有包含 OpenCV 中文包装或 Bridge 符号。');
   }
   await fs.rm(projectDir, { recursive: true, force: true });
@@ -132,6 +139,12 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   const long long piece = OpenCV_加载图像(L"滑块测试.bmp", L"彩色");
   check(background != 0 && piece != 0, 1);
   check(OpenCV_取宽度(background) == 320 && OpenCV_取高度(background) == 160, 2);
+  FILE* bgFile = nullptr; _wfopen_s(&bgFile, L"背景测试.bmp", L"rb");
+  std::vector<unsigned char> bgBytes;
+  if (bgFile) { fseek(bgFile, 0, SEEK_END); const long bgSize = ftell(bgFile); fseek(bgFile, 0, SEEK_SET); bgBytes.resize(static_cast<size_t>(bgSize)); const size_t bgRead = fread(bgBytes.data(), 1, bgBytes.size(), bgFile); fclose(bgFile); bgBytes.resize(bgRead); }
+  const long long fromBytes = OpenCV_加载图像字节集(bgBytes, L"彩色");
+  check(!bgBytes.empty() && fromBytes != 0 && OpenCV_取宽度(fromBytes) == 320 && OpenCV_取高度(fromBytes) == 160, 8192);
+  OpenCV_释放图像(fromBytes);
   const long long gray = OpenCV_灰度化(background);
   const long long resized = OpenCV_缩放(gray, 160, 80);
   const long long cropped = OpenCV_裁剪(background, 100, 50, 40, 40);

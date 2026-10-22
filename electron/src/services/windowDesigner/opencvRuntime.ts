@@ -24,6 +24,7 @@ static const wchar_t* LB_OpenCvReadResultText(long long handle, int (*reader)(lo
 const wchar_t* OpenCV_取版本() { return LB_OpenCvReadText(LB_OCV_GetVersion); }
 const wchar_t* OpenCV_取错误() { return LB_OpenCvReadText(LB_OCV_GetLastError); }
 long long OpenCV_加载图像(const wchar_t* path, const wchar_t* mode) { return LB_OCV_LoadImage(path, mode); }
+long long OpenCV_加载图像字节集(const std::vector<unsigned char>& data, const wchar_t* mode) { return LB_OCV_LoadImageBytes(data.data(), static_cast<int>(data.size()), mode); }
 bool OpenCV_保存图像(long long image, const wchar_t* path, int quality) { return LB_OCV_SaveImage(image, path, quality) != 0; }
 long long OpenCV_克隆图像(long long image) { return LB_OCV_CloneImage(image); }
 bool OpenCV_释放图像(long long image) { return LB_OCV_ReleaseImage(image) != 0; }

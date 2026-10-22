@@ -492,6 +492,18 @@ auto Guard(Callable&& callable, Fallback fallback) -> decltype(callable()) {
   return fallback;
 }
 
+// 文件入口与字节集入口共用的解码路径；模式语义必须与 LB_OCV_LoadImage 的历史行为一致。
+LB_OCV_HANDLE DecodeImageBytes(const std::vector<unsigned char>& bytes, const wchar_t* mode) {
+  const std::wstring value = mode ? mode : L"彩色";
+  int flag = cv::IMREAD_COLOR;
+  if (value == L"灰度") flag = cv::IMREAD_GRAYSCALE;
+  else if (value == L"原样") flag = cv::IMREAD_UNCHANGED;
+  else if (value != L"彩色") { SetError(L"读取模式只允许：彩色、灰度、原样。"); return 0; }
+  cv::Mat image = cv::imdecode(bytes, flag);
+  if (!ValidateImage(image)) return 0;
+  return AddImage(std::move(image));
+}
+
 } // namespace
 
 extern "C" {
@@ -502,14 +514,15 @@ int LB_OCV_CALL LB_OCV_GetLastError(wchar_t* buffer, int capacity) { return Copy
 LB_OCV_HANDLE LB_OCV_CALL LB_OCV_LoadImage(const wchar_t* path, const wchar_t* mode) {
   return Guard([&]() -> LB_OCV_HANDLE {
     std::vector<unsigned char> bytes; if (!ReadFileBytes(path, bytes)) return 0;
-    const std::wstring value = mode ? mode : L"彩色";
-    int flag = cv::IMREAD_COLOR;
-    if (value == L"灰度") flag = cv::IMREAD_GRAYSCALE;
-    else if (value == L"原样") flag = cv::IMREAD_UNCHANGED;
-    else if (value != L"彩色") { SetError(L"读取模式只允许：彩色、灰度、原样。"); return 0; }
-    cv::Mat image = cv::imdecode(bytes, flag);
-    if (!ValidateImage(image)) return 0;
-    return AddImage(std::move(image));
+    return DecodeImageBytes(bytes, mode);
+  }, static_cast<LB_OCV_HANDLE>(0));
+}
+
+LB_OCV_HANDLE LB_OCV_CALL LB_OCV_LoadImageBytes(const unsigned char* data, int size, const wchar_t* mode) {
+  return Guard([&]() -> LB_OCV_HANDLE {
+    if (!data || size <= 0) { SetError(L"图像字节集为空。"); return static_cast<LB_OCV_HANDLE>(0); }
+    const std::vector<unsigned char> bytes(data, data + size);
+    return DecodeImageBytes(bytes, mode);
   }, static_cast<LB_OCV_HANDLE>(0));
 }
 

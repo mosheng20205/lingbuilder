@@ -7,7 +7,7 @@ OpenCV 是新增的高级图像模块，不替换 LingBuilder 已有的 GDI+ 图
 ## 安装与构建
 
 1. 在模块管理器中启用“OpenCV 图像处理模块”。
-2. 首次开发或 SDK 缺失时，在 `electron` 目录运行 `npm run module:opencv-sdk -- --install`。
+2. 首次开发或 SDK 缺失时，在 `electron` 目录运行 `npm run module:opencv-sdk -- --install`。SDK 以 Bridge 版本门禁校验：旧包（Bridge 1.0.0）启用 1.1.0 的 加载图像字节集 命令会中文阻断并提示重装。
 3. 构建目标必须选择 `windows-msvc-x64`。启用本模块后，Visual Studio 导出只生成 Debug/Release x64 配置。
 4. F5、原生导出、AI Bridge 构建和源码包恢复会统一校验 SDK 清单与 SHA-256；缺失、架构错误或文件被修改会在编译前给出中文阻断诊断。
 
@@ -26,6 +26,7 @@ OpenCV 是新增的高级图像模块，不替换 LingBuilder 已有的 GDI+ 图
 | --- | --- | --- |
 | 基础 | `OpenCV_取版本` | 返回 OpenCV 版本和 Bridge ABI。 |
 | 基础 | `OpenCV_加载图像` | 通过宽字符文件访问和 `imdecode` 加载中文路径图像。 |
+| 基础 | `OpenCV_加载图像字节集` | 从内存字节集 `imdecode` 加载图像（PNG/JPG/BMP/WebP 等），投屏帧、截图字节集免落盘入口；1.1.0 新增，需要 Bridge 1.1.0 SDK。 |
 | 基础 | `OpenCV_保存图像` | 通过 `imencode` 保存 PNG/JPEG/BMP/WebP 等格式。 |
 | 基础 | `OpenCV_克隆图像` | 深复制图像并返回新句柄。 |
 | 基础 | `OpenCV_释放图像`、`OpenCV_释放全部` | 释放图像或全部受管对象。 |

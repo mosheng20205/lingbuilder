@@ -25,6 +25,7 @@ LB_OCV_API int LB_OCV_CALL LB_OCV_GetVersion(wchar_t* buffer, int capacity);
 LB_OCV_API int LB_OCV_CALL LB_OCV_GetLastError(wchar_t* buffer, int capacity);
 
 LB_OCV_API LB_OCV_HANDLE LB_OCV_CALL LB_OCV_LoadImage(const wchar_t* path, const wchar_t* mode);
+LB_OCV_API LB_OCV_HANDLE LB_OCV_CALL LB_OCV_LoadImageBytes(const unsigned char* data, int size, const wchar_t* mode);
 LB_OCV_API int LB_OCV_CALL LB_OCV_SaveImage(LB_OCV_HANDLE image, const wchar_t* path, int quality);
 LB_OCV_API LB_OCV_HANDLE LB_OCV_CALL LB_OCV_CloneImage(LB_OCV_HANDLE image);
 LB_OCV_API int LB_OCV_CALL LB_OCV_ReleaseImage(LB_OCV_HANDLE image);

@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { InstalledModule } from '../modules/types';
-import { getPreferredModuleTarget } from '../modules/targetResolver';
+import { getPreferredModuleTarget, getSiblingMsvcTargetId } from '../modules/targetResolver';
 import { CRYPTO_SDK_MODULE_IDS } from '../modules/dataMediaModules';
 import { OPENCV_MODULE_ID, OPENCV_SDK_MODULE_ID } from '../modules/opencvModules';
 import { PROTOBUF_MODULE_ID } from '../modules/protobufModule';
@@ -186,7 +186,11 @@ function getResourceFiles(generatedFiles: LingCppNativeProjectFile[]): string[] 
 function getModuleIncludeDirs(enabledModules: InstalledModule[], targetId = 'windows-msvc-win32'): string[] {
   return unique([...enabledModules.flatMap(module => {
     const moduleId = module.manifest.id;
-    const target = getPreferredModuleTarget(module, targetId);
+    // 头文件与架构无关：当前架构缺 target 时按另一 MSVC 架构取声明目录，保证可复制
+    // 工程两个配置都能解析模块 #include（与依赖复制回退同口径）；libs/runtimeFiles
+    // 是真实架构产物，仍严格按当前架构取，不参与回退。
+    const target = getPreferredModuleTarget(module, targetId)
+      || getPreferredModuleTarget(module, getSiblingMsvcTargetId(targetId));
     if (!target) return [];
     const explicitDirs = (target.includeDirs || []).map(dir => normalizeSlash(path.posix.join('modules', moduleId, normalizeSlash(dir))));
     const headerDirs = (target.headers || []).map(header => {
@@ -356,11 +360,11 @@ function generateVcxproj(options: {
     ? `;${options.extraPreprocessorDefinitions.join(';')}`
     : '';
   const debugPreprocessorDefinitions = options.requiresDynamicCrt
-    ? 'WIN32;NDEBUG;UNICODE;_UNICODE;%(PreprocessorDefinitions)'
-    : 'WIN32;_DEBUG;UNICODE;_UNICODE;%(PreprocessorDefinitions)';
+    ? 'WIN32;NDEBUG;UNICODE;_UNICODE;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)'
+    : 'WIN32;_DEBUG;UNICODE;_UNICODE;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)';
   const debugPreprocessorDefinitionsX64 = options.requiresDynamicCrt
-    ? 'NDEBUG;UNICODE;_UNICODE;%(PreprocessorDefinitions)'
-    : '_DEBUG;UNICODE;_UNICODE;%(PreprocessorDefinitions)';
+    ? 'NDEBUG;UNICODE;_UNICODE;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)'
+    : '_DEBUG;UNICODE;_UNICODE;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)';
   const configurationType = options.projectKind === 'dynamic-library' ? 'DynamicLibrary' : 'Application';
   const subSystem = options.projectKind === 'console-application' ? 'Console' : 'Windows';
   const uacSettings = options.requireAdministrator
@@ -449,7 +453,7 @@ ${options.hasFbro ? `  <Target Name="ValidateFbroArchitecture" BeforeTargets="Pr
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>WIN32;NDEBUG;UNICODE;_UNICODE;%(PreprocessorDefinitions)${extraDefinitions}</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;UNICODE;_UNICODE;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)${extraDefinitions}</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>${languageStandard}</LanguageStandard>${runtimeLibrary}
       <AdditionalIncludeDirectories>${additionalIncludeDirectories}</AdditionalIncludeDirectories>
@@ -464,7 +468,7 @@ ${options.hasFbro ? `  <Target Name="ValidateFbroArchitecture" BeforeTargets="Pr
     </Link>${postBuild}
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'"><ClCompile><WarningLevel>Level3</WarningLevel><SDLCheck>true</SDLCheck><PreprocessorDefinitions>${debugPreprocessorDefinitionsX64}${extraDefinitions}</PreprocessorDefinitions><ConformanceMode>true</ConformanceMode><LanguageStandard>${languageStandard}</LanguageStandard>${runtimeLibrary}<AdditionalIncludeDirectories>${additionalIncludeDirectoriesX64}</AdditionalIncludeDirectories><AdditionalOptions>/utf-8 /bigobj %(AdditionalOptions)</AdditionalOptions></ClCompile><Link><SubSystem>${subSystem}</SubSystem>${uacSettings}${definitionFile}<AdditionalDependencies>${xmlEscape(additionalDependenciesX64)};%(AdditionalDependencies)</AdditionalDependencies></Link>${postBuildX64}</ItemDefinitionGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'"><ClCompile><WarningLevel>Level3</WarningLevel><FunctionLevelLinking>true</FunctionLevelLinking><IntrinsicFunctions>true</IntrinsicFunctions><SDLCheck>true</SDLCheck><PreprocessorDefinitions>NDEBUG;UNICODE;_UNICODE;%(PreprocessorDefinitions)${extraDefinitions}</PreprocessorDefinitions><ConformanceMode>true</ConformanceMode><LanguageStandard>${languageStandard}</LanguageStandard>${runtimeLibrary}<AdditionalIncludeDirectories>${additionalIncludeDirectoriesX64}</AdditionalIncludeDirectories><AdditionalOptions>/utf-8 /bigobj %(AdditionalOptions)</AdditionalOptions></ClCompile><Link><SubSystem>${subSystem}</SubSystem>${uacSettings}${definitionFile}<EnableCOMDATFolding>true</EnableCOMDATFolding><OptimizeReferences>true</OptimizeReferences><AdditionalDependencies>${xmlEscape(additionalDependenciesX64)};%(AdditionalDependencies)</AdditionalDependencies></Link>${postBuildX64}</ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'"><ClCompile><WarningLevel>Level3</WarningLevel><FunctionLevelLinking>true</FunctionLevelLinking><IntrinsicFunctions>true</IntrinsicFunctions><SDLCheck>true</SDLCheck><PreprocessorDefinitions>NDEBUG;UNICODE;_UNICODE;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)${extraDefinitions}</PreprocessorDefinitions><ConformanceMode>true</ConformanceMode><LanguageStandard>${languageStandard}</LanguageStandard>${runtimeLibrary}<AdditionalIncludeDirectories>${additionalIncludeDirectoriesX64}</AdditionalIncludeDirectories><AdditionalOptions>/utf-8 /bigobj %(AdditionalOptions)</AdditionalOptions></ClCompile><Link><SubSystem>${subSystem}</SubSystem>${uacSettings}${definitionFile}<EnableCOMDATFolding>true</EnableCOMDATFolding><OptimizeReferences>true</OptimizeReferences><AdditionalDependencies>${xmlEscape(additionalDependenciesX64)};%(AdditionalDependencies)</AdditionalDependencies></Link>${postBuildX64}</ItemDefinitionGroup>
 ${generateFileItems('ClInclude', options.headerFiles)}${generateFileItems('ClCompile', options.sourceFiles)}${generateFileItems('ResourceCompile', options.resourceFiles)}${generateFileItems('None', options.noneFiles)}
   <Import Project="$(VCTargetsPath)\\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />

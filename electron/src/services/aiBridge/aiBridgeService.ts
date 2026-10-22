@@ -40,6 +40,13 @@ import { exportModuleNativeDependencies, materializeModuleNativeDependencies, Mo
 import { resolveProtobufSdkLocation } from '../modules/protobufSdkLocation';
 import { createManagedProcessService } from '../tasks/managedProcessService';
 import { decodeCompilerOutput } from '../tasks/compilerOutputEncoding';
+import {
+  detectCompilerDetailed,
+  findMsvcSetupBatch,
+  formatCompilerDetectionDiagnostics,
+  invalidateCachedCompiler,
+  type CompilerDetectionOutcome
+} from '../tasks/compilerDetection';
 import { foldMsvcNoteLines, mapCompilerDiagnostics, parseCompilerDiagnostics } from '../tasks/compilerDiagnosticService';
 import type { LingCppNativeSourceMapEntry } from '../lingCpp/types';
 import type { ManagedProcessService, ManagedProcessStopAllResult } from '../tasks/managedProcessService';
@@ -260,6 +267,8 @@ export class AiBridgeService {
   private readonly projectBuildCoordinator: ProjectBuildCoordinator;
   private readonly projectBuildSessionService: ProjectBuildSessionService;
   private readonly compilerDetector: () => Promise<AiBridgeCompilerInfo | null>;
+  /** 最近一次编译器探测结果（仅未注入自定义探测器时记录），失败时输出中文明细。 */
+  private lastCompilerDetection: CompilerDetectionOutcome | null = null;
   private readonly compilerRunner: NonNullable<AiBridgeServiceDependencies['compileWin32Preview']>;
   private readonly assertModuleAccess: NonNullable<AiBridgeServiceDependencies['assertModuleAccess']>;
   private readonly buildPipelineService: BuildPipelineService;
@@ -295,8 +304,14 @@ export class AiBridgeService {
     );
     // 显式 arch 只用于「本机探测为 x64、但目标必须是 32 位」的场景（例如 32 位 OCX 示例）。
     // PATH 里的 cl 无法区分位数，此时必须改用对应的 vcvars 批处理重新进入编译环境。
+    // 默认探测器走 tasks/compilerDetection.ts 唯一实现（进程内缓存 + 重试 + 每步诊断）。
     const requestedArch = options.arch;
-    const baseDetector = dependencies.detectCompiler ?? detectCompiler;
+    const baseDetector = dependencies.detectCompiler
+      ?? (async () => {
+        const outcome = await detectCompilerDetailed();
+        this.lastCompilerDetection = outcome;
+        return outcome.compiler;
+      });
     this.compilerDetector = requestedArch
       ? async () => {
           const detected = await baseDetector();
@@ -305,8 +320,7 @@ export class AiBridgeService {
           if (!setupBatch) return detected;
           return { kind: 'msvc', command: 'cl', setupBatch, arch: requestedArch };
         }
-      : baseDetector;
-    this.compilerRunner = dependencies.compileWin32Preview ?? compileWin32Preview;
+      : baseDetector;    this.compilerRunner = dependencies.compileWin32Preview ?? compileWin32Preview;
     this.assertModuleAccess = dependencies.assertModuleAccess ?? (() => undefined);
     const sdkDependencyService = new SdkDependencyService({
       cacheRoot: resolveSdkCacheRoot(process.env),
@@ -328,6 +342,13 @@ export class AiBridgeService {
     this.buildConfigurationService = new BuildConfigurationService(this.workspaceRoot);
     this.fbroVipKey = String(process.env.LINGBUILDER_FBRO_VIP_KEY || '').trim().slice(0, 4096);
     delete process.env.LINGBUILDER_FBRO_VIP_KEY;
+  }
+
+  /** 取最近一次编译器探测的中文明细；注入自定义探测器（不经过默认探测）或探测成功时为空，供 build 失败响应携带。 */
+  private compilerDetectionDiagnosticLines(): string[] {
+    const outcome = this.lastCompilerDetection;
+    if (!outcome || outcome.compiler) return [];
+    return formatCompilerDetectionDiagnostics(outcome);
   }
 
   health(): AiBridgeHealth {
@@ -2007,9 +2028,10 @@ export class AiBridgeService {
         files: [...generatedProject.files, ...generatedCodegenFiles].map(file => path.join(sourceDir, file.relativePath)),
         visualStudioProject: buildVisualStudioProject,
         exportVisualStudioProject: exportVisualStudioProjectResult,
-          logs: [
+        logs: [
           ...baseLogs,
-          '未检测到可用 C++ 编译器。请安装 Visual Studio Build Tools、MinGW g++ 或 LLVM clang++ 后重试。'
+          '未检测到可用 C++ 编译器。请安装 Visual Studio Build Tools、MinGW g++ 或 LLVM clang++ 后重试。',
+          ...this.compilerDetectionDiagnosticLines()
         ]
       };
       await this.permissions.audit({ operation: 'execute', action: 'build.run', ok: false, target: buildDir, details: result.stage });
@@ -2092,6 +2114,9 @@ export class AiBridgeService {
     ].filter(Boolean);
 
     if (!compileResult.ok) {
+      // 编译失败即失效编译器缓存：VS 升级/卸载后不拿着失效的 vcvars 路径反复失败，
+      // 下一次构建强制重走完整探测（成功后会重新入缓存）。
+      if (compiler.kind === 'msvc') invalidateCachedCompiler();
       const result = {
         ok: false,
         stage: 'compile',
@@ -3001,95 +3026,6 @@ function parseModuleCommandParameterDocs(command: ModuleCommandContribution, bin
     });
 }
 
-async function detectCompiler(): Promise<AiBridgeCompilerInfo | null> {
-  try {
-    await execFileAsync('where.exe', ['cl'], { timeout: 4000, windowsHide: true });
-    return { kind: 'msvc', command: 'cl', arch: 'x64' };
-  } catch {
-    // MSVC may be installed but not loaded into the current shell.
-  }
-
-  const msvcSetupBatch = await findMsvcSetupBatch();
-  if (msvcSetupBatch && await canUseMsvcSetupBatch(msvcSetupBatch)) {
-    const arch = /vcvars64|amd64/i.test(msvcSetupBatch) ? 'x64' : /vcvars32|x86/i.test(msvcSetupBatch) ? 'win32' : 'x64';
-    return { kind: 'msvc', command: 'cl', setupBatch: msvcSetupBatch, arch };
-  }
-
-  const candidates: AiBridgeCompilerInfo[] = [
-    { kind: 'g++', command: 'g++' },
-    { kind: 'clang++', command: 'clang++' }
-  ];
-
-  for (const candidate of candidates) {
-    try {
-      await execFileAsync(candidate.command, ['--version'], { timeout: 4000, windowsHide: true });
-      return candidate;
-    } catch {
-      // Try next compiler.
-    }
-  }
-
-  return null;
-}
-
-async function findMsvcSetupBatch(arch?: 'win32' | 'x64'): Promise<string | null> {
-  const installPaths = new Set<string>();
-  const vswherePath = process.env['ProgramFiles(x86)']
-    ? path.join(process.env['ProgramFiles(x86)'] as string, 'Microsoft Visual Studio', 'Installer', 'vswhere.exe')
-    : '';
-
-  if (vswherePath && await pathExists(vswherePath)) {
-    try {
-      const result = await execFileAsync(vswherePath, ['-latest', '-products', '*', '-property', 'installationPath'], {
-        timeout: 5000,
-        windowsHide: true
-      });
-      result.stdout
-        .split(/\r?\n/)
-        .map(line => line.trim())
-        .filter(Boolean)
-        .forEach(line => installPaths.add(line));
-    } catch {
-      // Fall back to common Visual Studio installation folders below.
-    }
-  }
-
-  const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
-  const editions = ['BuildTools', 'Community', 'Professional', 'Enterprise'];
-  for (const edition of editions) {
-    installPaths.add(path.join(programFiles, 'Microsoft Visual Studio', '2022', edition));
-    installPaths.add(path.join(programFiles, 'Microsoft Visual Studio', '2019', edition));
-  }
-
-  for (const installPath of installPaths) {
-    const vcvars = (name: string) => path.join(installPath, 'VC', 'Auxiliary', 'Build', name);
-    const candidates = arch === 'win32'
-      ? [vcvars('vcvars32.bat'), vcvars('vcvars64.bat'), path.join(installPath, 'Common7', 'Tools', 'VsDevCmd.bat')]
-      : arch === 'x64'
-        ? [vcvars('vcvars64.bat'), path.join(installPath, 'Common7', 'Tools', 'VsDevCmd.bat')]
-        : [vcvars('vcvars64.bat'), vcvars('vcvars32.bat'), path.join(installPath, 'Common7', 'Tools', 'VsDevCmd.bat')];
-
-    for (const candidate of candidates) {
-      if (await pathExists(candidate)) return candidate;
-    }
-  }
-
-  return null;
-}
-
-async function canUseMsvcSetupBatch(setupBatch: string): Promise<boolean> {
-  try {
-    await execFileAsync('cmd.exe', ['/d', '/c', `call ${quoteCmdArg(setupBatch)} >nul && where cl >nul`], {
-      timeout: 15000,
-      windowsHide: true,
-      windowsVerbatimArguments: true
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 async function compileWin32Preview(
   compiler: AiBridgeCompilerInfo,
   sourcePath: string,
@@ -3594,13 +3530,4 @@ function applyLineEdits(
 
 function sanitizeFilename(value: string): string {
   return value.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').slice(0, 80) || 'window-preview';
-}
-
-async function pathExists(value: string): Promise<boolean> {
-  try {
-    await fs.stat(value);
-    return true;
-  } catch {
-    return false;
-  }
 }

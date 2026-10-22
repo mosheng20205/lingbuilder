@@ -18,6 +18,7 @@ import { FBRO_SUBMODULES } from './fbroModules';
 import { CEF3_SUBMODULES } from './cef3Modules';
 import { OPENCV_MODULE } from './opencvModules';
 import { QRCODE_MODULE } from './qrcodeModules';
+import { OCR_MODULE } from './ocrModules';
 import { EMBEDDED_RESOURCE_MODULE } from './resourceEmbedModule';
 import { THREADING_MODULE } from './threadingModule';
 import { CRON_MODULE } from './cronModule';
@@ -560,6 +561,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
   ...DATA_MEDIA_MODULES,
   OPENCV_MODULE,
   QRCODE_MODULE,
+  OCR_MODULE,
   EMBEDDED_RESOURCE_MODULE,
   ...PLATFORM_ADVANCED_MODULES,
   {
@@ -628,6 +630,8 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: '控件_设置只读', signature: '控件_设置只读(控件名, 是否只读)', description: '运行期设置编辑框（或富文本框）只读状态：只读时用户不能输入修改，程序仍可用 控件_设置文本 写入。传假解除只读。', insertText: '控件_设置只读($1, 真)', returnType: '逻辑型' },
         { name: '控件_设置密码输入', signature: '控件_设置密码输入(控件名, 是否密码)', description: '运行期把编辑框切换为密码掩码（以 * 回显）或恢复明文，等价于设计器「密码输入」属性的运行期开关。', insertText: '控件_设置密码输入($1, 真)', returnType: '逻辑型' },
         { name: '控件_设置提示文字', signature: '控件_设置提示文字(控件名, 占位文本)', description: '运行期设置编辑框的占位提示：内容为空时显示灰字，输入或写入内容后自动消失；传空文本清除提示。等价于设计器「占位提示」属性的运行期改写。', insertText: '控件_设置提示文字($1, "$2")', returnType: '逻辑型' },
+        { name: '编辑框_滚动', signature: '编辑框_滚动(控件名, 行数)', description: '运行期滚动多行编辑框的内容：正数向下滚动、负数向上滚动，单位为行；已到边界时停在首行或末行。单行编辑框不支持，返回假。', insertText: '编辑框_滚动($1, 1)', returnType: '逻辑型' },
+        { name: '编辑框_滚动到底', signature: '编辑框_滚动到底(控件名)', description: '把多行编辑框滚动到内容末尾（无需控件获得焦点），适合日志或接收框追加内容后定位到最新一行；单行编辑框不支持，返回假。', insertText: '编辑框_滚动到底($1)', returnType: '逻辑型' },
         { name: '控件_设置数值范围', signature: '控件_设置数值范围(控件名, 最小值, 最大值)', description: '运行期设置进度条、滑块、数值调节器或滚动条的数值范围，当前值自动钳制到新范围；后续 控件_设置数值 也按新范围钳制。最小值大于最大值时自动交换。', insertText: '控件_设置数值范围($1, 0, 100)', returnType: '逻辑型' },
         { name: '控件_设置不确定进度', signature: '控件_设置不确定进度(控件名, 是否)', description: '运行期把进度条切换为不确定进度（跑马灯往复动画），适合耗时未知的长任务；传假恢复确定进度。', insertText: '控件_设置不确定进度($1, 真)', returnType: '逻辑型' },
         { name: '控件_插入项目', signature: '控件_插入项目(控件名, 索引, 文本)', description: '向列表框或组合框的指定零基索引插入项目；索引 -1 追加到末尾，返回实际插入索引，失败返回 -1。', insertText: '控件_插入项目($1, 0, "$2")', returnType: '整数型' },
@@ -635,6 +639,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: '控件_修改项目', signature: '控件_修改项目(控件名, 索引, 文本)', description: '修改列表框或组合框指定零基索引的项目文本（整行替换，选中项按位移保持）。列表框是单列控件，没有行×列单元格；要修改某行某列的单元格请用 列表视图_设置单元格（列表视图）或 表格_置文本（数据表格）。', insertText: '控件_修改项目($1, 0, "$2")', returnType: '逻辑型' },
         { name: '控件_取项目文本', signature: '控件_取项目文本(控件名, 索引)', description: '读取列表框或组合框指定零基索引的项目文本；索引越界返回空文本。', insertText: '控件_取项目文本($1, 0)', returnType: '文本型' },
         { name: '控件_取项目数量', signature: '控件_取项目数量(控件名)', description: '返回列表框或组合框当前的项目数量。', insertText: '控件_取项目数量($1)', returnType: '整数型' },
+        { name: '列表框_滚动到项', signature: '列表框_滚动到项(控件名, 索引)', description: '把列表框滚动到指定零基索引的项目，使其成为顶部可见项（等价 LB_SETTOPINDEX）；常用于追加项目后定位到最新一条。索引越界或控件不是列表框返回假。', insertText: '列表框_滚动到项($1, 0)', returnType: '逻辑型' },
         { name: '控件_设置表项高度', signature: '控件_设置表项高度(控件名, 表项高度)', description: '运行期调整列表框或组合框每个项目的显示高度（设计器逻辑坐标，自动按窗口 DPI 缩放），滚动换算与自绘同步生效；高度必须大于 0。', insertText: '控件_设置表项高度($1, 28)', returnType: '逻辑型' },
         { name: '控件_设置选中颜色', signature: '控件_设置选中颜色(控件名, 起始颜色, 结束颜色, 边框颜色)', description: '运行期修改列表框或组合框选中项的渐变起始色、结束色与边框色，颜色格式 "#RRGGBB"；传空文本表示保持该色不变。', insertText: '控件_设置选中颜色($1, "#0E7490", "#38BDF8", "#FFFFFF")', returnType: '逻辑型' },
         { name: '控件_设置选中标记颜色', signature: '控件_设置选中标记颜色(控件名, 选中颜色, 标记颜色)', description: '运行期修改复选框或单选框选中时的底色与对勾/圆点标记颜色，颜色格式 "#RRGGBB"；传空文本表示保持该色不变。', insertText: '控件_设置选中标记颜色($1, "#0E7490", "#FFFFFF")', returnType: '逻辑型' },
@@ -760,6 +765,8 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { command: '控件_设置只读', runtimeName: '控件_设置只读', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '是否只读', type: 'bool', description: '真=只读，假=可编辑。' }], returnType: 'bool', encoding: 'wide' },
         { command: '控件_设置密码输入', runtimeName: '控件_设置密码输入', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '是否密码', type: 'bool', description: '真=以 * 掩码回显，假=明文显示。' }], returnType: 'bool', encoding: 'wide' },
         { command: '控件_设置提示文字', runtimeName: '控件_设置提示文字', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '占位文本', type: 'wideString', description: '编辑框内容为空时显示的灰字提示；空文本清除提示。' }], returnType: 'bool', encoding: 'wide' },
+        { command: '编辑框_滚动', runtimeName: '编辑框_滚动', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '行数', type: 'int', description: '滚动行数；正数向下、负数向上，0 不动返回假。' }], returnType: 'bool', encoding: 'wide' },
+        { command: '编辑框_滚动到底', runtimeName: '编辑框_滚动到底', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'bool', encoding: 'wide' },
         { command: '控件_设置数值范围', runtimeName: '控件_设置数值范围', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '最小值', type: 'int', description: '范围下限；大于最大值时自动交换。' }, { name: '最大值', type: 'int', description: '范围上限。' }], returnType: 'bool', encoding: 'wide' },
         { command: '控件_设置不确定进度', runtimeName: '控件_设置不确定进度', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '是否', type: 'bool', description: '真=跑马灯动画，假=确定进度。' }], returnType: 'bool', encoding: 'wide' },
         { command: '控件_插入项目', runtimeName: '控件_插入项目', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '索引', type: 'int', description: '零基插入位置；-1 追加到末尾。' }, { name: '文本', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
@@ -767,6 +774,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { command: '控件_修改项目', runtimeName: '控件_修改项目', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '索引', type: 'int', description: '零基项目下标，越界返回假。' }, { name: '文本', type: 'wideString', description: '整行替换的新文本。' }], returnType: 'bool', encoding: 'wide' },
         { command: '控件_取项目文本', runtimeName: '控件_取项目文本', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '索引', type: 'int', description: '零基项目下标，越界返回空文本。' }], returnType: 'wideString', encoding: 'wide' },
         { command: '控件_取项目数量', runtimeName: '控件_取项目数量', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+        { command: '列表框_滚动到项', runtimeName: '列表框_滚动到项', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '索引', type: 'int', description: '零基项目下标，越界返回假。' }], returnType: 'bool', encoding: 'wide' },
         { command: '控件_设置表项高度', runtimeName: '控件_设置表项高度', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '表项高度', type: 'int', description: '每个项目的显示高度，设计器逻辑坐标；必须大于 0。' }], returnType: 'bool', encoding: 'wide' },
         { command: '控件_设置选中颜色', runtimeName: '控件_设置选中颜色', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '起始颜色', type: 'wideString', description: '渐变起始色 "#RRGGBB"；空文本保持原值。' }, { name: '结束颜色', type: 'wideString', description: '渐变结束色 "#RRGGBB"；空文本保持原值。' }, { name: '边框颜色', type: 'wideString', description: '选中边框色 "#RRGGBB"；空文本保持原值。' }], returnType: 'bool', encoding: 'wide' },
         { command: '控件_设置选中标记颜色', runtimeName: '控件_设置选中标记颜色', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '选中颜色', type: 'wideString', description: '选中底色 "#RRGGBB"；空文本保持原值。' }, { name: '标记颜色', type: 'wideString', description: '对勾/圆点颜色 "#RRGGBB"；空文本保持原值。' }], returnType: 'bool', encoding: 'wide' },

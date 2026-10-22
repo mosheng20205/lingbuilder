@@ -306,11 +306,14 @@ const imageCore = createStandardModule({
 });
 
 const imageCapture = createStandardModule({
-  id: 'lingbuilder.image.capture', name: '屏幕截图模块', category: '图像', description: '截取主屏、屏幕区域或指定窗口到 PNG 文件。', tags: ['截图', '屏幕'],
+  id: 'lingbuilder.image.capture', name: '屏幕截图模块', version: '1.1.0', category: '图像', description: '截取主屏、屏幕区域或指定窗口，输出 PNG 文件或 PNG 字节集；字节集出口可直接交给 识图/OpenCV 模块做屏幕自动化找图，免临时文件。', tags: ['截图', '屏幕', '自动化'],
   commands: [
     command('截图_主屏到PNG', [{ name: '目标路径', type: 'wideString', description: '保存截图的目标 PNG 路径；所在目录必须已存在。'}], 'bool', '截取主显示器并保存 PNG。'),
     command('截图_区域到PNG', [{ name: '目标路径', type: 'wideString', description: captureTargetArg}, { name: '横坐标', type: 'int', description: '截取区域左上角的屏幕横坐标，物理像素，可为负值以覆盖副屏。'}, { name: '纵坐标', type: 'int', description: '截取区域左上角的屏幕纵坐标，物理像素。'}, { name: '宽度', type: 'int', description: '截取区域宽度，像素；小于等于 0 返回假。'}, { name: '高度', type: 'int', description: '截取区域高度，像素；小于等于 0 返回假。'}], 'bool', '截取指定屏幕区域。'),
-    command('截图_窗口到PNG', [{ name: '目标路径', type: 'wideString', description: captureTargetArg}, { name: '窗口句柄', type: 'handle', description: '要截取窗口的外框边界区域，含标题栏和边框；窗口被遮挡时结果同样被遮挡。'}], 'bool', '截取窗口边界区域。')
+    command('截图_窗口到PNG', [{ name: '目标路径', type: 'wideString', description: captureTargetArg}, { name: '窗口句柄', type: 'handle', description: '要截取窗口的外框边界区域，含标题栏和边框；窗口被遮挡时结果同样被遮挡。'}], 'bool', '截取窗口边界区域。'),
+    command('截图_主屏到字节集', [], 'bytes', '截取主显示器并返回 PNG 字节集；可直接传给 识图_模板匹配字节集 或 OpenCV_加载图像字节集，免临时文件。', { returnDescription: 'PNG 字节集，失败返回空字节集。' }),
+    command('截图_区域到字节集', [{ name: '横坐标', type: 'int', description: '截取区域左上角的屏幕横坐标，物理像素，可为负值以覆盖副屏。'}, { name: '纵坐标', type: 'int', description: '截取区域左上角的屏幕纵坐标，物理像素。'}, { name: '宽度', type: 'int', description: '截取区域宽度，像素；小于等于 0 返回空字节集。'}, { name: '高度', type: 'int', description: '截取区域高度，像素；小于等于 0 返回空字节集。'}], 'bytes', '截取指定屏幕区域并返回 PNG 字节集。', { returnDescription: 'PNG 字节集，失败返回空字节集。' }),
+    command('截图_窗口到字节集', [{ name: '窗口句柄', type: 'handle', description: '要截取窗口的外框边界区域，含标题栏和边框；窗口被遮挡时结果同样被遮挡。'}], 'bytes', '截取窗口边界区域并返回 PNG 字节集；配合 窗口_取自身句柄 可把本窗口画面直接交给识图模块。', { returnDescription: 'PNG 字节集，失败返回空字节集。' })
   ]
 });
 
@@ -334,11 +337,87 @@ const icon = createStandardModule({
   ]
 });
 
+const recognitionRegionArgs: Parameter[] = [
+  { name: '区域X', type: 'int', optional: true, defaultValue: 0, description: '查找区域左上角横坐标（像素，0 起）；省略或 0 表示从图片左边缘开始，超出图片按图片边界钳制。' },
+  { name: '区域Y', type: 'int', optional: true, defaultValue: 0, description: '查找区域左上角纵坐标（像素，0 起）；省略或 0 表示从图片上边缘开始，超出图片按图片边界钳制。' },
+  { name: '区域宽', type: 'int', optional: true, defaultValue: 0, description: '查找区域宽度（像素）；省略或 0 表示直到图片右边缘，超出图片按图片边界钳制。' },
+  { name: '区域高', type: 'int', optional: true, defaultValue: 0, description: '查找区域高度（像素）；省略或 0 表示直到图片下边缘，超出图片按图片边界钳制。模板匹配要求命中位置完整落在区域内。' }
+];
+const recognitionWaitIntervalArg: Parameter = {
+  name: '间隔毫秒',
+  type: 'int',
+  optional: true,
+  defaultValue: 200,
+  description: '两次查找之间的等待毫秒数；省略按 200，小于 10 按 10、大于 60000 按 60000 处理。'
+};
+const recognitionMaxResultsArg: Parameter = {
+  name: '最大数量',
+  type: 'int',
+  optional: true,
+  defaultValue: 0,
+  description: '最多记录的命中数量，从 1 起；省略或小于 1 表示不限数量，找满即提前返回。'
+};
+const recognitionSuppressionArg: Parameter = {
+  name: '重叠抑制像素',
+  type: 'int',
+  optional: true,
+  defaultValue: 0,
+  description: '两个命中位置的最小间距（像素，按中心点距离）；间距小于该值的后续命中会被丢弃，用于避免同一目标连片重复计数。省略或小于 1 表示不抑制。'
+};
 const recognition = createStandardModule({
-  id: 'lingbuilder.image.recognition', name: '基础识图模块', category: '图像', description: '提供文件图像中的颜色查找和小模板匹配，结果坐标通过状态命令读取。', tags: ['识图', '颜色', '模板匹配'],
+  id: 'lingbuilder.image.recognition', name: '基础识图模块', version: '1.1.0', category: '图像', description: '提供文件与字节集（内存图片）两种入口的颜色查找、区域限定模板匹配、多处匹配与轮询等待，结果坐标通过状态命令读取；配合 截图/投屏帧 字节集可做屏幕自动化找图找色。', tags: ['识图', '颜色', '模板匹配', '找图', '自动化'],
+  snippets: [
+    {
+      label: '识图：区域内找图并取中心坐标',
+      description: '限定区域模板匹配，命中后计算模板中心点（用于鼠标点击等场景）。',
+      insertText: [
+        '如果真 (识图_模板匹配("画面.png", "按钮.png", 30, 0, 0, 0, 0))',
+        '    局部 整数型 中心X = 识图_取结果横坐标() + 图像_取宽度("按钮.png") \\ 2',
+        '    局部 整数型 中心Y = 识图_取结果纵坐标() + 图像_取高度("按钮.png") \\ 2',
+        '    调试输出("命中中心：", 到文本(中心X), 到文本(中心Y))',
+        '结束'
+      ].join('\n')
+    },
+    {
+      label: '识图：多处匹配遍历命中列表',
+      description: '模板匹配全部命中并按序号逐个读取坐标，重叠抑制避免连片重复计数。',
+      insertText: [
+        '局部 整数型 命中数量 = 识图_模板匹配全部("画面.png", "图标.png", 30, 0, 0, 0, 0, 0, 24)',
+        '调试输出("命中数量：", 到文本(命中数量))',
+        '局部 整数型 序号 = 0',
+        '计次循环首 (命中数量, 序号)',
+        '    调试输出("第", 到文本(序号), "处：", 到文本(识图_取第N横坐标(序号)), ",", 到文本(识图_取第N纵坐标(序号)))',
+        '计次循环尾 ()'
+      ].join('\n')
+    },
+    {
+      label: '识图：非阻塞轮询等图（延迟调用）',
+      description: '界面线程里用 延迟调用 定时重查，等待期间不冻结窗口；阻塞式等价命令见 识图_等待出现。',
+      insertText: [
+        '子程序 轮询找按钮()',
+        '    如果真 (识图_模板匹配("画面.png", "按钮.png", 30))',
+        '        调试输出("按钮出现了：", 到文本(识图_取结果横坐标()), ",", 到文本(识图_取结果纵坐标()))',
+        '        返回()',
+        '    结束',
+        '    延迟调用(500, &轮询找按钮)',
+        '结束子程序'
+      ].join('\n')
+    }
+  ],
   commands: [
-    command('识图_查找颜色', [{ name: '图片路径', type: 'wideString', description: imagePathArg}, { name: 'ARGB', type: 'longLong', description: argbValueArg}, { name: '容差', type: 'int', description: '各颜色通道允许的最大差值；小于 0 按 0、大于 255 按 255 处理。'}], 'bool', '从左到右、从上到下查找接近指定颜色的像素。'),
-    command('识图_模板匹配', [{ name: '图片路径', type: 'wideString', description: imagePathArg}, { name: '模板路径', type: 'wideString', description: '小模板图片路径；模板不得超过 512×512 像素，也不得大于目标图片。'}, { name: '容差', type: 'int', description: '每个通道允许的最大色差；小于 0 按 0、大于 255 按 255 处理。'}], 'bool', '执行朴素像素模板匹配，适合小图和测试。'),
+    command('识图_查找颜色', [{ name: '图片路径', type: 'wideString', description: imagePathArg}, { name: 'ARGB', type: 'longLong', description: argbValueArg}, { name: '容差', type: 'int', description: '各颜色通道允许的最大差值；小于 0 按 0、大于 255 按 255 处理。'}, ...recognitionRegionArgs], 'bool', '在指定区域内从左到右、从上到下查找接近指定颜色的像素；结果读 识图_取结果横坐标/纵坐标，找不到返回假。'),
+    command('识图_模板匹配', [{ name: '图片路径', type: 'wideString', description: imagePathArg}, { name: '模板路径', type: 'wideString', description: '小模板图片路径；模板不得超过 512×512 像素，且必须完整落在查找区域内。'}, { name: '容差', type: 'int', description: '每个通道允许的最大色差；小于 0 按 0、大于 255 按 255 处理。'}, ...recognitionRegionArgs], 'bool', '在指定区域内执行逐像素模板匹配，返回区域内第一个命中位置；结果读 识图_取结果横坐标/纵坐标，找不到返回假。'),
+    command('识图_查找颜色字节集', [{ name: '图片数据', type: 'bytes', description: '图片文件内容字节集（PNG/JPG/BMP 等格式，GDI+ 内存解码，无需落盘）。'}, { name: 'ARGB', type: 'longLong', description: argbValueArg}, { name: '容差', type: 'int', description: '各颜色通道允许的最大差值；小于 0 按 0、大于 255 按 255 处理。'}, ...recognitionRegionArgs], 'bool', '在指定区域内从内存图片字节集中查找接近指定颜色的像素；结果读 识图_取结果横坐标/纵坐标。'),
+    command('识图_模板匹配字节集', [{ name: '图片数据', type: 'bytes', description: '目标图片文件内容字节集（PNG/JPG/BMP 等，GDI+ 内存解码）；投屏帧、截图字节集可直接传入。'}, { name: '模板数据', type: 'bytes', description: '小模板图片字节集；模板不得超过 512×512 像素，且必须完整落在查找区域内。'}, { name: '容差', type: 'int', description: '每个通道允许的最大色差；小于 0 按 0、大于 255 按 255 处理。'}, ...recognitionRegionArgs], 'bool', '对内存图片字节集在指定区域内执行逐像素模板匹配，返回区域内第一个命中位置；结果读 识图_取结果横坐标/纵坐标。'),
+    command('识图_模板匹配全部', [{ name: '图片路径', type: 'wideString', description: imagePathArg}, { name: '模板路径', type: 'wideString', description: '小模板图片路径；模板不得超过 512×512 像素，且必须完整落在查找区域内。'}, { name: '容差', type: 'int', description: '每个通道允许的最大色差；小于 0 按 0、大于 255 按 255 处理。'}, ...recognitionRegionArgs, recognitionMaxResultsArg, recognitionSuppressionArg], 'int', '在指定区域内查找模板的全部命中位置，返回命中数量（没有命中返回 0）；结果按从上到下、从左到右顺序，读 识图_取匹配数量 与 识图_取第N横坐标/纵坐标。', { returnDescription: '命中数量，0 表示没有命中或图片无效。' }),
+    command('识图_模板匹配全部字节集', [{ name: '图片数据', type: 'bytes', description: '目标图片文件内容字节集（PNG/JPG/BMP 等，GDI+ 内存解码）。'}, { name: '模板数据', type: 'bytes', description: '小模板图片字节集；模板不得超过 512×512 像素，且必须完整落在查找区域内。'}, { name: '容差', type: 'int', description: '每个通道允许的最大色差；小于 0 按 0、大于 255 按 255 处理。'}, ...recognitionRegionArgs, recognitionMaxResultsArg, recognitionSuppressionArg], 'int', '对内存图片字节集在指定区域内查找模板的全部命中位置，返回命中数量；结果读 识图_取匹配数量 与 识图_取第N横坐标/纵坐标。', { returnDescription: '命中数量，0 表示没有命中或图片无效。' }),
+    command('识图_等待出现', [{ name: '图片路径', type: 'wideString', description: imagePathArg}, { name: '模板路径', type: 'wideString', description: '小模板图片路径；模板不得超过 512×512 像素。'}, { name: '容差', type: 'int', description: '每个通道允许的最大色差。'}, { name: '超时毫秒', type: 'int', description: '总超时毫秒数，0 表示只查一次不等待；超时仍没出现返回假。'}, recognitionWaitIntervalArg, ...recognitionRegionArgs], 'bool', '轮询查找模板直到出现或超时；出现返回真（结果读 识图_取结果横坐标/纵坐标）。⚠️ 阻塞当前线程：窗口程序请放入线程执行，界面轮询建议用「延迟调用」非阻塞范式。每次轮询重新加载图片，适合配合循环截图的动态画面。'),
+    command('识图_等待出现字节集', [{ name: '图片数据', type: 'bytes', description: '图片文件内容字节集。'}, { name: '模板数据', type: 'bytes', description: '小模板图片字节集。'}, { name: '容差', type: 'int', description: '每个通道允许的最大色差。'}, { name: '超时毫秒', type: 'int', description: '总超时毫秒数，0 表示只查一次不等待。'}, recognitionWaitIntervalArg, ...recognitionRegionArgs], 'bool', '轮询查找模板直到出现或超时；⚠️ 字节集在轮询期间不会变化，命中与否首轮即确定，动态画面请改用文件版配合循环截图，或每收到新帧重新调用 识图_模板匹配字节集。'),
+    command('识图_等待消失', [{ name: '图片路径', type: 'wideString', description: imagePathArg}, { name: '模板路径', type: 'wideString', description: '小模板图片路径。'}, { name: '容差', type: 'int', description: '每个通道允许的最大色差。'}, { name: '超时毫秒', type: 'int', description: '总超时毫秒数，0 表示只查一次不等待；超时仍命中返回假。'}, recognitionWaitIntervalArg, ...recognitionRegionArgs], 'bool', '轮询查找模板直到画面中不再命中；消失返回真，超时仍命中返回假。⚠️ 阻塞当前线程，其余语义与 识图_等待出现 一致。'),
+    command('识图_等待消失字节集', [{ name: '图片数据', type: 'bytes', description: '图片文件内容字节集。'}, { name: '模板数据', type: 'bytes', description: '小模板图片字节集。'}, { name: '容差', type: 'int', description: '每个通道允许的最大色差。'}, { name: '超时毫秒', type: 'int', description: '总超时毫秒数，0 表示只查一次不等待。'}, recognitionWaitIntervalArg, ...recognitionRegionArgs], 'bool', '轮询查找直到不再命中；⚠️ 字节集在轮询期间不会变化，命中与否首轮即确定，动态画面请改用文件版配合循环截图。'),
+    command('识图_取匹配数量', [], 'int', '返回最近一次 识图_模板匹配全部/识图_模板匹配全部字节集 的命中数量；尚未执行或执行失败为 0。'),
+    command('识图_取第N横坐标', [{ name: '序号', type: 'int', description: '命中序号，从 1 起；越界或尚未执行返回 -1。'}], 'int', '返回最近一次多处匹配中第 序号 个命中的左上角横坐标。'),
+    command('识图_取第N纵坐标', [{ name: '序号', type: 'int', description: '命中序号，从 1 起；越界或尚未执行返回 -1。'}], 'int', '返回最近一次多处匹配中第 序号 个命中的左上角纵坐标。'),
     command('识图_取结果横坐标', [], 'int', '返回最近识图结果横坐标，失败为 -1。'),
     command('识图_取结果纵坐标', [], 'int', '返回最近识图结果纵坐标，失败为 -1。'),
     command('识图_颜色相似度', [{ name: 'ARGB一', type: 'longLong', description: '第一个 ARGB 颜色值。'}, { name: 'ARGB二', type: 'longLong', description: '第二个 ARGB 颜色值。'}], 'int', '返回 RGB 最大通道差值，0 表示完全相同。')

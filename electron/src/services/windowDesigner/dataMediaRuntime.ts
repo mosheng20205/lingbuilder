@@ -106,9 +106,14 @@ bool 图像_旋转90度(const wchar_t* source, const wchar_t* target, bool clock
 
 const CAPTURE_RUNTIME = String.raw`
 static bool LB_CaptureRect(const wchar_t* target, int x, int y, int width, int height) { if (!LB_EnsureGdiPlus() || width <= 0 || height <= 0) return false; HDC screen = GetDC(nullptr), memory = CreateCompatibleDC(screen); HBITMAP bitmap = CreateCompatibleBitmap(screen, width, height); HGDIOBJ old = SelectObject(memory, bitmap); bool copied = BitBlt(memory, 0, 0, width, height, screen, x, y, SRCCOPY | CAPTUREBLT) == TRUE; SelectObject(memory, old); Gdiplus::Bitmap image(bitmap, nullptr); bool saved = copied && LB_SaveImage(image, target, L"png"); DeleteObject(bitmap); DeleteDC(memory); ReleaseDC(nullptr, screen); return saved; }
+static std::vector<unsigned char> LB_EncodeImageBytes(Gdiplus::Bitmap& image, const wchar_t* mime) { CLSID encoder = {}; if (!LB_Encoder(mime, encoder)) return {}; IStream* stream = nullptr; if (CreateStreamOnHGlobal(nullptr, FALSE, &stream) != S_OK || !stream) return {}; std::vector<unsigned char> bytes; STATSTG info = {}; if (image.Save(stream, &encoder, nullptr) == Gdiplus::Ok && stream->Stat(&info, STATFLAG_NONAME) == S_OK && info.cbSize.QuadPart > 0) { HGLOBAL handle = nullptr; if (GetHGlobalFromStream(stream, &handle) == S_OK && handle) { void* raw = GlobalLock(handle); if (raw) { bytes.assign(static_cast<unsigned char*>(raw), static_cast<unsigned char*>(raw) + static_cast<size_t>(info.cbSize.QuadPart)); GlobalUnlock(handle); } } } stream->Release(); return bytes; }
+static std::vector<unsigned char> LB_CaptureRectBytes(int x, int y, int width, int height) { if (!LB_EnsureGdiPlus() || width <= 0 || height <= 0) return {}; HDC screen = GetDC(nullptr), memory = CreateCompatibleDC(screen); HBITMAP bitmap = CreateCompatibleBitmap(screen, width, height); HGDIOBJ old = SelectObject(memory, bitmap); bool copied = BitBlt(memory, 0, 0, width, height, screen, x, y, SRCCOPY | CAPTUREBLT) == TRUE; SelectObject(memory, old); std::vector<unsigned char> bytes; if (copied) { Gdiplus::Bitmap image(bitmap, nullptr); if (image.GetLastStatus() == Gdiplus::Ok) bytes = LB_EncodeImageBytes(image, L"image/png"); } DeleteObject(bitmap); DeleteDC(memory); ReleaseDC(nullptr, screen); return bytes; }
 bool 截图_主屏到PNG(const wchar_t* target) { return LB_CaptureRect(target, 0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN)); }
 bool 截图_区域到PNG(const wchar_t* target, int x, int y, int width, int height) { return LB_CaptureRect(target, x, y, width, height); }
 bool 截图_窗口到PNG(const wchar_t* target, long long handle) { RECT rect = {}; return GetWindowRect(reinterpret_cast<HWND>(handle), &rect) && LB_CaptureRect(target, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top); }
+std::vector<unsigned char> 截图_主屏到字节集() { return LB_CaptureRectBytes(0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN)); }
+std::vector<unsigned char> 截图_区域到字节集(int x, int y, int width, int height) { return LB_CaptureRectBytes(x, y, width, height); }
+std::vector<unsigned char> 截图_窗口到字节集(long long handle) { RECT rect = {}; return GetWindowRect(reinterpret_cast<HWND>(handle), &rect) ? LB_CaptureRectBytes(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top) : std::vector<unsigned char>(); }
 `;
 
 const BITMAP_RUNTIME = String.raw`
@@ -125,11 +130,124 @@ bool 图标_提取小图标到PNG(const wchar_t* source, int index, const wchar_
 `;
 
 const RECOGNITION_RUNTIME = String.raw`
-static int g_lbRecognitionX = -1, g_lbRecognitionY = -1;
-int 识图_取结果横坐标() { return g_lbRecognitionX; } int 识图_取结果纵坐标() { return g_lbRecognitionY; }
+// 识图结果为线程本地状态：单点查找写 (X,Y)，多处匹配写命中列表，跨线程互不串扰（threading 工作线程可安全调用）。
+static thread_local int t_lbRecognitionX = -1;
+static thread_local int t_lbRecognitionY = -1;
+struct LB_RecHitPoint { int x; int y; };
+static thread_local std::vector<LB_RecHitPoint> t_lbRecognitionMatches;
+int 识图_取结果横坐标() { return t_lbRecognitionX; } int 识图_取结果纵坐标() { return t_lbRecognitionY; }
 int 识图_颜色相似度(long long first, long long second) { int red = std::abs(static_cast<int>((first >> 16) & 255) - static_cast<int>((second >> 16) & 255)); int green = std::abs(static_cast<int>((first >> 8) & 255) - static_cast<int>((second >> 8) & 255)); int blue = std::abs(static_cast<int>(first & 255) - static_cast<int>(second & 255)); return (std::max)(red, (std::max)(green, blue)); }
-bool 识图_查找颜色(const wchar_t* path, long long argb, int tolerance) { g_lbRecognitionX = g_lbRecognitionY = -1; if (!LB_EnsureGdiPlus()) return false; Gdiplus::Bitmap image(path); if (image.GetLastStatus() != Gdiplus::Ok) return false; const int allowed = (std::max)(0, (std::min)(tolerance, 255)); for (UINT y = 0; y < image.GetHeight(); ++y) for (UINT x = 0; x < image.GetWidth(); ++x) { Gdiplus::Color color; if (image.GetPixel(x, y, &color) == Gdiplus::Ok && 识图_颜色相似度(color.GetValue(), argb) <= allowed) { g_lbRecognitionX = static_cast<int>(x); g_lbRecognitionY = static_cast<int>(y); return true; } } return false; }
-bool 识图_模板匹配(const wchar_t* imagePath, const wchar_t* templatePath, int tolerance) { g_lbRecognitionX = g_lbRecognitionY = -1; if (!LB_EnsureGdiPlus()) return false; Gdiplus::Bitmap image(imagePath), pattern(templatePath); if (image.GetLastStatus() != Gdiplus::Ok || pattern.GetLastStatus() != Gdiplus::Ok || pattern.GetWidth() == 0 || pattern.GetHeight() == 0 || pattern.GetWidth() > image.GetWidth() || pattern.GetHeight() > image.GetHeight() || pattern.GetWidth() * pattern.GetHeight() > 512 * 512) return false; const int allowed = (std::max)(0, (std::min)(tolerance, 255)); for (UINT y = 0; y + pattern.GetHeight() <= image.GetHeight(); ++y) for (UINT x = 0; x + pattern.GetWidth() <= image.GetWidth(); ++x) { bool matches = true; for (UINT py = 0; py < pattern.GetHeight() && matches; ++py) for (UINT px = 0; px < pattern.GetWidth(); ++px) { Gdiplus::Color source, expected; image.GetPixel(x + px, y + py, &source); pattern.GetPixel(px, py, &expected); if (识图_颜色相似度(source.GetValue(), expected.GetValue()) > allowed) { matches = false; break; } } if (matches) { g_lbRecognitionX = static_cast<int>(x); g_lbRecognitionY = static_cast<int>(y); return true; } } return false; }
+namespace {
+// LockBits 一次性锁出的 BGRA 像素缓冲，行内 4 字节一像素；替代逐像素取色的万倍级调用开销。
+struct LB_RecPixels { int width = 0; int height = 0; std::vector<unsigned char> data; };
+static void LB_RecResetResults() { t_lbRecognitionX = -1; t_lbRecognitionY = -1; t_lbRecognitionMatches.clear(); }
+static int LB_RecAllowed(int tolerance) { return (std::max)(0, (std::min)(tolerance, 255)); }
+static bool LB_RecLockPixels(Gdiplus::Bitmap& bitmap, LB_RecPixels& out) {
+    out.width = static_cast<int>(bitmap.GetWidth()); out.height = static_cast<int>(bitmap.GetHeight());
+    if (out.width <= 0 || out.height <= 0) return false;
+    out.data.assign(static_cast<size_t>(out.width) * static_cast<size_t>(out.height) * 4, 0);
+    Gdiplus::BitmapData locked;
+    Gdiplus::Rect rect(0, 0, out.width, out.height);
+    if (bitmap.LockBits(&rect, Gdiplus::ImageLockModeRead, PixelFormat32bppARGB, &locked) != Gdiplus::Ok) return false;
+    for (int y = 0; y < out.height; ++y) memcpy(out.data.data() + static_cast<size_t>(y) * static_cast<size_t>(out.width) * 4, static_cast<const unsigned char*>(locked.Scan0) + static_cast<size_t>(y) * static_cast<size_t>(locked.Stride), static_cast<size_t>(out.width) * 4);
+    bitmap.UnlockBits(&locked);
+    return true;
+}
+static Gdiplus::Bitmap* LB_RecOpenImage(const wchar_t* path) { if (!LB_EnsureGdiPlus()) return nullptr; Gdiplus::Bitmap* bitmap = new Gdiplus::Bitmap(path); if (bitmap->GetLastStatus() != Gdiplus::Ok) { delete bitmap; return nullptr; } return bitmap; }
+static int LB_RecChannelDiff(const unsigned char* pixel, int targetR, int targetG, int targetB) { const int red = pixel[2] > targetR ? pixel[2] - targetR : targetR - pixel[2]; const int green = pixel[1] > targetG ? pixel[1] - targetG : targetG - pixel[1]; const int blue = pixel[0] > targetB ? pixel[0] - targetB : targetB - pixel[0]; return (std::max)(red, (std::max)(green, blue)); }
+static void LB_RecClampRegion(const LB_RecPixels& image, int& x, int& y, int& width, int& height) { if (x < 0) x = 0; if (y < 0) y = 0; if (width <= 0 || x + width > image.width) width = image.width - x; if (height <= 0 || y + height > image.height) height = image.height - y; }
+static bool LB_RecFindColor(const LB_RecPixels& image, long long argb, int allowed, int regionX, int regionY, int regionWidth, int regionHeight) {
+    LB_RecClampRegion(image, regionX, regionY, regionWidth, regionHeight);
+    if (regionWidth <= 0 || regionHeight <= 0) return false;
+    const int targetR = static_cast<int>((argb >> 16) & 255), targetG = static_cast<int>((argb >> 8) & 255), targetB = static_cast<int>(argb & 255);
+    for (int y = regionY; y < regionY + regionHeight; ++y) {
+        const unsigned char* row = image.data.data() + static_cast<size_t>(y) * static_cast<size_t>(image.width) * 4;
+        for (int x = regionX; x < regionX + regionWidth; ++x) {
+            if (LB_RecChannelDiff(row + static_cast<size_t>(x) * 4, targetR, targetG, targetB) <= allowed) { t_lbRecognitionX = x; t_lbRecognitionY = y; return true; }
+        }
+    }
+    return false;
+}
+// 单点（collected == nullptr）命中即返回；多处按 从上到下、从左到右 收集，suppressionRadius 按左上角间距去重（同一模板左上角间距等于中心点间距）。
+static bool LB_RecTemplateMatch(const LB_RecPixels& image, const LB_RecPixels& pattern, int allowed, int regionX, int regionY, int regionWidth, int regionHeight, std::vector<LB_RecHitPoint>* collected, int maximumResults, int suppressionRadius) {
+    LB_RecClampRegion(image, regionX, regionY, regionWidth, regionHeight);
+    if (regionWidth <= 0 || regionHeight <= 0 || pattern.width <= 0 || pattern.height <= 0 || pattern.width > regionWidth || pattern.height > regionHeight || static_cast<long long>(pattern.width) * static_cast<long long>(pattern.height) > 512LL * 512LL) return false;
+    const int lastX = regionX + regionWidth - pattern.width, lastY = regionY + regionHeight - pattern.height;
+    const unsigned char* anchor = pattern.data.data();
+    const int anchorR = anchor[2], anchorG = anchor[1], anchorB = anchor[0];
+    const long long radiusSquared = suppressionRadius > 0 ? static_cast<long long>(suppressionRadius) * suppressionRadius : 0;
+    for (int y = regionY; y <= lastY; ++y) {
+        for (int x = regionX; x <= lastX; ++x) {
+            if (LB_RecChannelDiff(image.data.data() + (static_cast<size_t>(y) * static_cast<size_t>(image.width) + static_cast<size_t>(x)) * 4, anchorR, anchorG, anchorB) > allowed) continue;
+            bool matches = true;
+            for (int py = 0; py < pattern.height && matches; ++py) {
+                const unsigned char* sourceRow = image.data.data() + (static_cast<size_t>(y + py) * static_cast<size_t>(image.width) + static_cast<size_t>(x)) * 4;
+                const unsigned char* patternRow = pattern.data.data() + static_cast<size_t>(py) * static_cast<size_t>(pattern.width) * 4;
+                for (int px = 0; px < pattern.width; ++px) {
+                    const unsigned char* s = sourceRow + static_cast<size_t>(px) * 4;
+                    const unsigned char* e = patternRow + static_cast<size_t>(px) * 4;
+                    const int red = s[2] > e[2] ? s[2] - e[2] : e[2] - s[2];
+                    const int green = s[1] > e[1] ? s[1] - e[1] : e[1] - s[1];
+                    const int blue = s[0] > e[0] ? s[0] - e[0] : e[0] - s[0];
+                    if ((std::max)(red, (std::max)(green, blue)) > allowed) { matches = false; break; }
+                }
+            }
+            if (!matches) continue;
+            if (!collected) { t_lbRecognitionX = x; t_lbRecognitionY = y; return true; }
+            if (radiusSquared > 0) {
+                bool suppressed = false;
+                for (const LB_RecHitPoint& hit : *collected) { const long long dx = x - hit.x, dy = y - hit.y; if (dx * dx + dy * dy < radiusSquared) { suppressed = true; break; } }
+                if (suppressed) continue;
+            }
+            collected->push_back({ x, y });
+            if (maximumResults > 0 && static_cast<int>(collected->size()) >= maximumResults) return true;
+        }
+    }
+    return false;
+}
+static bool LB_RecPatternReady(const LB_RecPixels& pattern) { return pattern.width > 0 && pattern.height > 0 && static_cast<long long>(pattern.width) * static_cast<long long>(pattern.height) <= 512LL * 512LL; }
+static bool LB_RecLoadFilePixels(const wchar_t* path, LB_RecPixels& pixels) { Gdiplus::Bitmap* bitmap = LB_RecOpenImage(path); if (!bitmap) return false; const bool ok = LB_RecLockPixels(*bitmap, pixels); delete bitmap; return ok; }
+// 等待族共用轮询骨架：openImage 每轮重新取图（文件版=重读文件，字节集版=重新解码），wantFound=true 等出现、false 等消失。
+template <typename LB_OpenEachPoll>
+static bool LB_RecWaitLoop(bool wantFound, const LB_RecPixels& pattern, int tolerance, int timeoutMs, int intervalMs, int regionX, int regionY, int regionWidth, int regionHeight, LB_OpenEachPoll openImage) {
+    if (intervalMs < 10) intervalMs = 10;
+    if (intervalMs > 60000) intervalMs = 60000;
+    if (timeoutMs < 0) timeoutMs = 0;
+    const int allowed = LB_RecAllowed(tolerance);
+    const ULONGLONG start = GetTickCount64();
+    for (;;) {
+        t_lbRecognitionX = -1; t_lbRecognitionY = -1;
+        Gdiplus::Bitmap* bitmap = openImage();
+        bool found = false;
+        if (bitmap) {
+            LB_RecPixels image;
+            if (LB_RecLockPixels(*bitmap, image)) found = LB_RecTemplateMatch(image, pattern, allowed, regionX, regionY, regionWidth, regionHeight, nullptr, 0, 0);
+            delete bitmap;
+        }
+        if (found == wantFound) return true;
+        const ULONGLONG elapsed = GetTickCount64() - start;
+        if (elapsed >= static_cast<ULONGLONG>(timeoutMs)) return false;
+        const ULONGLONG remain = static_cast<ULONGLONG>(timeoutMs) - elapsed;
+        Sleep(static_cast<DWORD>(remain < static_cast<ULONGLONG>(intervalMs) ? remain : static_cast<ULONGLONG>(intervalMs)));
+    }
+}
+} // namespace
+bool 识图_查找颜色(const wchar_t* path, long long argb, int tolerance, int regionX = 0, int regionY = 0, int regionWidth = 0, int regionHeight = 0) { LB_RecResetResults(); LB_RecPixels image; if (!LB_RecLoadFilePixels(path, image)) return false; return LB_RecFindColor(image, argb, LB_RecAllowed(tolerance), regionX, regionY, regionWidth, regionHeight); }
+bool 识图_模板匹配(const wchar_t* imagePath, const wchar_t* templatePath, int tolerance, int regionX = 0, int regionY = 0, int regionWidth = 0, int regionHeight = 0) { LB_RecResetResults(); LB_RecPixels image, pattern; if (!LB_RecLoadFilePixels(imagePath, image) || !LB_RecLoadFilePixels(templatePath, pattern) || !LB_RecPatternReady(pattern)) return false; return LB_RecTemplateMatch(image, pattern, LB_RecAllowed(tolerance), regionX, regionY, regionWidth, regionHeight, nullptr, 0, 0); }
+static Gdiplus::Bitmap* LB_BitmapFromBytes(const std::vector<unsigned char>& data) { if (!LB_EnsureGdiPlus() || data.empty()) return nullptr; HGLOBAL mem = GlobalAlloc(GMEM_MOVEABLE, data.size()); if (!mem) return nullptr; void* raw = GlobalLock(mem); if (!raw) { GlobalFree(mem); return nullptr; } memcpy(raw, data.data(), data.size()); GlobalUnlock(mem); IStream* stream = nullptr; if (CreateStreamOnHGlobal(mem, TRUE, &stream) != S_OK || !stream) { GlobalFree(mem); return nullptr; } Gdiplus::Bitmap* bitmap = new Gdiplus::Bitmap(stream); stream->Release(); return bitmap->GetLastStatus() == Gdiplus::Ok ? bitmap : (delete bitmap, nullptr); }
+static bool LB_RecLoadBytesPixels(const std::vector<unsigned char>& data, LB_RecPixels& pixels) { Gdiplus::Bitmap* bitmap = LB_BitmapFromBytes(data); if (!bitmap) return false; const bool ok = LB_RecLockPixels(*bitmap, pixels); delete bitmap; return ok; }
+bool 识图_查找颜色字节集(const std::vector<unsigned char>& 图片数据, long long argb, int tolerance, int regionX = 0, int regionY = 0, int regionWidth = 0, int regionHeight = 0) { LB_RecResetResults(); LB_RecPixels image; if (!LB_RecLoadBytesPixels(图片数据, image)) return false; return LB_RecFindColor(image, argb, LB_RecAllowed(tolerance), regionX, regionY, regionWidth, regionHeight); }
+bool 识图_模板匹配字节集(const std::vector<unsigned char>& 图片数据, const std::vector<unsigned char>& 模板数据, int tolerance, int regionX = 0, int regionY = 0, int regionWidth = 0, int regionHeight = 0) { LB_RecResetResults(); LB_RecPixels image, pattern; if (!LB_RecLoadBytesPixels(图片数据, image) || !LB_RecLoadBytesPixels(模板数据, pattern) || !LB_RecPatternReady(pattern)) return false; return LB_RecTemplateMatch(image, pattern, LB_RecAllowed(tolerance), regionX, regionY, regionWidth, regionHeight, nullptr, 0, 0); }
+int 识图_模板匹配全部(const wchar_t* imagePath, const wchar_t* templatePath, int tolerance, int regionX = 0, int regionY = 0, int regionWidth = 0, int regionHeight = 0, int maximumResults = 0, int suppressionRadius = 0) { LB_RecResetResults(); LB_RecPixels image, pattern; if (!LB_RecLoadFilePixels(imagePath, image) || !LB_RecLoadFilePixels(templatePath, pattern) || !LB_RecPatternReady(pattern)) return 0; LB_RecTemplateMatch(image, pattern, LB_RecAllowed(tolerance), regionX, regionY, regionWidth, regionHeight, &t_lbRecognitionMatches, maximumResults, suppressionRadius); return static_cast<int>(t_lbRecognitionMatches.size()); }
+int 识图_模板匹配全部字节集(const std::vector<unsigned char>& 图片数据, const std::vector<unsigned char>& 模板数据, int tolerance, int regionX = 0, int regionY = 0, int regionWidth = 0, int regionHeight = 0, int maximumResults = 0, int suppressionRadius = 0) { LB_RecResetResults(); LB_RecPixels image, pattern; if (!LB_RecLoadBytesPixels(图片数据, image) || !LB_RecLoadBytesPixels(模板数据, pattern) || !LB_RecPatternReady(pattern)) return 0; LB_RecTemplateMatch(image, pattern, LB_RecAllowed(tolerance), regionX, regionY, regionWidth, regionHeight, &t_lbRecognitionMatches, maximumResults, suppressionRadius); return static_cast<int>(t_lbRecognitionMatches.size()); }
+int 识图_取匹配数量() { return static_cast<int>(t_lbRecognitionMatches.size()); }
+int 识图_取第N横坐标(int index) { return index >= 1 && static_cast<size_t>(index) <= t_lbRecognitionMatches.size() ? t_lbRecognitionMatches[static_cast<size_t>(index) - 1].x : -1; }
+int 识图_取第N纵坐标(int index) { return index >= 1 && static_cast<size_t>(index) <= t_lbRecognitionMatches.size() ? t_lbRecognitionMatches[static_cast<size_t>(index) - 1].y : -1; }
+bool 识图_等待出现(const wchar_t* imagePath, const wchar_t* templatePath, int tolerance, int timeoutMs, int intervalMs = 200, int regionX = 0, int regionY = 0, int regionWidth = 0, int regionHeight = 0) { LB_RecResetResults(); LB_RecPixels pattern; if (!LB_RecLoadFilePixels(templatePath, pattern) || !LB_RecPatternReady(pattern)) return false; return LB_RecWaitLoop(true, pattern, tolerance, timeoutMs, intervalMs, regionX, regionY, regionWidth, regionHeight, [imagePath]() { return LB_RecOpenImage(imagePath); }); }
+bool 识图_等待出现字节集(const std::vector<unsigned char>& 图片数据, const std::vector<unsigned char>& 模板数据, int tolerance, int timeoutMs, int intervalMs = 200, int regionX = 0, int regionY = 0, int regionWidth = 0, int regionHeight = 0) { LB_RecResetResults(); LB_RecPixels pattern; if (!LB_RecLoadBytesPixels(模板数据, pattern) || !LB_RecPatternReady(pattern)) return false; return LB_RecWaitLoop(true, pattern, tolerance, timeoutMs, intervalMs, regionX, regionY, regionWidth, regionHeight, [&图片数据]() { return LB_BitmapFromBytes(图片数据); }); }
+bool 识图_等待消失(const wchar_t* imagePath, const wchar_t* templatePath, int tolerance, int timeoutMs, int intervalMs = 200, int regionX = 0, int regionY = 0, int regionWidth = 0, int regionHeight = 0) { LB_RecResetResults(); LB_RecPixels pattern; if (!LB_RecLoadFilePixels(templatePath, pattern) || !LB_RecPatternReady(pattern)) return false; return LB_RecWaitLoop(false, pattern, tolerance, timeoutMs, intervalMs, regionX, regionY, regionWidth, regionHeight, [imagePath]() { return LB_RecOpenImage(imagePath); }); }
+bool 识图_等待消失字节集(const std::vector<unsigned char>& 图片数据, const std::vector<unsigned char>& 模板数据, int tolerance, int timeoutMs, int intervalMs = 200, int regionX = 0, int regionY = 0, int regionWidth = 0, int regionHeight = 0) { LB_RecResetResults(); LB_RecPixels pattern; if (!LB_RecLoadBytesPixels(模板数据, pattern) || !LB_RecPatternReady(pattern)) return false; return LB_RecWaitLoop(false, pattern, tolerance, timeoutMs, intervalMs, regionX, regionY, regionWidth, regionHeight, [&图片数据]() { return LB_BitmapFromBytes(图片数据); }); }
+
 `;
 
 const AUDIO_RUNTIME = String.raw`

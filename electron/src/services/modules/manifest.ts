@@ -195,6 +195,9 @@ export function validateModuleManifest(value: unknown, options: ModuleValidation
   const commands = Array.isArray(contributes?.commands) ? contributes.commands : [];
   const types = Array.isArray(contributes?.types) ? contributes.types : [];
   const targets = Array.isArray(raw.targets) ? raw.targets : [];
+  if (raw.injectHeaders !== undefined && typeof raw.injectHeaders !== 'boolean') {
+    diagnostics.push('injectHeaders 必须是逻辑值：true（默认）把模块头文件注入主程序，false 只随模块复制、不注入 main.cpp。');
+  }
   validateBuildContribution(raw.build, targets, diagnostics);
   validateTargets(raw.targets, diagnostics);
   validateBindings(raw.bindings, commands, types, targets, diagnostics, options);
@@ -555,6 +558,24 @@ function validateCodeGeneratorOptions(options: unknown, prefix: string, diagnost
   }
 }
 
+// targets 上的近形拼错字段名：真实字段是复数形式（includeDirs/headers/sources…），
+// 拼错会被构建链路静默忽略——典型事故是头文件已随模块复制、编译却报 C1083
+// 找不到头文件（外部 AI 封装模块实测，2026-10-20）。这里按原样点名并给出正确字段。
+const TARGET_FIELD_TYPO_HINTS: Record<string, string> = {
+  includes: 'includeDirs',
+  include: 'includeDirs',
+  header: 'headers',
+  headerDir: 'headerDirs',
+  headerdir: 'headerDirs',
+  headerdirs: 'headerDirs',
+  source: 'sources',
+  lib: 'libs',
+  runtimeFile: 'runtimeFiles',
+  define: 'defines',
+  compileOption: 'compileOptions',
+  linkOption: 'linkOptions'
+};
+
 function validateTargets(targets: unknown, diagnostics: string[]): void {
   if (targets === undefined) return;
   if (!Array.isArray(targets)) {
@@ -569,9 +590,15 @@ function validateTargets(targets: unknown, diagnostics: string[]): void {
     if (!TARGET_PLATFORMS.includes(target?.platform)) diagnostics.push(`targets[${index}].platform 不受支持。`);
     if (!TARGET_ARCHES.includes(target?.arch)) diagnostics.push(`targets[${index}].arch 不受支持。`);
     if (!TARGET_TOOLCHAINS.includes(target?.toolchain)) diagnostics.push(`targets[${index}].toolchain 不受支持。`);
+    const targetKeys = target && typeof target === 'object' && !Array.isArray(target) ? Object.keys(target) : [];
+    targetKeys.forEach(key => {
+      const hint = TARGET_FIELD_TYPO_HINTS[key];
+      if (hint) diagnostics.push(`targets[${index}].${key} 不是有效字段：应为 ${hint}。拼写错误的字段会被构建静默忽略，典型症状是头文件已随模块复制、编译却报 C1083 找不到头文件。`);
+    });
     validatePathArray(target?.includeDirs, `targets[${index}].includeDirs`, diagnostics);
     validatePathArray(target?.sources, `targets[${index}].sources`, diagnostics);
     validatePathArray(target?.headers, `targets[${index}].headers`, diagnostics);
+    validatePathArray(target?.headerDirs, `targets[${index}].headerDirs`, diagnostics);
     validatePathArray(target?.libs, `targets[${index}].libs`, diagnostics);
     validatePathArray(target?.runtimeFiles, `targets[${index}].runtimeFiles`, diagnostics);
   });

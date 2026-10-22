@@ -563,12 +563,30 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       // 5 命令 23 参数（HTTP_启用接口文档 3/HTTP_登记接口 5/HTTP_登记接口参数 8/
       // HTTP_登记接口示例 6/HTTP_取接口文档JSON 1，句柄与文本/整数/布尔参数，无 controlRef），
       // 另登记 #接口参数_路径/查询/请求头 三常量（不计命令）（实算摘要 501d290f/9c29e24c）。
-      modules: 103,
-      commands: 4160,
-      parameters: 7346,
-      controlReferences: 1375,
-      commandDigest: '501d290f',
-      parameterDigest: '9c29e24c'
+      // 基线 2026-10-19 再写回（Win32 程序化滚动批次）：win32.basic 新增 列表框_滚动到项/
+      // 编辑框_滚动/编辑框_滚动到底（+3 命令 +5 参数 +3 controlRef），common-controls
+      // 数据表格新增 表格_滚动到行（+1 命令 +2 参数 +1 controlRef）
+      //（实算摘要 b0789bc4/429e3579）。
+      // 基线 2026-10-20 再写回（微信OCR识别模块批次）：新增 lingbuilder.ocr 1.0.0
+      //（19 命令 +21 参数：OCR_识别/OCR_识别字节集/结果读取族/生命周期族，句柄类型
+      // OCR结果句柄 为 long long，全部文本/数值/布尔/字节集参数，无新增 controlRef）；
+      // 基础识图模块字节集入口 +2 命令 +6 参数（识图_查找颜色字节集/识图_模板匹配字节集，
+      // GDI+ IStream 内存解码，无新增 controlRef）（实算摘要 f9d3f89a/c1a23481）。
+      // 基线 2026-10-22 再写回（WebSocket 客户端 2.1 异步发送批次）：websocket.client
+      // +2 命令 +4 参数（WS_发送文本到连接异步/WS_发送二进制到连接异步，bool 返回，
+      // 参数 WebSocket连接+文本/字节集，无新增 controlRef；半开 TCP 同步发送会阻塞
+      // UI 线程数十秒，纯 Wi-Fi 投屏指令必须走异步）（实算摘要 9b630c00/65cc1fc8）。
+      // 基线 2026-10-22 再写回（图色自动化批次）：识图 1.1.0 +9 命令 +51 参数
+      //（模板匹配全部族 2/等待出现消失族 4/读回族 3，旧 4 条查找命令各 +4 可选区域参数，
+      // 无新增 controlRef）；截图 1.1.0 +3 命令 +7 参数（主屏/区域/窗口到字节集）；
+      // opencv 1.1.0 +1 命令 +2 参数（OpenCV_加载图像字节集）
+      //（实算摘要 6e8f3592/33df8d17）。
+      modules: 104,
+      commands: 4320,
+      parameters: 7643,
+      controlReferences: 1499,
+      commandDigest: '6e8f3592',
+      parameterDigest: '33df8d17'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -712,7 +730,8 @@ test('模块源目录中的 controlRef 补全、示例和代码片段全部保�
   // 2026-10-01 写回 67→68：新增二维码模块 qrcodeModules.ts（全量字面量扫描 0 违规）。
   // 2026-10-06 写回 68→69：新增 proAccessStateFile.ts（Pro 会员授权状态落盘，无 controlRef 字面量；全量字面量扫描 0 违规）。
   // 2026-10-17 写回 69→70：新增消息推送模块 notifyModule.ts（全部文本/数值/布尔参数，无 controlRef 字面量；全量字面量扫描 0 违规）。
-  assert.equal(sourceFiles.length, 70, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
+  // 2026-10-20 写回 70→71：新增微信OCR识别模块 ocrModules.ts（18 命令全部为文本/数值/布尔/句柄参数，无 controlRef 字面量；全量字面量扫描 0 违规）。
+  assert.equal(sourceFiles.length, 71, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
   assert.deepEqual(violations, []);
 
   const unsafe = 'const command = { insertText: \'控件_设置文本("操作结果", "$2")\' };';
@@ -1091,12 +1110,27 @@ test('工作区已安装模块全部通过 controlRef 清单和示例门禁', as
       // 基线 2026-10-18 再写回（HTTP 接口文档批次）：内置 +5 命令 +23 参数
       //（lingbuilder.http.server 2.3.0 接口文档命令族，见上一用例）；本机磁盘仍为 11 份清单，
       // 磁盘侧 0 漂移（实算摘要 968d2ab8/b6bc2822）。
-      modules: 114,
-      commands: 8245,
-      parameters: 19610,
-      controlReferences: 5156,
-      commandDigest: '968d2ab8',
-      parameterDigest: 'b6bc2822'
+      // 基线 2026-10-19 再写回（Win32 程序化滚动批次）：内置 +4 命令 +7 参数 +4 controlRef
+      //（列表框_滚动到项/编辑框_滚动/编辑框_滚动到底/表格_滚动到行，见上一用例）；
+      // 本机磁盘仍为 11 份清单，磁盘侧 0 漂移（实算摘要 f879d6cb/b0e436ef）。
+      // 基线 2026-10-20 再写回（微信OCR识别模块批次）：内置 +1 模块 +21 命令 +27 参数
+      //（lingbuilder.ocr 1.0.0 含 OCR_识别字节集，无新增 controlRef，见上一用例）；基础识图
+      // 字节集入口 +2 命令 +6 参数；磁盘侧 +1 模块 +43 命令 +95 参数来自并行会话交付的
+      // lingbuilder.aoahid 1.1.0 能力补齐批次（24→43 命令）本机磁盘清单更新，
+      // 按本机实算写回（实算摘要 93747f05/a8ecd724）。
+      // 基线 2026-10-21 再写回（Win32 通用鼠标事件批次）：内置事件面 +120 命令 +180 参数
+      //（MouseMove/MouseUp，见内置夹具注释）同步进全量审计，磁盘侧无独立变化
+      //（实算摘要 1572b865/c595914e）。
+      // 基线 2026-10-22 再写回（图色自动化批次）：内置 +13 命令 +79 参数（识图 1.1.0
+      // 多处匹配/等待族/区域参数 +9、截图 1.1.0 字节集出口 +3、opencv 1.1.0
+      // 加载图像字节集 +1，见内置夹具注释）；磁盘侧无独立变化
+      //（实算摘要 2f3f468d/c2dde7b8）。
+      modules: 116,
+      commands: 8448,
+      parameters: 20002,
+      controlReferences: 5280,
+      commandDigest: '2f3f468d',
+      parameterDigest: 'c2dde7b8'
   }, '内置、官方和当前工作区第三方模块的每个方法与参数都必须进入全量审计');
   // OpenCV 以内置清单为准：本机未装 SDK 时磁盘上的同名清单是只有骨架的占位包（0 命令、无 targets）。
   const manifest = BUILTIN_MODULES.find(module => module.id === OPENCV_MODULE_ID) || auditedManifests.get('lingbuilder.opencv.sdk');
@@ -1383,7 +1417,7 @@ test('数组操作模块对元素类型透明地提供成员数、增删改查�
 test('JSON 数据模块 2.0 提供受管 DOM、Pointer、Patch、Schema 与可导出的确定性运行时', async () => {
   const manifest = STANDARD_LIBRARY_MODULES.find(module => module.id === 'lingbuilder.data.json')!;
   const commandNames = new Set(manifest.contributes?.commands?.map(command => command.name));
-  assert.equal(manifest.version, '2.0.0');
+  assert.equal(manifest.version, '2.1.0');
   assert.deepEqual(manifest.contributes?.types, [{
     name: 'JSON值',
     kind: 'opaque',
@@ -1707,7 +1741,7 @@ test('键盘输入模块分类公开全局、前台与 HWND 后台能力', () =>
 
 test('鼠标输入模块按前台、窗口消息和 UI Automation 三类公开完整能力', () => {
   const manifest = SYSTEM_LIBRARY_MODULES.find(module => module.id === 'lingbuilder.input.mouse')!;
-  assert.equal(manifest.version, '2.0.0');
+  assert.equal(manifest.version, '2.1.0');
   assert.deepEqual(validateModuleManifest(manifest).diagnostics, []);
   assert.deepEqual(manifest.contributes?.commands?.map(command => command.name), MOUSE_COMMAND_NAMES);
   assert.deepEqual(manifest.bindings?.commands?.map(binding => binding.command), MOUSE_COMMAND_NAMES);
@@ -1970,6 +2004,89 @@ test('数据、数据库、加密、图像和媒体模块提供可生成实现',
   assert.match(mainCpp, /int 图标_取数量/u);
   assert.match(mainCpp, /bool 识图_模板匹配/u);
   assert.match(mainCpp, /bool 音频_播放WAV/u);
+});
+
+test('识图 1.1.0 图色自动化：区域限定、多处匹配、等待族与读回族进入清单、绑定与生成 C++', () => {
+  const manifest = BUILTIN_MODULES.find(module => module.id === 'lingbuilder.image.recognition');
+  assert.ok(manifest);
+  assert.equal(manifest.version, '1.1.0');
+  assert.deepEqual(validateModuleManifest(manifest).diagnostics, [], '识图 1.1.0 清单必须通过门禁');
+  const commandNames = manifest.contributes?.commands?.map(command => command.name) || [];
+  for (const name of [
+    '识图_模板匹配全部', '识图_模板匹配全部字节集',
+    '识图_等待出现', '识图_等待出现字节集', '识图_等待消失', '识图_等待消失字节集',
+    '识图_取匹配数量', '识图_取第N横坐标', '识图_取第N纵坐标'
+  ]) {
+    assert.ok(commandNames.includes(name), `识图 1.1.0 缺少 ${name}`);
+    assert.ok(manifest.bindings?.commands?.some(binding => binding.command === name), `识图 binding 缺少 ${name}`);
+  }
+  // 旧 4 条查找命令升级为可选区域尾参：3 参旧调用合法（编辑器对普通命令不做必选个数诊断，
+  // 缺必选参数由 C++ 编译期兜底），可选参数必须正确进入 binding。
+  const regionCommand = manifest.bindings?.commands?.find(binding => binding.command === '识图_模板匹配字节集');
+  assert.ok(regionCommand);
+  assert.equal(regionCommand.parameters?.filter(parameter => !parameter.optional).length, 3, '识图_模板匹配字节集 必选参数保持 3 个');
+  assert.equal(regionCommand.parameters?.length, 7, '识图_模板匹配字节集 总参数 7 个（3 必选 + 4 可选区域）');
+  assert.ok(regionCommand.parameters?.slice(3).every(parameter => parameter.optional && parameter.defaultValue === 0), '区域尾参必须全部 optional 且默认 0');
+
+  const recognitionModule: InstalledModule = { manifest, installPath: `builtin://lingbuilder.image.recognition`, isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] };
+  const languageContext = { availableModules: [recognitionModule], enabledModules: [recognitionModule] };
+  const legacyCall = getLingCppSemanticDiagnostics('类 MainWindow\n    事件 _MainWindow_创建完毕()\n        识图_模板匹配字节集(帧数据, 模板数据, 30)\n    结束\n结束类', undefined, 'src/MainWindow.lcpp', languageContext);
+  assert.ok(!legacyCall.some(item => item.message.includes('参数')), '旧 3 参调用不得报参数数量错误');
+
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    lingCppSourceCode: ['类 MainWindow', '    事件 _MainWindow_创建完毕()', '        局部 整数型 数量 = 识图_模板匹配全部字节集(帧数据, 模板数据, 30, 0, 0, 100, 100, 0, 24)', '        如果真 (识图_等待出现("画面.png", "按钮.png", 30, 5000))', '            调试输出(识图_取第N横坐标(1))', '        结束', '    结束', '结束类'].join('\n'),
+    enabledModules: [recognitionModule]
+  });
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
+  for (const symbol of [
+    'static thread_local int t_lbRecognitionX',
+    'struct LB_RecHitPoint',
+    'static bool LB_RecLockPixels',
+    'PixelFormat32bppARGB',
+    '识图_模板匹配全部字节集(const std::vector<unsigned char>& 图片数据, const std::vector<unsigned char>& 模板数据, int tolerance, int regionX = 0',
+    '识图_等待出现(const wchar_t* imagePath, const wchar_t* templatePath, int tolerance, int timeoutMs, int intervalMs = 200',
+    'GetTickCount64',
+    '识图_取匹配数量()'
+  ]) {
+    assert.ok(cpp.includes(symbol), `识图运行时缺少 ${symbol}`);
+  }
+  // 旧实现逐像素 GetPixel 必须退场，匹配核心改为 LockBits 一次性锁出扫描线缓冲。
+  const recognitionBody = cpp.slice(cpp.indexOf('识图_取结果横坐标()'), cpp.indexOf('std::vector<unsigned char> 截图_主屏到字节集') > 0 ? cpp.indexOf('std::vector<unsigned char> 截图_主屏到字节集') : cpp.length);
+  assert.ok(!recognitionBody.includes('GetPixel'), '识图运行时不得再使用逐像素 GetPixel');
+});
+
+test('截图 1.1.0 与 opencv 1.1.0 字节集出口：免落盘直连识图/OpenCV', () => {
+  const captureManifest = BUILTIN_MODULES.find(module => module.id === 'lingbuilder.image.capture');
+  assert.ok(captureManifest);
+  assert.equal(captureManifest.version, '1.1.0');
+  const captureNames = captureManifest.contributes?.commands?.map(command => command.name) || [];
+  for (const name of ['截图_主屏到字节集', '截图_区域到字节集', '截图_窗口到字节集']) {
+    assert.ok(captureNames.includes(name), `截图 1.1.0 缺少 ${name}`);
+  }
+  const opencvManifest = BUILTIN_MODULES.find(module => module.id === OPENCV_MODULE_ID);
+  assert.ok(opencvManifest);
+  assert.equal(opencvManifest.version, '1.1.0');
+  assert.ok((opencvManifest.contributes?.commands || []).some(command => command.name === 'OpenCV_加载图像字节集'));
+  assert.ok(OPENCV_COMMAND_NAMES.includes('OpenCV_加载图像字节集'));
+
+  const enabledModules: InstalledModule[] = ['lingbuilder.image.capture', OPENCV_MODULE_ID].map(moduleId => {
+    const manifest = BUILTIN_MODULES.find(item => item.id === moduleId)!;
+    return { manifest, installPath: `builtin://${moduleId}`, isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] };
+  });
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    lingCppSourceCode: ['类 MainWindow', '    事件 _MainWindow_创建完毕()', '        局部 字节集 画面 = 截图_窗口到字节集(0)', '        局部 OpenCV图像句柄 帧图 = OpenCV_加载图像字节集(画面, "彩色")', '        调试输出(OpenCV_取宽度(帧图))', '    结束', '结束类'].join('\n'),
+    enabledModules
+  });
+  const cpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
+  for (const symbol of [
+    'std::vector<unsigned char> 截图_窗口到字节集(long long handle)',
+    'static std::vector<unsigned char> LB_EncodeImageBytes',
+    'STATFLAG_NONAME',
+    'long long OpenCV_加载图像字节集(const std::vector<unsigned char>& data, const wchar_t* mode)',
+    'LB_OCV_LoadImageBytes(data.data(), static_cast<int>(data.size()), mode)'
+  ]) {
+    assert.ok(cpp.includes(symbol), `字节集出口运行时缺少 ${symbol}`);
+  }
 });
 
 test('CSV 1.1 记录级解析与按编码读取：跨行引号字段、GBK 自动识别与表格快照句柄', () => {
@@ -2470,7 +2587,7 @@ test('requireAdministrator 通过导出工程 UAC 节与直编链接参数生效
 test('COM 自动化模块 2.0 提供句柄制创建、免注册、OCX 宿主、事件挂接与接口信息', () => {
   const manifest = PLATFORM_ADVANCED_MODULES.find(item => item.id === 'lingbuilder.advanced.com');
   assert.ok(manifest);
-  assert.equal(manifest.version, '2.0.0');
+  assert.equal(manifest.version, '2.1.0');
   assert.equal(validateModuleManifest(manifest).diagnostics.length, 0, 'COM manifest 应通过校验');
   const commandNames = new Set(manifest.contributes?.commands?.map(command => command.name));
   ['COM_创建对象', 'COM_创建对象免注册', 'COM_创建OCX组件', 'COM_取OCX对象', 'COM_取文本属性', 'COM_取数值属性', 'COM_取逻辑属性', 'COM_取对象属性', 'COM_置文本属性', 'COM_调用方法', 'COM_调用文本方法', 'COM_调用数值方法', 'COM_调用逻辑方法', 'COM_调用对象方法', 'COM_挂接事件', 'COM_映射事件', 'COM_取消挂接事件', 'COM_取事件对象参数', 'COM_启用OCX消息转发', 'COM_移除OCX消息转发', 'COM_取接口信息', 'COM_关闭', 'COM_关闭全部', 'COM_取错误'].forEach(name => {
@@ -2526,8 +2643,8 @@ test('模块封装清单覆盖实际内置模块注册表', async () => {
   assert.ok(checklist.includes(`${BUILTIN_MODULES.length} 个内置模块、${commandCount} 条中文命令`));
   assert.match(checklist, /51 个模块、336 条命令/u);
   assert.match(checklist, /`lingbuilder\.std\.encoding` \| 编码转换模块 \| 32/u);
-  assert.match(checklist, /`lingbuilder\.win32\.basic` \| Win32 窗口基础模块 \| 241/u);
-  assert.match(checklist, /`lingbuilder\.win32\.common-controls` \| Win32 高级控件模块 \| 560/u);
+  assert.match(checklist, /`lingbuilder\.win32\.basic` \| Win32 窗口基础模块 \| 244/u);
+  assert.match(checklist, /`lingbuilder\.win32\.common-controls` \| Win32 高级控件模块 \| 561/u);
   for (const manifest of BUILTIN_MODULES) {
     assert.ok(checklist.includes(`\`${manifest.id}\``), `封装清单缺少 ${manifest.id}`);
   }
@@ -4003,6 +4120,110 @@ test('generateLingCppNativeWin32Project emits module dependency report', () => {
   assert.ok(moduleReport.includes('include/native_bridge.h'));
 });
 
+test('generateLingCppNativeWin32Project includes x64-only third-party module headers', () => {
+  // 回归：清单只提供 windows-msvc-x64 的第三方模块（如借用 64 位组件的微信OCR），
+  // 前导区不能因默认 Win32 target 解析为空而丢失 #include——否则该模块全部命令
+  // 在生成 C++ 里都是未声明标识符（C3861），且构建期无任何中文诊断。
+  const base = createTestModule();
+  const module: InstalledModule = {
+    ...base,
+    manifest: {
+      ...base.manifest,
+      id: 'com.example.x64only',
+      name: 'x64 专用模块',
+      category: '系统',
+      contributes: {
+        commands: [{ name: '原生命令', signature: '原生命令()', description: '测试命令。' }]
+      },
+      targets: [
+        {
+          id: 'windows-msvc-x64',
+          platform: 'windows',
+          arch: 'x64',
+          toolchain: 'msvc',
+          headers: ['include/x64_bridge.h'],
+          sources: ['src/x64_bridge.cpp'],
+          libs: ['x64/x64_bridge.lib'],
+          runtimeFiles: ['bin/x64/x64_bridge.dll'],
+          defines: ['LINGBUILDER_X64_BRIDGE']
+        }
+      ],
+      bindings: { commands: [{ command: '原生命令', runtimeName: 'NativeCommand', returnType: 'void' }] }
+    }
+  };
+  const dualModule: InstalledModule = {
+    ...base,
+    manifest: {
+      ...base.manifest,
+      id: 'com.example.dual',
+      name: '双架构模块',
+      category: '系统',
+      contributes: {
+        commands: [{ name: '双架构命令', signature: '双架构命令()', description: '测试命令。' }]
+      },
+      targets: [
+        { id: 'windows-msvc-win32', platform: 'windows', arch: 'win32', toolchain: 'msvc', headers: ['include/dual_bridge.h'] },
+        { id: 'windows-msvc-x64', platform: 'windows', arch: 'x64', toolchain: 'msvc', headers: ['include/dual_bridge.h'] }
+      ],
+      bindings: { commands: [{ command: '双架构命令', runtimeName: 'DualCommand', returnType: 'void' }] }
+    }
+  };
+
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    activeWindowId: 'main-window',
+    lingCppSourceCode: '',
+    enabledModules: [module, dualModule]
+  });
+
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
+  assert.ok(mainCpp.includes('LingBuilder 模块: x64 专用模块'));
+  assert.ok(mainCpp.includes('// 模块目标: windows-msvc-x64 / windows-msvc-x64（仅提供该架构）'));
+  assert.ok(mainCpp.includes('#include "modules/com.example.x64only/include/x64_bridge.h"'));
+  assert.ok(mainCpp.includes('#pragma comment(lib, "modules/com.example.x64only/x64/x64_bridge.lib")'));
+  assert.ok(!generated.diagnostics.some(message => message.includes('未提供兼容目标')));
+  // 双架构 target 的同名头文件只允许生成一份 #include（并集去重）。
+  assert.equal((mainCpp.match(/#include "modules\/com\.example\.dual\/include\/dual_bridge\.h"/g) || []).length, 1);
+  assert.ok(mainCpp.includes('// 模块目标: windows-msvc-win32 / windows-msvc-x64（按构建架构选择）'));
+  const moduleReport = generated.files.find(file => file.relativePath === 'module-dependencies.txt')?.content || '';
+  assert.ok(moduleReport.includes('windows-msvc-x64 (windows/msvc/x64)'));
+  assert.ok(moduleReport.includes('include/x64_bridge.h'));
+});
+
+test('manifest injectHeaders:false keeps third-party headers out of the generated main.cpp', () => {
+  // 2026-10-21 外部用户反馈：第三方头文件树（缺基础库、需特殊宏、带冲突定义）被强制注入
+  // main.cpp 会污染宿主编译单元；injectHeaders:false 让头文件只随模块复制，主程序包含
+  // 走 includeDirs，不再生成 #include "modules/<id>/<头>"。
+  const base = createTestModule();
+  const module: InstalledModule = {
+    ...base,
+    manifest: {
+      ...base.manifest,
+      id: 'com.example.noinject',
+      name: '不注入模块',
+      category: '系统',
+      injectHeaders: false,
+      contributes: {
+        commands: [{ name: '原生命令', signature: '原生命令()', description: '测试命令。' }]
+      },
+      targets: [
+        { id: 'windows-msvc-win32', platform: 'windows', arch: 'win32', toolchain: 'msvc', headers: ['include/win_bridge.h'], headerDirs: ['include/google'] },
+        { id: 'windows-msvc-x64', platform: 'windows', arch: 'x64', toolchain: 'msvc', headers: ['include/win_bridge.h'], headerDirs: ['include/google'] }
+      ],
+      bindings: { commands: [{ command: '原生命令', runtimeName: 'NativeCommand', returnType: 'void' }] }
+    }
+  };
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    activeWindowId: 'main-window',
+    lingCppSourceCode: '',
+    enabledModules: [module]
+  });
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
+  assert.ok(!mainCpp.includes('#include "modules/com.example.noinject/'));
+  assert.ok(mainCpp.includes('LingBuilder 模块: 不注入模块'));
+  assert.ok(mainCpp.includes('// 模块头文件目录（不注入主程序）: include/google'));
+  assert.ok(mainCpp.includes('// 模块头文件未注入主程序（清单 injectHeaders: false）'));
+});
+
 test('new_emoji style module manifest supports full command and runtime contributions', () => {
   const validation = validateModuleManifest({
     schemaVersion: 2,
@@ -4065,7 +4286,7 @@ test('new_emoji module commands feed completion and disabled-module diagnostics'
   assert.ok(diagnostics.some(item => item.id.includes('lingcpp-module-disabled-lingbuilder.new_emoji.ui')));
 });
 
-test('built-in WebSocket client 2.0 contributes managed commands and deterministic dual-backend C++ bindings', () => {
+test('built-in WebSocket client 2.1 contributes managed commands and deterministic dual-backend C++ bindings', () => {
   const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.websocket.client');
   assert.ok(manifest);
   assert.equal(validateModuleManifest(manifest).diagnostics.length, 0);
@@ -4090,16 +4311,16 @@ test('built-in WebSocket client 2.0 contributes managed commands and determinist
 
   const commands = manifest.contributes?.commands || [];
   const bindings = manifest.bindings?.commands || [];
-  assert.equal(manifest.version, '2.0.0');
+  assert.equal(manifest.version, '2.1.0');
   assert.equal(manifest.minLingBuilderVersion, '0.2.8');
-  assert.equal(WEBSOCKET_CLIENT_COMMAND_SPECS.length, 51);
-  assert.equal(commands.length, 51);
-  assert.equal(bindings.length, 51);
+  assert.equal(WEBSOCKET_CLIENT_COMMAND_SPECS.length, 53);
+  assert.equal(commands.length, 53);
+  assert.equal(bindings.length, 53);
   assert.deepEqual(new Set(commands.map(item => item.name)), new Set(bindings.map(item => item.command)));
   assert.deepEqual(manifest.contributes?.types?.map(item => item.name), ['WebSocket连接']);
   assert.equal(manifest.contributes?.types?.[0]?.cppType, 'long long');
   assert.deepEqual(manifest.targets?.map(item => item.id), ['windows-msvc-win32', 'windows-msvc-x64']);
-  assert.deepEqual(manifest.contributes?.docs, [{ title: 'WebSocket 客户端模块 2.0 使用说明', path: 'docs/modules/websocket-client/README.md' }]);
+  assert.deepEqual(manifest.contributes?.docs, [{ title: 'WebSocket 客户端模块 2.1 使用说明', path: 'docs/modules/websocket-client/README.md' }]);
   ['WS_绑定已连接处理器', 'WS_绑定消息处理器', 'WS_绑定已断开处理器', 'WS_绑定错误处理器', 'WS_绑定重连处理器']
     .forEach(command => {
       const handler = bindings.find(item => item.command === command)?.parameters?.[1];
@@ -5515,6 +5736,174 @@ test('Win32 native builds never fall back to an incompatible module target', asy
   const generated = generateLingCppNativeWin32Project(sampleProject, { enabledModules: [module] });
   assert.ok(generated.diagnostics.some(message => message.includes('未提供兼容目标 windows-msvc-win32')));
   assert.doesNotMatch(generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, ''), /liblinux\.a/);
+});
+
+test('module native dependencies fall back to the sibling MSVC arch for declarations only', async () => {
+  // 回归：win32-only 模块（封装脚手架默认形态）在 x64 构建下，头文件/源码必须按
+  // 另一架构复制，否则生成源码里的 #include 悬空（C1083）；库与运行时文件是真实
+  // 架构产物，不得跨架构复制或链接。
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-sibling-arch-declaration-'));
+  const module: InstalledModule = {
+    isInstalled: true,
+    installPath: path.join(root, 'installed'),
+    diagnostics: [],
+    manifest: {
+      schemaVersion: 2,
+      id: 'com.example.win32only',
+      name: 'Win32 专用模块',
+      version: '1.0.0',
+      category: '系统',
+      description: '只提供 Win32 target 的测试模块。',
+      contributes: { commands: [{ name: '原生命令', signature: '原生命令()', description: '测试命令。' }] },
+      targets: [{
+        id: 'windows-msvc-win32',
+        platform: 'windows',
+        arch: 'win32',
+        toolchain: 'msvc',
+        includeDirs: ['include'],
+        headers: ['include/win32_bridge.h'],
+        sources: ['src/win32_bridge.cpp'],
+        libs: ['lib/Win32/win32_bridge.lib'],
+        runtimeFiles: ['bin/Win32/win32_bridge.dll']
+      }],
+      bindings: { commands: [{ command: '原生命令', runtimeName: 'NativeCommand', returnType: 'void' }] }
+    }
+  };
+  await fs.mkdir(path.join(module.installPath, 'include'), { recursive: true });
+  await fs.mkdir(path.join(module.installPath, 'src'), { recursive: true });
+  await fs.mkdir(path.join(module.installPath, 'lib', 'Win32'), { recursive: true });
+  await fs.mkdir(path.join(module.installPath, 'bin', 'Win32'), { recursive: true });
+  await fs.writeFile(path.join(module.installPath, 'include', 'win32_bridge.h'), '#pragma once\n', 'utf8');
+  await fs.writeFile(path.join(module.installPath, 'src', 'win32_bridge.cpp'), 'int NativeCommand() { return 1; }\n', 'utf8');
+  await fs.writeFile(path.join(module.installPath, 'lib', 'Win32', 'win32_bridge.lib'), 'stub', 'utf8');
+  await fs.writeFile(path.join(module.installPath, 'bin', 'Win32', 'win32_bridge.dll'), 'stub', 'utf8');
+
+  try {
+    const plan = await materializeModuleNativeDependencies([module], {
+      buildDir: path.join(root, 'build'),
+      sourceDir: path.join(root, 'source'),
+      binDir: path.join(root, 'bin'),
+      exportDir: path.join(root, 'export'),
+      preferredTargetId: 'windows-msvc-x64'
+    });
+    assert.ok(await exists(path.join(root, 'build', 'modules', 'com.example.win32only', 'include', 'win32_bridge.h')));
+    assert.ok(await exists(path.join(root, 'source', 'modules', 'com.example.win32only', 'src', 'win32_bridge.cpp')));
+    assert.ok(plan.includeDirs.some(item => item.endsWith(path.join('modules', 'com.example.win32only', 'include'))));
+    assert.ok(plan.sourceFiles.some(item => item.endsWith(path.join('win32_bridge.cpp'))));
+    assert.equal(plan.libFiles.length, 0);
+    assert.equal(plan.runtimeFiles.length, 0);
+    assert.ok(plan.diagnostics.some(message => message.includes('未提供兼容目标 windows-msvc-x64') && message.includes('链接期报错')));
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('module manifest rejects near-miss target field names like includes', () => {
+  // 回归：外部 AI 封装模块把包含目录写成 targets[].includes（正确字段是 includeDirs），
+  // 旧校验静默忽略——头文件复制成功但 -I 不生效，编译报 C1083 找不到头文件。
+  const validation = validateModuleManifest({
+    schemaVersion: 2,
+    id: 'com.example.includes-typo',
+    name: '字段名拼写测试模块',
+    version: '1.0.0',
+    category: '系统',
+    description: 'targets 字段名近形校验。',
+    contributes: { commands: [{ name: '原生命令', signature: '原生命令()', description: '测试命令。' }] },
+    targets: [{
+      id: 'windows-msvc-x64',
+      platform: 'windows',
+      arch: 'x64',
+      toolchain: 'msvc',
+      includes: ['include'],
+      headers: ['include/bridge.h']
+    }],
+    bindings: { commands: [{ command: '原生命令', runtimeName: 'NativeCommand', returnType: 'void' }] }
+  });
+  assert.ok(validation.diagnostics.some(message => message.includes('targets[0].includes 不是有效字段：应为 includeDirs')));
+  assert.ok(validation.diagnostics.some(message => message.includes('C1083')));
+});
+
+test('manifest validation accepts headerDirs/injectHeaders and flags wrong shapes', () => {
+  const valid = validateModuleManifest({
+    schemaVersion: 2,
+    id: 'com.example.headerdirs',
+    name: '头文件目录模块',
+    version: '1.0.0',
+    category: '系统',
+    description: 'headerDirs/injectHeaders 校验。',
+    injectHeaders: false,
+    contributes: { commands: [{ name: '原生命令', signature: '原生命令()', description: '测试命令。' }] },
+    targets: [{
+      id: 'windows-msvc-x64',
+      platform: 'windows',
+      arch: 'x64',
+      toolchain: 'msvc',
+      headerDirs: ['include/google'],
+      headers: ['include/bridge.h']
+    }],
+    bindings: { commands: [{ command: '原生命令', runtimeName: 'NativeCommand', returnType: 'void' }] }
+  });
+  assert.ok(valid.manifest);
+  assert.ok(!valid.diagnostics.some(message => message.includes('headerDirs') || message.includes('injectHeaders')));
+
+  const invalid = validateModuleManifest({
+    schemaVersion: 2,
+    id: 'com.example.headerdirs',
+    name: '头文件目录模块',
+    version: '1.0.0',
+    category: '系统',
+    description: 'headerDirs/injectHeaders 校验。',
+    injectHeaders: 'false',
+    contributes: { commands: [{ name: '原生命令', signature: '原生命令()', description: '测试命令。' }] },
+    targets: [{
+      id: 'windows-msvc-x64',
+      platform: 'windows',
+      arch: 'x64',
+      toolchain: 'msvc',
+      headerDir: ['include']
+    }],
+    bindings: { commands: [{ command: '原生命令', runtimeName: 'NativeCommand', returnType: 'void' }] }
+  });
+  assert.ok(invalid.diagnostics.some(message => message.includes('injectHeaders 必须是逻辑值')));
+  assert.ok(invalid.diagnostics.some(message => message.includes('targets[0].headerDir 不是有效字段：应为 headerDirs')));
+});
+
+test('exportVisualStudioProject keeps module include dirs in both configs for single-arch modules', async () => {
+  // 回归：win32-only 模块在可复制工程的 x64 配置下也要能解析模块 #include；
+  // 声明目录按另一 MSVC 架构回退，库与运行时文件仍严格按架构。
+  const base = createTestModule();
+  const module: InstalledModule = {
+    ...base,
+    manifest: {
+      ...base.manifest,
+      id: 'com.example.win32only',
+      name: 'Win32 专用模块',
+      category: '系统',
+      targets: [{
+        id: 'windows-msvc-win32',
+        platform: 'windows',
+        arch: 'win32',
+        toolchain: 'msvc',
+        includeDirs: ['include'],
+        headers: ['include/win32_bridge.h'],
+        libs: ['lib/Win32/win32_bridge.lib']
+      }]
+    }
+  };
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-vs-single-arch-'));
+  const result = await exportVisualStudioProject({
+    projectDir: root,
+    projectId: 'single-arch-demo',
+    generatedFiles: [{ relativePath: 'main.cpp', content: '' }],
+    enabledModules: [module]
+  });
+  const project = await fs.readFile(result.projectPath, 'utf8');
+  const includeElements = project.match(/<AdditionalIncludeDirectories>[^<]*<\/AdditionalIncludeDirectories>/g) || [];
+  assert.ok(includeElements.length >= 2);
+  for (const element of includeElements) {
+    assert.ok(element.includes('modules\\com.example.win32only\\include'), element);
+  }
+  assert.equal((project.match(/win32_bridge\.lib/g) || []).length, 2);
 });
 
 test('web HTTP async command translates handler references and emits a UI-thread completion bridge', () => {
@@ -7487,7 +7876,7 @@ test('OpenCV SDK materializer validates hashes and materializes x64 Bridge asset
   await fs.writeFile(path.join(sdk, 'runtime-manifest.json'), JSON.stringify({
     schemaVersion: 1,
     opencvVersion: '4.14.0',
-    bridgeVersion: '1.0.0',
+    bridgeVersion: '1.1.0',
     bridgeAbiVersion: 1,
     architecture: 'x64',
     toolset: 'msvc-v143',

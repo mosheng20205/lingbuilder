@@ -300,7 +300,40 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.match(String(client.getInstructions() || ''), /推送_发JSON/u, 'instructions 必须给出万能兜底 推送_发JSON');
     assert.match(String(client.getInstructions() || ''), /推送_取错误/u, 'instructions 必须钉住推送失败读 推送_取错误 的统一口径');
     assert.match(String(client.getInstructions() || ''), /推送_取响应文本/u, 'instructions 必须给出平台响应原文读取命令');
+    assert.match(String(client.getInstructions() || ''), /列表框_滚动到项/u, 'instructions 必须给出列表框滚动到项命令（LB_SETTOPINDEX）');
+    assert.match(String(client.getInstructions() || ''), /编辑框_滚动/u, 'instructions 必须给出多行编辑框按行滚动命令');
+    assert.match(String(client.getInstructions() || ''), /编辑框_滚动到底/u, 'instructions 必须给出多行编辑框滚动到底命令');
+    assert.match(String(client.getInstructions() || ''), /无需控件获得焦点/u, 'instructions 必须写明滚动到底无需焦点（EM_SCROLLCARET 无焦点失效）');
+    assert.match(String(client.getInstructions() || ''), /表格_滚动到行/u, 'instructions 必须给出数据表格滚动到行命令');
+    assert.match(String(client.getInstructions() || ''), /列表视图_取每页行数/u, 'instructions 必须点名列表视图既有滚动能力族');
+    assert.match(String(client.getInstructions() || ''), /组合框\/单行编辑框\/分组框等其余控件没有滚动命令/u, 'instructions 必须钉住滚动命令的适用控件边界');
     assert.match(String(client.getInstructions() || ''), /20 条\/分钟限流/u, 'instructions 必须写明三平台限流口径');
+    assert.match(String(client.getInstructions() || ''), /OCR_识别字节集/u, 'instructions 必须给出微信OCR字节集内存入口');
+    assert.match(String(client.getInstructions() || ''), /OCR_取微信状态/u, 'instructions 必须给出微信就绪探测命令');
+    assert.match(String(client.getInstructions() || ''), /OCR结果_释放/u, 'instructions 必须钉住识别结果句柄释放口径');
+    assert.match(String(client.getInstructions() || ''), /仅 x64/u, 'instructions 必须写明微信OCR仅 x64 的平台红线');
+    // 2026-10-22：三个真实工程（src/ocr、src/ocr-tool、src/app-app）复踩的 OCR 用法红线必须进外部 AI 消费层，
+    // 否则外部 AI 生成的 OCR 代码会静默漏掉第一条识别结果、跨行语句整块丢失、并在界面线程卡满 120 秒。
+    assert.match(String(client.getInstructions() || ''), /计次循环首 的计次变量从 1 起/u, 'instructions 必须点名 计次循环首 1 起 与 OCR 行索引 0 起 的基数差');
+    assert.match(String(client.getInstructions() || ''), /索引 = 行 - 1/u, 'instructions 必须给出遍历识别行的折算写法');
+    assert.match(String(client.getInstructions() || ''), /\/\/ 暂不支持的中文 C\+\+ 语句/u, 'instructions 必须写明跨行语句会被降级成注释且构建仍报成功');
+    assert.match(String(client.getInstructions() || ''), /禁止在窗口事件里同步调用识别/u, 'instructions 必须禁止在界面线程同步跑 15\/120 秒的识别');
+    assert.match(String(client.getInstructions() || ''), /OCR_取错误\(\) 是线程本地错误/u, 'instructions 必须写明 OCR_取错误 线程本地、须在工作线程内就地读取');
+    assert.match(String(client.getInstructions() || ''), /识图_模板匹配字节集/u, 'instructions 必须给出基础识图字节集入口');
+    // 2026-10-22：识图 1.1.0 图色自动化批次——区域限定/多处匹配/等待族/截图与 OpenCV 字节集出口必须进外部 AI 消费层，
+    // 否则外部 AI 会为找图找色写 @ 内联逐像素扫描，或忽略投屏帧坐标与目标分辨率的缩放换算。
+    assert.match(String(client.getInstructions() || ''), /识图_模板匹配全部/u, 'instructions 必须给出多处匹配命令');
+    assert.match(String(client.getInstructions() || ''), /识图_取第N横坐标\/纵坐标（序号从 1 起/u, 'instructions 必须写明多处匹配读回序号从 1 起');
+    assert.match(String(client.getInstructions() || ''), /识图_等待出现\/识图_等待消失/u, 'instructions 必须给出等待族命令');
+    assert.match(String(client.getInstructions() || ''), /阻塞当前线程，窗口程序必须放 线程_提交 家族的工作线程里跑/u, 'instructions 必须钉住等待族阻塞红线与非阻塞替代');
+    assert.match(String(client.getInstructions() || ''), /截图_窗口到字节集/u, 'instructions 必须给出窗口截图字节集命令');
+    assert.match(String(client.getInstructions() || ''), /截图_区域到字节集/u, 'instructions 必须给出区域截图字节集命令');
+    assert.match(String(client.getInstructions() || ''), /截图_主屏到字节集/u, 'instructions 必须给出主屏截图字节集命令');
+    assert.match(String(client.getInstructions() || ''), /OpenCV_加载图像字节集/u, 'instructions 必须给出 OpenCV 内存字节集入口');
+    assert.match(String(client.getInstructions() || ''), /坐标 \+ 模板宽高÷2/u, 'instructions 必须写明命中坐标是左上角、点击中心自算');
+    assert.match(String(client.getInstructions() || ''), /投屏帧坐标≠手机\/屏幕坐标/u, 'instructions 必须钉住投屏坐标缩放换算红线');
+    assert.match(String(client.getInstructions() || ''), /识图状态（取结果\/取第N）是线程本地存储/u, 'instructions 必须写明识图结果线程本地语义');
+    assert.match(String(client.getInstructions() || ''), /模板不得超过 512×512 像素/u, 'instructions 必须钉住模板尺寸上限');
     assert.match(String(client.getInstructions() || ''), /关键词与加签可叠加/u, 'instructions 必须写明钉钉关键词+加签叠加校验');
     assert.match(String(client.getInstructions() || ''), /没有 4KB 上限/u, 'instructions 必须写明超长列分段读取无截断上限');
     assert.match(String(client.getInstructions() || ''), /调试输出\(值1, 值2, \.\.\.\)/u, 'instructions 必须给出调试输出命令替代 std::cout 的口径');

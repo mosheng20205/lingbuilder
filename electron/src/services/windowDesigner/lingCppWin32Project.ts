@@ -60,6 +60,7 @@ import { generateSystemLibraryRuntime } from './systemLibraryRuntime';
 import { generateNetworkLibraryRuntime } from './networkLibraryRuntime';
 import { generateDataMediaRuntime } from './dataMediaRuntime';
 import { generateQrCodeRuntime } from './qrCodeRuntime';
+import { generateWxOcrRuntime } from './wxOcrRuntime';
 import { generateSharedTableRuntime } from './tabularSourceRuntime';
 import { generateComWindowMethods, generateComWndProcCase, generatePlatformAdvancedRuntime } from './platformAdvancedRuntime';
 import { MEMORY_DLL_MODULE_ID, MEMORY_DLL_REQUIRED_MODULE_HINT } from './memoryDllRuntime';
@@ -2589,6 +2590,7 @@ function generateNewEmojiMainCpp(
     generateNetworkLibraryRuntime(enabledModules),
     generateDataMediaRuntime(enabledModules),
     generateQrCodeRuntime(enabledModules),
+    generateWxOcrRuntime(enabledModules),
     generatePlatformAdvancedRuntime(enabledModules),
     generateEmbeddedResourceRuntime(enabledModules, getEmbeddedResourceSpecsOrEmpty(project), project.id),
     protobufRuntime,
@@ -2990,7 +2992,7 @@ function generateNewEmojiMainCpp(
   // 通用头文件名包含会让同一组无 include guard 的 ABI 类型出现两份路径。
   const newEmojiModuleProvidesHeaders = enabledModules.some(module => {
     if (module.manifest.id !== NEW_EMOJI_MODULE_ID) return false;
-    const targetHeaders = getPreferredModuleTarget(module)?.headers || [];
+    const targetHeaders = getModuleTargetFileUnion(module, 'headers');
     return targetHeaders.some(header => /(?:^|\/)new_emoji_bridge\.h$/iu.test(header) || /(?:^|\/)exports\.h$/iu.test(header));
   });
   const newEmojiHeaderIncludes = newEmojiModuleProvidesHeaders
@@ -11132,6 +11134,7 @@ function generateMainCpp(
     generateNetworkLibraryRuntime(enabledModules),
     generateDataMediaRuntime(enabledModules),
     generateQrCodeRuntime(enabledModules),
+    generateWxOcrRuntime(enabledModules),
     generatePlatformAdvancedRuntime(enabledModules),
     generateEmbeddedResourceRuntime(enabledModules, getEmbeddedResourceSpecsOrEmpty(project), project.id),
     protobufRuntime,
@@ -17971,7 +17974,13 @@ ${generateFbroVipIndividualRuntime(false)}
         if (instance->url.empty() && control.data && control.data[0]) instance->url = control.data;
         RECT bounds = {};
         GetClientRect(instance->host, &bounds);
-        CefRect cefBounds(bounds.left, bounds.top, bounds.right - bounds.left, bounds.bottom - bounds.top);
+        // CEF 150 的子窗口边界按 DIP 语义处理（内部按父窗口 DPI 乘回物理像素），
+        // 物理像素直接传入会在 >100% 显示缩放下双重放大页面并被窗口裁切。
+        const UINT hostDpi = GetDpiForWindow(instance->host);
+        const UINT dpiRef = hostDpi ? hostDpi : 96;
+        const int dipW = MulDiv(bounds.right - bounds.left, 96, static_cast<int>(dpiRef));
+        const int dipH = MulDiv(bounds.bottom - bounds.top, 96, static_cast<int>(dpiRef));
+        CefRect cefBounds(bounds.left, bounds.top, dipW > 0 ? dipW : 1, dipH > 0 ? dipH : 1);
         CefWindowInfo windowInfo = {};
         windowInfo.SetAsChild(instance->host, cefBounds);
         CefBrowserSettings browserSettings = {};
@@ -25334,6 +25343,18 @@ ${comWindowMethods}
     bool 控件_设置提示文字(const wchar_t* controlName, const std::wstring& placeholder) {
         return 控件_设置提示文字(controlName, placeholder.c_str());
     }
+    bool 编辑框_滚动(const wchar_t* controlName, int lines) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || lines == 0) return false;
+        if (!IsType(*control, L"TextBox") || !(control->flags & CF_MULTILINE)) return false;
+        return SendMessageW(runtime->hwnd, EM_LINESCROLL, 0, MAKELPARAM(0, lines)) != 0;
+    }
+    bool 编辑框_滚动到底(const wchar_t* controlName) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control) return false;
+        if (!IsType(*control, L"TextBox") || !(control->flags & CF_MULTILINE)) return false;
+        // 光标滚动消息在控件无焦点时不生效；EM_SCROLL SB_BOTTOM 无焦点也能滚到末尾（日志追加场景常无焦点）。
+        SendMessageW(runtime->hwnd, EM_SCROLL, SB_BOTTOM, 0);
+        return true;
+    }
     bool 控件_设置数值范围(const wchar_t* controlName, int minimum, int maximum) {
         RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control) return false;
         const bool supported = IsType(*control, L"ProgressBar") || IsType(*control, L"TrackBar")
@@ -25451,6 +25472,11 @@ ${comWindowMethods}
         if (IsType(*control, L"ListBox")) return static_cast<int>(SendMessageW(runtime->hwnd, LB_GETCOUNT, 0, 0));
         if (IsType(*control, L"ComboBox") || IsType(*control, L"ComboBoxEx")) return static_cast<int>(SendMessageW(runtime->hwnd, CB_GETCOUNT, 0, 0));
         return 0;
+    }
+    bool 列表框_滚动到项(const wchar_t* controlName, int index) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || index < 0) return false;
+        if (!IsType(*control, L"ListBox")) return false;
+        return SendMessageW(runtime->hwnd, LB_SETTOPINDEX, static_cast<WPARAM>(index), 0) != LB_ERR;
     }
     bool 控件_设置表项高度(const wchar_t* controlName, int itemHeight) {
         RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || itemHeight < 1) return false;
@@ -28828,6 +28854,7 @@ private:
                 || message == LB_SETSEL
             )) {
                 LRESULT result = DefSubclassProc(hwnd, message, wParam, lParam);
+                if (message == WM_LBUTTONUP) self->DispatchLingEvent(*control, L"MouseUp");
                 if (runtime->frameHwnd) {
                     if (message == LB_ADDSTRING || message == LB_INSERTSTRING || message == LB_DELETESTRING
                         || message == LB_RESETCONTENT || message == LB_SETITEMHEIGHT) {
@@ -28860,6 +28887,7 @@ private:
                     runtime->mouseInside = false;
                     InvalidateRect(hwnd, nullptr, FALSE);
                 }
+                if (message == WM_MOUSEMOVE) self->DispatchLingEvent(*control, L"MouseMove");
                 if (message == DTM_SETSYSTEMTIME || message == DTM_SETFORMATW
                     || message == WM_SETFONT || message == WM_ENABLE
                     || message == WM_SETFOCUS || message == WM_KILLFOCUS
@@ -28868,6 +28896,7 @@ private:
                     LRESULT result = DefSubclassProc(hwnd, message, wParam, lParam);
                     InvalidateRect(hwnd, nullptr, FALSE);
                     if (message == WM_LBUTTONDOWN) self->DispatchLingEvent(*control, L"MouseDown");
+                    else if (message == WM_LBUTTONUP) self->DispatchLingEvent(*control, L"MouseUp");
                     else if (message == WM_SETFOCUS) self->DispatchLingEvent(*control, L"GotFocus");
                     else if (message == WM_KILLFOCUS) self->DispatchLingEvent(*control, L"LostFocus");
                     return result;
@@ -29002,12 +29031,14 @@ private:
                     return 0;
                 }
                 if (message == WM_MOUSEMOVE || message == WM_MOUSELEAVE) InvalidateRect(hwnd, nullptr, FALSE);
+                if (message == WM_MOUSEMOVE) self->DispatchLingEvent(*control, L"MouseMove");
                 if (message == WM_LBUTTONDOWN || message == WM_LBUTTONUP
                     || message == WM_KEYDOWN || message == WM_KEYUP
                     || message == WM_SETFOCUS || message == WM_KILLFOCUS) {
                     LRESULT result = DefSubclassProc(hwnd, message, wParam, lParam);
                     InvalidateRect(hwnd, nullptr, FALSE);
                     if (message == WM_LBUTTONDOWN) self->DispatchLingEvent(*control, L"MouseDown");
+                    else if (message == WM_LBUTTONUP) self->DispatchLingEvent(*control, L"MouseUp");
                     else if (message == WM_SETFOCUS) self->DispatchLingEvent(*control, L"GotFocus");
                     else if (message == WM_KILLFOCUS) self->DispatchLingEvent(*control, L"LostFocus");
                     return result;
@@ -29028,12 +29059,15 @@ private:
                     return 0;
                 }
             }
-            if (message == WM_MOUSEMOVE && !runtime->mouseInside) {
-                runtime->mouseInside = true;
-                TRACKMOUSEEVENT tracking = { sizeof(TRACKMOUSEEVENT), TME_LEAVE, hwnd, 0 };
-                TrackMouseEvent(&tracking);
-                if (ownerDraw) InvalidateRect(hwnd, nullptr, FALSE);
-                self->DispatchLingEvent(*control, L"MouseEnter");
+            if (message == WM_MOUSEMOVE) {
+                if (!runtime->mouseInside) {
+                    runtime->mouseInside = true;
+                    TRACKMOUSEEVENT tracking = { sizeof(TRACKMOUSEEVENT), TME_LEAVE, hwnd, 0 };
+                    TrackMouseEvent(&tracking);
+                    if (ownerDraw) InvalidateRect(hwnd, nullptr, FALSE);
+                    self->DispatchLingEvent(*control, L"MouseEnter");
+                }
+                self->DispatchLingEvent(*control, L"MouseMove");
             } else if (message == WM_MOUSELEAVE) {
                 runtime->mouseInside = false;
                 if (ownerDraw) InvalidateRect(hwnd, nullptr, FALSE);
@@ -29051,6 +29085,14 @@ private:
                     if (!IsWindow(hwnd)) return result;
                     self->DispatchLingEvent(*control, L"MouseDown");
                     return result;
+                }
+                // 拖动手势（按下-移动-抬起）需要鼠标移出控件后仍持续收到消息：
+                // 仅对绑定了任一鼠标事件的非 BUTTON 控件设置捕获，避免改变未绑定控件的既有行为。
+                if (GetCapture() != hwnd && (
+                    !self->ResolveControlEventHandler(*control, L"MouseDown").empty()
+                    || !self->ResolveControlEventHandler(*control, L"MouseMove").empty()
+                    || !self->ResolveControlEventHandler(*control, L"MouseUp").empty())) {
+                    SetCapture(hwnd);
                 }
                 self->DispatchLingEvent(*control, L"MouseDown");
             } else if (message == WM_SETFOCUS) {
@@ -29074,7 +29116,15 @@ private:
                 || message == BM_SETCHECK
                 || ((message == WM_KEYDOWN || message == WM_KEYUP) && wParam == VK_SPACE)
             ) {
+                // BUTTON 的点击判定依赖自己的捕获状态机：转发 WM_LBUTTONUP 前抢先 ReleaseCapture
+                // 会同步产生 WM_CAPTURECHANGED，按钮过程把"捕获被抢"当成点击取消并清除按压状态，
+                // 之后转发的 WM_LBUTTONUP 不再产生 BN_CLICKED——按钮事件就永远不触发。
+                // 因此 BUTTON 先转发（由按钮过程发出 BN_CLICKED）再清理残余捕获；
+                // 非按钮控件的拖动手势仍保持"先释放再转发"的既有顺序。
+                if (message == WM_LBUTTONUP && !buttonControl && GetCapture() == hwnd) ReleaseCapture();
                 LRESULT result = DefSubclassProc(hwnd, message, wParam, lParam);
+                if (message == WM_LBUTTONUP && buttonControl && GetCapture() == hwnd) ReleaseCapture();
+                if (message == WM_LBUTTONUP) self->DispatchLingEvent(*control, L"MouseUp");
                 if (ownerDraw) InvalidateRect(hwnd, nullptr, FALSE);
                 return result;
             } else if (message == WM_NCDESTROY) {
@@ -31767,6 +31817,25 @@ function findGeneratedStatementLine(lines: string[], code: string, fromLine: num
   return -1;
 }
 
+// 模块目标解析不能只认默认 Win32 target：部分第三方模块（如借用 64 位组件的
+// 微信OCR）只提供 x64 target，而同一份 main.cpp 要同时服务 Win32 与 x64 两个构建
+// 配置。头文件/源码声明与架构无关，取两个 MSVC 架构 target 的并集；lib 已由
+// appendModuleLibraryPragmas 用 #if defined(_WIN64) 守卫。只认 Win32 会让
+// x64-only 模块丢失全部 #include，其命令在 C++ 里全部变成未声明标识符（C3861）。
+function getModuleTargetFileUnion(module: InstalledModule, key: 'headers' | 'headerDirs' | 'sources' | 'runtimeFiles'): string[] {
+  const seen = new Set<string>();
+  const values: string[] = [];
+  [getPreferredModuleTarget(module, 'windows-msvc-win32'), getPreferredModuleTarget(module, 'windows-msvc-x64')].forEach(target => {
+    ((target && target[key]) || []).forEach(value => {
+      if (!seen.has(value)) {
+        seen.add(value);
+        values.push(value);
+      }
+    });
+  });
+  return values;
+}
+
 function generateModuleCppPreamble(enabledModules: InstalledModule[]): string {
   const lines: string[] = [];
   enabledModules.forEach(module => {
@@ -31781,16 +31850,33 @@ function generateModuleCppPreamble(enabledModules: InstalledModule[]): string {
   enabledModules
     .filter(module => !module.isBuiltin)
     .forEach(module => {
-      const target = getPreferredModuleTarget(module);
+      // injectHeaders: false 时头文件仍随模块复制，但不再注入主程序——第三方头文件树
+      // （缺基础库、需特殊宏、带 main 冲突定义）不能污染宿主编译单元（2026-10-21 外部用户反馈）。
+      const injectHeaders = module.manifest.injectHeaders !== false;
+      const win32Target = getPreferredModuleTarget(module, 'windows-msvc-win32');
+      const x64Target = getPreferredModuleTarget(module, 'windows-msvc-x64');
+      const target = win32Target || x64Target;
       const modulePath = `modules/${module.manifest.id}`;
       lines.push(`// LingBuilder 模块: ${module.manifest.name} (${module.manifest.id}@${module.manifest.version})`);
-      if (target) lines.push(`// 模块目标: ${target.id} / ${target.platform}-${target.toolchain}-${target.arch}`);
-      (target?.headers || []).forEach(header => {
-        lines.push(`#include "${escapeIncludePath(`${modulePath}/${header}`)}"`);
+      if (win32Target && x64Target) lines.push(`// 模块目标: ${win32Target.id} / ${x64Target.id}（按构建架构选择）`);
+      else if (target) lines.push(`// 模块目标: ${target.id} / ${target.platform}-${target.toolchain}-${target.arch}（仅提供该架构）`);
+      else lines.push(`// 警告: 模块未提供兼容的 Windows MSVC 目标（可用：${(module.manifest.targets || []).map(item => item.id).join('、') || '无'}），已跳过该模块。`);
+      if (injectHeaders) {
+        getModuleTargetFileUnion(module, 'headers').forEach(header => {
+          lines.push(`#include "${escapeIncludePath(`${modulePath}/${header}`)}"`);
+        });
+      }
+      // headerDirs 是整目录复制的头文件树（如 google/protobuf），按设计不注入主程序；
+      // 这里只留注释供生成文件排查，包含工作交给 includeDirs 与模块自身源码。
+      getModuleTargetFileUnion(module, 'headerDirs').forEach(headerDir => {
+        lines.push(injectHeaders ? `// 模块头文件目录: ${headerDir}` : `// 模块头文件目录（不注入主程序）: ${headerDir}`);
       });
-      (target?.sources || []).forEach(source => lines.push(`// 模块源码: ${source}`));
+      if (!injectHeaders && getModuleTargetFileUnion(module, 'headers').length > 0) {
+        lines.push('// 模块头文件未注入主程序（清单 injectHeaders: false）：头文件已随模块复制，主程序 #include 请走 includeDirs。');
+      }
+      getModuleTargetFileUnion(module, 'sources').forEach(source => lines.push(`// 模块源码: ${source}`));
       appendModuleLibraryPragmas(lines, module, modulePath, target);
-      (target?.runtimeFiles || []).forEach(runtimeFile => lines.push(`// 模块运行时文件: ${runtimeFile}`));
+      getModuleTargetFileUnion(module, 'runtimeFiles').forEach(runtimeFile => lines.push(`// 模块运行时文件: ${runtimeFile}`));
     });
   return lines.join('\n');
 }
@@ -31836,20 +31922,31 @@ function appendModuleLibraryPragmas(
 function generateModuleDependencyReport(enabledModules: InstalledModule[]): string {
   if (enabledModules.length === 0) return '当前项目未启用模块。';
   return enabledModules.map(module => {
-    const target = getPreferredModuleTarget(module);
+    const win32Target = getPreferredModuleTarget(module, 'windows-msvc-win32');
+    const x64Target = getPreferredModuleTarget(module, 'windows-msvc-x64');
+    const target = win32Target || x64Target;
+    const targetLabel = win32Target && x64Target
+      ? `${win32Target.id}、${x64Target.id}（按构建架构选择）`
+      : target
+        ? `${target.id} (${target.platform}/${target.toolchain}/${target.arch})`
+        : '无';
+    const libs = Array.from(new Set([
+      ...(win32Target?.libs || []),
+      ...(x64Target?.libs || [])
+    ]));
     return [
       `模块: ${module.manifest.name}`,
       `ID: ${module.manifest.id}`,
       `版本: ${module.manifest.version}`,
       `内置: ${module.isBuiltin ? '是' : '否'}`,
-      `目标: ${target ? `${target.id} (${target.platform}/${target.toolchain}/${target.arch})` : '无'}`,
-      ...(!target && !module.isBuiltin ? [getUnsupportedModuleTargetDiagnostic(module) || '未提供兼容的 Win32/MSVC 模块目标。'] : []),
+      `目标: ${targetLabel}`,
+      ...(!target && !module.isBuiltin ? [getUnsupportedModuleTargetDiagnostic(module) || '未提供兼容的 Win32/x64/MSVC 模块目标。'] : []),
       `命令数: ${module.manifest.contributes?.commands?.length || 0}`,
       `控件数: ${module.manifest.contributes?.designerControls?.length || 0}`,
-      `头文件: ${(target?.headers || []).join(', ') || '无'}`,
-      `源码: ${(target?.sources || []).join(', ') || '无'}`,
-      `库: ${(target?.libs || []).join(', ') || '无'}`,
-      `运行时文件: ${(target?.runtimeFiles || []).join(', ') || '无'}`
+      `头文件: ${getModuleTargetFileUnion(module, 'headers').join(', ') || '无'}`,
+      `源码: ${getModuleTargetFileUnion(module, 'sources').join(', ') || '无'}`,
+      `库: ${libs.join(', ') || '无'}`,
+      `运行时文件: ${getModuleTargetFileUnion(module, 'runtimeFiles').join(', ') || '无'}`
     ].join('\n');
   }).join('\n\n');
 }
