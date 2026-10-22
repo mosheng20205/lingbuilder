@@ -43,6 +43,28 @@ test('FBro module automatically selects the MSVC x64 target', () => {
   assert.match(resolved.messages[0], /FBro.*x64/u);
 });
 
+// 微信OCR 内置模块走标准工厂的双架构 target（单架构内置模块会在生成期断链，见 2026-10-20 根治），
+// 所以架构门禁拦不住它：Win32 构建照样编过，只是每条 OCR 命令运行期返回「仅支持 64 位」。
+// 这里钉住 F5 前自动切 x64，避免新工作区（默认 Win32）的 OCR 工程静默不可用。
+test('WeChat OCR module automatically selects x64 because its component is 64-bit only', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-ocr-build-config-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const service = new BuildConfigurationService(root);
+
+  const resolved = resolveModuleCompatibleBuildConfiguration(
+    { schemaVersion: 1, mode: 'Debug', architecture: 'Win32' },
+    ['lingbuilder.win32.basic', 'lingbuilder.ocr']
+  );
+  assert.deepEqual(resolved.configuration, { schemaVersion: 1, mode: 'Debug', architecture: 'x64' });
+  assert.equal(resolved.changed, true);
+  assert.match(resolved.messages[0], /微信OCR.*x64/u);
+
+  const persisted = await service.ensureCompatibleWithModules(['lingbuilder.ocr']);
+  assert.equal(persisted.changed, true);
+  assert.deepEqual(await service.read(), { schemaVersion: 1, mode: 'Debug', architecture: 'x64' });
+  assert.equal((await service.ensureCompatibleWithModules(['lingbuilder.ocr'])).changed, false);
+});
+
 test('OpenCV module initializes an imported workspace with its required x64 target', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-opencv-build-config-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));

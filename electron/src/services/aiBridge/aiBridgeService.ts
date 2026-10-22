@@ -2378,7 +2378,7 @@ export class AiBridgeService {
           suggestion: '请通过 lingbuilder.edit.apply 携带 updatedDesignerProject 重建设计器模型，或使用 lingbuilder.project.create 重新创建项目。'
         }];
       }
-      return this.createEmptyDesignerModelDiagnostics(context.project);
+      return this.createEmptyDesignerModelDiagnostics(context.project, context.projectType);
     }
     const message = context.reason === 'project-not-found'
       ? `未提供窗口设计器模型，且项目“${context.projectId}”不在当前解决方案中：控件引用与设计器事件绑定本轮未校验。`
@@ -2396,10 +2396,17 @@ export class AiBridgeService {
   }
 
   /** 模型已加载却一个控件都没有：这就是「IDE 画布空白、exe 里没有组件」的根因，必须点名并给修复路径。 */
-  private createEmptyDesignerModelDiagnostics(project: LingWindowProject): LingCppDiagnostic[] {
+  private createEmptyDesignerModelDiagnostics(
+    project: LingWindowProject,
+    projectType?: LingBuilderSolutionProject['type']
+  ): LingCppDiagnostic[] {
     if (project.windows.length === 0) return [];
     const totalControls = project.windows.reduce((total, window) => total + window.controls.length, 0);
     if (totalControls > 0) return [];
+    // 控制台项目按模板自带一个 0 控件的窗口模型（生成器只取它的 className 建控制台单例，
+    // 运行期不创建窗口、不进消息循环）：对这类项目报「画布空白、exe 里没有控件」是纯噪声，
+    // 会把真正的零控件根因淹没（实测：src/ocr 等全部 windows-console 工程都吃这条）。
+    if (AiBridgeService.isWindowlessProjectType(projectType)) return [];
     return [{
       id: 'lingcpp-designer-controls-empty',
       line: 1,
@@ -2435,6 +2442,15 @@ export class AiBridgeService {
 
   private static readonly DESIGNER_INVENTORY_MAX_CONTROLS_PER_WINDOW = 160;
   private static readonly CODE_ORGANIZATION_MAX_FILES = 40;
+
+  /**
+   * 无窗口项目：设计器模型只是模板自带的占位（控制台工程靠它的 className 建控制台单例，
+   * 运行期不创建窗口），因此「0 控件 = 画布空白」这类判断对它们一律不适用。
+   * windows-dll 不在此列——它在 resolveDesignerContext 里已按 designer-optional 直接不进模型校验。
+   */
+  private static isWindowlessProjectType(projectType?: LingBuilderSolutionProject['type']): boolean {
+    return projectType === 'windows-console';
+  }
   private static readonly CODE_ORGANIZATION_SPLIT_LINES = 300;
   private static readonly CODE_ORGANIZATION_HEAVY_LINES = 800;
 
@@ -2505,10 +2521,13 @@ export class AiBridgeService {
       };
     });
     const controlCount = windows.reduce((total, window) => total + window.controlCount, 0);
+    const windowlessProject = context.source === 'workspace' && AiBridgeService.isWindowlessProjectType(context.projectType);
     const summary = windows.length === 0
       ? '设计器模型没有任何窗口。'
       : controlCount === 0
-        ? `设计器有 ${windows.length} 个窗口但**没有任何组件**：这正是 IDE 画布空白、exe 窗口里没有控件的直接原因（只写 .lcpp 源码不会产生界面）。请在 edit.propose 携带 updatedDesignerProject 补齐控件后 apply 落盘，再构建。`
+        ? windowlessProject
+          ? `这是 windows-console 控制台项目：设计器模型自带一个占位窗口（生成器只按它的 className 建控制台单例），运行期不创建窗口、不进消息循环，所以 ${windows.length} 个窗口 0 组件是该项目的正常形态。界面反馈请用 调试输出/控制台输出，本清单里的控件数不参与控制台项目的界面判断。`
+          : `设计器有 ${windows.length} 个窗口但**没有任何组件**：这正是 IDE 画布空白、exe 窗口里没有控件的直接原因（只写 .lcpp 源码不会产生界面）。请在 edit.propose 携带 updatedDesignerProject 补齐控件后 apply 落盘，再构建。`
         : `设计器共 ${windows.length} 个窗口、${controlCount} 个组件${hiddenTotal > 0 ? `，其中 ${hiddenTotal} 个 visibility=Collapsed（画布与运行时都不显示）` : ''}。控件必须存在于本清单才会出现在 IDE 画布和生成的 exe 里；补齐或隐藏控件请在 edit.propose 携带 updatedDesignerProject。`;
     const designerPath = context.source === 'workspace' ? context.designerPath : undefined;
     return {

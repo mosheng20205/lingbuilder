@@ -23,13 +23,18 @@ export interface ModuleCompatibleBuildConfiguration {
 const MODULE_ARCHITECTURE_REQUIREMENTS: Readonly<Record<string, BuildArchitecture>> = {
   'lingbuilder.cef3.browser': 'x64',
   'lingbuilder.fbro.browser': 'x64',
-  'lingbuilder.opencv': 'x64'
+  'lingbuilder.opencv': 'x64',
+  // 微信 OCR 组件只有 64 位（微信 4.x 无 32 位组件）：Win32 构建能编过，但每条 OCR 命令
+  // 只会返回「仅支持 64 位程序」的中文错误。标准工厂给这类内置模块同时声明了双架构 target
+  // （否则单架构内置模块会在生成期断链），所以构建架构拦不住它，只能靠这里在 F5 前自动切。
+  'lingbuilder.ocr': 'x64'
 };
 
 const MODULE_ARCHITECTURE_LABELS: Readonly<Record<string, string>> = {
   'lingbuilder.cef3.browser': 'CEF3 浏览器模块',
   'lingbuilder.fbro.browser': 'FBro 浏览器模块',
-  'lingbuilder.opencv': 'OpenCV 模块'
+  'lingbuilder.opencv': 'OpenCV 模块',
+  'lingbuilder.ocr': '微信OCR识别模块'
 };
 
 export class BuildConfigurationService {

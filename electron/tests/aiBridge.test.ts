@@ -3004,6 +3004,35 @@ test('AI Bridge diagnostics name the empty designer model as the reason no compo
   await filledService.shutdown();
 });
 
+// 控制台项目按模板自带「1 窗口 0 控件」的占位设计器模型（生成器只取它的 className 建控制台单例，
+// 运行期不创建窗口）。旧口径把这条模型判成「画布空白、exe 里没有控件」，每个 windows-console 工程
+// 都吃一条假根因警告（src/ocr 实证），会淹没真正的零控件问题。
+test('AI Bridge diagnostics never call a console project empty model a blank canvas', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const projectId = 'console-empty-model-project';
+  const sourceRoot = `src/${projectId}`;
+  const designerPath = `.lingbuilder/projects/${projectId}/window-designer.json`;
+  const emptyModel = createDesignerFallbackProject(projectId, '控制台探针');
+  emptyModel.windows[0].controls = [];
+  await fs.mkdir(path.dirname(path.join(workspaceRoot, designerPath)), { recursive: true });
+  await fs.writeFile(path.join(workspaceRoot, designerPath), `${JSON.stringify(emptyModel, null, 2)}\n`, 'utf8');
+  await registerSolutionProject(workspaceRoot, { id: projectId, name: '控制台探针', type: 'windows-console' });
+  await fs.mkdir(path.join(workspaceRoot, sourceRoot), { recursive: true });
+  const consoleSource = '包 控制台程序\n\n类 程序\n公开\n  整数型 启动()\n    调试输出("探针")\n    返回(0)\n  结束\n结束类\n';
+  await fs.writeFile(path.join(workspaceRoot, sourceRoot, '程序.lcpp'), consoleSource, 'utf8');
+
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  const result = await service.getLingCppDiagnostics({ projectId, filePath: `${sourceRoot}/程序.lcpp`, sourceCode: consoleSource });
+  assert.equal(
+    result.diagnostics.some(diagnostic => diagnostic.id === 'lingcpp-designer-controls-empty'),
+    false,
+    `windows-console 的占位空模型不得报画布空白：${JSON.stringify(result.diagnostics)}`
+  );
+  assert.match(result.designerInventory.summary, /控制台项目/u, 'inventory 必须按控制台口径说明 0 组件属正常');
+  assert.doesNotMatch(result.designerInventory.summary, /画布空白/u, '控制台项目不得出现「画布空白」话术');
+  await service.shutdown();
+});
+
 test('AI Bridge diagnostics prescribe a function-library split for oversized single window files', async () => {
   const workspaceRoot = await createTempWorkspace();
   const projectId = 'oversized-project';
