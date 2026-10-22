@@ -237,6 +237,48 @@ public:
 
     bool SendBinary(long long id, const std::vector<unsigned char>& data) { return Send(id, WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE, data.data(), data.size()); }
 
+    // 异步发送（2026-10-22）：detached 线程执行 WinHTTP 同步发送——半开 TCP（手机被 MIUI 杀后台等）
+    // 会让同步发送阻塞内核重传数十秒，绝不能在 UI 线程调用。lambda 仅持有 Connection 的
+    // shared_ptr（Shutdown 清 map 后仍安全存活），不触碰 runtime 指针。
+    bool SendTextAsync(long long id, const wchar_t* text) {
+        std::string payload;
+        if (!WideToUtf8(text ? text : L"", payload)) return Fail(L"WebSocket 文本包含无效 UTF-16，无法转换为 UTF-8。");
+        auto connection = Find(id); if (!connection) return Fail(L"WebSocket 连接 ID 无效。");
+        if (!connection->connected.load()) return ConnectionFail(connection, L"WebSocket 尚未连接，无法发送消息。");
+        size_t maximum = MaxMessageBytes(connection);
+        if (payload.size() > maximum || payload.size() > MAXDWORD) return ConnectionFail(connection, L"WebSocket 发送消息超过配置上限。");
+        std::thread([connection, payload = std::move(payload)]() {
+            if (!connection->connected.load()) return;
+            size_t maximum = 0; { std::lock_guard<std::mutex> lock(connection->mutex); maximum = connection->maxSendBytes; }
+            if (payload.size() > maximum || payload.size() > MAXDWORD) { std::lock_guard<std::mutex> lock(connection->mutex); connection->lastError = L"WebSocket 发送消息超过配置上限。"; return; }
+            std::lock_guard<std::mutex> sendLock(connection->sendMutex);
+            HINTERNET socket = nullptr; { std::lock_guard<std::mutex> lock(connection->handlesMutex); socket = connection->socket; }
+            if (!socket) { std::lock_guard<std::mutex> lock(connection->mutex); connection->lastError = L"WebSocket 底层连接已经关闭。"; return; }
+            const DWORD result = WinHttpWebSocketSend(socket, WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE, payload.empty() ? nullptr : reinterpret_cast<PVOID>(const_cast<char*>(payload.data())), static_cast<DWORD>(payload.size()));
+            if (result == ERROR_SUCCESS) { connection->sentBytes.fetch_add(static_cast<long long>(payload.size())); connection->sentMessages.fetch_add(1); }
+            else if (!connection->stopRequested.load()) { std::lock_guard<std::mutex> lock(connection->mutex); connection->lastError = L"WebSocket 发送消息失败。错误码：" + std::to_wstring(result); }
+        }).detach();
+        return true;
+    }
+
+    bool SendBinaryAsync(long long id, const std::vector<unsigned char>& data) {
+        auto connection = Find(id); if (!connection) return Fail(L"WebSocket 连接 ID 无效。");
+        if (!connection->connected.load()) return ConnectionFail(connection, L"WebSocket 尚未连接，无法发送消息。");
+        std::vector<unsigned char> payload = data;
+        std::thread([connection, payload = std::move(payload)]() {
+            if (!connection->connected.load()) return;
+            size_t maximum = 0; { std::lock_guard<std::mutex> lock(connection->mutex); maximum = connection->maxSendBytes; }
+            if (payload.size() > maximum || payload.size() > MAXDWORD) { std::lock_guard<std::mutex> lock(connection->mutex); connection->lastError = L"WebSocket 发送消息超过配置上限。"; return; }
+            std::lock_guard<std::mutex> sendLock(connection->sendMutex);
+            HINTERNET socket = nullptr; { std::lock_guard<std::mutex> lock(connection->handlesMutex); socket = connection->socket; }
+            if (!socket) { std::lock_guard<std::mutex> lock(connection->mutex); connection->lastError = L"WebSocket 底层连接已经关闭。"; return; }
+            const DWORD result = WinHttpWebSocketSend(socket, WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE, payload.empty() ? nullptr : reinterpret_cast<PVOID>(const_cast<unsigned char*>(payload.data())), static_cast<DWORD>(payload.size()));
+            if (result == ERROR_SUCCESS) { connection->sentBytes.fetch_add(static_cast<long long>(payload.size())); connection->sentMessages.fetch_add(1); }
+            else if (!connection->stopRequested.load()) { std::lock_guard<std::mutex> lock(connection->mutex); connection->lastError = L"WebSocket 发送消息失败。错误码：" + std::to_wstring(result); }
+        }).detach();
+        return true;
+    }
+
     bool IsConnected(long long id) const { auto connection = Find(id); return connection && connection->connected.load(); }
     std::wstring State(long long id) const { auto connection = Find(id); if (!connection) return L"无效连接"; std::lock_guard<std::mutex> lock(connection->mutex); return connection->state; }
     std::wstring Url(long long id) const { return TextProperty(id, 1); }
@@ -620,6 +662,8 @@ const WEBSOCKET_CLIENT_WINDOW_METHODS = String.raw`
     int WS_取重连次数(long long connection) { return wsClientRuntime_.ReconnectAttempts(connection); }
     bool WS_发送文本到连接(long long connection, const wchar_t* text) { return wsClientRuntime_.SendText(connection, text); }
     bool WS_发送二进制到连接(long long connection, const std::vector<unsigned char>& data) { return wsClientRuntime_.SendBinary(connection, data); }
+    bool WS_发送文本到连接异步(long long connection, const wchar_t* text) { return wsClientRuntime_.SendTextAsync(connection, text); }
+    bool WS_发送二进制到连接异步(long long connection, const std::vector<unsigned char>& data) { return wsClientRuntime_.SendBinaryAsync(connection, data); }
     const wchar_t* WS_取当前事件类型() { return wsClientRuntime_.ReturnText(wsClientRuntime_.CurrentType()); }
     long long WS_取当前连接() { return wsClientRuntime_.CurrentConnection(); }
     const wchar_t* WS_取当前消息类型() { return wsClientRuntime_.ReturnText(wsClientRuntime_.CurrentMessageType()); }

@@ -335,7 +335,8 @@ test('image modes preserve tile and keep contain as the compatible default', () 
 });
 
 test('DataGrid catalog keeps contributions, bindings and member metadata aligned', () => {
-  assert.equal(DATA_GRID_API.length, 92);
+  // 2026-10-19 程序化滚动批次 +1（表格_滚动到行），93 条
+  assert.equal(DATA_GRID_API.length, 93);
   assert.deepEqual(DATA_GRID_COMMANDS.map(item => item.name), DATA_GRID_BINDINGS.map(item => item.command));
   assert.equal(new Set(DATA_GRID_API.map(item => item.name)).size, DATA_GRID_API.length);
   DATA_GRID_API.forEach(item => {

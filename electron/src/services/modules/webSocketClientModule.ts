@@ -159,6 +159,15 @@ const specs: WebSocketClientCommandSpec[] = [
     name: 'WS_发送二进制到连接', signature: 'WS_发送二进制到连接(连接, 数据)', description: '向指定已连接客户端发送一条完整二进制消息。',
     parameters: [parameter('连接', 'WebSocket连接', wsConnectionArg), parameter('数据', 'bytes', '要发送的字节集，作为一条完整二进制消息；超过单次发送上限时返回假。')], returnType: 'bool', returnLabel: '逻辑型', category: '消息'
   },
+  {
+    name: 'WS_发送文本到连接异步', signature: 'WS_发送文本到连接异步(连接, 内容)', description: '向指定已连接客户端异步发送一条完整 UTF-8 文本消息：立即返回，发送在后台线程执行（参数与大小校验同步完成）。半开 TCP 会让同步发送阻塞内核重传数十秒，UI 线程发送指令一律用本命令。',
+    parameters: [parameter('连接', 'WebSocket连接', wsConnectionArg), parameter('内容', 'wideString', wsTextArg)], returnType: 'bool', returnLabel: '逻辑型', category: '消息',
+    insertText: 'WS_发送文本到连接异步($1, "$2")'
+  },
+  {
+    name: 'WS_发送二进制到连接异步', signature: 'WS_发送二进制到连接异步(连接, 数据)', description: '向指定已连接客户端异步发送一条完整二进制消息：立即返回，发送在后台线程执行（大小校验同步完成）。',
+    parameters: [parameter('连接', 'WebSocket连接', wsConnectionArg), parameter('数据', 'bytes', '要发送的字节集，作为一条完整二进制消息；超过单次发送上限时返回假。')], returnType: 'bool', returnLabel: '逻辑型', category: '消息'
+  },
   ...([
     ['WS_取当前事件类型', 'wideString', '文本型', '返回当前回调事件类型：已连接、文本、二进制、已断开、错误或重连。'],
     ['WS_取当前连接', 'WebSocket连接', 'WebSocket连接', '返回当前事件对应的受管连接 ID。'],
@@ -225,7 +234,7 @@ export const WEBSOCKET_CLIENT_MODULE: LingBuilderModuleManifest = {
   schemaVersion: 2,
   id: 'lingbuilder.websocket.client',
   name: 'WebSocket 客户端模块',
-  version: '2.0.0',
+  version: '2.1.0',
   minLingBuilderVersion: '0.2.8',
   category: '网络',
   description: '提供受管 WinHTTP WebSocket 客户端、多连接、后台接收、文本与二进制消息、wss://、代理、身份验证、证书固定、自动重连、资源限制和运行统计。',
@@ -249,7 +258,7 @@ export const WEBSOCKET_CLIENT_MODULE: LingBuilderModuleManifest = {
         description: '在消息处理器中读取不可变事件快照。'
       }
     ],
-    docs: [{ title: 'WebSocket 客户端模块 2.0 使用说明', path: 'docs/modules/websocket-client/README.md' }]
+    docs: [{ title: 'WebSocket 客户端模块 2.1 使用说明', path: 'docs/modules/websocket-client/README.md' }]
   },
   targets: [
     {

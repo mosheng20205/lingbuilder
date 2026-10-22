@@ -32,6 +32,10 @@ import {
   getLingCppSymbols
 } from '../services/lingCpp/languageService';
 import { createLingCppMonarchLanguage } from '../services/lingCpp/monacoTokens';
+import {
+  mapColumnThroughLingCppLineCommentEdits,
+  planLingCppLineCommentToggle
+} from '../services/lingCpp/lineComment';
 import { LingCppDesignerBindingHint, LingCppDocumentSymbol, LingCppProjectGlobalContext, LingCppProjectSourceFile, LingCppProjectTypeContext, LingCppReadingMode, LingCppStructuredReadingRow } from '../services/lingCpp/types';
 import { findProjectGlobalDefinition, renameProjectGlobalAcrossSources } from '../services/lingCpp/projectGlobalService';
 import { createProjectFunctionContext } from '../services/lingCpp/functionLibraryService';
@@ -153,6 +157,56 @@ let lingCppProjectSourcesSnapshot: LingCppProjectSourceFile[] | undefined;
 let lingCppProjectSourcesChangeSnapshot: ((sources: LingCppProjectSourceFile[]) => void) | undefined;
 let lingCppRevealControlReferenceSnapshot: ((reference: LingCppControlReference) => void) | undefined;
 let lingCppRenameControlReferenceSnapshot: ((reference: LingCppControlReference, newName: string) => void) | undefined;
+
+const LINGCPP_TOGGLE_LINE_COMMENT_ACTION_ID = 'lingcpp.action.toggleLineComment';
+
+/**
+ * 专业模式 Ctrl+/ 与右键「注释/取消注释」的唯一实现：行首 `// `、空行保持不变、
+ * 多行文本块行豁免，行为契约与新手编辑器 toggleBeginnerLineComment 一致；
+ * 非 lingcpp 模型回落到 Monaco 内置注释命令（按各语言自己的注释 token）。
+ */
+const runLingCppToggleLineComment = (editor: any, monacoNamespace: any) => {
+  const model = editor.getModel?.();
+  if (!model) return;
+  if (model.getLanguageId?.() !== 'lingcpp') {
+    editor.getAction?.('editor.action.commentLine')?.run?.();
+    return;
+  }
+  const selections = (editor.getSelections?.() || []).filter(Boolean);
+  if (selections.length === 0) return;
+  const lines: string[] = model.getLinesContent();
+  const edits: any[] = [];
+  const restores: any[] = [];
+  selections.forEach(selection => {
+    const startLine = selection.startLineNumber;
+    let endLine = selection.endLineNumber;
+    // 选区终点停在下一行行首（列 1）时，最后一行不参与切换（与新手编辑器口径一致）。
+    if (endLine > startLine && selection.endColumn === 1) endLine -= 1;
+    const plan = planLingCppLineCommentToggle(lines, startLine, endLine);
+    if (!plan || plan.edits.length === 0) {
+      restores.push(selection);
+      return;
+    }
+    plan.edits.forEach(edit => {
+      edits.push({
+        range: new monacoNamespace.Range(edit.lineNumber, edit.column, edit.lineNumber, edit.column + edit.removedLength),
+        text: edit.text,
+        forceMoveMarkers: false
+      });
+    });
+    restores.push(new monacoNamespace.Range(
+      selection.startLineNumber,
+      mapColumnThroughLingCppLineCommentEdits(plan, selection.startLineNumber, selection.startColumn),
+      selection.endLineNumber,
+      mapColumnThroughLingCppLineCommentEdits(plan, selection.endLineNumber, selection.endColumn)
+    ));
+  });
+  if (edits.length === 0) return;
+  editor.pushUndoStop?.();
+  editor.executeEdits(LINGCPP_TOGGLE_LINE_COMMENT_ACTION_ID, edits);
+  editor.pushUndoStop?.();
+  if (restores.length > 0) editor.setSelections?.(restores);
+};
 
 const EPL_KEYWORDS = [
   '如果', '如果真', '否则', '否则如果', '如果结束',
@@ -291,6 +345,7 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
 }: MonacoCodeEditorProps, ref) {
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
+  const commentToggleContextKeyRef = useRef<{ set: (value: boolean) => void } | null>(null);
   const cppFilePathOwnerRef = useRef<object>({});
   const onFocusEditorRef = useRef(onFocusEditor);
   onFocusEditorRef.current = onFocusEditor;
@@ -730,11 +785,24 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
           }
         })
       : undefined;
+    const commentToggleContextKey = editor.createContextKey?.('lingcppCommentToggle', language === 'lingcpp');
+    commentToggleContextKeyRef.current = commentToggleContextKey ?? null;
+    const commentToggleActionRegistration = editor.addAction?.({
+      id: LINGCPP_TOGGLE_LINE_COMMENT_ACTION_ID,
+      label: '注释/取消注释',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Slash],
+      precondition: 'lingcppCommentToggle && editorWritable',
+      contextMenuGroupId: 'navigation',
+      contextMenuOrder: 1.5,
+      run: () => runLingCppToggleLineComment(editor, monaco)
+    });
     editor.onDidDispose?.(() => {
       editorDomNode?.removeEventListener('wheel', handleFontWheel);
       cursorRegistration?.dispose?.();
       contextMenuRegistration?.dispose?.();
       revealActionRegistration?.dispose?.();
+      commentToggleActionRegistration?.dispose?.();
+      commentToggleContextKeyRef.current = null;
       controlCommandRegistration?.dispose?.();
       cppFilePathRegistry.release(cppFilePathOwnerRef.current);
     });
@@ -812,6 +880,9 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
     }
     if (!monaco.languages.getLanguages().some((lang: any) => lang.id === 'lingcpp')) {
       monaco.languages.register({ id: 'lingcpp' });
+      // 行注释 token 供内置注释命令（Ctrl+K Ctrl+C/U 等）使用；主入口 Ctrl+/ 与右键
+      // 走 runLingCppToggleLineComment（带多行文本块豁免），不依赖这里的 token。
+      monaco.languages.setLanguageConfiguration('lingcpp', { comments: { lineComment: '//' } });
     }
     lingCppTokensProviderDisposable?.dispose();
     lingCppTokensProviderDisposable = monaco.languages.setMonarchTokensProvider(
@@ -1329,6 +1400,12 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
     const model = editor.getModel?.();
     model?.forceTokenization?.(model.getLineCount());
   }, [language, moduleContext]);
+
+  // Ctrl+/ 与右键「注释/取消注释」只在 lingcpp 模型上生效；语言切换时同步上下文键，
+  // 其余语言回落到 Monaco 内置注释命令。
+  useEffect(() => {
+    commentToggleContextKeyRef.current?.set(language === 'lingcpp');
+  }, [language]);
 
   useEffect(() => {
     if (providedModuleContext) return;

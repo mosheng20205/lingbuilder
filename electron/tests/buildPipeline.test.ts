@@ -334,3 +334,63 @@ test('protobuf builtin documentation and example assets match manifest paths', a
   assert.match(manual.content, /受控.*protoc/u);
   assert.match(example, /PB_序列化为字节集/u);
 });
+
+test('third-party module headerDirs copy recursively and includeDirs materialize with Chinese diagnostics', async t => {
+  // 2026-10-21 外部用户反馈三连修复哨兵：① headerDirs 整树递归复制（google/protobuf 式多文件
+  // 头文件树不必逐文件写进 headers）；② headerDirs 自动登记包含目录且与 includeDirs 去重；
+  // ③ includeDirs 指向的目录随包存在时物化进源码根，两侧都缺失给中文诊断而不是下游 C1083。
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-headerdirs-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const installPath = path.join(root, 'package');
+  for (const relative of ['include/google/protobuf/port_def.inc', 'include/google/protobuf/stub.h', 'include/bridge.h']) {
+    const target = path.join(installPath, ...relative.split('/'));
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.writeFile(target, relative, 'utf8');
+  }
+  const manifest = {
+    schemaVersion: 2 as const,
+    id: 'com.example.heavy',
+    name: '重型头文件模块',
+    version: '1.0.0',
+    category: '系统' as const,
+    description: 'headerDirs/includeDirs 物化验收。',
+    injectHeaders: false,
+    contributes: { commands: [{ name: '重命令', signature: '重命令()', description: '测试命令。' }] },
+    targets: [{
+      id: 'windows-msvc-x64',
+      platform: 'windows' as const,
+      arch: 'x64' as const,
+      toolchain: 'msvc' as const,
+      includeDirs: ['include', 'missing-include'],
+      headerDirs: ['include'],
+      headers: ['include/bridge.h']
+    }],
+    bindings: { commands: [{ command: '重命令', runtimeName: 'HeavyCommand', returnType: 'void' }] }
+  };
+  const module = { manifest, installPath, isInstalled: true, diagnostics: [] };
+  const layout = {
+    buildDir: path.join(root, 'build'),
+    sourceDir: path.join(root, 'source'),
+    binDir: path.join(root, 'bin'),
+    exportDir: path.join(root, 'export'),
+    preferredTargetId: 'windows-msvc-x64'
+  };
+
+  const plan = await materializeModuleNativeDependencies([module], layout);
+
+  const moduleRoots = [
+    path.join(layout.buildDir, 'modules', 'com.example.heavy'),
+    path.join(layout.sourceDir, 'modules', 'com.example.heavy'),
+    path.join(layout.exportDir, 'modules', 'com.example.heavy')
+  ];
+  for (const moduleRoot of moduleRoots) {
+    assert.ok(await fs.stat(path.join(moduleRoot, 'include', 'google', 'protobuf', 'port_def.inc')));
+    assert.ok(await fs.stat(path.join(moduleRoot, 'include', 'google', 'protobuf', 'stub.h')));
+  }
+  assert.ok(await fs.stat(path.join(layout.sourceDir, 'modules', 'com.example.heavy', 'include', 'bridge.h')));
+  // headerDirs 自动登记包含目录；includeDirs 同名条目去重，不重复入列。
+  assert.equal(plan.includeDirs.filter(item => item.endsWith(path.join('com.example.heavy', 'include'))).length, 1);
+  assert.ok(plan.includeDirs.some(item => item.endsWith(path.join('com.example.heavy', 'missing-include'))));
+  assert.ok(plan.diagnostics.some(message => message.includes('includeDirs 目录在模块包内不存在：missing-include') && message.includes('C1083')));
+  assert.ok(!plan.diagnostics.some(message => message.includes('headerDirs 目录在模块包内不存在')));
+});

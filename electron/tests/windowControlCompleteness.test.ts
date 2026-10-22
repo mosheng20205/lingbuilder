@@ -17,7 +17,7 @@ const CURRENT_WIN32_MODULE_IDS = new Set([
 ]);
 
 test('基础与高级可视控件只暴露运行时可靠支持的通用事件', () => {
-  const mouseEventNames = ['MouseDown', 'MouseEnter', 'MouseLeave'];
+  const mouseEventNames = ['MouseDown', 'MouseMove', 'MouseUp', 'MouseEnter', 'MouseLeave'];
   const focusEventNames = ['GotFocus', 'LostFocus'];
   const specializedEventOnlyTypes = new Set(['ColorPicker', 'VideoPlayer']);
   const currentVisualControls = WIN32_CONTROL_DEFINITIONS.filter(definition => (
@@ -117,6 +117,17 @@ test('专用绘制控件不会截断已经公开的通用事件', () => {
   assert.match(branch('DateTimePicker', 'SysLink'), /message == WM_LBUTTONDOWN\) self->DispatchLingEvent\(\*control, L"MouseDown"\)/u);
   assert.match(branch('DateTimePicker', 'SysLink'), /DispatchLingEvent\(\*control, L"MouseEnter"\)/u);
   assert.match(branch('TabControl', 'ComboBox'), /message == WM_KILLFOCUS\) self->DispatchLingEvent\(\*control, L"LostFocus"\)/u);
+  // 拖动手势三段派发（按下-移动-抬起）：公共分支每次 WM_MOUSEMOVE 派发 MouseMove，
+  // WM_LBUTTONUP 释放捕获后派发 MouseUp；绑定了鼠标事件的控件按下时设置捕获，拖出控件仍持续收到消息。
+  // BUTTON 是例外：转发前抢先 ReleaseCapture 会同步产生 WM_CAPTURECHANGED，按钮过程把
+  // "捕获被抢"当成点击取消，BN_CLICKED 就永远不发出（按钮点击事件全灭的实锤根因）。
+  // 因此 BUTTON 必须先转发（让按钮过程发出 BN_CLICKED）再清理残余捕获。
+  const commonBranch = cpp.slice(cpp.indexOf('if (message == WM_MOUSEMOVE) {', subclassStart), cpp.indexOf('} else if (message == WM_NCDESTROY)', subclassStart));
+  assert.match(commonBranch, /self->DispatchLingEvent\(\*control, L"MouseMove"\)/u);
+  assert.match(commonBranch, /if \(message == WM_LBUTTONUP && !buttonControl && GetCapture\(\) == hwnd\) ReleaseCapture\(\)/u);
+  assert.match(commonBranch, /if \(message == WM_LBUTTONUP && buttonControl && GetCapture\(\) == hwnd\) ReleaseCapture\(\)/u);
+  assert.match(commonBranch, /if \(message == WM_LBUTTONUP\) self->DispatchLingEvent\(\*control, L"MouseUp"\)/u);
+  assert.match(commonBranch, /SetCapture\(hwnd\)/u);
 });
 
 test('平面滚动条在自身窗口过程处理标准滚动条消息', async () => {

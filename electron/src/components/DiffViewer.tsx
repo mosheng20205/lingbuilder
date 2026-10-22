@@ -466,6 +466,8 @@ interface BeginnerContextMenuState {
   controlReference?: LingCppControlReference;
   localReference?: { name: string; line: number; kind: 'local' | 'parameter' | 'constant' };
   globalVariableName?: string;
+  /** 右键落在代码输入框内时的点击位置偏移（字符）；「注释/取消注释」用它定位目标行。 */
+  commentCaret?: number;
 }
 
 interface BeginnerJumpHighlightState {
@@ -1928,6 +1930,9 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   const beginnerCodeSegmentLineCountsRef = useRef<Record<string, Record<string, number>>>({});
   const beginnerLocalStatementAnchorsRef = useRef<Record<string, Record<string, number>>>({});
   const [beginnerContextMenu, setBeginnerContextMenu] = useState<BeginnerContextMenuState | null>(null);
+  // 右键落在代码输入框内时暂存输入框与分段上下文，供菜单「注释/取消注释」读取；
+  // DOM 节点不进 state，菜单关闭（含点击菜单项）时在关闭 effect 清理。
+  const beginnerContextMenuInputRef = useRef<{ input: HTMLTextAreaElement; segmentContext?: BeginnerCodeSegmentContext } | null>(null);
   const [beginnerTypeCompletionState, setBeginnerTypeCompletionState] = useState<BeginnerTypeCompletionState | null>(null);
   const [beginnerInitialValueEditor, setBeginnerInitialValueEditor] = useState<BeginnerInitialValueEditorState | null>(null);
   const [beginnerColumnWidthOverrides, setBeginnerColumnWidthOverrides] = useState<BeginnerTableColumnWidthOverrides>(
@@ -2120,6 +2125,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       window.removeEventListener('click', closeContextMenu);
       window.removeEventListener('blur', closeContextMenu);
       window.removeEventListener('keydown', closeOnEscape);
+      beginnerContextMenuInputRef.current = null;
     };
   }, [beginnerContextMenu]);
 
@@ -7855,11 +7861,13 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     const openBeginnerContextMenu = (
       event: React.MouseEvent,
       target?: BeginnerCodeTarget,
-      input?: HTMLTextAreaElement
+      input?: HTMLTextAreaElement,
+      segmentContext?: BeginnerCodeSegmentContext
     ) => {
       event.preventDefault();
       event.stopPropagation();
       setBeginnerCompletionState(null);
+      beginnerContextMenuInputRef.current = input ? { input, segmentContext } : null;
       const effectiveTarget = target || activeCanvasTarget;
       const contextCursor = input
         ? getBeginnerTextareaOffsetAtPoint(input, event.clientX, event.clientY)
@@ -7909,7 +7917,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         localReference: localReference
           ? { name: localReference.name, line: localReference.line, kind: localReference.kind }
           : undefined,
-        globalVariableName: globalVariableName || undefined
+        globalVariableName: globalVariableName || undefined,
+        commentCaret: input && inputOffset !== undefined ? inputOffset : undefined
       });
     };
     const parameterExampleText = (parameter: LingCppParameter) =>
@@ -11196,7 +11205,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                 handleBeginnerCodeClick(target, event);
               }}
               onDoubleClick={event => handleBeginnerCodeDoubleClick(target, event)}
-              onContextMenu={event => openBeginnerContextMenu(event, target, event.currentTarget)}
+              onContextMenu={event => openBeginnerContextMenu(event, target, event.currentTarget, segmentContext)}
               onKeyDown={event => handleBeginnerCodeKeyDown(target, event, segmentContext)}
               onKeyUp={event => {
                 updateBeginnerCommandHint(target, event.currentTarget);
@@ -11614,6 +11623,33 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         error instanceof Error ? error.message : '新手模式快捷插入失败。'
       ));
     };
+    // 右键菜单「注释/取消注释」：与 Ctrl+/ 同一实现（toggleBeginnerLineComment）。
+    // 菜单打开时浏览器不移动光标，textarea 有选区就切整段，否则用右键点击位置所在行。
+    const toggleBeginnerCommentFromContextMenu = () => {
+      const menu = beginnerContextMenu;
+      const captured = beginnerContextMenuInputRef.current;
+      if (!menu || !captured || menu.commentCaret === undefined || !contextTarget) return;
+      const input = captured.input;
+      const hasSelection = input.selectionStart !== input.selectionEnd;
+      const result = toggleBeginnerLineComment(
+        input.value,
+        hasSelection ? input.selectionStart : menu.commentCaret,
+        hasSelection ? input.selectionEnd : menu.commentCaret
+      );
+      if (result.value === input.value) return;
+      closeBeginnerCompletion(contextTarget);
+      applyBeginnerTextareaEdit(input, result.value);
+      if (captured.segmentContext) updateBeginnerCodeSegmentDraft(contextTarget, captured.segmentContext, result.value, { defer: true });
+      else updateBeginnerCodeDraft(contextTarget, result.value, { defer: true });
+      window.requestAnimationFrame(() => {
+        const fresh = resolveBeginnerCodeTextarea(input);
+        if (!fresh) return;
+        fresh.focus();
+        fresh.setSelectionRange(result.selectionStart, result.selectionEnd);
+        captureBeginnerTextareaView(fresh);
+        updateBeginnerCommandHint(contextTarget, fresh);
+      });
+    };
     const handleBeginnerCreationShortcut = (event: React.KeyboardEvent<HTMLDivElement>) => {
       if (event.defaultPrevented) return;
       // Ctrl+F：新手画布内查找。普通输入框（变量名/初始值/查找条自身）不打断，避免影响输入手感；
@@ -11729,6 +11765,15 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
             <ExternalLink className="h-3.5 w-3.5" />,
             false,
             !contextDefinition && !contextLibraryDefinition && !beginnerContextMenu?.localReference && !beginnerContextMenu?.globalVariableName
+          )}
+          <div className={`my-1 border-t ${canvasBorder}`} />
+          {renderContextMenuButton(
+            '注释/取消注释',
+            toggleBeginnerCommentFromContextMenu,
+            <Code className="h-3.5 w-3.5" />,
+            false,
+            beginnerContextMenu.commentCaret === undefined || !onUpdateSourceContent || !contextTarget,
+            'Ctrl+/'
           )}
           <div className={`my-1 border-t ${canvasBorder}`} />
           {beginnerCreationMenuItems.map(item => item.kind === 'command' && (

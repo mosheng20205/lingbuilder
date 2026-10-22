@@ -156,7 +156,9 @@ const event = (
 ): Win32ControlEventDefinition => ({ name, label, handlerSuffix, notification });
 
 const COMMON_MOUSE_EVENTS = [
-  event('MouseDown', '鼠标按下', '鼠标被按下', 'mouse'),
+  event('MouseDown', '鼠标按下', '鼠标按下', 'mouse'),
+  event('MouseMove', '鼠标移动', '鼠标移动', 'mouse'),
+  event('MouseUp', '鼠标抬起', '鼠标抬起', 'mouse'),
   event('MouseEnter', '鼠标移入', '鼠标移入', 'mouse'),
   event('MouseLeave', '鼠标移出', '鼠标移出', 'mouse')
 ];
