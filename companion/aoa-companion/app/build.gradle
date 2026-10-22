@@ -1,0 +1,42 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+android {
+    namespace 'com.lingbuilder.companion'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.lingbuilder.companion"
+        minSdk 26
+        targetSdk 34
+        versionCode 15
+        versionName "1.4.0"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            // 内部分发工具：release 包用 debug 密钥签名，安装即用；正式发布再换专用密钥
+            signingConfig signingConfigs.debug
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+    packagingOptions {
+        resources {
+            excludes += ['META-INF/*.kotlin_module']
+        }
+    }
+}
+
+dependencies {
+    // 有意保持零第三方依赖：WebSocket 服务端为本仓库手写 RFC 6455 实现（app/src/main/java/com/lingbuilder/companion/WsServer.kt）
+}

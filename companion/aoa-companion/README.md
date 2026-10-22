@@ -1,0 +1,145 @@
+# LingBuilder 投屏伴侣（AOA 配套 APK）
+
+安卓侧伴生应用：把手机屏幕实时推流给电脑上的 LingBuilder「AOA 可视点击器」示例工程，
+配合 `lingbuilder.aoahid` 模块实现「看得见、点得准」的电脑操作手机体验。
+
+- **产物**：`lingbuilder-companion-v1.4.0.apk`（仓库根 `companion/` 目录按版本归档）
+- **系统要求**：Android 8.0（API 26）及以上；MIUI/EMUI 等 ROM 需允许后台运行
+- **零第三方 SDK**：WebSocket 服务端为本仓库手写 RFC 6455 实现（`WsServer.kt`），
+  无广告、无统计、无网络出站（只在本机 8788 端口等服务）
+
+## 1.4.0 新增：queryScreen 坐标回映射协议
+
+为「识图/找色得到帧内坐标 → AOA HID 点击要手机真实坐标」补上换算约定。纯读协议，
+只走已握手连接（WS `/stream` 或 USB 数据通道均可发，回执双路广播），不动鉴权、不触发虚拟屏重建。
+
+**请求**（JSON 文本，`id` 可选、建议携带以便认领异步回包）：
+
+```json
+{"cmd":"queryScreen","id":"任意回显标识"}
+```
+
+**应答**（文本消息，回执经 replyControl 广播给全部已握手客户端，一机一查看器场景按 `id`/来源连接认领）：
+
+```json
+{"type":"screenInfo","id":"原样回显","realWidth":1080,"realHeight":2340,
+ "frameWidth":540,"frameHeight":1170,"scale":0.5,"orientation":0,"quality":70}
+```
+
+| 字段 | 含义 |
+| --- | --- |
+| `realWidth` / `realHeight` | **当前方向**真实显示分辨率（`getRealMetrics` 已按旋转互换宽高，与推流帧同方向） |
+| `frameWidth` / `frameHeight` | 当前推流帧尺寸（源尺寸 × scale 档位） |
+| `scale` | 当前缩放档位（0.25~1.0） |
+| `orientation` | 旋转角 0/90/180/270（与 env 心跳 `rotation` 同口径） |
+| `quality` | 当前 JPEG 编码质量（40~90） |
+
+**变更事件**：手机旋转或 `setScale` 改档位导致虚拟屏重建后，向所有客户端广播
+`{"type":"screenChanged",...字段同 screenInfo 但无 id}`，客户端据此就地刷新缓存；
+请求不带 `id` 时应答也省略该字段。旧客户端（v1.3.x）收到 `screenInfo`/`screenChanged`
+按未知文本忽略即可（它们只解析 env 心跳的 `width/height/rotation` 键，两消息无这些键，天然无害）。
+
+**坐标换算公式**（推流按档位等比缩放，两轴同比例）：
+
+```
+手机横坐标 = 帧横坐标 × realWidth  / frameWidth
+手机纵坐标 = 帧纵坐标 × realHeight / frameHeight
+AOA HID 逻辑坐标（0~32767） = 手机坐标 × 32767 / realWidth|realHeight
+```
+
+PC 侧参考实现：`src/aoa-viewer/功能/坐标映射.lcpp`（缓存 + 换算 + 未校准返回 -1）；
+协议探针：`.zcode/tmp/queryscreen-probe.js`（听信标 → 连 WS → 发 queryScreen → 断言应答）。
+红线：本批不做 `setScale` 远程改档位之外的任何重建触发；「锁定 scale=1.0 拍坐标」留待二期评估。
+
+## 1.3.2 定案：投屏全部走 Wi-Fi，USB 只留点击/控制
+
+- 投屏会话**不再自动接管 USB 数据通道**（v1.2.6 引入的「USB 优先」停用）：WS 服务全程保持，
+  视频与控制指令稳定走 Wi-Fi；USB 硬件只服务于 PC 侧 AOA HID 点击/控制（不经 app 代码）。
+- 广播循环自 1.3.1 起从 Handler.postDelayed 自链改为单工作线程 while+sleep
+  （个别 ROM 上 Handler 链会静默断链，信标停发而会话仍活着）。
+- 遗留说明：1.2.6~1.3.1 装机会出现「信标广播死地址」（USB 接管停了 WS），PC 端以指数退避兜底；
+  升到 1.3.2 后该现象消失。
+
+## 1.3.0 新增：投屏自动发现信标（免手抄地址）
+
+- 点「开始投屏」后，投屏会话运行期间每 3 秒向局域网广播本机连接串
+  （UDP **51750**，受限广播 255.255.255.255 + 本机 /24 定向广播双发防 AP 隔离），
+  PC 端 MirrorDesk 查看器自动发现设备并分配空闲槽位连接，**不再需要人工抄写
+  `ws://IP:端口/stream?token=配对码`**。
+- 点「停止投屏」先发 `{"offline":1}` 下线信标再停服务，PC 端立即退回槽位；
+  进程被系统杀死时无下线包，由 PC 端 10 秒心跳超时兜底。
+- 信标明文含配对码（与主界面 openly 展示配对码同一威胁模型），仅限可信局域网使用。
+- 端口仍由设置项决定（信标里带完整 ws 地址），PC 端不假设端口。
+- 实现见 `BeaconBroadcaster.kt`（单 HandlerThread 派发，UDP 发送不占主线程）。
+
+## 1.1.0 新增：USB 数据通道（免 Wi-Fi）
+
+- 注册 `usb.accessory` 伴生应用（识别串 `LingBuilder` / `AOACompanion` / `1.0`，
+  与 `lingbuilder.aoahid` 1.1.0 模块发送的 AOAv2 识别串一字不差），配件插入自动拉起。
+- 电脑侧 `AOA_打开数据通道` 后，视频帧改走 **USB bulk**（LBAC 帧，通道 1），
+  电脑控制指令（setScale/setQuality/stop/ping）从 bulk 读入（通道 2），**不依赖 Wi-Fi**。
+- 优先级：USB 数据通道活跃时自动停用 WebSocket 推流；拔出配件自动切回 Wi-Fi 推流。
+- HID 触摸注入走控制传输，与 USB 数据通道**天然并行**，互不干扰。
+- 电脑侧需给配件接口装 WinUSB 驱动（装过 ADB 驱动的机器多数开箱即用，详见模块红线文档）。
+
+## 安装
+
+1. 把 `lingbuilder-companion-v1.3.0.apk` 复制到手机安装（需允许「安装未知来源应用」）。
+2. 手机与电脑连接**同一个 Wi-Fi**（或电脑有线、手机 Wi-Fi 的同网段）。
+
+## 使用流程
+
+1. 打开 App，主屏显示 **6 位配对码**（点击可刷新，刷新后旧码立即失效）与完整连接串
+   `ws://<手机IP>:8788/stream?token=<配对码>`（可一键复制）。
+2. 点「开始投屏」，系统弹窗选择「立即开始」（Android 14+ 弹窗明确标注录屏内容，
+   每次会话都要确认一次，这是系统限制）。
+3. 在电脑 LingBuilder「AOA 可视点击器」工程里填入连接串连接；
+   1 秒内应看到手机画面。
+4. 不带正确配对码的连接会被直接拒绝（HTTP 403）。
+
+## 设置项
+
+| 设置 | 默认 | 说明 |
+| --- | --- | --- |
+| 端口 | 8788 | WebSocket 监听端口（1024~65535） |
+| 缩放 | 0.5 | 推流分辨率 = 屏幕 × 缩放（0.25~1.0），越小越省流量 |
+| JPEG 质量 | 70 | 40~90 |
+
+PC 侧也可以在会话中动态下发：`{"cmd":"setScale","value":0.5}`、
+`{"cmd":"setQuality","value":70}`、`{"cmd":"stop"}`。
+
+## 协议（ws 文本帧 JSON 双向 + 二进制帧 JPEG）
+
+手机 → PC（每秒 1 条环境心跳）：
+
+```json
+{"type":"env","rotation":0,"width":540,"height":1123,"fps":12,"foreground":"com.tencent.mm"}
+```
+
+- `rotation`：0/90/180/270，手机屏幕当前旋转角。
+- `width/height`：当前推流帧尺寸（已含缩放与旋转换向），PC 端按它设置画面宽高比。
+- `foreground`：前台应用包名；未授予「使用情况访问权限」时为 `null`（不影响投屏）。
+- 二进制帧 = JPEG 压缩画面。
+
+## 厂商 ROM 后台保活提示
+
+- **MIUI**：设置 → 应用设置 → 本应用 → 省电策略 → 无限制；最近任务下拉锁定卡片。
+- **EMUI/HarmonyOS**：设置 → 电池 → 启动管理 → 手动管理，允许后台运行。
+- 推流依赖前台服务（通知栏有常驻通知），熄屏后系统可能暂停采集，建议保持亮屏。
+
+## 构建与目录
+
+- Gradle 工程：`companion/aoa-companion/`，AGP 8.5.2 / Kotlin 2.0.20 / compileSdk 34。
+- 本机构建命令（JDK 17 + Android SDK）：
+
+  ```bash
+  cd companion/aoa-companion
+  gradle assembleRelease   # release 包已用 debug 密钥签名，可直接安装
+  ```
+
+- 源码结构：
+  - `WsServer.kt` — 手写 RFC 6455 服务端（握手/帧收发/掩码/心跳/关闭）+ 有界发送队列
+  - `ScreenStream.kt` — MediaProjection 采集、缩放渲染、旋转重建、RGBA→JPEG、自适应 10~15fps
+  - `EnvMonitor.kt` — 旋转实时监听 + UsageStats 前台应用探测 + 心跳 JSON 组装
+  - `StreamService.kt` — 前台服务（mediaProjection 类型）、控制指令、状态上报
+  - `MainActivity.kt` — 配对码/连接串/开始停止/设置界面

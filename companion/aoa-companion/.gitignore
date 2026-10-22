@@ -1,0 +1,10 @@
+# Gradle / IDE 本机产物
+.gradle/
+.kotlin/
+build/
+app/build/
+local.properties
+.idea/
+*.iml
+# 构建产物 APK 由仓库根 companion/ 归档管理，源码工程不入二进制
+*.apk

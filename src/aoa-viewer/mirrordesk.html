@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MirrorDesk · 多机投屏群控</title>
+<style>
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+:root{
+  color-scheme:dark;
+  --bg:#0C1114;--surface:#12191D;--surface-2:#182126;--surface-3:#1E292F;
+  --text:#E7F0EE;--text-2:#B7C7C4;--muted:#8DA19D;--faint:#7A8D89;
+  --border:#26343A;--border-strong:#35474E;
+  --primary:#2DD4BF;--primary-hover:#5EEAD4;--primary-soft:rgba(45,212,191,.12);
+  --on-primary:#052E2A;--accent:#FB923C;--success:#34D399;
+  --floating:rgba(10,15,17,.86);--dot:rgba(255,255,255,.055);
+  --shadow-sm:0 1px 2px rgba(0,0,0,.25);--shadow-md:0 12px 30px rgba(0,0,0,.28);
+  --font:Inter,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  --mono:"Cascadia Code",Consolas,monospace;
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --bg:#F4F8F8;--surface:#FFFFFF;--surface-2:#EDF3F2;--surface-3:#E3ECEA;
+  --text:#13201F;--text-2:#3C514E;--muted:#5D716D;--faint:#617571;
+  --border:#D8E3E1;--border-strong:#C4D4D1;--primary:#0F766E;--primary-hover:#0B5F59;
+  --primary-soft:#E2F2EE;--on-primary:#FFFFFF;--accent:#EA580C;--success:#0E9F6E;
+  --floating:rgba(14,20,23,.84);--dot:rgba(19,32,31,.075);
+  --shadow-sm:0 1px 2px rgba(11,29,26,.06);--shadow-md:0 12px 28px rgba(11,29,26,.10);
+}
+html{font-size:15px}
+body{margin:0;height:100vh;overflow:hidden;color:var(--text);font-family:var(--font);
+  background-color:var(--bg);background-image:radial-gradient(circle at 1px 1px,var(--dot) 1px,transparent 0);
+  background-size:24px 24px;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column}
+button,input,select{font:inherit}
+button{appearance:none;border:0;background:none;color:inherit;padding:0;cursor:pointer}
+button:disabled{cursor:not-allowed;opacity:.4}
+.icon{width:17px;height:17px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.icon.sm{width:14px;height:14px}
+.status-dot{width:7px;height:7px;border-radius:50%;background:#5D716D;flex:none;display:inline-block}
+.status-dot.on{background:var(--success);box-shadow:0 0 6px rgba(52,211,153,.6)}
+
+/* 顶栏 */
+.appbar{height:52px;flex:none;display:flex;align-items:center;gap:10px;padding:0 12px;
+  background:var(--surface);border-bottom:1px solid var(--border);user-select:none}
+.brand{display:flex;align-items:center;gap:8px;min-width:0}
+.brand svg{width:22px;height:22px;color:var(--primary)}
+.brand strong{font-size:13px;font-weight:700;white-space:nowrap}
+.brand span{font-size:11px;color:var(--muted);white-space:nowrap}
+.appbar-status{display:flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:1px solid var(--border);
+  border-radius:8px;background:var(--surface-2);color:var(--muted);font-size:11px;white-space:nowrap}
+.grow{flex:1}
+.urlbox{display:flex;align-items:center;gap:6px;height:30px;padding:0 10px;border:1px solid var(--border);
+  border-radius:8px;background:var(--surface);min-width:0}
+.urlbox input{width:300px;border:0;outline:0;background:transparent;color:var(--text);font-size:11px;font-family:var(--mono)}
+.urlbox input::placeholder{color:var(--faint)}
+.btn{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;border-radius:8px;
+  background:var(--surface-2);border:1px solid var(--border);color:var(--text-2);font-size:11.5px;font-weight:560;
+  transition:background-color .16s,color .16s,border-color .16s}
+.btn:hover:not(:disabled){background:var(--surface-3);color:var(--text);border-color:var(--border-strong)}
+.btn.primary{background:var(--primary);border-color:transparent;color:var(--on-primary);font-weight:650}
+.btn.primary:hover:not(:disabled){background:var(--primary-hover)}
+.btn.danger{background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.3);color:#FCA5A5}
+.btn.danger:hover:not(:disabled){background:rgba(239,68,68,.2)}
+
+/* 主体 */
+.app-body{display:flex;min-height:0;flex:1}
+.sidebar{width:188px;flex:none;display:flex;flex-direction:column;gap:6px;padding:12px 10px;
+  background:var(--surface);border-right:1px solid var(--border)}
+.sidebar-head{padding:0 8px 2px;font-size:10px;font-weight:650;letter-spacing:.08em;color:var(--faint)}
+.group-item{display:flex;align-items:center;gap:8px;width:100%;height:36px;padding:0 9px;border-radius:8px;
+  color:var(--text-2);font-size:12px;font-weight:550;text-align:left;transition:background-color .16s,color .16s}
+.group-item:hover{background:var(--surface-2);color:var(--text)}
+.group-item.is-active{background:var(--primary-soft);color:var(--primary)}
+.group-item .icon{width:14px;height:14px}
+.group-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.group-count{font-family:var(--mono);font-size:10px;color:var(--faint)}
+.sidebar-foot{margin-top:auto;padding:6px 8px 0;font-size:10px;color:var(--faint);line-height:1.6}
+
+/* 命令条 */
+.main{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--bg)}
+.command-bar{height:52px;flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:0 16px;border-bottom:1px solid var(--border)}
+.group-title{display:flex;align-items:center;gap:8px;min-width:0}
+.group-title strong{font-size:14px;font-weight:680;color:var(--text);white-space:nowrap}
+.group-title span{font-size:11px;color:var(--muted);white-space:nowrap}
+.command-actions{display:flex;align-items:center;gap:8px}
+.search{display:flex;align-items:center;gap:6px;height:30px;padding:0 10px;border:1px solid var(--border);
+  border-radius:8px;background:var(--surface);color:var(--muted)}
+.search input{width:130px;border:0;outline:0;background:transparent;color:var(--text);font-size:11px}
+
+/* 设备墙 */
+.wall-scroll{flex:1;min-height:0;overflow-y:auto;padding:14px 16px 16px;scrollbar-width:thin}
+.wall-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(232px,1fr));gap:12px;align-content:start}
+.wall-tile{position:relative;display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--border);
+  border-radius:14px;background:#0B1418;box-shadow:var(--shadow-sm);transition:transform .16s,border-color .16s,box-shadow .16s}
+.wall-tile:hover{transform:translateY(-2px);border-color:var(--primary);box-shadow:var(--shadow-md)}
+.wall-tile.is-off{opacity:.62}
+.tile-screen{position:relative;width:100%;aspect-ratio:9/19.5;max-height:62vh;overflow:hidden;background:#0B1418;cursor:pointer;touch-action:none}
+.tile-screen img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;user-select:none;
+  -webkit-user-drag:none;pointer-events:none}
+.tile-offline{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:8px;color:#6E827E;font-size:11px;text-align:center;padding:0 14px}
+.tile-offline .icon{width:30px;height:30px;opacity:.5}
+.tile-badge{position:absolute;top:8px;left:8px;display:flex;gap:5px;z-index:3}
+.badge{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 7px;border-radius:6px;
+  background:var(--floating);border:1px solid rgba(255,255,255,.14);color:#C6D6D2;font-size:10px;font-weight:600;backdrop-filter:blur(6px)}
+.badge.usb{color:#5EEAD4;border-color:rgba(45,212,191,.4)}
+.badge.wifi{color:#93C5FD;border-color:rgba(96,165,250,.4)}
+.tile-bottom{flex:none;padding:8px 10px;background:var(--surface);border-top:1px solid var(--border)}
+.tile-title{display:flex;align-items:center;gap:6px;min-width:0}
+.tile-title strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--text)}
+.tile-meta{display:flex;align-items:center;gap:8px;margin-top:4px;font-size:10px;color:var(--muted);
+  font-variant-numeric:tabular-nums;font-family:var(--mono)}
+.tile-tools{display:flex;align-items:center;gap:2px;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)}
+.tool{position:relative;width:29px;height:29px;border-radius:7px;display:grid;place-items:center;color:var(--muted);
+  transition:background-color .15s,color .15s}
+.tool:hover:not(:disabled){background:var(--surface-3);color:var(--text)}
+.tool.on{color:var(--success)}
+.tool-sep{width:1px;height:16px;background:var(--border);margin:0 3px;flex:none}
+.tool::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 7px);left:50%;transform:translateX(-50%);
+  padding:4px 8px;border-radius:6px;background:#070C0E;border:1px solid rgba(255,255,255,.1);color:#EAF3F1;
+  font-size:10px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .15s;z-index:9}
+.tool:hover::after{opacity:1}
+.wall-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-height:300px;
+  border:1px dashed var(--border-strong);border-radius:14px;color:var(--muted);text-align:center}
+.wall-empty strong{font-size:13px;color:var(--text-2)}
+.wall-empty p{margin:0;font-size:11px;max-width:360px;line-height:1.7}
+
+/* 批量条（占位） */
+.batch-bar{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;height:50px;margin:0 16px 12px;
+  padding:0 12px;border:1px solid rgba(255,255,255,.08);border-radius:12px;background:var(--floating);color:#C6D6D2;
+  font-size:11px;box-shadow:var(--shadow-md)}
+.batch-actions{display:flex;align-items:center;gap:6px}
+.batch-btn{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 9px;border:1px solid rgba(255,255,255,.12);
+  border-radius:7px;background:rgba(255,255,255,.05);color:#9DB1AD;font-size:10.5px}
+.batch-btn:hover:not(:disabled){background:rgba(255,255,255,.1);color:#EAF3F1}
+
+/* 帮助面板 */
+.help-overlay{position:fixed;inset:0;z-index:110;display:flex;align-items:center;justify-content:center;background:rgba(4,8,10,.5);backdrop-filter:blur(4px)}
+.help-scrim{position:absolute;inset:0}
+.help-panel{position:relative;z-index:2;width:580px;max-width:calc(100% - 40px);max-height:82vh;overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow-md)}
+.help-panel header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border)}
+.help-panel header strong{font-size:14px}
+.help-body{padding:6px 18px 18px}
+.help-body p{margin:10px 0 4px;font-size:12px;line-height:1.8;color:var(--text-2)}
+.help-body p b{color:var(--text);font-size:12.5px}
+.help-body code{font-family:var(--mono);font-size:11px;background:var(--surface-2);border:1px solid var(--border);border-radius:5px;padding:1px 6px;word-break:break-all}
+/* toast */
+.toast{position:fixed;left:50%;bottom:26px;z-index:120;transform:translate(-50%,10px);display:flex;align-items:center;gap:8px;
+  max-width:calc(100% - 40px);padding:9px 14px;border-radius:10px;background:#0C1416;color:#EDF6F4;
+  border:1px solid rgba(255,255,255,.09);box-shadow:var(--shadow-md);font-size:12px;opacity:0;pointer-events:none;
+  transition:opacity .18s,transform .18s;white-space:nowrap}
+.toast.is-visible{opacity:1;transform:translate(-50%,0)}
+.toast .icon{color:#5EEAD4}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{transition-duration:.01ms!important;animation-duration:.01ms!important}}
+</style>
+</head>
+<body>
+<svg class="sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="position:absolute;width:0;height:0">
+  <defs>
+    <symbol id="i-phone" viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18.5h2"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+    <symbol id="i-usb" viewBox="0 0 24 24"><path d="M12 21V6M8.5 9.5 12 6l3.5 3.5"/><circle cx="12" cy="13" r="2"/><path d="M8 15.5h8"/></symbol>
+    <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M3 8.8a13.5 13.5 0 0 1 18 0M6.5 12.4a8.5 8.5 0 0 1 11 0M9.8 15.9a4 4 0 0 1 4.4 0"/><circle cx="12" cy="19" r="1" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-house" viewBox="0 0 24 24"><path d="M3 11l9-8 9 8M5 9.5V21h14V9.5M9.5 21v-6h5v6"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M18 9a6 6 0 1 0-12 0c0 6-2.5 7-2.5 7h17S18 15 18 9"/><path d="M10 20a2.2 2.2 0 0 0 4 0"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8h3l1.5-2.5h7L17 8h3v11H4z"/><circle cx="12" cy="13.5" r="3.5"/></symbol>
+    <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M20.5 12a8.5 8.5 0 1 1-2.5-6"/><path d="M20.5 4v5.5H15"/></symbol>
+    <symbol id="i-volume" viewBox="0 0 24 24"><path d="M11 5 7 8.5H3.5v7H7L11 19z"/><path d="M15 8.5a5 5 0 0 1 0 7"/></symbol>
+    <symbol id="i-record" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5.5" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M9 10h.01M12 10h.01M15 10h.01M18 10h.01M8 14h8"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4.2-4.2"/></symbol>
+    <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 7V3M15 7V3M7 7h10v4a5 5 0 0 1-10 0zM12 16v5"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.6 6.6 0 0 0 9.8 9.8z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12.5" rx="2"/><path d="M8 20h8M12 16.5V20"/></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.6 2.6 0 1 1 4.1 2.2c-.8.6-1.6 1.1-1.6 2.1"/><circle cx="12" cy="17.2" r=".9" fill="currentColor" stroke="none"/></symbol>
+  </defs>
+</svg>
+
+<header class="appbar" id="appbar" style="cursor:default">
+  <div class="brand">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="2.5" y="4.5" width="19" height="15" rx="4.5" fill="none" stroke="currentColor" stroke-width="2.1"/><rect x="12" y="12" width="17.5" height="15.5" rx="4.5" fill="currentColor"/><circle cx="20.7" cy="19.8" r="2" fill="var(--on-primary)"/></svg>
+    <strong>MirrorDesk</strong><span>投屏台</span>
+  </div>
+  <div class="appbar-status"><span class="status-dot" id="allDot"></span><span id="onlineText">0 台在线</span></div>
+  <div class="grow"></div>
+  <label class="urlbox"><svg class="icon sm"><use href="#i-wifi"/></svg><input id="urlInput" type="text" placeholder="ws://192.168.x.x:8788/stream?token=xxxxxx（Wi-Fi 槽连接串）"></label>
+  <button class="btn primary" id="refreshAll" type="button"><svg class="icon sm"><use href="#i-plug"/></svg>自动分配接收</button>
+  <button class="btn danger" id="disconnectAll" type="button"><svg class="icon sm"><use href="#i-x"/></svg>全部断开</button>
+  <button class="btn" id="helpBtn" type="button" title="手机端安装与连接指引"><svg class="icon sm"><use href="#i-help"/></svg>安装指引</button>
+  <button class="btn" id="themeBtn" type="button" aria-label="切换深浅色"><svg class="icon sm"><use href="#i-sun"/></svg></button>
+</header>
+
+<div class="app-body">
+  <aside class="sidebar">
+    <div class="sidebar-head">设备分组</div>
+    <nav id="groupList"></nav>
+    <div class="sidebar-foot">局域网直连 · USB 优先<br>Wi-Fi WS 推流降级</div>
+  </aside>
+
+  <main class="main">
+    <div class="command-bar">
+      <div class="group-title"><strong id="groupName">全部槽位</strong><span id="groupCount">4 个槽位</span></div>
+      <div class="command-actions">
+        <label class="search"><svg class="icon sm"><use href="#i-search"/></svg><input id="deviceSearch" type="search" placeholder="搜索槽位"></label>
+        <button class="btn" id="touchAll" type="button"><svg class="icon sm"><use href="#i-phone"/></svg>全部接通触控</button>
+      </div>
+    </div>
+
+    <div class="wall-scroll">
+      <div class="wall-grid" id="wallGrid"></div>
+      <div class="wall-empty" id="wallEmpty" hidden>
+        <svg class="icon" style="width:34px;height:34px"><use href="#i-search"/></svg>
+        <strong>没有匹配的槽位</strong>
+        <p>换个分组或关键词。每台手机点「接收」自动分配槽位（USB 直传优先），画面出现后点按/拖动即真实触控。</p>
+      </div>
+    </div>
+
+    <div class="batch-bar">
+      <span style="display:flex;align-items:center;gap:7px"><svg class="icon sm" style="color:#5EEAD4"><use href="#i-monitor"/></svg>同步操控与批量动作<span id="syncState" style="color:var(--faint)">（关）</span></span>
+      <div class="batch-actions">
+        <button class="batch-btn" id="batchSync" type="button"><svg class="icon sm"><use href="#i-monitor"/></svg>同步操控</button>
+        <button class="batch-btn" id="batchShot" type="button"><svg class="icon sm"><use href="#i-camera"/></svg>批量截图</button>
+        <button class="batch-btn" type="button" disabled title="下一版开放"><svg class="icon sm"><use href="#i-record"/></svg>批量录制</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="help-overlay" id="helpOverlay" hidden>
+  <div class="help-scrim" data-close-help></div>
+  <div class="help-panel">
+    <header><strong>手机端安装与连接指引</strong><button class="tool" type="button" data-close-help aria-label="关闭"><svg class="icon"><use href="#i-x"/></svg></button></header>
+    <div class="help-body">
+      <p><b>1. 安装投屏伴侣 APK（v1.3.0 起）</b></p>
+      <p>安装包在电脑上：<code>T:\electron\lingbuilder\companion\lingbuilder-companion-v1.3.0.apk</code>。用微信/QQ/数据线任意方式发到手机，在手机上点开安装（允许「未知来源/安装未知应用」）。v1.2.6 及更早版本没有自动发现信标，必须升级。</p>
+      <p><b>2. 打开并授权</b></p>
+      <p>手机上打开「LingBuilder 投屏伴侣」→ 点「开始投屏」→ 系统弹窗选「立即开始」。建议加入后台白名单（MIUI：最近任务卡片上锁；鸿蒙：电池-启动管理改手动允许）。</p>
+      <p><b>3. 连接（零手抄）</b></p>
+      <p>手机点「开始投屏」后会自动向局域网广播（UDP 51750），本页 ≤5 秒自动出现该设备并接入空闲槽位；点「停止投屏」槽位自动退回。<b>首次使用需放行防火墙</b>（管理员 PowerShell 执行一次）：<code>netsh advfirewall firewall add rule name="LingBuilder MirrorDesk Beacon" dir=in action=allow protocol=UDP localport=51750</code>。USB 设备仍走「自动分配接收」。顶栏输入框手填连接串的方式保留备用。</p>
+      <p><b>4. 黑屏 / 无画面时</b></p>
+      <p>磁贴显示「USB 已通 · 等手机侧投屏」= 电脑到手机的 USB 链路已通，但手机上的投屏会话没在跑：解锁手机，打开投屏伴侣重新「开始投屏」即可，无需重插线。</p>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"><svg class="icon sm"><use href="#i-check"/></svg><span id="toastText"></span></div>
+
+<script>
+(function(){
+  'use strict';
+  var SLOTS = [1,2,3,4];
+  var state = {};            // slot -> {usb,ws,frames,w,h,rot}
+  var activeGroup = 'all';
+  var query = '';
+  var frameAlive = {};       // slot -> bool（/frame 探活）
+  var frameBase = '';        // 帧目录绝对基址（原生推送，正斜杠 file 形式）
+
+  function $(id){ return document.getElementById(id); }
+  function icon(id){ return '<svg class="icon"><use href="#'+id+'"/></svg>'; }
+
+  function post(msg){
+    if (window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
+      window.chrome.webview.postMessage(JSON.stringify(msg));
+    } else {
+      console.log('[bridge-offline]', msg);
+    }
+  }
+
+  var toastTimer = null;
+  function showToast(text){
+    $('toastText').textContent = text;
+    $('toast').classList.add('is-visible');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ $('toast').classList.remove('is-visible'); }, 2200);
+  }
+
+  // ===== 状态：原生桥推送（泵每 0.5s 发 {event:'status',data:{slots:[...]}}）=====
+  function refreshStatus(){} // 兼容旧调用点；真实数据来自桥消息
+  function applyStatus(data){
+    (data && data.slots || []).forEach(function(s){ state[s.slot] = s; });
+    render();
+  }
+
+  function isOnline(s){ return !!(s && (s.usb || s.ws)); }
+
+  // ===== 分组与渲染 =====
+  var GROUPS = [
+    {id:'all',  name:'全部槽位', icon:'i-grid'},
+    {id:'usb',  name:'USB 直传', icon:'i-usb'},
+    {id:'wifi', name:'Wi-Fi 推流', icon:'i-wifi'},
+    {id:'off',  name:'未连接', icon:'i-phone'}
+  ];
+  function groupMatch(slot, gid){
+    var s = state[slot];
+    if (gid === 'all') return true;
+    if (gid === 'usb') return !!(s && s.usb);
+    if (gid === 'wifi') return !!(s && !s.usb && s.ws);
+    return !isOnline(s);
+  }
+  function visibleSlots(){
+    return SLOTS.filter(function(n){
+      return groupMatch(n, activeGroup) && (!query || ('槽位'+n).indexOf(query) !== -1);
+    });
+  }
+
+  function renderGroups(){
+    $('groupList').innerHTML = GROUPS.map(function(g){
+      var count = SLOTS.filter(function(n){ return groupMatch(n, g.id); }).length;
+      var active = g.id === activeGroup;
+      return '<button class="group-item'+(active?' is-active':'')+'" type="button" data-group="'+g.id+'">'+
+        icon(g.icon)+'<span class="group-name">'+g.name+'</span><span class="group-count">'+count+'</span></button>';
+    }).join('');
+  }
+
+  // 磁贴 DOM 持久化（2026-10-22 修画面闪烁）：状态推送只就地更新文本/徽章/显隐，
+  // 不再整墙 innerHTML 重建——重建会销毁 <img> 触发整图重载，是闪烁主因。
+  // 双 <img> 叠加换帧：后备图加载完成后才交换层级，杜绝 src 换址时的清屏空窗。
+  function tileHTML(n){
+    return '<div class="wall-tile is-off" data-slot="'+n+'" hidden>'+
+      '<div class="tile-screen" data-screen="'+n+'" style="aspect-ratio:9/19.5">'+
+        '<img class="frame" alt="槽位'+n+'画面" hidden>'+
+        '<img class="frame" alt="槽位'+n+'画面" hidden>'+
+        '<div class="tile-offline" hidden>'+icon('i-phone')+'<span>槽位 '+n+' 空闲<br>手机点「开始投屏」自动接入；USB 设备点「接收」分配</span></div>'+
+        '<div class="tile-badge"></div>'+
+      '</div>'+
+      '<div class="tile-bottom">'+
+        '<div class="tile-title"><span class="status-dot"></span><strong>槽位 '+n+'</strong></div>'+
+        '<div class="tile-meta"><span class="meta-text">未连接</span></div>'+
+        '<div class="tile-tools">'+
+          '<button class="tool" type="button" data-act="receive" data-tip="接收（USB 优先）">'+icon('i-plug')+'</button>'+
+          '<button class="tool" type="button" data-act="touch" data-tip="接通触控">'+icon('i-phone')+'</button>'+
+          '<button class="tool" type="button" data-act="wake" data-tip="唤醒屏幕">'+icon('i-sun')+'</button>'+
+          '<span class="tool-sep"></span>'+
+          '<button class="tool" type="button" data-act="home" data-tip="主页">'+icon('i-house')+'</button>'+
+          '<button class="tool" type="button" data-act="back" data-tip="返回">'+icon('i-back')+'</button>'+
+          '<button class="tool" type="button" data-act="notif" data-tip="下拉通知栏">'+icon('i-bell')+'</button>'+
+          '<span class="tool-sep"></span>'+
+          '<button class="tool" type="button" data-act="shot" data-tip="截图到 exe 目录">'+icon('i-camera')+'</button>'+
+          '<button class="tool" type="button" data-act="findClick" data-tip="找图点击演示（识图→坐标换算→真实点击）">'+icon('i-search')+'</button>'+
+          '<button class="tool" type="button" disabled data-act="rotate" data-tip="旋转（下一版）">'+icon('i-rotate')+'</button>'+
+          '<button class="tool" type="button" disabled data-act="volume" data-tip="音量（下一版）">'+icon('i-volume')+'</button>'+
+          '<button class="tool" type="button" disabled data-act="record" data-tip="录制（下一版）">'+icon('i-record')+'</button>'+
+          '<button class="tool" type="button" disabled data-act="ime" data-tip="键盘（下一版）">'+icon('i-keyboard')+'</button>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  }
+
+  function render(){
+    renderGroups();
+    SLOTS.forEach(updateTile);
+    var list = visibleSlots();
+    $('groupName').textContent = (GROUPS.find(function(g){ return g.id === activeGroup; }) || {}).name || '';
+    $('groupCount').textContent = list.length + ' 个槽位';
+    $('wallGrid').hidden = list.length === 0;
+    $('wallEmpty').hidden = list.length !== 0;
+    var online = SLOTS.filter(function(n){ return isOnline(state[n]); }).length;
+    $('onlineText').textContent = online + ' 台在线';
+    $('allDot').className = 'status-dot' + (online ? ' on' : '');
+  }
+
+  function updateTile(n){
+    var s = state[n] || {};
+    var on = isOnline(s);
+    var tile = $('wallGrid').querySelector('[data-slot="'+n+'"]');
+    if (!tile) return;
+    var visible = groupMatch(n, activeGroup) && (!query || ('槽位'+n).indexOf(query) !== -1);
+    tile.hidden = !visible;
+    tile.classList.toggle('is-off', !on);
+    var screen = tile.querySelector('.tile-screen');
+    var imgs = screen.querySelectorAll('img.frame');
+    var offBox = screen.querySelector('.tile-offline');
+    var badges = '';
+    if (s.usb) badges = '<span class="badge usb">'+icon('i-usb')+'USB</span>';
+    else if (s.ws) badges = '<span class="badge wifi">'+icon('i-wifi')+'Wi-Fi</span>';
+    var badgeBox = screen.querySelector('.tile-badge');
+    if (badgeBox.innerHTML !== badges) badgeBox.innerHTML = badges;
+    var meta;
+    if (!on) meta = '未连接';
+    else if (s.usb && !(s.frames|0) && !(s.w|0)) meta = 'USB 已通 · 等手机侧投屏（在手机上打开投屏伴侣）';
+    else meta = (s.w||0)+'×'+(s.h||0)+' · '+(s.frames||0)+' 帧' + (s.rot ? ' · 旋'+s.rot+'°' : '');
+    var metaEl = tile.querySelector('.meta-text');
+    if (metaEl.textContent !== meta) metaEl.textContent = meta;
+    var ratio = (s.w && s.h) ? (s.w + '/' + s.h) : '9/19.5';
+    if (screen.style.aspectRatio !== ratio) screen.style.aspectRatio = ratio;
+    tile.querySelector('.status-dot').className = 'status-dot' + (on ? ' on' : '');
+    var wasOn = tile.dataset.on === '1';
+    if (on){
+      if (!wasOn){
+        // 上线（或重连）：复位换帧状态，img0 在前，两个都可见（层级决定谁显示）
+        frameFlip[n] = false;
+        delete lastFrameUrl[n];
+        imgs[0].style.zIndex = 1;
+        imgs[1].style.zIndex = 0;
+        imgs[0].hidden = false;
+        imgs[1].hidden = false;
+      }
+    } else {
+      if (wasOn || imgs[0].hidden === false){
+        frameFlip[n] = false;
+        delete lastFrameUrl[n];
+        imgs.forEach(function(im){ im.hidden = true; im.removeAttribute('src'); im.style.zIndex = ''; });
+      }
+    }
+    offBox.hidden = on;
+    tile.dataset.on = on ? '1' : '0';
+  }
+
+  // ===== 帧轮询（仅在线槽；双 img 叠加 + 原生翻转位对齐，修「一闪一闪」）=====
+  // 状态里的 flip=原生 用甲帧：真→最新完整帧在 aoa_sN_0，假→在 aoa_sN_1。
+  // 永远读「不是正在被覆写」的那个文件，半张 JPEG（闪烁第二根因）不会再被取到。
+  var frameFlip = {};
+  var lastFrameUrl = {};
+  function refreshFrames(){
+    SLOTS.forEach(function(n){
+      var s = state[n];
+      if (!isOnline(s)) return;
+      var imgs = $('wallGrid').querySelectorAll('[data-screen="'+n+'"] img.frame');
+      if (imgs.length < 2) return;
+      var front = imgs[frameFlip[n] ? 1 : 0];
+      var back = imgs[frameFlip[n] ? 0 : 1];
+      if (back.dataset.loading) return;
+      if (!frameBase) return;
+      var now = Date.now();
+      // flip 兼容布尔与字符串形态（"false" 字符串在 JS 里是 truthy，必须显式比较）
+      var flipTruthy = (s.flip === true || s.flip === 'true' || s.flip === 1);
+      var url = frameBase + '/aoa_s' + n + '_' + (flipTruthy ? 0 : 1) + '.jpg?t=' + now;
+      back.onload = function(){
+        delete back.dataset.loading;
+        delete back.dataset.retrying;
+        if (!isOnline(state[n])) return;
+        frameFlip[n] = !frameFlip[n];
+        back.style.zIndex = 2;
+        front.style.zIndex = 1;
+        lastFrameUrl[n] = url;
+      };
+      back.onerror = function(){
+        // 读失败（多半撞上写入锁/半张）：立即换另一半重试，那半是刚写完的完整帧
+        delete back.dataset.loading;
+        if (isOnline(state[n]) && !back.dataset.retrying){
+          back.dataset.retrying = '1';
+          var retryUrl = frameBase + '/aoa_s' + n + '_' + (flipTruthy ? 1 : 0) + '.jpg?t=' + Date.now();
+          back.onload = function(){
+            delete back.dataset.loading;
+            delete back.dataset.retrying;
+            if (!isOnline(state[n])) return;
+            frameFlip[n] = !frameFlip[n];
+            back.style.zIndex = 2;
+            front.style.zIndex = 1;
+            lastFrameUrl[n] = retryUrl;
+          };
+          back.src = retryUrl;
+        }
+      };
+      back.src = url;
+    });
+  }
+
+  // ===== 顶栏拖拽窗口（无边框窗口经原生 窗口_开始拖拽 移动）=====
+  $('appbar').addEventListener('pointerdown', function(e){
+    if (e.target.closest('button,input,label')) return;
+    post({action:'dragWindow'});
+  });
+
+  // ===== 手势桥（pointer → 0~32767）=====
+  var dragging = {slot:0, active:false};
+  document.addEventListener('pointerdown', function(e){
+    var screen = e.target.closest('[data-screen]');
+    if (!screen) return;
+    var n = Number(screen.dataset.screen);
+    var p = normPoint(e, screen);
+    if (!p) return;
+    screen.setPointerCapture(e.pointerId);
+    dragging.slot = n; dragging.active = true;
+    post({slot:n, action:'down', x:p.x, y:p.y});
+    e.preventDefault();
+  });
+  var lastMoveAt = 0;
+  document.addEventListener('pointermove', function(e){
+    if (!dragging.active) return;
+    var now = Date.now();
+    if (now - lastMoveAt < 33) return;   // ~30Hz 节流（同步广播时 4 台 × 控制传输）
+    lastMoveAt = now;
+    var screen = $('wallGrid').querySelector('[data-screen="'+dragging.slot+'"]');
+    if (!screen) return;
+    var p = normPoint(e, screen);
+    if (!p) return;
+    post({slot:dragging.slot, action:'move', x:p.x, y:p.y});
+  });
+  function endDrag(e){
+    if (!dragging.active) return;
+    var screen = $('wallGrid').querySelector('[data-screen="'+dragging.slot+'"]');
+    if (screen){
+      var p = normPoint(e, screen);
+      post({slot:dragging.slot, action:'up', x:(p?p.x:16383), y:(p?p.y:16383)});
+    } else {
+      post({slot:dragging.slot, action:'up'});
+    }
+    dragging.active = false;
+  }
+  document.addEventListener('pointerup', endDrag);
+  document.addEventListener('pointercancel', endDrag);
+
+  function normPoint(e, screen){
+    var r = screen.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) return null;
+    var x = Math.round((e.clientX - r.left) / r.width * 32767);
+    var y = Math.round((e.clientY - r.top) / r.height * 32767);
+    x = Math.max(0, Math.min(32767, x));
+    y = Math.max(0, Math.min(32767, y));
+    return {x:x, y:y};
+  }
+
+  // ===== 工具条与顶栏动作 =====
+  document.addEventListener('click', function(e){
+    var g = e.target.closest('[data-group]');
+    if (g){ activeGroup = g.dataset.group; render(); return; }
+    var t = e.target.closest('[data-act]');
+    if (t){
+      var tile = t.closest('[data-slot]');
+      if (!tile) return;
+      var n = Number(tile.dataset.slot);
+      var act = t.dataset.act;
+      post({slot:n, action:act});
+      var tips = {receive:'槽位 '+n+' 已发起接收（USB 优先）', touch:'槽位 '+n+' 接通触控',
+        home:'已发主页指令', back:'已发返回指令', wake:'已发唤醒指令', notif:'已下拉通知栏',
+        shot:'截图已保存到 exe 目录', findClick:'槽位 '+n+' 找图演示：请求屏幕信息并执行（看状态栏）'};
+      if (tips[act]) showToast(tips[act]);
+      if (act === 'receive' || act === 'touch') setTimeout(refreshStatus, 900);
+      return;
+    }
+  });
+
+  // ?auto=assign 自启：页面加载 2 秒后自动触发「自动分配接收」(RPA/验收/自检用)
+  if (location.search.indexOf('auto=assign') >= 0) {
+    var qp = location.search.match(/serial=([^&]+)/);
+    if (qp) post({action:'setSerial', serial: decodeURIComponent(qp[1])});
+    var qw = location.search.match(/ws=([^&]+)/);
+    if (qw) [35000, 45000, 55000].forEach(function(t){ setTimeout(function(){
+      var target = 1;
+      for (var i = 0; i < SLOTS.length; i++) { if (!isOnline(state[SLOTS[i]])) { target = SLOTS[i]; break; } }
+      post({slot:target, action:'connectUrl', url: decodeURIComponent(qw[1])});
+      showToast('槽位 '+target+' 自动 Wi-Fi 连接');
+    }, t); });
+    var q3 = location.search.match(/ws3=([^&]+)/);
+    if (q3) [65000, 75000, 85000].forEach(function(t){ setTimeout(function(){
+      var target = 1;
+      for (var i = 0; i < SLOTS.length; i++) { if (!isOnline(state[SLOTS[i]])) { target = SLOTS[i]; break; } }
+      post({slot:target, action:'connectUrl', url: decodeURIComponent(q3[1])});
+      showToast('槽位 '+target+' 自动 Wi-Fi 连接(第三路)');
+    }, t); });
+    var qs2 = location.search.match(/serial2=([^&]+)/);
+    if (qs2) setTimeout(function(){
+      post({action:'setSerial', serial: decodeURIComponent(qs2[1])});
+      post({slot:4, action:'receive'});
+      showToast('槽位 4 指定接收 ' + decodeURIComponent(qs2[1]));
+    }, 60000);
+    var q2 = location.search.match(/ws2=([^&]+)/);
+    if (q2) [50000, 60000, 70000].forEach(function(t){ setTimeout(function(){
+      var target = 1;
+      for (var i = 0; i < SLOTS.length; i++) { if (!isOnline(state[SLOTS[i]])) { target = SLOTS[i]; break; } }
+      post({slot:target, action:'connectUrl', url: decodeURIComponent(q2[1])});
+      showToast('槽位 '+target+' 自动 Wi-Fi 连接(第二路)');
+    }, t); });
+    setTimeout(function(){
+      var b = document.getElementById('refreshAll');
+      if (b && !b.disabled) b.click();
+    }, 25000);
+  }
+  $('refreshAll').addEventListener('click', function(){
+    var btn = this;
+    // 先清空序列号输入框（避免四槽都去开同一台指定机），再逐槽错开 700ms 发起接收，
+    // 错开是为了避免多个 USB 打开请求同时在界面线程阻塞造成「无响应」。
+    // URL 带 serial 参数时延迟清空：首槽消化指定序列号后再清，其余槽走自动分配
+    // （立即清会让指定机失效，不清则每个槽都去开同一台指定机——两个方向都踩过）。
+    if (location.search.indexOf('serial=') < 0) post({action:'clearSerial'});
+    else setTimeout(function(){ post({action:'clearSerial'}); }, 800);
+    btn.disabled = true;
+    var label = btn.innerHTML;
+    btn.innerHTML = '分配中…';
+    // 首槽先连（清空序列号输入框走自动分配）；首槽确认在线/超时后再连下一槽，
+    // 逐台串行——避免多台同步打开期间任何一台异常拖住整段分配。
+    var queue = SLOTS.slice();
+    function connectNext(){
+      if (!queue.length){
+        btn.disabled = false; btn.innerHTML = label; refreshStatus();
+        return;
+      }
+      var n = queue.shift();
+      post({slot:n, action:'receive'});
+      setTimeout(function(){
+        refreshStatus();
+        var st = state[n];
+        if (st && (st.usb || st.ws)) setTimeout(connectNext, 400);
+        else setTimeout(connectNext, 1800);
+      }, 2600);
+    }
+    connectNext();
+    showToast('正在逐台自动分配接收');
+  });
+  $('touchAll').addEventListener('click', function(){
+    SLOTS.forEach(function(n){ post({slot:n, action:'touch'}); });
+    showToast('已对全部槽位接通触控');
+  });
+  $('disconnectAll').addEventListener('click', function(){
+    post({action:'disconnectAll'});
+    showToast('已全部断开');
+    setTimeout(refreshStatus, 800);
+  });
+  // 同步操控：开启后任一磁贴的手势会广播到所有已接通触控的槽位（群控）
+  var syncMode = false;
+  $('batchSync').addEventListener('click', function(){
+    syncMode = !syncMode;
+    this.style.color = syncMode ? '#5EEAD4' : '';
+    this.style.borderColor = syncMode ? 'rgba(45,212,191,.5)' : '';
+    $('syncState').textContent = syncMode ? '（开·已接通触控的槽位同步跟随）' : '（关）';
+    post({action:'syncMode', on: syncMode ? 1 : 0});
+    showToast(syncMode ? '同步操控已开启：在任一画面点按/滑动，所有已接通触控的手机同步跟随' : '同步操控已关闭');
+  });
+  $('batchShot').addEventListener('click', function(){
+    post({action:'batchShot'});
+    showToast('批量截图已保存到 exe 目录');
+  });
+
+  $('deviceSearch').addEventListener('input', function(){
+    query = this.value.trim(); render();
+  });
+  $('helpBtn').addEventListener('click', function(){ $('helpOverlay').hidden = false; });
+  document.addEventListener('click', function(e){ if (e.target.closest('[data-close-help]')) $('helpOverlay').hidden = true; });
+  $('themeBtn').addEventListener('click', function(){
+    var root = document.documentElement;
+    var dark = root.dataset.theme === 'dark';
+    root.dataset.theme = dark ? 'light' : 'dark';
+    this.querySelector('use').setAttribute('href', dark ? '#i-moon' : '#i-sun');
+  });
+  // 顶栏连接串：填了串则对当前分组内第一个未连槽位发起 WS 连接
+  $('urlInput').addEventListener('change', function(){
+    var url = this.value.trim();
+    if (!url) return;
+    if (url.indexOf('serial:') === 0) {
+      post({action:'setSerial', serial: url.slice(7)});
+      showToast('已指定接收序列号 ' + url.slice(7));
+      return;
+    }
+    var target = SLOTS.find(function(n){ return !isOnline(state[n]); });
+    if (!target) target = 1;
+    post({slot:target, action:'connectUrl', url:url});
+    showToast('槽位 '+target+' 正在连接 ' + url);
+  });
+
+  // 接收宿主下发的状态/提示（EdgeView_取事件数据控件 JSON：{event:'notify', text:...}）
+  if (window.chrome && window.chrome.webview && window.chrome.webview.addEventListener) {
+    window.chrome.webview.addEventListener('message', function(e){
+      try {
+        var m = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+        if (m && m.event === 'notify' && m.text) showToast(m.text);
+        if (m && m.event === 'status' && m.data) applyStatus(m.data);
+        if (m && m.event === 'frameBase' && m.base) frameBase = m.base;
+      } catch (_) {}
+    });
+  }
+
+  // ===== 启动（磁贴一次性构建，之后全部就地更新）=====
+  $('wallGrid').innerHTML = SLOTS.map(tileHTML).join('');
+  render();
+  post({action:'getFrameBase'});
+  setInterval(refreshFrames, 220);
+})();
+</script>
+</body>
+</html>

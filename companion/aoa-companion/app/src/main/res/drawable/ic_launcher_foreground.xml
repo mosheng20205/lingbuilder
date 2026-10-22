@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 简洁手机+波形图形，代表投屏 -->
+    <path
+        android:fillColor="#93C5FD"
+        android:pathData="M40,30 L68,30 A4,4 0 0 1 72,34 L72,74 A4,4 0 0 1 68,78 L40,78 A4,4 0 0 1 36,74 L36,34 A4,4 0 0 1 40,30 Z" />
+    <path
+        android:fillColor="#1E293B"
+        android:pathData="M40,36 L68,36 L68,68 L40,68 Z" />
+    <path
+        android:strokeColor="#FACC15"
+        android:strokeWidth="3"
+        android:fillType="evenOdd"
+        android:pathData="M44,58 L50,50 L55,55 L62,44" />
+</vector>

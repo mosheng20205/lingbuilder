@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 与模块 AOAv2 识别串一字不差：manufacturer=LingBuilder, model=AOACompanion, version=1.0 -->
+<resources>
+    <usb-accessory
+        manufacturer="LingBuilder"
+        model="AOACompanion"
+        version="1.0" />
+</resources>

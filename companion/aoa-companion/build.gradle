@@ -1,0 +1,5 @@
+// LingBuilder 投屏伴侣：顶层构建脚本（插件版本集中在此声明）
+plugins {
+    id 'com.android.application' version '8.5.2' apply false
+    id 'org.jetbrains.kotlin.android' version '2.0.20' apply false
+}
