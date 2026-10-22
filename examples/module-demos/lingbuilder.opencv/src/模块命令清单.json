@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-19T03:18:58.850Z",
+  "generatedAt": "2026-10-19T09:25:32.584Z",
   "module": {
     "id": "lingbuilder.opencv",
     "name": "OpenCV 图像处理模块",

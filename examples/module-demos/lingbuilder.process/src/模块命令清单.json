@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-19T03:18:58.852Z",
+  "generatedAt": "2026-10-19T09:25:32.587Z",
   "module": {
     "id": "lingbuilder.process",
     "name": "进程管理模块",
@@ -156,7 +156,7 @@
         "encoding": "wide",
         "example": "局部 文本型 名单[]\n进程_按名称取ID列表(\"explorer.exe\", 名单)"
       },
-      "demoInvocation": "进程_按名称取ID列表(\"演示参数1\", 0)"
+      "demoInvocation": "进程_按名称取ID列表(\"演示参数1\", 演示结果数组)"
     },
     {
       "index": 7,
@@ -206,7 +206,7 @@
         "returnType": "int",
         "example": "局部 文本型 名称[]\n局部 文本型 ID[]\n进程_枚举全部(名称, ID)"
       },
-      "demoInvocation": "进程_枚举全部(0, 0)"
+      "demoInvocation": "进程_枚举全部(演示结果数组, 演示结果数组)"
     },
     {
       "index": 9,

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-19T03:18:58.708Z",
+  "generatedAt": "2026-10-19T09:25:32.430Z",
   "module": {
     "id": "lingbuilder.crypto.symmetric",
     "name": "对称加密模块",

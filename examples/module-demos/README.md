@@ -107,8 +107,8 @@
 | `lingbuilder.websocket.client` WebSocket 客户端模块 | `module-demo-lingbuilder.websocket.client` | 51 | 0 | 3 | `WebSocket客户端模块完整演示.lcpppkg` |
 | `lingbuilder.websocket.server` WebSocket 服务端模块 | `module-demo-lingbuilder.websocket.server` | 50 | 0 | 3 | `WebSocket服务端模块完整演示.lcpppkg` |
 | `lingbuilder.win32.accessibility` 辅助功能模块 | `module-demo-lingbuilder.win32.accessibility` | 4 | 0 | 1 | `辅助功能模块完整演示.lcpppkg` |
-| `lingbuilder.win32.basic` Win32窗口基础模块 | `module-demo-lingbuilder.win32.basic` | 241 | 13 | 12 | `Win32窗口基础模块完整演示.lcpppkg` |
-| `lingbuilder.win32.common-controls` Win32高级控件模块 | `module-demo-lingbuilder.win32.common-controls` | 560 | 26 | 12 | `Win32高级控件模块完整演示.lcpppkg` |
+| `lingbuilder.win32.basic` Win32窗口基础模块 | `module-demo-lingbuilder.win32.basic` | 244 | 13 | 12 | `Win32窗口基础模块完整演示.lcpppkg` |
+| `lingbuilder.win32.common-controls` Win32高级控件模块 | `module-demo-lingbuilder.win32.common-controls` | 561 | 26 | 12 | `Win32高级控件模块完整演示.lcpppkg` |
 | `lingbuilder.win32.menu` Win32菜单模块 | `module-demo-lingbuilder.win32.menu` | 8 | 0 | 1 | `Win32菜单模块完整演示.lcpppkg` |
 | `lingbuilder.win32.monitor` 显示器与DPI模块 | `module-demo-lingbuilder.win32.monitor` | 6 | 0 | 1 | `显示器与DPI模块完整演示.lcpppkg` |
 | `lingbuilder.win32.tray` 托盘图标模块 | `module-demo-lingbuilder.win32.tray` | 5 | 0 | 1 | `托盘图标模块完整演示.lcpppkg` |

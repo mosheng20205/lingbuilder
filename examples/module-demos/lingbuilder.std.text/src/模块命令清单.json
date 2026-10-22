@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-19T03:18:58.873Z",
+  "generatedAt": "2026-10-19T09:25:32.610Z",
   "module": {
     "id": "lingbuilder.std.text",
     "name": "文本处理模块",
@@ -308,7 +308,7 @@
         "returnType": "int",
         "encoding": "wide"
       },
-      "demoInvocation": "文本_分割(\"演示参数1\", \"演示参数2\", 0, 真)"
+      "demoInvocation": "文本_分割(\"演示参数1\", \"演示参数2\", 演示结果数组, 真)"
     },
     {
       "index": 12,
@@ -832,7 +832,7 @@
         "encoding": "wide",
         "example": "局部 文本型 名单[]\n数组_加入成员(名单, \"a\")\n调试输出(文本_连接(名单, \",\"))"
       },
-      "demoInvocation": "文本_连接(0, \"演示参数2\", 1, 1)"
+      "demoInvocation": "文本_连接(演示结果数组, \"演示参数2\", 1, 1)"
     },
     {
       "index": 30,

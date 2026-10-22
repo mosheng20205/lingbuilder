@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-19T03:18:58.752Z",
+  "generatedAt": "2026-10-19T09:25:32.479Z",
   "module": {
     "id": "lingbuilder.fs.core",
     "name": "文件目录模块",
@@ -967,7 +967,7 @@
         "encoding": "wide",
         "example": "局部 文本型 名单[]\n文件_枚举(\"日志目录\", \"*.txt\", 真, 名单)"
       },
-      "demoInvocation": "文件_枚举(\".\", \"演示参数2\", 真, 0)"
+      "demoInvocation": "文件_枚举(\".\", \"演示参数2\", 真, 演示结果数组)"
     },
     {
       "index": 37,
@@ -1000,7 +1000,7 @@
         "encoding": "wide",
         "example": "局部 文本型 名单[]\n目录_枚举(\"工作目录\", 假, 名单)"
       },
-      "demoInvocation": "目录_枚举(\".\", 真, 0)"
+      "demoInvocation": "目录_枚举(\".\", 真, 演示结果数组)"
     },
     {
       "index": 38,
@@ -1102,7 +1102,7 @@
         "encoding": "wide",
         "example": "局部 文本型 命中[]\n如果真 (文件_取最新文件(\"缓存目录\", \"*.json\", 命中) = 1)\n    调试输出(数组_取成员(命中, 0))\n结束如果"
       },
-      "demoInvocation": "文件_取最新文件(\".\", \"演示参数2\", 0)"
+      "demoInvocation": "文件_取最新文件(\".\", \"演示参数2\", 演示结果数组)"
     },
     {
       "index": 42,

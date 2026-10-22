@@ -275,6 +275,10 @@ function createSource(manifest: LingBuilderModuleManifest, groups: DemoGroup[]):
     if (group.commands.length === 0) {
       lines.push(`        调试输出("${escapeLcppString(manifest.name)} 是只读资产模块，不公开 LCPP 命令。")`);
     } else {
+      // 数组参数只接受裸数组变量本身（实参类型门禁），含数组命令的组先声明演示数组。
+      if (group.commands.some(item => (item.binding.parameters || []).some(parameter => parameter.type === 'array' && parameter.variadic !== true))) {
+        lines.push('        局部 长整数型 演示结果数组[]');
+      }
       lines.push('        如果 (控件_取勾选(允许实际执行))');
       for (const [offset, item] of group.commands.entries()) {
         const absoluteIndex = groups.slice(0, group.index - 1).reduce((sum, current) => sum + current.commands.length, 0) + offset + 1;
@@ -612,6 +616,7 @@ function defaultArgument(
   }
   if (parameter.type === 'bool') return '真';
   if (parameter.type === 'bytes') return '{}';
+  if (parameter.type === 'array') return '演示结果数组';
   if (parameter.type === 'double') return '1.0';
   if (parameter.type === 'longLong') return '1';
   if (parameter.type === 'int') return '1';

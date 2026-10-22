@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-19T03:18:58.856Z",
+  "generatedAt": "2026-10-19T09:25:32.591Z",
   "module": {
     "id": "lingbuilder.std.array",
     "name": "数组操作模块",
@@ -29,7 +29,7 @@
         "returnType": "int",
         "example": "数组_取成员数(名单)"
       },
-      "demoInvocation": "数组_取成员数(0)"
+      "demoInvocation": "数组_取成员数(演示结果数组)"
     },
     {
       "index": 2,
@@ -50,7 +50,7 @@
         ],
         "returnType": "bool"
       },
-      "demoInvocation": "数组_是否为空(0)"
+      "demoInvocation": "数组_是否为空(演示结果数组)"
     },
     {
       "index": 3,
@@ -78,7 +78,7 @@
         "returnType": "arrayElement",
         "example": "数组_取成员(名单, 0)"
       },
-      "demoInvocation": "数组_取成员(0, 1)"
+      "demoInvocation": "数组_取成员(演示结果数组, 1)"
     },
     {
       "index": 4,
@@ -109,7 +109,7 @@
         ],
         "returnType": "bool"
       },
-      "demoInvocation": "数组_置成员(0, 1, 0)"
+      "demoInvocation": "数组_置成员(演示结果数组, 1, 0)"
     },
     {
       "index": 5,
@@ -137,7 +137,7 @@
         "returnType": "int",
         "example": "数组_加入成员(名单, \"张三\")"
       },
-      "demoInvocation": "数组_加入成员(0, 0)"
+      "demoInvocation": "数组_加入成员(演示结果数组, 0)"
     },
     {
       "index": 6,
@@ -168,7 +168,7 @@
         ],
         "returnType": "bool"
       },
-      "demoInvocation": "数组_插入成员(0, 1, 0)"
+      "demoInvocation": "数组_插入成员(演示结果数组, 1, 0)"
     },
     {
       "index": 7,
@@ -194,7 +194,7 @@
         ],
         "returnType": "bool"
       },
-      "demoInvocation": "数组_删除成员(0, 1)"
+      "demoInvocation": "数组_删除成员(演示结果数组, 1)"
     },
     {
       "index": 8,
@@ -215,7 +215,7 @@
         ],
         "returnType": "bool"
       },
-      "demoInvocation": "数组_清空(0)"
+      "demoInvocation": "数组_清空(演示结果数组)"
     },
     {
       "index": 9,
@@ -242,7 +242,7 @@
         "returnType": "int",
         "example": "数组_查找(名单, \"张三\")"
       },
-      "demoInvocation": "数组_查找(0, 0)"
+      "demoInvocation": "数组_查找(演示结果数组, 0)"
     },
     {
       "index": 10,
@@ -268,7 +268,7 @@
         ],
         "returnType": "bool"
       },
-      "demoInvocation": "数组_是否包含(0, 0)"
+      "demoInvocation": "数组_是否包含(演示结果数组, 0)"
     },
     {
       "index": 11,
@@ -295,7 +295,7 @@
         "returnType": "bool",
         "example": "数组_排序(名单, 真)"
       },
-      "demoInvocation": "数组_排序(0, 真)"
+      "demoInvocation": "数组_排序(演示结果数组, 真)"
     },
     {
       "index": 12,
@@ -316,7 +316,7 @@
         ],
         "returnType": "bool"
       },
-      "demoInvocation": "数组_倒序(0)"
+      "demoInvocation": "数组_倒序(演示结果数组)"
     },
     {
       "index": 13,
@@ -342,7 +342,7 @@
         ],
         "returnType": "bool"
       },
-      "demoInvocation": "数组_重定义(0, 1)"
+      "demoInvocation": "数组_重定义(演示结果数组, 1)"
     }
   ]
 }

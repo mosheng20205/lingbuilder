@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-19T03:18:58.868Z",
+  "generatedAt": "2026-10-19T09:25:32.603Z",
   "module": {
     "id": "lingbuilder.std.map",
     "name": "哈希表与栈模块",
@@ -410,7 +410,7 @@
         ],
         "returnType": "int"
       },
-      "demoInvocation": "哈希表_取全部键(1, 0)"
+      "demoInvocation": "哈希表_取全部键(1, 演示结果数组)"
     },
     {
       "index": 16,

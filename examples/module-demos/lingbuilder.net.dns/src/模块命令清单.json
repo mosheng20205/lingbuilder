@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-19T03:18:58.774Z",
+  "generatedAt": "2026-10-19T09:25:32.504Z",
   "module": {
     "id": "lingbuilder.net.dns",
     "name": "DNS与IP模块",
@@ -150,7 +150,7 @@
         ],
         "returnType": "int"
       },
-      "demoInvocation": "网络_取网卡名称列表(0)"
+      "demoInvocation": "网络_取网卡名称列表(演示结果数组)"
     },
     {
       "index": 8,
@@ -171,7 +171,7 @@
         ],
         "returnType": "int"
       },
-      "demoInvocation": "网络_取IP地址列表(0)"
+      "demoInvocation": "网络_取IP地址列表(演示结果数组)"
     },
     {
       "index": 9,

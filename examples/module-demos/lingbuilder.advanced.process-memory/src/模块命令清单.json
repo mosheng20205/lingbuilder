@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-19T03:18:58.661Z",
+  "generatedAt": "2026-10-19T09:25:32.372Z",
   "module": {
     "id": "lingbuilder.advanced.process-memory",
     "name": "进程内存模块",
@@ -252,7 +252,7 @@
         "returnType": "int",
         "example": "局部 长整数型 命中[]\n进程内存_扫描字节集(句柄, 特征, 100, 命中)"
       },
-      "demoInvocation": "进程内存_扫描字节集(0, {}, 1, 0)"
+      "demoInvocation": "进程内存_扫描字节集(0, {}, 1, 演示结果数组)"
     },
     {
       "index": 9,
