@@ -47,6 +47,66 @@ title: 图文教程
 
 更多集数制作中，见[系列总览](/guide/tutorials/jinjie)。
 
+## 高阶实战系列（真实场景实战专题）
+
+不限单一模块、按真实场景选题的开放式实战合集。首个专题＝**消息推送**（企业微信群机器人，01~05 已上线）：五集连完，你的程序就能往群里发文本、排版消息、截图报警、可点击卡片和任意文件。每集提供一键导入的 .lcpppkg 源码包。
+
+| 集 | 教程 | 你将学会 | 状态 |
+| --- | --- | --- | --- |
+| 01 | [消息推送入门：发出你的第一条企微推送](/guide/tutorials/gaojie-01-wecom-text) | 申请群机器人、推送_发企业微信文本 四参数、errcode=93000 真实排障、取错误/取响应文本两件套 | 已上线 |
+| 02 | [文本与 Markdown 排版：把通知写成「人话」](/guide/tutorials/gaojie-02-wecom-markdown) | 推送_发企业微信Markdown、三引号文本块写排版、@手机号正确用法、2048/4096 字节上限本地预检 | 已上线 |
+| 03 | [图片推送：做出错自动截图报警器](/guide/tutorials/gaojie-03-wecom-image) | 截图_窗口到PNG、窗口_取自身句柄、推送_发企业微信图片（Base64/MD5 自动组包）、报警三段式 | 已上线 |
+| 04 | [图文推送：news 卡片让消息「可点击」](/guide/tutorials/gaojie-04-wecom-news) | 推送_发企业微信图文、标题|描述|跳转链接|图片URL 行格式、url 必填本地预检、1~8 条卡片 | 已上线 |
+| 05 | [文件上传与发送：media_id 的获取、时效与复用](/guide/tutorials/gaojie-05-wecom-file) | 推送_上传企业微信文件、media_id 三天有效与复用、项目全局变量、推送_发企业微信文件、假编号 errcode 40007 | 已上线 |
+
+更多集数制作中，见[系列总览](/guide/tutorials/gaojie)。
+
+## Edge 浏览器合集（把 Edge 装进你的软件）
+
+依托 EdgeView 浏览器模块（WebView2 内核）的 26 集大合集。**基础篇 01~04 已上线**：把浏览器控件摆进窗口、导航族命令全家福、事件驱动状态栏、执行 JavaScript 拿返回值。每集提供一键导入的 .lcpppkg 源码包。
+
+| 集 | 教程 | 你将学会 | 状态 |
+| --- | --- | --- | --- |
+| 01 | [初识内嵌浏览器：迷你浏览器](/guide/tutorials/edge-01) | EdgeBrowser 设计器控件、EdgeView_导航控件/后退/前进/刷新、判空用文本_取长度、地址栏手动联动 | 已上线 |
+| 02 | [导航进阶：页面信息查看器](/guide/tutorials/edge-02) | 导航族 11 条全家福、导航_取标题/取地址/取状态JSON、导航_HTML 内存页面、多行文本块 | 已上线 |
+| 03 | [事件驱动：浏览器状态栏](/guide/tutorials/edge-03) | 设计器事件四件套（导航开始/地址改变/标题改变/导航完成）、绑定控件事件、事件_设置动作拦截弹窗 | 已上线 |
+| 04 | [执行 JavaScript：脚本控制台](/guide/tutorials/edge-04) | EdgeView_执行JS控件、JSON 返回值回读规则、执行详情异步看异常、文档预注入开机脚本、脚本族 7 条 | 已上线 |
+
+## new_emoji 合集（93 个现代组件，告别 Windows 98 风格）
+
+依托 new_emoji 原生界面库（Direct2D 自绘 + 彩色 Emoji）的 25 集大合集。**入门篇 01~04 已上线**：切设计后端、容器布局五件套、8 个文本按钮组件、5 种输入与 5 种选择控件。每集提供一键导入的 .lcpppkg 源码包（收费模块，启用时登录授权即可）。
+
+| 集 | 教程 | 你将学会 | 状态 |
+| --- | --- | --- | --- |
+| 01 | [初识 new_emoji：自绘引擎与第一个现代窗口](/guide/tutorials/new-emoji-01) | 启用收费模块与账号授权、设计后端切换、容器/布局/边框/间距/分割线五件套、彩色 Emoji 直写、控件_设置文本 | 已上线 |
+| 02 | [文本与按钮：8 个最常用组件](/guide/tutorials/new-emoji-02) | Button 变体 variant 0~6、图标按钮徽标与 tooltip、链接 autoOpen 红线、四色标签、独立徽标、状态点呼吸动画、全局变量点击计数 | 已上线 |
+| 03 | [输入类（一）：做出能校验的报名表](/guide/tutorials/new-emoji-03) | Input 占位与可清空、InputNumber 范围钳制、Autocomplete 建议列表、InputGroup、EditBox 多行、文本_取长度判空 | 已上线 |
+| 04 | [输入类（二）：偏好设置面板](/guide/tutorials/new-emoji-04) | Checkbox/Radio/Switch/Slider/Rate 五控件、Radio 互斥代码维护红线、Rate 初值 valueX2 半星单位、ValueChanged 统一节奏 | 已上线 |
+
+## CEF3 浏览器合集（Chromium 官方 CEF 框架，命令规模之最）
+
+依托 CEF3 浏览器模块（Chromium Embedded Framework）的 30 集大合集。**入门篇 01~04 已上线**：迷你浏览器四命令、事件观察器、执行 JS 与信封解析、cefQuery 双向交互。每集提供一键导入的 .lcpppkg 源码包（收费模块，启用时登录授权即可）。
+
+| 集 | 教程 | 你将学会 | 状态 |
+| --- | --- | --- | --- |
+| 01 | [迷你浏览器](/guide/tutorials/cef3-01) | 三内核选型对比（CEF3/EdgeView/FBro）、CEF3浏览器控件与打开地址属性、CEF3_导航/后退/前进/刷新、判空用文本_取长度 | 已上线 |
+| 02 | [事件观察器](/guide/tutorials/cef3-02) | CEF3_绑定事件与 &处理器名红线、六事件（开始加载/加载完成/加载失败/地址被改变/标题被改变/加载状态改变）、取地址/取标题/是否加载中、CEF3_停止、置顶插入日志 | 已上线 |
+| 03 | [脚本控制台](/guide/tutorials/cef3-03) | CEF3_执行JS、DevTools 结果信封 {"result":{"type","value"}}、JSON_解析/JSON_指针_取/JSON_取文本值 三步解析、声明提升拆两行、JS 单引号规矩 | 已上线 |
+| 04 | [网页点餐器](/guide/tutorials/cef3-04) | JS交互查询函数通道属性（创建前注册）、查询请求事件与 queryId/request 字段、CEF3_查询应答、120 秒超时 -4、data:Base64 内嵌网页 | 已上线 |
+
+## FBro 指纹浏览器合集（指纹伪装＋多开防关联）
+
+依托 FBro 指纹浏览器模块（CEF 深度定制内核 Chrome 135）的 29 集大合集。**基础篇 01~04 已上线**：指纹检测器、创建模式与宿主架构、页面事件观察器、会话隔离与独立缓存目录。每集提供一键导入的 .lcpppkg 源码包（收费模块，启用时登录授权即可）。
+
+| 集 | 教程 | 你将学会 | 状态 |
+| --- | --- | --- | --- |
+| 01 | [指纹检测器](/guide/tutorials/fbro-01) | Canvas/WebGL/UA/字体/时区指纹画像（BrowserScan 实测报告逐段解读）、FBro浏览器控件与打开地址属性、FBro_导航、指纹真实性 100% 报告怎么读 | 已上线 |
+| 02 | [进程内、独立进程与宿主架构](/guide/tutorials/fbro-02) | 宿主模式属性（进程内/独立进程嵌入）零改码切换、LingBuilderFbroHost.exe 宿主与 FBroSubprocess 实拍、双浏览器同屏互不干扰、FBro_关闭 释放实例 | 已上线 |
+| 03 | [页面事件观察器](/guide/tutorials/fbro-03) | FBro_绑定事件与 &处理器名红线、开始加载/加载完成/地址被改变/标题被改变四事件、FBro_取事件字段 读事件包、列表框_滚动到项 自动滚日志、事件驱动替代死等延迟 | 已上线 |
+| 04 | [会话隔离与独立缓存目录](/guide/tutorials/fbro-04) | 缓存目录属性＝一套独立档案、FBro会话_异步设置Cookie/取Cookie 写读身份、alice/bob 互不可见实验（连 BAIDUID 都不同）、FBro会话_取上下文缓存路径、会话族 15 条版图 | 已上线 |
+
+更多集数（指纹与多开/自动化/拦截与协议/界面杂项/综合实战，05~29）制作中，见[系列总览](/guide/tutorials/fbro)。
+
 ## 按学习路径排序
 
 建议按下面的顺序学：先把数据装进变量，再把相关数据打包成类型，然后学会复用逻辑，最后打通系统能力、单文件分发和模块生态。
