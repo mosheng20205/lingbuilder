@@ -220,5 +220,4 @@ COMPONENT_CARDS_PLAN.md
 /electron/lingbuilder-project.lcpppkg
 /electron/scripts/tmp-export-lcpppkg.ts
 
-# 伴生 APK 构建制品（17MB 级二进制，工程源码已入库，制品发布走 release 附件）
-/companion/*.apk
+# 伴生 APK 成品：按用户要求随仓库分发便于直接下载（仅归档在 companion/ 根，构建输出在工程内仍忽略）
