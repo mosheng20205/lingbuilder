@@ -188,6 +188,62 @@ export default defineConfig({
           ],
         },
         {
+          text: '高阶实战系列',
+          collapsed: false,
+          items: [
+            { text: '系列总览', link: '/guide/tutorials/gaojie' },
+            { text: '01 · 消息推送入门', link: '/guide/tutorials/gaojie-01-wecom-text' },
+            { text: '02 · 文本与 Markdown 排版', link: '/guide/tutorials/gaojie-02-wecom-markdown' },
+            { text: '03 · 图片推送：截图报警器', link: '/guide/tutorials/gaojie-03-wecom-image' },
+            { text: '04 · 图文推送 news 卡片', link: '/guide/tutorials/gaojie-04-wecom-news' },
+            { text: '05 · 文件上传与发送', link: '/guide/tutorials/gaojie-05-wecom-file' },
+          ],
+        },
+        {
+          text: 'Edge 浏览器合集',
+          collapsed: false,
+          items: [
+            { text: '系列总览', link: '/guide/tutorials/edge' },
+            { text: '01 · 初识内嵌浏览器', link: '/guide/tutorials/edge-01' },
+            { text: '02 · 导航进阶与页面信息', link: '/guide/tutorials/edge-02' },
+            { text: '03 · 事件驱动：浏览器状态栏', link: '/guide/tutorials/edge-03' },
+            { text: '04 · 执行 JavaScript', link: '/guide/tutorials/edge-04' },
+          ],
+        },
+        {
+          text: 'CEF3 浏览器合集',
+          collapsed: false,
+          items: [
+            { text: '系列总览', link: '/guide/tutorials/cef3' },
+            { text: '01 · 初识 CEF3：迷你浏览器', link: '/guide/tutorials/cef3-01' },
+            { text: '02 · 导航与页面事件', link: '/guide/tutorials/cef3-02' },
+            { text: '03 · 执行 JavaScript 与返回值', link: '/guide/tutorials/cef3-03' },
+            { text: '04 · cefQuery 双向交互', link: '/guide/tutorials/cef3-04' },
+          ],
+        },
+        {
+          text: 'FBro 指纹浏览器合集',
+          collapsed: false,
+          items: [
+            { text: '系列总览', link: '/guide/tutorials/fbro' },
+            { text: '01 · 什么是指纹浏览器', link: '/guide/tutorials/fbro-01' },
+            { text: '02 · 创建模式', link: '/guide/tutorials/fbro-02' },
+            { text: '03 · 导航与页面事件', link: '/guide/tutorials/fbro-03' },
+            { text: '04 · 会话隔离与独立缓存目录', link: '/guide/tutorials/fbro-04' },
+          ],
+        },
+        {
+          text: 'new_emoji 合集',
+          collapsed: false,
+          items: [
+            { text: '系列总览', link: '/guide/tutorials/new-emoji' },
+            { text: '01 · 初识 new_emoji', link: '/guide/tutorials/new-emoji-01' },
+            { text: '02 · 文本与按钮', link: '/guide/tutorials/new-emoji-02' },
+            { text: '03 · 输入类（一）', link: '/guide/tutorials/new-emoji-03' },
+            { text: '04 · 输入类（二）', link: '/guide/tutorials/new-emoji-04' },
+          ],
+        },
+        {
           text: '图文教程',
           collapsed: false,
           items: [
