@@ -66,6 +66,13 @@
             android:layout_marginTop="8dp"
             android:text="日志（排查通道问题）" />
 
+        <Button
+            android:id="@+id/btnUsb"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="USB 直传：关" />
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

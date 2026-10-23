@@ -3,6 +3,7 @@ package com.lingbuilder.companion
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -29,6 +30,12 @@ class StreamService : Service() {
         const val ACTION_STOP = "com.lingbuilder.companion.STOP"
         /** 1.2.5：轻量通道随主界面退后台关闭后，通知投屏会话接管 USB 通道（指令后台可用）。 */
         const val ACTION_TRY_USB = "com.lingbuilder.companion.TRY_USB"
+        /** 1.4.1：USB 直传显式开关（手机按钮或 PC 经 WS 下发 usbDirect 指令）。 */
+        const val ACTION_USB_DIRECT = "com.lingbuilder.companion.USB_DIRECT"
+        /** 1.4.3：USB 直传自动重试（主界面轻量通道让位后由状态轮询触发；失败静默不弹 toast）。 */
+        const val ACTION_AUTO_USB = "com.lingbuilder.companion.AUTO_USB"
+        /** 1.4.1：openAccessory 前的程序化授权回执 action（服务私有）。 */
+        const val ACTION_USB_PERMISSION = "com.lingbuilder.companion.USB_PERMISSION_SVC"
         const val EXTRA_RESULT_CODE = "resultCode"
         const val EXTRA_RESULT_DATA = "resultData"
 
@@ -49,6 +56,10 @@ class StreamService : Service() {
         @Volatile var lastForeground: String? = null
         @Volatile var serverError = ""
         @Volatile var rejectedTotal = 0L
+        /** 1.4.1：USB 直传开关状态（视频帧是否走 USB bulk 通道）。 */
+        @Volatile var usbDirectOn = false
+            private set
+        @Volatile var usbDirectError = ""
 
         @Volatile private var instance: StreamService? = null
 
@@ -88,6 +99,9 @@ class StreamService : Service() {
     private lateinit var prefs: SharedPreferences
     private var usbChannel: UsbDataChannel? = null
     private var usbReceiver: BroadcastReceiver? = null
+    /** 1.4.1：ATTACHED 广播里的配件对象。配件化后 accessoryList 不含自己（v1.3.4 实锤），
+     *  这是 openAccessory 唯一可靠来源；app 重启错过广播时回退 accessoryList 兜底。 */
+    @Volatile private var attachedAccessory: UsbAccessory? = null
 
     /** 本机配件序列号（v1.3.4）：PC 识别串第 5 段下发的手机真实 SN。
      *  手机被配件化时 UsbManager.accessoryList 不包含自己，唯一来源是
@@ -121,9 +135,16 @@ class StreamService : Service() {
                         intent.getParcelableExtra(UsbManager.EXTRA_ACCESSORY)
                     }
                     accessorySerial = accessory?.serial ?: ""
+                    attachedAccessory = accessory
                     AppLog.d("服务", "配件附着 serial=[" + accessorySerial + "]")
+                    // 1.4.2：投屏运行中检测到配件 → 自动接通 USB 直传（免 Wi-Fi 形态的默认路径，
+                    // 不依赖手机按钮/重插时序；失败静默留痕，手动「USB 直传」按钮保留）
+                    maybeAutoOpenUsbDirect()
                 }
-                UsbManager.ACTION_USB_ACCESSORY_DETACHED -> accessorySerial = ""
+                UsbManager.ACTION_USB_ACCESSORY_DETACHED -> {
+                    accessorySerial = ""
+                    attachedAccessory = null
+                }
             }
         }
     }
@@ -137,12 +158,97 @@ class StreamService : Service() {
         AppLog.d("服务", "v1.3.2 起投屏视频固定 Wi-Fi，不再接管 USB 数据通道")
     }
 
+    private val usbPermissionReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != ACTION_USB_PERMISSION) return
+            val granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
+            AppLog.d("USB直传", "授权回执 granted=" + granted)
+            if (granted) openUsbDirect()
+            else {
+                usbDirectError = "USB 配件权限被拒绝"
+                toastUi(usbDirectError)
+            }
+        }
+    }
+
+    /** 1.4.1：USB 直传（显式开关）——把视频帧切到 USB bulk 通道（LBAC 通道 1）。
+     *  与 v1.3.2 前的「自动接管」不同：只在用户于手机上点「USB 直传」按钮或 PC 经 WS
+     *  下发 {"cmd":"usbDirect","on":true} 时开启。WS 服务器不拆除（画面路由由 dispatchFrame
+     *  决定，零客户端时只是空转）；信标在通道活跃期间停发（沿用 v1.3.1 语义，防死地址空连）。 */
+    private fun toggleUsbDirect() {
+        if (usbChannel?.isActive == true) {
+            AppLog.d("USB直传", "用户关闭 USB 直传，恢复 WS 推流")
+            usbDirectOn = false
+            closeUsbChannel()
+            toastUi("USB 直传已关闭，恢复 Wi-Fi 推流")
+            return
+        }
+        openUsbDirect()
+    }
+
+    private fun openUsbDirect(auto: Boolean = false) {
+        // 失败汇报：手动路径弹 toast；自动路径静默留痕（usbDirectError 供 UI 轮询展示），防 toast 风暴
+        fun fail(msg: String) {
+            usbDirectError = msg
+            if (auto) AppLog.d("USB直传", "自动接通失败：" + msg)
+            else toastUi(msg)
+        }
+        if (!running) {
+            fail("投屏会话未运行：请先点「开始投屏」再开 USB 直传")
+            return
+        }
+        val accessory = attachedAccessory ?: intentAccessory()
+        if (accessory == null) {
+            fail("未找到 USB 配件：请先在电脑端对接本机（切到配件模式），或重插一次数据线")
+            return
+        }
+        if (!usbManager.hasPermission(accessory)) {
+            AppLog.d("USB直传", "无配件权限，程序化请求授权弹窗")
+            // API 31+ PendingIntent 必须允许 MUTABLE 才能带回执 extras（同轻量通道配方）
+            val flags = if (Build.VERSION.SDK_INT >= 31)
+                PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            else
+                PendingIntent.FLAG_UPDATE_CURRENT
+            val intent = Intent(ACTION_USB_PERMISSION).setPackage(packageName)
+            usbManager.requestPermission(accessory, PendingIntent.getBroadcast(this, 0, intent, flags))
+            return
+        }
+        val channel = UsbDataChannel(
+            usbManager,
+            onControlJson = { text -> handleControlMessage(text) },
+            onDetached = {
+                AppLog.d("USB直传", "通道断开（读循环退出/IO 错误），恢复 WS 推流")
+                mainHandler.post {
+                    usbDirectOn = false
+                    closeUsbChannel()
+                }
+            },
+        )
+        if (!channel.open(accessory)) {
+            fail("打开 USB 通道失败：" + channel.lastError)
+            return
+        }
+        usbChannel = channel
+        usbDirectOn = true
+        usbDirectError = ""
+        AppLog.d("USB直传", "已接通：视频帧走 USB bulk（LBAC 通道 1）")
+        toastUi("USB 直传已接通：画面走 USB（Wi-Fi 画面停止）")
+        replyControl("{\"type\":\"usbDirect\",\"ok\":true,\"on\":true}")
+    }
+
+    private fun toastUi(msg: String) {
+        mainHandler.post {
+            try { Toast.makeText(this, msg, Toast.LENGTH_LONG).show() } catch (_: Exception) {}
+        }
+    }
+
     private fun intentAccessory(): UsbAccessory? {
         val present = usbManager.accessoryList ?: return null
         return present.firstOrNull()
     }
 
     private fun closeUsbChannel() {
+        usbDirectOn = false
         usbChannel?.close()
         usbChannel = null
         // 数据通道断开：恢复 WebSocket 推流（若服务仍在运行且投屏仍授权）
@@ -178,6 +284,8 @@ class StreamService : Service() {
                 // （指令在后台仍可用；USB 优先会停用 WS 推流，回观看器自行重连）
                 if (running) tryOpenUsbChannel()
             }
+            ACTION_USB_DIRECT -> toggleUsbDirect()
+            ACTION_AUTO_USB -> maybeAutoOpenUsbDirect()
             else -> {
                 // 系统重启服务但没有投屏授权数据：直接退出，避免无授权空转
                 stopSelf()
@@ -312,8 +420,24 @@ class StreamService : Service() {
         }
         usbReceiver = usbReceiverImpl
         registerReceiver(usbReceiverImpl, filter)
+        registerReceiver(usbPermissionReceiver, IntentFilter(ACTION_USB_PERMISSION))
         // 若手机在 app 启动前已处于配件模式（错过广播），尝试从 accessoryList 兜底读一次
         try { accessorySerial = usbManager.accessoryList?.firstOrNull()?.serial ?: "" } catch (_: Exception) {}
+        // 1.4.2：投屏会话起来时配件已在位（先开 app 后插线/PC 已切配件）→ 自动接通 USB 直传
+        maybeAutoOpenUsbDirect()
+    }
+
+    /** 1.4.2：USB 直传自动接通——投屏运行中且配件已知时自动把视频帧切到 USB bulk。
+     *  背景：v1.3.2 为 Wi-Fi 信标方案停用了自动接管，纯 USB（手机不连 Wi-Fi）形态下
+     *  帧会全部涌向无客户端的 WS 服务＝黑屏。这里只在投屏运行、通道未开时触发一次，
+     *  失败静默（usbDirectError 留痕、UI 轮询可见），不弹 toast 不循环重试；
+     *  配件再次附着（重插）或投屏重新开始时会再触发，手动按钮仍走 openUsbDirect()。 */
+    private fun maybeAutoOpenUsbDirect() {
+        if (!running) return
+        if (usbChannel?.isActive == true) return
+        if (attachedAccessory == null && intentAccessory() == null) return
+        AppLog.d("USB直传", "自动接通：投屏运行中检测到配件")
+        openUsbDirect(auto = true)
     }
 
     /** 自动发现信标里的 ws 连接串：本机局域网 IPv4 + 实际端口 + 当前配对码。
@@ -359,6 +483,20 @@ class StreamService : Service() {
                 "ping" -> replyControl(
                     "{\"type\":\"pong\",\"uptime\":" + android.os.SystemClock.elapsedRealtime() + "}",
                 )
+                "usbDirect" -> {
+                    // 1.4.1：PC 侧显式开关 USB 直传（{"cmd":"usbDirect","on":true|false}）。
+                    // 回执经 replyControl 双路广播；在 USB 通道读循环线程上到达，post 到主线程执行。
+                    val on = obj.optBoolean("on", true)
+                    mainHandler.post {
+                        if (on) openUsbDirect()
+                        else {
+                            usbDirectOn = false
+                            closeUsbChannel()
+                            toastUi("USB 直传已关闭，恢复 Wi-Fi 推流")
+                            replyControl("{\"type\":\"usbDirect\",\"ok\":true,\"on\":false}")
+                        }
+                    }
+                }
                 "launchApp", "goHome", "wakeScreen" -> {
                     // 三条 App 任务指令与投屏解耦：共享 ControlCommands（MainActivity 轻量通道同源）
                     ControlCommands.handle(this, text) { json -> replyControl(json) }
@@ -432,8 +570,10 @@ class StreamService : Service() {
             usbReceiver?.let { unregisterReceiver(it) }
         } catch (_: Exception) {}
         usbReceiver = null
+        try { unregisterReceiver(usbPermissionReceiver) } catch (_: Exception) {}
         usbChannel?.close()
         usbChannel = null
+        usbDirectOn = false
         try { heartbeatThread?.interrupt() } catch (_: Exception) {}
         heartbeatThread = null
         try { envMonitor?.stop() } catch (_: Exception) {}

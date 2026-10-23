@@ -54,6 +54,22 @@ class MainActivity : Activity() {
     private val statusPoller = object : Runnable {
         override fun run() {
             refreshStatus()
+            // 1.4.3：投屏会话运行中前台必须让出配件接口——轻量通道握着 fd 时服务的
+            // USB 直传打开必失败（双读者）。用户停在主界面点「开始投屏」正是这个时序，
+            // 这里关掉轻量通道并立即通知服务重试 USB 直传（免重插免按钮）。
+            if (StreamService.running && lightChannel?.isActive == true) {
+                AppLog.d("USB", "投屏运行中：轻量通道让位给服务 USB 直传")
+                lightChannel?.close()
+                lightChannel = null
+                lightChannelActive = false
+                lightChannelReleaser = null
+                try {
+                    startService(
+                        Intent(this@MainActivity, StreamService::class.java)
+                            .setAction(StreamService.ACTION_AUTO_USB),
+                    )
+                } catch (_: Exception) {}
+            }
             // 1.2.6：投屏会话结束后自动恢复轻量通道（配件仍在才尝试，避免无配件时空转刷日志）
             if (!StreamService.running && lightChannel?.isActive != true) {
                 val usbManager = getSystemService(USB_SERVICE) as UsbManager
@@ -102,6 +118,12 @@ class MainActivity : Activity() {
         }
         findViewById<Button>(R.id.btnApply).setOnClickListener { onApplyClicked() }
         findViewById<Button>(R.id.btnLog).setOnClickListener { showLogDialog() }
+        // 1.4.1：USB 直传显式开关——开关动作在 StreamService（ACTION_USB_DIRECT），状态在轮询里刷
+        findViewById<Button>(R.id.btnUsb).setOnClickListener {
+            startService(
+                Intent(this, StreamService::class.java).setAction(StreamService.ACTION_USB_DIRECT),
+            )
+        }
 
         AppLog.d("MainActivity", "onCreate " + verName + " 附件列表=" + describeAccessories())
 
@@ -242,6 +264,11 @@ class MainActivity : Activity() {
             AppLog.d("USB", "投屏会话运行中，轻量通道让位给服务")
             return
         }
+        // 1.4.1：USB 直传占用配件通道期间轻量通道让位（同一条 bulk 端点，双读者会劈裂）
+        if (StreamService.usbDirectOn) {
+            AppLog.d("USB", "USB 直传占用配件通道，轻量通道让位")
+            return
+        }
         val usbManager = getSystemService(USB_SERVICE) as UsbManager
         val accessory = usbManager.accessoryList?.firstOrNull()
         if (accessory == null) { AppLog.d("USB", "开轻量通道失败：附件列表为空"); return }
@@ -345,6 +372,12 @@ class MainActivity : Activity() {
             statusText.text = if (StreamService.serverError.isBlank()) "未推流" else "上次错误：${StreamService.serverError}"
             btnToggle.text = getString(R.string.start_stream)
         }
+        // 1.4.1：USB 直传状态（开关动作在 StreamService，这里只刷标签）
+        // 1.4.3：失败原因上状态行（自动路径静默，用户必须能看到卡在哪一步）
+        findViewById<Button>(R.id.btnUsb).text =
+            if (StreamService.usbDirectOn) "USB 直传：开（画面走 USB）"
+            else if (StreamService.usbDirectError.isNotBlank()) "USB 直传：失败（${StreamService.usbDirectError}）"
+            else "USB 直传：关"
         connString.text = "ws://" + lanIpAddress() + ":" + currentPort() + "/stream?token=" + pairingCode.text.toString()
     }
 
