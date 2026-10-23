@@ -2073,7 +2073,12 @@ export class AiBridgeService {
         let embeddedFresh = false;
         try {
           const [existing, sourceStat] = await Promise.all([fs.stat(embeddedDllPath), fs.stat(newEmojiRuntimeDll)]);
-          embeddedFresh = existing.size === sourceStat.size;
+          // 只比字节数会把「内容变了但大小不变」的引擎更新当成已是最新：new_emoji 的 x64 DLL
+          // 新旧都可能是同一个字节数（DPI 修复轮实测同为 2817024），构建产物会继续内嵌旧 DLL，
+          // 用户重编也看不到修复。大小相同时再比内容哈希，换引擎就一定刷新内嵌副本。
+          embeddedFresh = existing.size === sourceStat.size
+            && crypto.createHash('sha256').update(await fs.readFile(embeddedDllPath)).digest('hex')
+              === crypto.createHash('sha256').update(await fs.readFile(newEmojiRuntimeDll)).digest('hex');
         } catch {
           embeddedFresh = false;
         }

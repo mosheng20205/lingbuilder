@@ -388,15 +388,23 @@ function buildManifest(commands, designerCatalog, designerCatalogSha256) {
   ];
   const bindings = [...commands.map(command => {
     const runtimeName = command.runtimeName || command.name;
+    const parameters = parseBindingParameters(command.signature).map((parameter, index) => normalizeNewEmojiControlBindingParameter(
+      parameter,
+      runtimeName,
+      command.nativeParameters?.[index],
+      controlBindingContext
+    ));
+    // 出参（C 签名 int*）必须按引用传递，否则 .lcpp 生成的 C++ 会把变量按值传入编译失败；
+    // 生成器按参数名推断不出指针语义，这里按 runtimeName 显式标注。
+    for (const parameter of parameters) {
+      if (NEW_EMOJI_BYREF_OUT_PARAMETERS.get(runtimeName)?.includes(parameter.name)) {
+        parameter.byRef = true;
+      }
+    }
     return {
       command: command.name,
       runtimeName,
-      parameters: parseBindingParameters(command.signature).map((parameter, index) => normalizeNewEmojiControlBindingParameter(
-        parameter,
-        runtimeName,
-        command.nativeParameters?.[index],
-        controlBindingContext
-      )),
+      parameters,
       returnType: mapBindingReturnType(command.returnType),
       // EU_* 导出是 UTF-8 字节指针 ABI（与命令展示名无关，按 runtimeName 判定）；桥接/数据桥/属性桥命令是宽字符封装。
       encoding: /^EU_/u.test(runtimeName) ? 'raw' : 'wide',
@@ -542,6 +550,21 @@ const NEW_EMOJI_SINGLE_CONTROL_ID_PARAMETERS = new Set([
 // 但命令本身对全部可视元素有效）。
 const NEW_EMOJI_UNIVERSAL_ELEMENT_COMMANDS = new Set(['EU_SetElementColor', 'EU_SetElementCursor']);
 
+// Tabs 读回族的 element_id 一律指 Tabs 元素。EU_GetTabsHeaderContentWidth 命令名里带
+// Header，按名字推断会收窄成 Header 组件，.lcpp 传标签页控件时会被 controlRef 门禁误拦。
+const NEW_EMOJI_CONTROL_TYPE_OVERRIDES = new Map([
+  ['EU_GetTabsItemRect', 'Tabs'],
+  ['EU_GetTabsHeaderContentWidth', 'Tabs']
+]);
+
+// C 签名里的出参（int*）在 .lcpp 侧必须按引用传递：生成 C++ 时要加 &。
+// 生成器只按参数名推断类型，这里显式列出需要 byRef 的参数名。
+const NEW_EMOJI_BYREF_OUT_PARAMETERS = new Map([
+  ['EU_GetTabsItemRect', ['x', 'y', 'w', 'h']],
+  ['EU_GetTabsHeaderContentWidth', ['out_width']],
+  ['EU_GetTabsFullStateEx', ['header_content_width']]
+]);
+
 function normalizeNewEmojiControlBindingParameter(parameter, runtimeName, nativeParameter, context) {
   if (nativeParameter?.callbackSignature) {
     return {
@@ -558,9 +581,12 @@ function normalizeNewEmojiControlBindingParameter(parameter, runtimeName, native
   if (parameter.name === 'parent_id' || parameter.name === '父元素ID' || parameter.name === 'target_container_id') {
     controlTypes = context.containerTypes;
   } else if (parameter.name === 'element_id') {
-    controlTypes = NEW_EMOJI_UNIVERSAL_ELEMENT_COMMANDS.has(runtimeName.replace(/^NE_EU_/u, ''))
-      ? context.designerControls.filter(control => control.isVisual !== false).map(control => control.namespacedType)
-      : [...(context.controlTypesByCommand.get(runtimeName) || inferNewEmojiCommandControlTypes(runtimeName, context.designerControls))];
+    const overrideType = NEW_EMOJI_CONTROL_TYPE_OVERRIDES.get(runtimeName);
+    controlTypes = overrideType
+      ? context.designerControls.filter(control => control.type === overrideType).map(control => control.namespacedType)
+      : NEW_EMOJI_UNIVERSAL_ELEMENT_COMMANDS.has(runtimeName.replace(/^NE_EU_/u, ''))
+        ? context.designerControls.filter(control => control.isVisual !== false).map(control => control.namespacedType)
+        : [...(context.controlTypesByCommand.get(runtimeName) || inferNewEmojiCommandControlTypes(runtimeName, context.designerControls))];
   } else if (parameter.name === '元素ID' && /上传/u.test(runtimeName)) {
     controlTypes = context.designerControls.filter(control => control.type === 'Upload').map(control => control.namespacedType);
   } else {
@@ -791,6 +817,22 @@ function newEmojiDataBridgeCommands(designerControls) {
       '读取 new_emoji 标签页项目总数，与 NE标签页_取项数量 一致。',
       '整数型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。')],
       'NE标签页_取项目数量(标签页1)'),
+    build('NE标签页_取项矩形', 'NE标签页_取项矩形(控件, 索引)',
+      '读回单个标签的实测矩形，返回 JSON 文本 {"x":…,"y":…,"w":…,"h":…}。单位逻辑像素，坐标相对标签条元素左上角，与绘制/命中使用同一套宽度（chrome 模式按内容自适应）。索引越界或控件不存在返回空文本。用于把「新建标签」等按钮贴到末签右侧等按内容自适应布局，禁止再用 chromeMaxWidth 反推标签宽度。',
+      '文本型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '索引', type: 'int' }],
+      'NE标签页_取项矩形(标签页1, 0)'),
+    build('NE标签页_取项矩形2', 'NE标签页_取项矩形2(控件, 索引, 横, 纵, 宽, 高)',
+      '读回单个标签的实测矩形（多出参形态）：横/纵/宽/高 按引用写回，返回 1 成功、0 失败（索引越界或控件不存在）。单位逻辑像素，坐标相对标签条元素左上角；与 NE标签页_取项矩形 同源，需要逐项矩形运算（并排布局、滚动定位）时用它免 JSON 解析。',
+      '整数型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '索引', type: 'int' },
+        { name: '横', type: 'int', byRef: true },
+        { name: '纵', type: 'int', byRef: true },
+        { name: '宽', type: 'int', byRef: true },
+        { name: '高', type: 'int', byRef: true }],
+      'NE标签页_取项矩形2(标签页1, 0, 横, 纵, 宽, 高)'),
+    build('NE标签页_取标签条内容宽', 'NE标签页_取标签条内容宽(控件)',
+      '读回标签条内容总占用宽（逻辑像素）＝全部标签实测宽度之和（chrome 模式新建按钮可见时含其区域），标签条滚动时返回的仍是内容总宽而非控件宽。返回 -1 表示控件不存在。外层布局用它直接定位新建按钮、收紧标签条控件宽度；DPI 变化或改标题后需重新读取。',
+      '整数型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。')],
+      'NE标签页_取标签条内容宽(标签页1)'),
     build('NE标签页_添加项目', 'NE标签页_添加项目(控件, 标题)',
       '向 new_emoji 标签页末尾追加一个项目，与 NE标签页_添加项 一致。',
       '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '标题', type: 'wideString', description: '新项目标题文本。' }],
