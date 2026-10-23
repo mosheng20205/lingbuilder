@@ -241,6 +241,12 @@ export default defineConfig({
             { text: '02 · 文本与按钮', link: '/guide/tutorials/new-emoji-02' },
             { text: '03 · 输入类（一）', link: '/guide/tutorials/new-emoji-03' },
             { text: '04 · 输入类（二）', link: '/guide/tutorials/new-emoji-04' },
+            { text: '05 · 下拉与级联', link: '/guide/tutorials/new-emoji-05' },
+            { text: '06 · 日期与时间', link: '/guide/tutorials/new-emoji-06' },
+            { text: '07 · 特殊输入', link: '/guide/tutorials/new-emoji-07' },
+            { text: '08 · 标签页与分段', link: '/guide/tutorials/new-emoji-08' },
+            { text: '09 · 菜单与侧边栏', link: '/guide/tutorials/new-emoji-09' },
+            { text: '10 · 页面导航件', link: '/guide/tutorials/new-emoji-10' },
           ],
         },
         {
