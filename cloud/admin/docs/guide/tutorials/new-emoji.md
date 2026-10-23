@@ -21,13 +21,21 @@ title: new_emoji 合集
 
 前置要求：学完[零基础入门系列](/guide/tutorials/beginner)即可。四集连学约 2 小时，学完你就掌握了 NE 开发的地基：把窗口切成 new-emoji 后端、用容器与布局组织界面、用输入类控件收数据、用选择类控件做设置面板——所有控件文字直接写彩色 Emoji。
 
-## 选择类（05~07，制作中）
+## 选择类（05~07，已上线）
 
-下拉与级联：Select/SelectV2 虚拟选择器/Cascader/TreeSelect · 日期与时间：DatePicker/TimePicker/DateTimePicker/Calendar · 特殊输入：InputTag/Mentions/Upload/ColorPicker。
+| 集 | 教程 | 你将学会 | 状态 |
+| --- | --- | --- | --- |
+| 05 | [下拉与级联：城市选择中心](/guide/tutorials/new-emoji-05) | Select 选项与默认选中、SelectV2 虚拟选择器 visibleCount、Cascader 斜杠分层级与取文本读路径、TreeSelect treeDataJson 建层级树红线 | 已上线 |
+| 06 | [日期与时间：预约时间登记台](/guide/tutorials/new-emoji-06) | DatePicker/TimePicker/DateTimePicker 初值属性、TimeSelect 固定时段、Calendar 常驻日历、弹层控件选择变化事件「点开即触发」红线 | 已上线 |
+| 07 | [特殊输入：快速登记台](/guide/tutorials/new-emoji-07) | InputTag 回车成签与取文本读标签列表、Mentions @ 唤起建议、ColorPicker 弹层调色、NE上传_设置文件列表 运行期文件列表免原生对话框 | 已上线 |
 
-## 导航篇（08~10，制作中）
+## 导航篇（08~10，已上线）
 
-标签页 Tabs 与分段控制 Segmented · 菜单 Menu 与侧边栏 Aside · 面包屑/锚点/步骤条/分页/回到顶部/固钉。
+| 集 | 教程 | 你将学会 | 状态 |
+| --- | --- | --- | --- |
+| 08 | [标签页 Tabs 与分段控制 Segmented](/guide/tutorials/new-emoji-08) | Tabs 页签 items 与页槽位挂载、headerAlign 页签头居中、选择变化事件带三参数（索引/数量/动作）、Segmented 分段无参事件 | 已上线 |
+| 09 | [菜单 Menu 与侧边栏 Aside：导航布局壳](/guide/tutorials/new-emoji-09) | menuItems 记录表配顶层项、NE菜单_设置项目 文本协议 > 前缀挂子菜单、菜单命令事件自带索引与层级路径、Aside 布局容器、popupOpen 隐形红线 | 已上线 |
+| 10 | [页面导航件：六连排](/guide/tutorials/new-emoji-10) | Breadcrumb 面包屑、Steps 步骤条、Pagination 分页翻页读页码、Anchor 锚点目录、Backtop 阈值常显、Affix 固钉 | 已上线 |
 
 ## 数据展示篇（11~17，制作中）
 

@@ -74,7 +74,7 @@ title: 图文教程
 
 ## new_emoji 合集（93 个现代组件，告别 Windows 98 风格）
 
-依托 new_emoji 原生界面库（Direct2D 自绘 + 彩色 Emoji）的 25 集大合集。**入门篇 01~04 已上线**：切设计后端、容器布局五件套、8 个文本按钮组件、5 种输入与 5 种选择控件。每集提供一键导入的 .lcpppkg 源码包（收费模块，启用时登录授权即可）。
+依托 new_emoji 原生界面库（Direct2D 自绘 + 彩色 Emoji）的 25 集大合集。**前 10 集已上线**：入门篇（容器布局、文本按钮、输入与选择控件）+ 选择类（下拉/级联/日期时间/特殊输入）+ 导航篇（标签页/菜单/页面导航件）。每集提供一键导入的 .lcpppkg 源码包（收费模块，启用时登录授权即可）。
 
 | 集 | 教程 | 你将学会 | 状态 |
 | --- | --- | --- | --- |
@@ -82,6 +82,12 @@ title: 图文教程
 | 02 | [文本与按钮：8 个最常用组件](/guide/tutorials/new-emoji-02) | Button 变体 variant 0~6、图标按钮徽标与 tooltip、链接 autoOpen 红线、四色标签、独立徽标、状态点呼吸动画、全局变量点击计数 | 已上线 |
 | 03 | [输入类（一）：做出能校验的报名表](/guide/tutorials/new-emoji-03) | Input 占位与可清空、InputNumber 范围钳制、Autocomplete 建议列表、InputGroup、EditBox 多行、文本_取长度判空 | 已上线 |
 | 04 | [输入类（二）：偏好设置面板](/guide/tutorials/new-emoji-04) | Checkbox/Radio/Switch/Slider/Rate 五控件、Radio 互斥代码维护红线、Rate 初值 valueX2 半星单位、ValueChanged 统一节奏 | 已上线 |
+| 05 | [下拉与级联：城市选择中心](/guide/tutorials/new-emoji-05) | Select 选项与默认选中、SelectV2 虚拟选择器 visibleCount、Cascader 斜杠分层级与取文本读路径、TreeSelect treeDataJson 建层级树红线 | 已上线 |
+| 06 | [日期与时间：预约时间登记台](/guide/tutorials/new-emoji-06) | DatePicker/TimePicker/DateTimePicker 初值属性、TimeSelect 固定时段、Calendar 常驻日历、弹层控件选择变化事件「点开即触发」红线 | 已上线 |
+| 07 | [特殊输入：快速登记台](/guide/tutorials/new-emoji-07) | InputTag 回车成签与取文本读标签列表、Mentions @ 唤起建议、ColorPicker 弹层调色、NE上传_设置文件列表 运行期文件列表免原生对话框 | 已上线 |
+| 08 | [标签页 Tabs 与分段控制 Segmented](/guide/tutorials/new-emoji-08) | Tabs 页签 items 与页槽位挂载、headerAlign 页签头居中、选择变化事件带三参数（索引/数量/动作）、Segmented 分段无参事件 | 已上线 |
+| 09 | [菜单 Menu 与侧边栏 Aside：导航布局壳](/guide/tutorials/new-emoji-09) | menuItems 记录表配顶层项、NE菜单_设置项目 文本协议 > 前缀挂子菜单、菜单命令事件自带索引与层级路径、Aside 布局容器、popupOpen 隐形红线 | 已上线 |
+| 10 | [页面导航件：六连排](/guide/tutorials/new-emoji-10) | Breadcrumb 面包屑、Steps 步骤条、Pagination 分页翻页读页码、Anchor 锚点目录、Backtop 阈值常显、Affix 固钉 | 已上线 |
 
 ## CEF3 浏览器合集（Chromium 官方 CEF 框架，命令规模之最）
 
