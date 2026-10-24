@@ -333,7 +333,7 @@ async function withServer(handler: (call: (name: string, args: JsonRecord) => Pr
   });
 
   const send = (message: JsonRecord) => { child.stdin.write(`${JSON.stringify(message)}\n`); };
-  const waitForId = (id: number, timeoutMs: number): Promise<JsonRecord> => new Promise((resolve, reject) => {
+  const waitForId = (id: number, timeoutMs: number): Promise<JsonRecord> => new Promise<JsonRecord>((resolve, reject) => {
     const deadline = Date.now() + timeoutMs;
     const poll = () => {
       if (pending.has(id)) {
@@ -342,7 +342,7 @@ async function withServer(handler: (call: (name: string, args: JsonRecord) => Pr
         return;
       }
       if (failure) { reject(failure); return; }
-      resolve();
+      resolve({});
     };
     pending.set(id, { resolve, reject });
     setTimeout(poll, 100);

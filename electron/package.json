@@ -1,7 +1,7 @@
 {
   "name": "lingbuilder-electron",
   "private": true,
-  "version": "0.8.30",
+  "version": "0.8.31",
   "type": "module",
   "main": "dist-electron/main.cjs",
   "scripts": {
@@ -73,6 +73,7 @@
     "module:crypto-sdk": "node scripts/generate-crypto-sdk-module.cjs",
     "module:sunnynet-sdk": "node scripts/generate-sunnynet-sdk-module.cjs",
     "module:opencv-sdk": "node scripts/generate-opencv-sdk-module.cjs",
+    "barcode:runtime": "tsx scripts/generate-barcode-runtime.ts",
     "module:demos": "tsx scripts/generate-module-demos.ts",
     "module:demos:verify": "tsx scripts/generate-module-demos.ts --verify-only",
     "module:demos:verify:deep": "tsx scripts/generate-module-demos.ts --verify-only --deep",
@@ -99,6 +100,8 @@
     "smoke:sqlite-native": "tsx scripts/smoke-sqlite-native.ts",
     "smoke:mysql-native": "tsx scripts/smoke-mysql-native.ts",
     "smoke:excel-native": "tsx scripts/smoke-excel-native.ts",
+    "smoke:office-native": "tsx scripts/smoke-office-native.ts",
+    "smoke:pdf-native": "tsx scripts/smoke-pdf-native.ts",
     "smoke:csv-sqlite-native": "tsx scripts/smoke-csv-sqlite-native.ts",
     "smoke:websocket-server-native": "tsx scripts/smoke-websocket-server-native.ts",
     "smoke:websocket-client-native": "tsx scripts/smoke-websocket-client-native.ts",
@@ -367,6 +370,10 @@
       {
         "from": "third_party/excel",
         "to": "third_party/excel"
+      },
+        {
+        "from": "third_party/word",
+        "to": "third_party/word"
       },
       {
         "from": "third_party/webview2",

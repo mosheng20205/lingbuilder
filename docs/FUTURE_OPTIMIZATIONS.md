@@ -1,5 +1,47 @@
 # LingBuilder 后期优化事项
 
+- 已完成（2026-10-23）：**项目级「启动窗口」+ F5 启动窗口与设计器预览解耦**。`LingWindowProject` 新增 `startupWindowId`（`window-designer.json` 项目级字段），设计器归一化保证其始终有效（缺省/指向已删窗口回落第一个窗口）；设计器窗口页签渲染「启动」徽标、「当前窗口/布局」属性组提供「设为启动窗口」；删除启动窗口自动回落。生成器 `g_startWindowIndex` 改取 `startupWindowId`（`generateMainCpp` 内回退 `windows[0]`），不再取 `selectedWindow`——F5 永远运行定义好的启动窗口，不会因在设计器里预览了另一个窗口而改变。旧项目零迁移成本：字段缺省即回退第一个窗口，行为与「第一个窗口=主窗口」的历史惯例一致。回归：`tests/windowDesigner.test.ts`「F5 启动窗口固定为项目 startupWindowId…」「设计器归一化为缺省或失效的启动窗口…」。遗留：EXE 图标来源仍是生成入口窗口（selectedWindow）而非启动窗口模型（2026-08-04 条目的迁移待办继续有效）；new_emoji 后端仍按所选窗口生成单窗口 exe，启动窗口字段暂不影响该后端。
+- 已完成（2026-10-23）：**`打开窗口` 族裸窗口名引用获得控件引用同级编辑体验**。运行期 `窗口_打开` 本就按「窗口标题或类名」匹配（`WindowSpecMatchesName`）且裸/带引号两形态等价，但编辑器只在「敲了引号后」出窗口清单、裸名不上色。本次：新手模式补全上下文新增 `isWindowTargetBareContext`（`打开窗口(` 后未敲引号即出窗口清单，插入裸名）；新手模式呈现新增 `windowReferences` 上下文，设计器窗口类名/标题按 `control-reference` 同色着色（不存在的不上色，不给假着色）；Monaco 补全同一口径放开裸名上下文，语义着色新增 `getLingCppWindowTargetReferences`（languageService，跳过字符串/注释/文本块/@ 行，仅识别命令与目标同行的单行形态）并入 `controlReference` 语义令牌。回归：`tests/beginnerCompletionContext.test.ts`、`tests/lingcpp.test.ts`（裸名补全/引用区间/呈现着色三用例）。遗留：`打开窗口(不存在的窗口)` 目前只有「不上色 + 运行期调试输出未找到」，尚未生成编辑期诊断；如需对齐 controlRef 的 missing 阻断，须先定严重级别（历史教程大量使用标题文本形态，直接 error 会误伤存量）。
+- 待办（2026-10-23 立项：窗口布局系统落地路线·已定案；源头=B 站观众评论「控件里有布局面板控件吗？表格布局、流式布局啥的」）：
+  **现状核实（2026-10-23）**：控件一律设计器绝对坐标（x/y/width/height），无锚定/停靠/随窗口缩放属性；
+  生成器 `WM_SIZE` 无通用控件重排（`lingCppWin32Project.ts` 现有 WM_SIZE 分支只服务 EdgeView/CEF 宿主「铺满窗口」、
+  无边框圆角区域重算、浏览器外壳边界同步等特例）；容器类仅 分组框/选项卡（子控件同为绝对坐标）与旧项目兼容
+  网格容器（legacyOnly）；窗口模型已支持 `resizable`/`borderStyle`（`normal-resizable` 等可调边框），可调窗口
+  运行期拖拽缩放时全部控件保持原位不动；new_emoji 后端窗口恒 WS_POPUP 固定尺寸不随用户缩放。
+  **定案路线（四期递进，均落 Win32 后端；NE 口径见文末）**：
+  **一期（P0）控件级锚定 + 设计器对齐/分布工具**。
+  锚定：`LingControl` 新增 `anchor?: string`（left/top/right/bottom 组合，缺省 `"left,top"`=固定位置=现状，
+  旧项目零迁移）。语义与 WinForms 同构，落成共享规格：设客户区变化量 dx/dy——仅左锚不动、仅右锚 x+=dx、
+  左右双锚 width+=dx、上下同理、四锚全开=位置不变宽高双向拉伸。生成器按锚定表在 WM_SIZE 生成 SetWindowPos
+  重排（纯生成器产物，不改运行时库），并生成 `WM_GETMINMAXINFO` 最小尺寸钳制防负宽高；窗口内全部控件都是
+  默认锚定时零生成（零成本兜底）。设计器：属性面板锚定九宫格选择器、画布选中态锚定标记、「模拟拉伸」预览
+  （画布按规格实时重排演示，不写回坐标）。回归：`tests/windowDesigner.test.ts` 逐锚定组合生成代码断言 +
+  缺省零生成断言 + 真机可调窗口拉伸冒烟。落点：`types.ts`、`win32ControlRegistry.ts`、`lingCppWin32Project.ts`、
+  `WpfDesigner.tsx`。
+  对齐/分布（可先于一期上线的小件）：多选工具栏补 左/右/顶/底/水平居中/垂直居中 对齐与 水平/垂直等间距 分布，
+  复用 `buildBatchGeometryChanges` 唯一出口；快捷键进 `docs/KEYBOARD_SHORTCUTS.md`。
+  **二期（P1）窗口级等比缩放**：窗口属性 `scaleContentWithWindow?: boolean`（缺省 false），开启后运行期按
+  `min(w/w0, h/h0)` 对全部控件整体乘法缩放（与 NE 引擎既有 `dpi_scale` 乘法惯例同构，NE 未来可调窗口直接
+  复用该语义）。与锚定互斥：开启等比缩放的窗口忽略控件 anchor，规则手册写明优先级。
+  **三期（P2）流式布局面板 FlowPanel**：win32.basic 新容器控件（isContainer），属性=方向（横/纵）+自动换行+
+  子间距+内边距+水平/垂直对齐。语义定案：流式模式下子控件 x/y 由布局算法接管——属性面板隐藏 x/y、改为显示
+  排列序号；子控件按创建顺序流式排列，画布拖拽语义改为调整顺序与间距；画布与生成 C++ 各自实现同一份流式
+  算法规格（生成侧为窗口内布局函数，创建完毕与 WM_SIZE 各调一次）。存量兼容：把已有子控件拖入 FlowPanel 时
+  按现坐标排序初始化序号；无 FlowPanel 的旧项目零影响。
+  **四期（P2+）表格布局面板 TablePanel**：行/列定义（固定像素/星号权重/自动三种尺寸），子控件格位属性=
+  行+列+跨行+跨列+单元格外边距；星号尺寸=剩余空间按权重比例分配，自动尺寸=按该行/列内容最大值。复用三期
+  「画布与运行期同一算法规格」原则；在三期框架上扩展，不另起炉灶。
+  **每期通用红线**：布局重排必须生成真实 C++，禁止 IDE 内模拟出与 exe 不一致的结果；画布预览与生成代码
+  共用同一布局语义规格并配对拍测试（先写规格再动码，防「画布 vs 运行 parity」复发）；所有新属性缺省值等于
+  现状，旧项目零迁移；MCP 第 27 条「客户区高=窗口高−标题栏」与锚定/布局叠加的口径写进规则手册；
+  每期同步常规面：模型/注册表/属性面板/生成器/`tests/windowDesigner.test.ts`/规则手册/`MCP_INSTRUCTIONS`
+  （新增布局写作口径：何时用锚定 vs 手动算坐标 vs 布局面板）/`docs/KEYBOARD_SHORTCUTS.md`（若有快捷键）/
+  当天更新记录。
+  **NE 后端口径（定案）**：四期均不涉及 NE；若未来 NE 引入可调窗口，直接上二期等比缩放语义（乘法缩放对
+  NE 引擎改动最小），不做锚定。
+  **对外口径**：布局系统已立项，路线=锚定+对齐工具 → 等比缩放 → 流式面板 → 表格面板；排期为容量驱动，
+  不对外承诺具体版本号。
+
 - 已完成（2026-10-21）：**Win32 通用鼠标事件 MouseMove/MouseUp 补齐（IDE 运行链）**。lingCppWin32Project.ts 运行时模板公共子类分支对全部子类化控件每次 WM_MOUSEMOVE 派发 MouseMove（保留首次 MouseEnter）、WM_LBUTTONUP 释放捕获后派发 MouseUp；DateTimePicker/TabControl/ListBox 特化分支同步。绑定了任一鼠标事件的非 BUTTON 控件按下时 SetCapture（拖出控件仍持续收消息）。事件能力表 COMMON_MOUSE_EVENTS +MouseMove/+MouseUp。审计基线迁移：内置 93d284c2·1d346cf3、全量 1572b865·c595914e、CHECKLIST 计数 4305。
 - 已完成（2026-10-21 同日修复）：**上条引入的按钮 Click 全灭回归**。公共分支在转发 WM_LBUTTONUP 前抢先 `ReleaseCapture()`，同步产生的 WM_CAPTURECHANGED 被标准按钮过程判定为"捕获被抢=点击取消"，按钮按压状态被清除，随后转发的 WM_LBUTTONUP 不再产生 BN_CLICKED——所有 BUTTON 类控件（按钮/复选框/单选）真机与 BM_CLICK 全部无响应（直接 SendMessage(WM_COMMAND) 正常，因为绕过了按钮自身状态机）。修复：BUTTON 先 DefSubclassProc 转发（按钮过程发出 BN_CLICKED）再清理残余捕获，非按钮拖动手势保持原顺序；`tests/windowControlCompleteness.test.ts` 钉子同步改按 `!buttonControl`/`buttonControl` 两条断言。真机双验证：lingbuilder-project-3 编辑框与文本变量 demo，修复前点击零输出零信息框，修复后 调试输出+信息框齐全。
 - 待办：**nativeWin32Project.ts（VS 工程导出模板）无控件子类化、不派发任何鼠标事件**——导出工程里 MouseDown/MouseMove/MouseUp 绑定不生效（Click 族不受影响）。绑定这些事件的项目导出 VS 工程会静默失去拖动手势，需在导出模板补同构子类化派发（与本仓库「IDE 内运行与导出行为一致」红线的已知差距；aoa-viewer 手势当前只在 IDE 运行链生效）。

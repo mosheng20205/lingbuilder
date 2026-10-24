@@ -735,6 +735,7 @@ function newEmojiDataBridgeCommands(designerControls) {
   const badgeType = controlTypesOf(designerControls, 'Badge');
   const tabsType = controlTypesOf(designerControls, 'Tabs');
   const buttonType = controlTypesOf(designerControls, 'Button');
+  const infiniteScrollType = controlTypesOf(designerControls, 'InfiniteScroll');
   const windowParameter = { name: '窗口句柄', type: 'handle', description: 'new_emoji 窗口句柄。' };
   return [
     build('NE表格_设置列', 'NE表格_设置列(控件, 列配置)',
@@ -901,6 +902,10 @@ function newEmojiDataBridgeCommands(designerControls) {
       '设置 new_emoji 标签页是否允许拖拽重排和拖出分离，与 NE标签页_设置拖拽选项直调 一致。',
       '逻辑型', [controlParameter(tabsType, '当前窗口中的 NE标签页 控件。'), { name: '允许重排', type: 'bool', description: '是否允许拖动改变顺序。' }, { name: '允许分离', type: 'bool', description: '是否允许拖出当前窗口。' }],
       'NE标签页_设置拖拽选项(标签页1, 真, 假)'),
+    build('NE无限滚动_追加列表项', 'NE无限滚动_追加列表项(控件, 追加项)',
+      '向 new_emoji 无限滚动列表尾部追加列表项（保留当前滚动位置）。追加项为列表项协议文本：一行一条，字段用制表符分隔（标题\\t副标题\\t标签，后两列可省略），多条用 \\n 分隔。追加后用 NE无限滚动_设置状态(当前窗口, 控件, 0, 0, 0) 清掉 loading，滚到底可继续触发加载回调。',
+      '逻辑型', [controlParameter(infiniteScrollType, '当前窗口中的 无限滚动 InfiniteScroll 控件。'), { name: '追加项', type: 'wideString', description: '追加的列表项协议文本，一行一条（标题\\t副标题\\t标签）。' }],
+      'NE无限滚动_追加列表项(无限滚动1, "动态消息 1\\t这是自动加载的动态\\t新")'),
     build('NE_设置窗口图标', 'NE_设置窗口图标(窗口句柄, 图标路径)',
       '从本地 .ico 文件路径设置 new_emoji 窗口图标，与 NE窗口_设置图标 一致。',
       '整数型', [windowParameter, { name: '图标路径', type: 'wideString', description: '窗口图标文件完整路径。' }],

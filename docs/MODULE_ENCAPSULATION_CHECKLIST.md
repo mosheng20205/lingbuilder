@@ -2,7 +2,7 @@
 
 更新时间：2026-10-19
 
-本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **104 个内置模块、4320 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
+本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **107 个内置模块、4409 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
 
 - `schemaVersion: 2`。
 - `contributes.commands` 与 `bindings.commands` 一一对应。
@@ -61,7 +61,7 @@ WebSocket 服务端模块 `2.0.0` 已从 6 条同步单连接原型升级为 50 
 |---|---|---|---:|
 | 已封装 | `lingbuilder.input.keyboard` | 键盘输入模块 | 34 |
 | 已封装 | `lingbuilder.input.mouse` | 鼠标输入模块 | 29 |
-| 已封装 | `lingbuilder.win32.window-utils` | Win32 窗口操作模块 | 11 |
+| 已封装 | `lingbuilder.win32.window-utils` | Win32 窗口操作模块 | 12 |
 | 已封装 | `lingbuilder.win32.monitor` | 显示器与 DPI 模块 | 6 |
 | 已封装 | `lingbuilder.console` | 控制台模块 | 12 |
 | 已封装 | `lingbuilder.win32.menu` | Win32 菜单模块 | 8 |
@@ -101,7 +101,10 @@ SMTP 模块当前只支持普通 SMTP/局域网调试服务，不支持 STARTTLS
 | 已封装 | `lingbuilder.database.odbc` | ODBC 数据库模块 1.1.0（新增 结果集打开/取下一行/取列文本/取列数/取列名/查询关闭 六命令与 ODBC_转义文本；查询首值/取列文本 走 SQLGetData 分段读取，无 4KB 截断上限） | 15 |
 | 已完整封装（动态运行库） | `lingbuilder.database.sqlite` | SQLite 数据库模块 2.3 | 73 |
 | 已完整封装（动态运行库） | `lingbuilder.database.mysql` | MySQL 数据库模块 1.0 | 43 |
-| 已完整封装（动态运行库） | `lingbuilder.data.excel` | Excel 表格模块 1.0 | 45 |
+| 已完整封装（动态运行库 + 导出PDF） | `lingbuilder.data.excel` | Excel 表格模块 1.1 | 46 |
+| 已完整封装（OOXML 直读直写 + CID PDF） | `lingbuilder.data.word` | Word 文档模块 | 28 |
+| 已封装（PDFium 158 x64 动态加载） | `lingbuilder.data.pdf` | PDF 文档模块 | 22 |
+| 已完整封装（纯本地五码制） | `lingbuilder.barcode` | 条码模块 | 25 |
 
 SQLite 模块 2.0 保留原 7 条默认连接兼容入口，并扩展为 67 条生产接口和 `SQLite连接` / `SQLite语句` 两个受管类型。能力覆盖多连接、FULLMUTEX、外键/忙等待、预编译与命名参数、NULL/整数/长整数/小数/UTF-8/BLOB、逐行读取、事务/保存点、WAL/检查点、Online Backup、完整性检查、中断、64 位状态和主/扩展/系统错误码。项目仍需提供与目标架构一致且来源、版本和 SHA-256 可审计的 `sqlite3.dll`；缺失或导出不完整时会返回中文阻断错误，不会静默假装数据库可用。正式说明位于 `electron/docs/modules/sqlite/README.md`，原生验收命令为 `npm run smoke:sqlite-native`。
 
@@ -118,7 +121,7 @@ MySQL 数据库模块 1.0 通过原生客户端/服务器协议直连 MySQL/Mari
 | 已封装 | `lingbuilder.image.bitmap` | 位图像素模块 | 5 |
 | 已封装 | `lingbuilder.image.icon` | 图标处理模块 | 3 |
 | 已封装 | `lingbuilder.image.recognition` | 基础识图模块（文件+字节集双入口，区域/多处/等待族） | 16 |
-| 已封装（OpenCV 4.14.0 x64） | `lingbuilder.opencv` | OpenCV 图像处理与单/双缺口候选模块 | 34 |
+| 已封装（OpenCV 4.14.0 x64 + videoio） | `lingbuilder.opencv` | OpenCV 图像处理与单/双缺口候选与视频帧模块 | 47 |
 | 已封装（2026-10-01，纯本地 C++ 运行时注入） | `lingbuilder.qrcode` | 二维码模块（生成+识别+闭环自检） | 31 |
 | 已封装（2026-10-20，借用本机微信 4.x OCR 组件，仅 x64） | `lingbuilder.ocr` | 微信OCR识别模块（路径+字节集双入口，行级文本/坐标/置信度，JSON 含字符级坐标） | 19 |
 | 已封装 | `lingbuilder.media.audio` | 基础音频模块 | 7 |
@@ -148,7 +151,7 @@ OpenCV 模块保留基础 GDI+ 图像模块并作为新增高级能力。公开�
 
 | 状态 | 模块 ID | 名称 | 命令数 |
 |---|---|---|---:|
-| 已有（1.1.0） | `lingbuilder.win32.basic` | Win32 窗口基础模块 | 244 |
+| 已有（1.1.0） | `lingbuilder.win32.basic` | Win32 窗口基础模块 | 245 |
 | 已有 | `lingbuilder.win32.common-controls` | Win32 高级控件模块 | 561 |
 | 已有 | `lingbuilder.edgeview` | EdgeView 浏览器模块 | 321 |
 | 3.0预览 | `lingbuilder.cef3.browser` | CEF3核心浏览器模块（CEF 150 x64） | 64 |
