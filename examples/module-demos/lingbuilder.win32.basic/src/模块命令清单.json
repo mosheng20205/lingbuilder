@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-19T09:25:32.631Z",
+  "generatedAt": "2026-10-24T03:43:55.820Z",
   "module": {
     "id": "lingbuilder.win32.basic",
     "name": "Win32窗口基础模块",
     "version": "1.1.0",
     "description": "提供窗口、基础控件、信息框、调试输出和结束等中文 C++ 基础能力。"
   },
-  "commandCount": 244,
+  "commandCount": 293,
   "commands": [
     {
       "index": 1,
@@ -3196,6 +3196,140 @@
     },
     {
       "index": 99,
+      "name": "按钮_绑定鼠标移动",
+      "signature": "按钮_绑定鼠标移动(控件, 处理器)",
+      "description": "为按钮实例绑定“鼠标移动”处理器，处理器必须使用 &名称。",
+      "insertText": "按钮_绑定鼠标移动($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "按钮_绑定鼠标移动",
+        "runtimeName": "按钮_绑定鼠标移动",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Button"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 Button；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            },
+            "description": "必须使用 &处理器名；必须无参数，返回类型必须是 空。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "按钮_绑定鼠标移动(演示Button控件, &模块演示回调)"
+    },
+    {
+      "index": 100,
+      "name": "按钮_解绑鼠标移动",
+      "signature": "按钮_解绑鼠标移动(控件)",
+      "description": "移除按钮实例由代码绑定的“鼠标移动”处理器。",
+      "insertText": "按钮_解绑鼠标移动($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "按钮_解绑鼠标移动",
+        "runtimeName": "按钮_解绑鼠标移动",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Button"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 Button；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "按钮_解绑鼠标移动(演示Button控件)"
+    },
+    {
+      "index": 101,
+      "name": "按钮_绑定鼠标抬起",
+      "signature": "按钮_绑定鼠标抬起(控件, 处理器)",
+      "description": "为按钮实例绑定“鼠标抬起”处理器，处理器必须使用 &名称。",
+      "insertText": "按钮_绑定鼠标抬起($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "按钮_绑定鼠标抬起",
+        "runtimeName": "按钮_绑定鼠标抬起",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Button"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 Button；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            },
+            "description": "必须使用 &处理器名；必须无参数，返回类型必须是 空。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "按钮_绑定鼠标抬起(演示Button控件, &模块演示回调)"
+    },
+    {
+      "index": 102,
+      "name": "按钮_解绑鼠标抬起",
+      "signature": "按钮_解绑鼠标抬起(控件)",
+      "description": "移除按钮实例由代码绑定的“鼠标抬起”处理器。",
+      "insertText": "按钮_解绑鼠标抬起($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "按钮_解绑鼠标抬起",
+        "runtimeName": "按钮_解绑鼠标抬起",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Button"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 Button；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "按钮_解绑鼠标抬起(演示Button控件)"
+    },
+    {
+      "index": 103,
       "name": "按钮_绑定鼠标移入",
       "signature": "按钮_绑定鼠标移入(控件, 处理器)",
       "description": "为按钮实例绑定“鼠标移入”处理器，处理器必须使用 &名称。",
@@ -3233,7 +3367,7 @@
       "demoInvocation": "按钮_绑定鼠标移入(演示Button控件, &模块演示回调)"
     },
     {
-      "index": 100,
+      "index": 104,
       "name": "按钮_解绑鼠标移入",
       "signature": "按钮_解绑鼠标移入(控件)",
       "description": "移除按钮实例由代码绑定的“鼠标移入”处理器。",
@@ -3262,7 +3396,7 @@
       "demoInvocation": "按钮_解绑鼠标移入(演示Button控件)"
     },
     {
-      "index": 101,
+      "index": 105,
       "name": "按钮_绑定鼠标移出",
       "signature": "按钮_绑定鼠标移出(控件, 处理器)",
       "description": "为按钮实例绑定“鼠标移出”处理器，处理器必须使用 &名称。",
@@ -3300,7 +3434,7 @@
       "demoInvocation": "按钮_绑定鼠标移出(演示Button控件, &模块演示回调)"
     },
     {
-      "index": 102,
+      "index": 106,
       "name": "按钮_解绑鼠标移出",
       "signature": "按钮_解绑鼠标移出(控件)",
       "description": "移除按钮实例由代码绑定的“鼠标移出”处理器。",
@@ -3329,7 +3463,7 @@
       "demoInvocation": "按钮_解绑鼠标移出(演示Button控件)"
     },
     {
-      "index": 103,
+      "index": 107,
       "name": "按钮_绑定获得焦点",
       "signature": "按钮_绑定获得焦点(控件, 处理器)",
       "description": "为按钮实例绑定“获得焦点”处理器，处理器必须使用 &名称。",
@@ -3367,7 +3501,7 @@
       "demoInvocation": "按钮_绑定获得焦点(演示Button控件, &模块演示回调)"
     },
     {
-      "index": 104,
+      "index": 108,
       "name": "按钮_解绑获得焦点",
       "signature": "按钮_解绑获得焦点(控件)",
       "description": "移除按钮实例由代码绑定的“获得焦点”处理器。",
@@ -3396,7 +3530,7 @@
       "demoInvocation": "按钮_解绑获得焦点(演示Button控件)"
     },
     {
-      "index": 105,
+      "index": 109,
       "name": "按钮_绑定失去焦点",
       "signature": "按钮_绑定失去焦点(控件, 处理器)",
       "description": "为按钮实例绑定“失去焦点”处理器，处理器必须使用 &名称。",
@@ -3434,7 +3568,7 @@
       "demoInvocation": "按钮_绑定失去焦点(演示Button控件, &模块演示回调)"
     },
     {
-      "index": 106,
+      "index": 110,
       "name": "按钮_解绑失去焦点",
       "signature": "按钮_解绑失去焦点(控件)",
       "description": "移除按钮实例由代码绑定的“失去焦点”处理器。",
@@ -3463,7 +3597,7 @@
       "demoInvocation": "按钮_解绑失去焦点(演示Button控件)"
     },
     {
-      "index": 107,
+      "index": 111,
       "name": "编辑框_绑定内容被改变",
       "signature": "编辑框_绑定内容被改变(控件, 处理器)",
       "description": "为编辑框实例绑定“内容被改变”处理器，处理器必须使用 &名称。",
@@ -3501,7 +3635,7 @@
       "demoInvocation": "编辑框_绑定内容被改变(演示TextBox控件, &模块演示回调)"
     },
     {
-      "index": 108,
+      "index": 112,
       "name": "编辑框_解绑内容被改变",
       "signature": "编辑框_解绑内容被改变(控件)",
       "description": "移除编辑框实例由代码绑定的“内容被改变”处理器。",
@@ -3530,7 +3664,7 @@
       "demoInvocation": "编辑框_解绑内容被改变(演示TextBox控件)"
     },
     {
-      "index": 109,
+      "index": 113,
       "name": "编辑框_绑定获得焦点",
       "signature": "编辑框_绑定获得焦点(控件, 处理器)",
       "description": "为编辑框实例绑定“获得焦点”处理器，处理器必须使用 &名称。",
@@ -3568,7 +3702,7 @@
       "demoInvocation": "编辑框_绑定获得焦点(演示TextBox控件, &模块演示回调)"
     },
     {
-      "index": 110,
+      "index": 114,
       "name": "编辑框_解绑获得焦点",
       "signature": "编辑框_解绑获得焦点(控件)",
       "description": "移除编辑框实例由代码绑定的“获得焦点”处理器。",
@@ -3597,7 +3731,7 @@
       "demoInvocation": "编辑框_解绑获得焦点(演示TextBox控件)"
     },
     {
-      "index": 111,
+      "index": 115,
       "name": "编辑框_绑定失去焦点",
       "signature": "编辑框_绑定失去焦点(控件, 处理器)",
       "description": "为编辑框实例绑定“失去焦点”处理器，处理器必须使用 &名称。",
@@ -3635,7 +3769,7 @@
       "demoInvocation": "编辑框_绑定失去焦点(演示TextBox控件, &模块演示回调)"
     },
     {
-      "index": 112,
+      "index": 116,
       "name": "编辑框_解绑失去焦点",
       "signature": "编辑框_解绑失去焦点(控件)",
       "description": "移除编辑框实例由代码绑定的“失去焦点”处理器。",
@@ -3664,7 +3798,7 @@
       "demoInvocation": "编辑框_解绑失去焦点(演示TextBox控件)"
     },
     {
-      "index": 113,
+      "index": 117,
       "name": "编辑框_绑定鼠标按下",
       "signature": "编辑框_绑定鼠标按下(控件, 处理器)",
       "description": "为编辑框实例绑定“鼠标按下”处理器，处理器必须使用 &名称。",
@@ -3702,7 +3836,7 @@
       "demoInvocation": "编辑框_绑定鼠标按下(演示TextBox控件, &模块演示回调)"
     },
     {
-      "index": 114,
+      "index": 118,
       "name": "编辑框_解绑鼠标按下",
       "signature": "编辑框_解绑鼠标按下(控件)",
       "description": "移除编辑框实例由代码绑定的“鼠标按下”处理器。",
@@ -3731,7 +3865,141 @@
       "demoInvocation": "编辑框_解绑鼠标按下(演示TextBox控件)"
     },
     {
-      "index": 115,
+      "index": 119,
+      "name": "编辑框_绑定鼠标移动",
+      "signature": "编辑框_绑定鼠标移动(控件, 处理器)",
+      "description": "为编辑框实例绑定“鼠标移动”处理器，处理器必须使用 &名称。",
+      "insertText": "编辑框_绑定鼠标移动($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "编辑框_绑定鼠标移动",
+        "runtimeName": "编辑框_绑定鼠标移动",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "TextBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 TextBox；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            },
+            "description": "必须使用 &处理器名；必须无参数，返回类型必须是 空。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "编辑框_绑定鼠标移动(演示TextBox控件, &模块演示回调)"
+    },
+    {
+      "index": 120,
+      "name": "编辑框_解绑鼠标移动",
+      "signature": "编辑框_解绑鼠标移动(控件)",
+      "description": "移除编辑框实例由代码绑定的“鼠标移动”处理器。",
+      "insertText": "编辑框_解绑鼠标移动($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "编辑框_解绑鼠标移动",
+        "runtimeName": "编辑框_解绑鼠标移动",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "TextBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 TextBox；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "编辑框_解绑鼠标移动(演示TextBox控件)"
+    },
+    {
+      "index": 121,
+      "name": "编辑框_绑定鼠标抬起",
+      "signature": "编辑框_绑定鼠标抬起(控件, 处理器)",
+      "description": "为编辑框实例绑定“鼠标抬起”处理器，处理器必须使用 &名称。",
+      "insertText": "编辑框_绑定鼠标抬起($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "编辑框_绑定鼠标抬起",
+        "runtimeName": "编辑框_绑定鼠标抬起",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "TextBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 TextBox；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            },
+            "description": "必须使用 &处理器名；必须无参数，返回类型必须是 空。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "编辑框_绑定鼠标抬起(演示TextBox控件, &模块演示回调)"
+    },
+    {
+      "index": 122,
+      "name": "编辑框_解绑鼠标抬起",
+      "signature": "编辑框_解绑鼠标抬起(控件)",
+      "description": "移除编辑框实例由代码绑定的“鼠标抬起”处理器。",
+      "insertText": "编辑框_解绑鼠标抬起($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "编辑框_解绑鼠标抬起",
+        "runtimeName": "编辑框_解绑鼠标抬起",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "TextBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 TextBox；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "编辑框_解绑鼠标抬起(演示TextBox控件)"
+    },
+    {
+      "index": 123,
       "name": "编辑框_绑定鼠标移入",
       "signature": "编辑框_绑定鼠标移入(控件, 处理器)",
       "description": "为编辑框实例绑定“鼠标移入”处理器，处理器必须使用 &名称。",
@@ -3769,7 +4037,7 @@
       "demoInvocation": "编辑框_绑定鼠标移入(演示TextBox控件, &模块演示回调)"
     },
     {
-      "index": 116,
+      "index": 124,
       "name": "编辑框_解绑鼠标移入",
       "signature": "编辑框_解绑鼠标移入(控件)",
       "description": "移除编辑框实例由代码绑定的“鼠标移入”处理器。",
@@ -3798,7 +4066,7 @@
       "demoInvocation": "编辑框_解绑鼠标移入(演示TextBox控件)"
     },
     {
-      "index": 117,
+      "index": 125,
       "name": "编辑框_绑定鼠标移出",
       "signature": "编辑框_绑定鼠标移出(控件, 处理器)",
       "description": "为编辑框实例绑定“鼠标移出”处理器，处理器必须使用 &名称。",
@@ -3836,7 +4104,7 @@
       "demoInvocation": "编辑框_绑定鼠标移出(演示TextBox控件, &模块演示回调)"
     },
     {
-      "index": 118,
+      "index": 126,
       "name": "编辑框_解绑鼠标移出",
       "signature": "编辑框_解绑鼠标移出(控件)",
       "description": "移除编辑框实例由代码绑定的“鼠标移出”处理器。",
@@ -3865,7 +4133,7 @@
       "demoInvocation": "编辑框_解绑鼠标移出(演示TextBox控件)"
     },
     {
-      "index": 119,
+      "index": 127,
       "name": "标签_绑定被单击",
       "signature": "标签_绑定被单击(控件, 处理器)",
       "description": "为标签实例绑定“被单击”处理器，处理器必须使用 &名称。",
@@ -3903,7 +4171,7 @@
       "demoInvocation": "标签_绑定被单击(演示状态, &模块演示回调)"
     },
     {
-      "index": 120,
+      "index": 128,
       "name": "标签_解绑被单击",
       "signature": "标签_解绑被单击(控件)",
       "description": "移除标签实例由代码绑定的“被单击”处理器。",
@@ -3932,7 +4200,7 @@
       "demoInvocation": "标签_解绑被单击(演示状态)"
     },
     {
-      "index": 121,
+      "index": 129,
       "name": "标签_绑定鼠标按下",
       "signature": "标签_绑定鼠标按下(控件, 处理器)",
       "description": "为标签实例绑定“鼠标按下”处理器，处理器必须使用 &名称。",
@@ -3970,7 +4238,7 @@
       "demoInvocation": "标签_绑定鼠标按下(演示状态, &模块演示回调)"
     },
     {
-      "index": 122,
+      "index": 130,
       "name": "标签_解绑鼠标按下",
       "signature": "标签_解绑鼠标按下(控件)",
       "description": "移除标签实例由代码绑定的“鼠标按下”处理器。",
@@ -3999,7 +4267,141 @@
       "demoInvocation": "标签_解绑鼠标按下(演示状态)"
     },
     {
-      "index": 123,
+      "index": 131,
+      "name": "标签_绑定鼠标移动",
+      "signature": "标签_绑定鼠标移动(控件, 处理器)",
+      "description": "为标签实例绑定“鼠标移动”处理器，处理器必须使用 &名称。",
+      "insertText": "标签_绑定鼠标移动($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "标签_绑定鼠标移动",
+        "runtimeName": "标签_绑定鼠标移动",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Label"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 Label；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            },
+            "description": "必须使用 &处理器名；必须无参数，返回类型必须是 空。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "标签_绑定鼠标移动(演示状态, &模块演示回调)"
+    },
+    {
+      "index": 132,
+      "name": "标签_解绑鼠标移动",
+      "signature": "标签_解绑鼠标移动(控件)",
+      "description": "移除标签实例由代码绑定的“鼠标移动”处理器。",
+      "insertText": "标签_解绑鼠标移动($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "标签_解绑鼠标移动",
+        "runtimeName": "标签_解绑鼠标移动",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Label"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 Label；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "标签_解绑鼠标移动(演示状态)"
+    },
+    {
+      "index": 133,
+      "name": "标签_绑定鼠标抬起",
+      "signature": "标签_绑定鼠标抬起(控件, 处理器)",
+      "description": "为标签实例绑定“鼠标抬起”处理器，处理器必须使用 &名称。",
+      "insertText": "标签_绑定鼠标抬起($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "标签_绑定鼠标抬起",
+        "runtimeName": "标签_绑定鼠标抬起",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Label"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 Label；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            },
+            "description": "必须使用 &处理器名；必须无参数，返回类型必须是 空。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "标签_绑定鼠标抬起(演示状态, &模块演示回调)"
+    },
+    {
+      "index": 134,
+      "name": "标签_解绑鼠标抬起",
+      "signature": "标签_解绑鼠标抬起(控件)",
+      "description": "移除标签实例由代码绑定的“鼠标抬起”处理器。",
+      "insertText": "标签_解绑鼠标抬起($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "标签_解绑鼠标抬起",
+        "runtimeName": "标签_解绑鼠标抬起",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Label"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 Label；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "标签_解绑鼠标抬起(演示状态)"
+    },
+    {
+      "index": 135,
       "name": "标签_绑定鼠标移入",
       "signature": "标签_绑定鼠标移入(控件, 处理器)",
       "description": "为标签实例绑定“鼠标移入”处理器，处理器必须使用 &名称。",
@@ -4037,7 +4439,7 @@
       "demoInvocation": "标签_绑定鼠标移入(演示状态, &模块演示回调)"
     },
     {
-      "index": 124,
+      "index": 136,
       "name": "标签_解绑鼠标移入",
       "signature": "标签_解绑鼠标移入(控件)",
       "description": "移除标签实例由代码绑定的“鼠标移入”处理器。",
@@ -4066,7 +4468,7 @@
       "demoInvocation": "标签_解绑鼠标移入(演示状态)"
     },
     {
-      "index": 125,
+      "index": 137,
       "name": "标签_绑定鼠标移出",
       "signature": "标签_绑定鼠标移出(控件, 处理器)",
       "description": "为标签实例绑定“鼠标移出”处理器，处理器必须使用 &名称。",
@@ -4104,7 +4506,7 @@
       "demoInvocation": "标签_绑定鼠标移出(演示状态, &模块演示回调)"
     },
     {
-      "index": 126,
+      "index": 138,
       "name": "标签_解绑鼠标移出",
       "signature": "标签_解绑鼠标移出(控件)",
       "description": "移除标签实例由代码绑定的“鼠标移出”处理器。",
@@ -4133,7 +4535,7 @@
       "demoInvocation": "标签_解绑鼠标移出(演示状态)"
     },
     {
-      "index": 127,
+      "index": 139,
       "name": "复选框_绑定被选中",
       "signature": "复选框_绑定被选中(控件, 处理器)",
       "description": "为复选框实例绑定“被选中”处理器，处理器必须使用 &名称。",
@@ -4171,7 +4573,7 @@
       "demoInvocation": "复选框_绑定被选中(允许实际执行, &模块演示回调)"
     },
     {
-      "index": 128,
+      "index": 140,
       "name": "复选框_解绑被选中",
       "signature": "复选框_解绑被选中(控件)",
       "description": "移除复选框实例由代码绑定的“被选中”处理器。",
@@ -4200,7 +4602,7 @@
       "demoInvocation": "复选框_解绑被选中(允许实际执行)"
     },
     {
-      "index": 129,
+      "index": 141,
       "name": "复选框_绑定被取消选中",
       "signature": "复选框_绑定被取消选中(控件, 处理器)",
       "description": "为复选框实例绑定“被取消选中”处理器，处理器必须使用 &名称。",
@@ -4238,7 +4640,7 @@
       "demoInvocation": "复选框_绑定被取消选中(允许实际执行, &模块演示回调)"
     },
     {
-      "index": 130,
+      "index": 142,
       "name": "复选框_解绑被取消选中",
       "signature": "复选框_解绑被取消选中(控件)",
       "description": "移除复选框实例由代码绑定的“被取消选中”处理器。",
@@ -4267,7 +4669,7 @@
       "demoInvocation": "复选框_解绑被取消选中(允许实际执行)"
     },
     {
-      "index": 131,
+      "index": 143,
       "name": "复选框_绑定鼠标按下",
       "signature": "复选框_绑定鼠标按下(控件, 处理器)",
       "description": "为复选框实例绑定“鼠标按下”处理器，处理器必须使用 &名称。",
@@ -4305,7 +4707,7 @@
       "demoInvocation": "复选框_绑定鼠标按下(允许实际执行, &模块演示回调)"
     },
     {
-      "index": 132,
+      "index": 144,
       "name": "复选框_解绑鼠标按下",
       "signature": "复选框_解绑鼠标按下(控件)",
       "description": "移除复选框实例由代码绑定的“鼠标按下”处理器。",
@@ -4334,7 +4736,141 @@
       "demoInvocation": "复选框_解绑鼠标按下(允许实际执行)"
     },
     {
-      "index": 133,
+      "index": 145,
+      "name": "复选框_绑定鼠标移动",
+      "signature": "复选框_绑定鼠标移动(控件, 处理器)",
+      "description": "为复选框实例绑定“鼠标移动”处理器，处理器必须使用 &名称。",
+      "insertText": "复选框_绑定鼠标移动($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "复选框_绑定鼠标移动",
+        "runtimeName": "复选框_绑定鼠标移动",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "CheckBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CheckBox；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            },
+            "description": "必须使用 &处理器名；必须无参数，返回类型必须是 空。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "复选框_绑定鼠标移动(允许实际执行, &模块演示回调)"
+    },
+    {
+      "index": 146,
+      "name": "复选框_解绑鼠标移动",
+      "signature": "复选框_解绑鼠标移动(控件)",
+      "description": "移除复选框实例由代码绑定的“鼠标移动”处理器。",
+      "insertText": "复选框_解绑鼠标移动($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "复选框_解绑鼠标移动",
+        "runtimeName": "复选框_解绑鼠标移动",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "CheckBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CheckBox；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "复选框_解绑鼠标移动(允许实际执行)"
+    },
+    {
+      "index": 147,
+      "name": "复选框_绑定鼠标抬起",
+      "signature": "复选框_绑定鼠标抬起(控件, 处理器)",
+      "description": "为复选框实例绑定“鼠标抬起”处理器，处理器必须使用 &名称。",
+      "insertText": "复选框_绑定鼠标抬起($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "复选框_绑定鼠标抬起",
+        "runtimeName": "复选框_绑定鼠标抬起",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "CheckBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CheckBox；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            },
+            "description": "必须使用 &处理器名；必须无参数，返回类型必须是 空。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "复选框_绑定鼠标抬起(允许实际执行, &模块演示回调)"
+    },
+    {
+      "index": 148,
+      "name": "复选框_解绑鼠标抬起",
+      "signature": "复选框_解绑鼠标抬起(控件)",
+      "description": "移除复选框实例由代码绑定的“鼠标抬起”处理器。",
+      "insertText": "复选框_解绑鼠标抬起($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "复选框_解绑鼠标抬起",
+        "runtimeName": "复选框_解绑鼠标抬起",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "CheckBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 CheckBox；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "复选框_解绑鼠标抬起(允许实际执行)"
+    },
+    {
+      "index": 149,
       "name": "复选框_绑定鼠标移入",
       "signature": "复选框_绑定鼠标移入(控件, 处理器)",
       "description": "为复选框实例绑定“鼠标移入”处理器，处理器必须使用 &名称。",
@@ -4372,7 +4908,7 @@
       "demoInvocation": "复选框_绑定鼠标移入(允许实际执行, &模块演示回调)"
     },
     {
-      "index": 134,
+      "index": 150,
       "name": "复选框_解绑鼠标移入",
       "signature": "复选框_解绑鼠标移入(控件)",
       "description": "移除复选框实例由代码绑定的“鼠标移入”处理器。",
@@ -4401,7 +4937,7 @@
       "demoInvocation": "复选框_解绑鼠标移入(允许实际执行)"
     },
     {
-      "index": 135,
+      "index": 151,
       "name": "复选框_绑定鼠标移出",
       "signature": "复选框_绑定鼠标移出(控件, 处理器)",
       "description": "为复选框实例绑定“鼠标移出”处理器，处理器必须使用 &名称。",
@@ -4439,7 +4975,7 @@
       "demoInvocation": "复选框_绑定鼠标移出(允许实际执行, &模块演示回调)"
     },
     {
-      "index": 136,
+      "index": 152,
       "name": "复选框_解绑鼠标移出",
       "signature": "复选框_解绑鼠标移出(控件)",
       "description": "移除复选框实例由代码绑定的“鼠标移出”处理器。",
@@ -4468,7 +5004,7 @@
       "demoInvocation": "复选框_解绑鼠标移出(允许实际执行)"
     },
     {
-      "index": 137,
+      "index": 153,
       "name": "复选框_绑定获得焦点",
       "signature": "复选框_绑定获得焦点(控件, 处理器)",
       "description": "为复选框实例绑定“获得焦点”处理器，处理器必须使用 &名称。",
@@ -4506,7 +5042,7 @@
       "demoInvocation": "复选框_绑定获得焦点(允许实际执行, &模块演示回调)"
     },
     {
-      "index": 138,
+      "index": 154,
       "name": "复选框_解绑获得焦点",
       "signature": "复选框_解绑获得焦点(控件)",
       "description": "移除复选框实例由代码绑定的“获得焦点”处理器。",
@@ -4535,7 +5071,7 @@
       "demoInvocation": "复选框_解绑获得焦点(允许实际执行)"
     },
     {
-      "index": 139,
+      "index": 155,
       "name": "复选框_绑定失去焦点",
       "signature": "复选框_绑定失去焦点(控件, 处理器)",
       "description": "为复选框实例绑定“失去焦点”处理器，处理器必须使用 &名称。",
@@ -4573,7 +5109,7 @@
       "demoInvocation": "复选框_绑定失去焦点(允许实际执行, &模块演示回调)"
     },
     {
-      "index": 140,
+      "index": 156,
       "name": "复选框_解绑失去焦点",
       "signature": "复选框_解绑失去焦点(控件)",
       "description": "移除复选框实例由代码绑定的“失去焦点”处理器。",
@@ -4602,7 +5138,7 @@
       "demoInvocation": "复选框_解绑失去焦点(允许实际执行)"
     },
     {
-      "index": 141,
+      "index": 157,
       "name": "单选框_绑定被选中",
       "signature": "单选框_绑定被选中(控件, 处理器)",
       "description": "为单选框实例绑定“被选中”处理器，处理器必须使用 &名称。",
@@ -4640,7 +5176,7 @@
       "demoInvocation": "单选框_绑定被选中(演示RadioButton控件, &模块演示回调)"
     },
     {
-      "index": 142,
+      "index": 158,
       "name": "单选框_解绑被选中",
       "signature": "单选框_解绑被选中(控件)",
       "description": "移除单选框实例由代码绑定的“被选中”处理器。",
@@ -4669,7 +5205,7 @@
       "demoInvocation": "单选框_解绑被选中(演示RadioButton控件)"
     },
     {
-      "index": 143,
+      "index": 159,
       "name": "单选框_绑定被取消选中",
       "signature": "单选框_绑定被取消选中(控件, 处理器)",
       "description": "为单选框实例绑定“被取消选中”处理器，处理器必须使用 &名称。",
@@ -4707,7 +5243,7 @@
       "demoInvocation": "单选框_绑定被取消选中(演示RadioButton控件, &模块演示回调)"
     },
     {
-      "index": 144,
+      "index": 160,
       "name": "单选框_解绑被取消选中",
       "signature": "单选框_解绑被取消选中(控件)",
       "description": "移除单选框实例由代码绑定的“被取消选中”处理器。",
@@ -4736,7 +5272,7 @@
       "demoInvocation": "单选框_解绑被取消选中(演示RadioButton控件)"
     },
     {
-      "index": 145,
+      "index": 161,
       "name": "单选框_绑定鼠标按下",
       "signature": "单选框_绑定鼠标按下(控件, 处理器)",
       "description": "为单选框实例绑定“鼠标按下”处理器，处理器必须使用 &名称。",
@@ -4774,7 +5310,7 @@
       "demoInvocation": "单选框_绑定鼠标按下(演示RadioButton控件, &模块演示回调)"
     },
     {
-      "index": 146,
+      "index": 162,
       "name": "单选框_解绑鼠标按下",
       "signature": "单选框_解绑鼠标按下(控件)",
       "description": "移除单选框实例由代码绑定的“鼠标按下”处理器。",
@@ -4803,7 +5339,141 @@
       "demoInvocation": "单选框_解绑鼠标按下(演示RadioButton控件)"
     },
     {
-      "index": 147,
+      "index": 163,
+      "name": "单选框_绑定鼠标移动",
+      "signature": "单选框_绑定鼠标移动(控件, 处理器)",
+      "description": "为单选框实例绑定“鼠标移动”处理器，处理器必须使用 &名称。",
+      "insertText": "单选框_绑定鼠标移动($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "单选框_绑定鼠标移动",
+        "runtimeName": "单选框_绑定鼠标移动",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "RadioButton"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 RadioButton；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            },
+            "description": "必须使用 &处理器名；必须无参数，返回类型必须是 空。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "单选框_绑定鼠标移动(演示RadioButton控件, &模块演示回调)"
+    },
+    {
+      "index": 164,
+      "name": "单选框_解绑鼠标移动",
+      "signature": "单选框_解绑鼠标移动(控件)",
+      "description": "移除单选框实例由代码绑定的“鼠标移动”处理器。",
+      "insertText": "单选框_解绑鼠标移动($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "单选框_解绑鼠标移动",
+        "runtimeName": "单选框_解绑鼠标移动",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "RadioButton"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 RadioButton；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "单选框_解绑鼠标移动(演示RadioButton控件)"
+    },
+    {
+      "index": 165,
+      "name": "单选框_绑定鼠标抬起",
+      "signature": "单选框_绑定鼠标抬起(控件, 处理器)",
+      "description": "为单选框实例绑定“鼠标抬起”处理器，处理器必须使用 &名称。",
+      "insertText": "单选框_绑定鼠标抬起($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "单选框_绑定鼠标抬起",
+        "runtimeName": "单选框_绑定鼠标抬起",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "RadioButton"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 RadioButton；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            },
+            "description": "必须使用 &处理器名；必须无参数，返回类型必须是 空。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "单选框_绑定鼠标抬起(演示RadioButton控件, &模块演示回调)"
+    },
+    {
+      "index": 166,
+      "name": "单选框_解绑鼠标抬起",
+      "signature": "单选框_解绑鼠标抬起(控件)",
+      "description": "移除单选框实例由代码绑定的“鼠标抬起”处理器。",
+      "insertText": "单选框_解绑鼠标抬起($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "单选框_解绑鼠标抬起",
+        "runtimeName": "单选框_解绑鼠标抬起",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "RadioButton"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 RadioButton；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "单选框_解绑鼠标抬起(演示RadioButton控件)"
+    },
+    {
+      "index": 167,
       "name": "单选框_绑定鼠标移入",
       "signature": "单选框_绑定鼠标移入(控件, 处理器)",
       "description": "为单选框实例绑定“鼠标移入”处理器，处理器必须使用 &名称。",
@@ -4841,7 +5511,7 @@
       "demoInvocation": "单选框_绑定鼠标移入(演示RadioButton控件, &模块演示回调)"
     },
     {
-      "index": 148,
+      "index": 168,
       "name": "单选框_解绑鼠标移入",
       "signature": "单选框_解绑鼠标移入(控件)",
       "description": "移除单选框实例由代码绑定的“鼠标移入”处理器。",
@@ -4870,7 +5540,7 @@
       "demoInvocation": "单选框_解绑鼠标移入(演示RadioButton控件)"
     },
     {
-      "index": 149,
+      "index": 169,
       "name": "单选框_绑定鼠标移出",
       "signature": "单选框_绑定鼠标移出(控件, 处理器)",
       "description": "为单选框实例绑定“鼠标移出”处理器，处理器必须使用 &名称。",
@@ -4908,7 +5578,7 @@
       "demoInvocation": "单选框_绑定鼠标移出(演示RadioButton控件, &模块演示回调)"
     },
     {
-      "index": 150,
+      "index": 170,
       "name": "单选框_解绑鼠标移出",
       "signature": "单选框_解绑鼠标移出(控件)",
       "description": "移除单选框实例由代码绑定的“鼠标移出”处理器。",
@@ -4937,7 +5607,7 @@
       "demoInvocation": "单选框_解绑鼠标移出(演示RadioButton控件)"
     },
     {
-      "index": 151,
+      "index": 171,
       "name": "单选框_绑定获得焦点",
       "signature": "单选框_绑定获得焦点(控件, 处理器)",
       "description": "为单选框实例绑定“获得焦点”处理器，处理器必须使用 &名称。",
@@ -4975,7 +5645,7 @@
       "demoInvocation": "单选框_绑定获得焦点(演示RadioButton控件, &模块演示回调)"
     },
     {
-      "index": 152,
+      "index": 172,
       "name": "单选框_解绑获得焦点",
       "signature": "单选框_解绑获得焦点(控件)",
       "description": "移除单选框实例由代码绑定的“获得焦点”处理器。",
@@ -5004,7 +5674,7 @@
       "demoInvocation": "单选框_解绑获得焦点(演示RadioButton控件)"
     },
     {
-      "index": 153,
+      "index": 173,
       "name": "单选框_绑定失去焦点",
       "signature": "单选框_绑定失去焦点(控件, 处理器)",
       "description": "为单选框实例绑定“失去焦点”处理器，处理器必须使用 &名称。",
@@ -5042,7 +5712,7 @@
       "demoInvocation": "单选框_绑定失去焦点(演示RadioButton控件, &模块演示回调)"
     },
     {
-      "index": 154,
+      "index": 174,
       "name": "单选框_解绑失去焦点",
       "signature": "单选框_解绑失去焦点(控件)",
       "description": "移除单选框实例由代码绑定的“失去焦点”处理器。",
@@ -5071,7 +5741,7 @@
       "demoInvocation": "单选框_解绑失去焦点(演示RadioButton控件)"
     },
     {
-      "index": 155,
+      "index": 175,
       "name": "列表框_绑定选择项被改变",
       "signature": "列表框_绑定选择项被改变(控件, 处理器)",
       "description": "为列表框实例绑定“选择项被改变”处理器，处理器必须使用 &名称。",
@@ -5109,7 +5779,7 @@
       "demoInvocation": "列表框_绑定选择项被改变(演示ListBox控件, &模块演示回调)"
     },
     {
-      "index": 156,
+      "index": 176,
       "name": "列表框_解绑选择项被改变",
       "signature": "列表框_解绑选择项被改变(控件)",
       "description": "移除列表框实例由代码绑定的“选择项被改变”处理器。",
@@ -5138,7 +5808,7 @@
       "demoInvocation": "列表框_解绑选择项被改变(演示ListBox控件)"
     },
     {
-      "index": 157,
+      "index": 177,
       "name": "列表框_绑定被双击",
       "signature": "列表框_绑定被双击(控件, 处理器)",
       "description": "为列表框实例绑定“被双击”处理器，处理器必须使用 &名称。",
@@ -5176,7 +5846,7 @@
       "demoInvocation": "列表框_绑定被双击(演示ListBox控件, &模块演示回调)"
     },
     {
-      "index": 158,
+      "index": 178,
       "name": "列表框_解绑被双击",
       "signature": "列表框_解绑被双击(控件)",
       "description": "移除列表框实例由代码绑定的“被双击”处理器。",
@@ -5205,7 +5875,7 @@
       "demoInvocation": "列表框_解绑被双击(演示ListBox控件)"
     },
     {
-      "index": 159,
+      "index": 179,
       "name": "列表框_绑定鼠标按下",
       "signature": "列表框_绑定鼠标按下(控件, 处理器)",
       "description": "为列表框实例绑定“鼠标按下”处理器，处理器必须使用 &名称。",
@@ -5243,7 +5913,7 @@
       "demoInvocation": "列表框_绑定鼠标按下(演示ListBox控件, &模块演示回调)"
     },
     {
-      "index": 160,
+      "index": 180,
       "name": "列表框_解绑鼠标按下",
       "signature": "列表框_解绑鼠标按下(控件)",
       "description": "移除列表框实例由代码绑定的“鼠标按下”处理器。",
@@ -5272,7 +5942,141 @@
       "demoInvocation": "列表框_解绑鼠标按下(演示ListBox控件)"
     },
     {
-      "index": 161,
+      "index": 181,
+      "name": "列表框_绑定鼠标移动",
+      "signature": "列表框_绑定鼠标移动(控件, 处理器)",
+      "description": "为列表框实例绑定“鼠标移动”处理器，处理器必须使用 &名称。",
+      "insertText": "列表框_绑定鼠标移动($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表框_绑定鼠标移动",
+        "runtimeName": "列表框_绑定鼠标移动",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ListBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 ListBox；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            },
+            "description": "必须使用 &处理器名；必须无参数，返回类型必须是 空。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "列表框_绑定鼠标移动(演示ListBox控件, &模块演示回调)"
+    },
+    {
+      "index": 182,
+      "name": "列表框_解绑鼠标移动",
+      "signature": "列表框_解绑鼠标移动(控件)",
+      "description": "移除列表框实例由代码绑定的“鼠标移动”处理器。",
+      "insertText": "列表框_解绑鼠标移动($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表框_解绑鼠标移动",
+        "runtimeName": "列表框_解绑鼠标移动",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ListBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 ListBox；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "列表框_解绑鼠标移动(演示ListBox控件)"
+    },
+    {
+      "index": 183,
+      "name": "列表框_绑定鼠标抬起",
+      "signature": "列表框_绑定鼠标抬起(控件, 处理器)",
+      "description": "为列表框实例绑定“鼠标抬起”处理器，处理器必须使用 &名称。",
+      "insertText": "列表框_绑定鼠标抬起($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表框_绑定鼠标抬起",
+        "runtimeName": "列表框_绑定鼠标抬起",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ListBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 ListBox；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            },
+            "description": "必须使用 &处理器名；必须无参数，返回类型必须是 空。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "列表框_绑定鼠标抬起(演示ListBox控件, &模块演示回调)"
+    },
+    {
+      "index": 184,
+      "name": "列表框_解绑鼠标抬起",
+      "signature": "列表框_解绑鼠标抬起(控件)",
+      "description": "移除列表框实例由代码绑定的“鼠标抬起”处理器。",
+      "insertText": "列表框_解绑鼠标抬起($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表框_解绑鼠标抬起",
+        "runtimeName": "列表框_解绑鼠标抬起",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ListBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 ListBox；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "列表框_解绑鼠标抬起(演示ListBox控件)"
+    },
+    {
+      "index": 185,
       "name": "列表框_绑定鼠标移入",
       "signature": "列表框_绑定鼠标移入(控件, 处理器)",
       "description": "为列表框实例绑定“鼠标移入”处理器，处理器必须使用 &名称。",
@@ -5310,7 +6114,7 @@
       "demoInvocation": "列表框_绑定鼠标移入(演示ListBox控件, &模块演示回调)"
     },
     {
-      "index": 162,
+      "index": 186,
       "name": "列表框_解绑鼠标移入",
       "signature": "列表框_解绑鼠标移入(控件)",
       "description": "移除列表框实例由代码绑定的“鼠标移入”处理器。",
@@ -5339,7 +6143,7 @@
       "demoInvocation": "列表框_解绑鼠标移入(演示ListBox控件)"
     },
     {
-      "index": 163,
+      "index": 187,
       "name": "列表框_绑定鼠标移出",
       "signature": "列表框_绑定鼠标移出(控件, 处理器)",
       "description": "为列表框实例绑定“鼠标移出”处理器，处理器必须使用 &名称。",
@@ -5377,7 +6181,7 @@
       "demoInvocation": "列表框_绑定鼠标移出(演示ListBox控件, &模块演示回调)"
     },
     {
-      "index": 164,
+      "index": 188,
       "name": "列表框_解绑鼠标移出",
       "signature": "列表框_解绑鼠标移出(控件)",
       "description": "移除列表框实例由代码绑定的“鼠标移出”处理器。",
@@ -5406,7 +6210,7 @@
       "demoInvocation": "列表框_解绑鼠标移出(演示ListBox控件)"
     },
     {
-      "index": 165,
+      "index": 189,
       "name": "列表框_绑定获得焦点",
       "signature": "列表框_绑定获得焦点(控件, 处理器)",
       "description": "为列表框实例绑定“获得焦点”处理器，处理器必须使用 &名称。",
@@ -5444,7 +6248,7 @@
       "demoInvocation": "列表框_绑定获得焦点(演示ListBox控件, &模块演示回调)"
     },
     {
-      "index": 166,
+      "index": 190,
       "name": "列表框_解绑获得焦点",
       "signature": "列表框_解绑获得焦点(控件)",
       "description": "移除列表框实例由代码绑定的“获得焦点”处理器。",
@@ -5473,7 +6277,7 @@
       "demoInvocation": "列表框_解绑获得焦点(演示ListBox控件)"
     },
     {
-      "index": 167,
+      "index": 191,
       "name": "列表框_绑定失去焦点",
       "signature": "列表框_绑定失去焦点(控件, 处理器)",
       "description": "为列表框实例绑定“失去焦点”处理器，处理器必须使用 &名称。",
@@ -5511,7 +6315,7 @@
       "demoInvocation": "列表框_绑定失去焦点(演示ListBox控件, &模块演示回调)"
     },
     {
-      "index": 168,
+      "index": 192,
       "name": "列表框_解绑失去焦点",
       "signature": "列表框_解绑失去焦点(控件)",
       "description": "移除列表框实例由代码绑定的“失去焦点”处理器。",
@@ -5540,7 +6344,7 @@
       "demoInvocation": "列表框_解绑失去焦点(演示ListBox控件)"
     },
     {
-      "index": 169,
+      "index": 193,
       "name": "组合框_绑定选择项被改变",
       "signature": "组合框_绑定选择项被改变(控件, 处理器)",
       "description": "为组合框实例绑定“选择项被改变”处理器，处理器必须使用 &名称。",
@@ -5578,7 +6382,7 @@
       "demoInvocation": "组合框_绑定选择项被改变(演示ComboBox控件, &模块演示回调)"
     },
     {
-      "index": 170,
+      "index": 194,
       "name": "组合框_解绑选择项被改变",
       "signature": "组合框_解绑选择项被改变(控件)",
       "description": "移除组合框实例由代码绑定的“选择项被改变”处理器。",
@@ -5607,7 +6411,7 @@
       "demoInvocation": "组合框_解绑选择项被改变(演示ComboBox控件)"
     },
     {
-      "index": 171,
+      "index": 195,
       "name": "组合框_绑定内容被改变",
       "signature": "组合框_绑定内容被改变(控件, 处理器)",
       "description": "为组合框实例绑定“内容被改变”处理器，处理器必须使用 &名称。",
@@ -5645,7 +6449,7 @@
       "demoInvocation": "组合框_绑定内容被改变(演示ComboBox控件, &模块演示回调)"
     },
     {
-      "index": 172,
+      "index": 196,
       "name": "组合框_解绑内容被改变",
       "signature": "组合框_解绑内容被改变(控件)",
       "description": "移除组合框实例由代码绑定的“内容被改变”处理器。",
@@ -5674,7 +6478,7 @@
       "demoInvocation": "组合框_解绑内容被改变(演示ComboBox控件)"
     },
     {
-      "index": 173,
+      "index": 197,
       "name": "组合框_绑定鼠标按下",
       "signature": "组合框_绑定鼠标按下(控件, 处理器)",
       "description": "为组合框实例绑定“鼠标按下”处理器，处理器必须使用 &名称。",
@@ -5712,7 +6516,7 @@
       "demoInvocation": "组合框_绑定鼠标按下(演示ComboBox控件, &模块演示回调)"
     },
     {
-      "index": 174,
+      "index": 198,
       "name": "组合框_解绑鼠标按下",
       "signature": "组合框_解绑鼠标按下(控件)",
       "description": "移除组合框实例由代码绑定的“鼠标按下”处理器。",
@@ -5741,7 +6545,141 @@
       "demoInvocation": "组合框_解绑鼠标按下(演示ComboBox控件)"
     },
     {
-      "index": 175,
+      "index": 199,
+      "name": "组合框_绑定鼠标移动",
+      "signature": "组合框_绑定鼠标移动(控件, 处理器)",
+      "description": "为组合框实例绑定“鼠标移动”处理器，处理器必须使用 &名称。",
+      "insertText": "组合框_绑定鼠标移动($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "组合框_绑定鼠标移动",
+        "runtimeName": "组合框_绑定鼠标移动",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ComboBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 ComboBox；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            },
+            "description": "必须使用 &处理器名；必须无参数，返回类型必须是 空。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "组合框_绑定鼠标移动(演示ComboBox控件, &模块演示回调)"
+    },
+    {
+      "index": 200,
+      "name": "组合框_解绑鼠标移动",
+      "signature": "组合框_解绑鼠标移动(控件)",
+      "description": "移除组合框实例由代码绑定的“鼠标移动”处理器。",
+      "insertText": "组合框_解绑鼠标移动($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "组合框_解绑鼠标移动",
+        "runtimeName": "组合框_解绑鼠标移动",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ComboBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 ComboBox；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "组合框_解绑鼠标移动(演示ComboBox控件)"
+    },
+    {
+      "index": 201,
+      "name": "组合框_绑定鼠标抬起",
+      "signature": "组合框_绑定鼠标抬起(控件, 处理器)",
+      "description": "为组合框实例绑定“鼠标抬起”处理器，处理器必须使用 &名称。",
+      "insertText": "组合框_绑定鼠标抬起($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "组合框_绑定鼠标抬起",
+        "runtimeName": "组合框_绑定鼠标抬起",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ComboBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 ComboBox；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            },
+            "description": "必须使用 &处理器名；必须无参数，返回类型必须是 空。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "组合框_绑定鼠标抬起(演示ComboBox控件, &模块演示回调)"
+    },
+    {
+      "index": 202,
+      "name": "组合框_解绑鼠标抬起",
+      "signature": "组合框_解绑鼠标抬起(控件)",
+      "description": "移除组合框实例由代码绑定的“鼠标抬起”处理器。",
+      "insertText": "组合框_解绑鼠标抬起($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "组合框_解绑鼠标抬起",
+        "runtimeName": "组合框_解绑鼠标抬起",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ComboBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 ComboBox；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "组合框_解绑鼠标抬起(演示ComboBox控件)"
+    },
+    {
+      "index": 203,
       "name": "组合框_绑定鼠标移入",
       "signature": "组合框_绑定鼠标移入(控件, 处理器)",
       "description": "为组合框实例绑定“鼠标移入”处理器，处理器必须使用 &名称。",
@@ -5779,7 +6717,7 @@
       "demoInvocation": "组合框_绑定鼠标移入(演示ComboBox控件, &模块演示回调)"
     },
     {
-      "index": 176,
+      "index": 204,
       "name": "组合框_解绑鼠标移入",
       "signature": "组合框_解绑鼠标移入(控件)",
       "description": "移除组合框实例由代码绑定的“鼠标移入”处理器。",
@@ -5808,7 +6746,7 @@
       "demoInvocation": "组合框_解绑鼠标移入(演示ComboBox控件)"
     },
     {
-      "index": 177,
+      "index": 205,
       "name": "组合框_绑定鼠标移出",
       "signature": "组合框_绑定鼠标移出(控件, 处理器)",
       "description": "为组合框实例绑定“鼠标移出”处理器，处理器必须使用 &名称。",
@@ -5846,7 +6784,7 @@
       "demoInvocation": "组合框_绑定鼠标移出(演示ComboBox控件, &模块演示回调)"
     },
     {
-      "index": 178,
+      "index": 206,
       "name": "组合框_解绑鼠标移出",
       "signature": "组合框_解绑鼠标移出(控件)",
       "description": "移除组合框实例由代码绑定的“鼠标移出”处理器。",
@@ -5875,7 +6813,7 @@
       "demoInvocation": "组合框_解绑鼠标移出(演示ComboBox控件)"
     },
     {
-      "index": 179,
+      "index": 207,
       "name": "组合框_绑定获得焦点",
       "signature": "组合框_绑定获得焦点(控件, 处理器)",
       "description": "为组合框实例绑定“获得焦点”处理器，处理器必须使用 &名称。",
@@ -5913,7 +6851,7 @@
       "demoInvocation": "组合框_绑定获得焦点(演示ComboBox控件, &模块演示回调)"
     },
     {
-      "index": 180,
+      "index": 208,
       "name": "组合框_解绑获得焦点",
       "signature": "组合框_解绑获得焦点(控件)",
       "description": "移除组合框实例由代码绑定的“获得焦点”处理器。",
@@ -5942,7 +6880,7 @@
       "demoInvocation": "组合框_解绑获得焦点(演示ComboBox控件)"
     },
     {
-      "index": 181,
+      "index": 209,
       "name": "组合框_绑定失去焦点",
       "signature": "组合框_绑定失去焦点(控件, 处理器)",
       "description": "为组合框实例绑定“失去焦点”处理器，处理器必须使用 &名称。",
@@ -5980,7 +6918,7 @@
       "demoInvocation": "组合框_绑定失去焦点(演示ComboBox控件, &模块演示回调)"
     },
     {
-      "index": 182,
+      "index": 210,
       "name": "组合框_解绑失去焦点",
       "signature": "组合框_解绑失去焦点(控件)",
       "description": "移除组合框实例由代码绑定的“失去焦点”处理器。",
@@ -6009,7 +6947,7 @@
       "demoInvocation": "组合框_解绑失去焦点(演示ComboBox控件)"
     },
     {
-      "index": 183,
+      "index": 211,
       "name": "分组框_绑定鼠标按下",
       "signature": "分组框_绑定鼠标按下(控件, 处理器)",
       "description": "为分组框实例绑定“鼠标按下”处理器，处理器必须使用 &名称。",
@@ -6047,7 +6985,7 @@
       "demoInvocation": "分组框_绑定鼠标按下(演示GroupBox控件, &模块演示回调)"
     },
     {
-      "index": 184,
+      "index": 212,
       "name": "分组框_解绑鼠标按下",
       "signature": "分组框_解绑鼠标按下(控件)",
       "description": "移除分组框实例由代码绑定的“鼠标按下”处理器。",
@@ -6076,7 +7014,141 @@
       "demoInvocation": "分组框_解绑鼠标按下(演示GroupBox控件)"
     },
     {
-      "index": 185,
+      "index": 213,
+      "name": "分组框_绑定鼠标移动",
+      "signature": "分组框_绑定鼠标移动(控件, 处理器)",
+      "description": "为分组框实例绑定“鼠标移动”处理器，处理器必须使用 &名称。",
+      "insertText": "分组框_绑定鼠标移动($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "分组框_绑定鼠标移动",
+        "runtimeName": "分组框_绑定鼠标移动",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "GroupBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 GroupBox；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            },
+            "description": "必须使用 &处理器名；必须无参数，返回类型必须是 空。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "分组框_绑定鼠标移动(演示GroupBox控件, &模块演示回调)"
+    },
+    {
+      "index": 214,
+      "name": "分组框_解绑鼠标移动",
+      "signature": "分组框_解绑鼠标移动(控件)",
+      "description": "移除分组框实例由代码绑定的“鼠标移动”处理器。",
+      "insertText": "分组框_解绑鼠标移动($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "分组框_解绑鼠标移动",
+        "runtimeName": "分组框_解绑鼠标移动",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "GroupBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 GroupBox；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "分组框_解绑鼠标移动(演示GroupBox控件)"
+    },
+    {
+      "index": 215,
+      "name": "分组框_绑定鼠标抬起",
+      "signature": "分组框_绑定鼠标抬起(控件, 处理器)",
+      "description": "为分组框实例绑定“鼠标抬起”处理器，处理器必须使用 &名称。",
+      "insertText": "分组框_绑定鼠标抬起($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "分组框_绑定鼠标抬起",
+        "runtimeName": "分组框_绑定鼠标抬起",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "GroupBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 GroupBox；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            },
+            "description": "必须使用 &处理器名；必须无参数，返回类型必须是 空。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "分组框_绑定鼠标抬起(演示GroupBox控件, &模块演示回调)"
+    },
+    {
+      "index": 216,
+      "name": "分组框_解绑鼠标抬起",
+      "signature": "分组框_解绑鼠标抬起(控件)",
+      "description": "移除分组框实例由代码绑定的“鼠标抬起”处理器。",
+      "insertText": "分组框_解绑鼠标抬起($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "分组框_解绑鼠标抬起",
+        "runtimeName": "分组框_解绑鼠标抬起",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "GroupBox"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 GroupBox；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "分组框_解绑鼠标抬起(演示GroupBox控件)"
+    },
+    {
+      "index": 217,
       "name": "分组框_绑定鼠标移入",
       "signature": "分组框_绑定鼠标移入(控件, 处理器)",
       "description": "为分组框实例绑定“鼠标移入”处理器，处理器必须使用 &名称。",
@@ -6114,7 +7186,7 @@
       "demoInvocation": "分组框_绑定鼠标移入(演示GroupBox控件, &模块演示回调)"
     },
     {
-      "index": 186,
+      "index": 218,
       "name": "分组框_解绑鼠标移入",
       "signature": "分组框_解绑鼠标移入(控件)",
       "description": "移除分组框实例由代码绑定的“鼠标移入”处理器。",
@@ -6143,7 +7215,7 @@
       "demoInvocation": "分组框_解绑鼠标移入(演示GroupBox控件)"
     },
     {
-      "index": 187,
+      "index": 219,
       "name": "分组框_绑定鼠标移出",
       "signature": "分组框_绑定鼠标移出(控件, 处理器)",
       "description": "为分组框实例绑定“鼠标移出”处理器，处理器必须使用 &名称。",
@@ -6181,7 +7253,7 @@
       "demoInvocation": "分组框_绑定鼠标移出(演示GroupBox控件, &模块演示回调)"
     },
     {
-      "index": 188,
+      "index": 220,
       "name": "分组框_解绑鼠标移出",
       "signature": "分组框_解绑鼠标移出(控件)",
       "description": "移除分组框实例由代码绑定的“鼠标移出”处理器。",
@@ -6210,7 +7282,7 @@
       "demoInvocation": "分组框_解绑鼠标移出(演示GroupBox控件)"
     },
     {
-      "index": 189,
+      "index": 221,
       "name": "滚动条_绑定数值被改变",
       "signature": "滚动条_绑定数值被改变(控件, 处理器)",
       "description": "为滚动条实例绑定“数值被改变”处理器，处理器必须使用 &名称。",
@@ -6248,7 +7320,7 @@
       "demoInvocation": "滚动条_绑定数值被改变(演示ScrollBar控件, &模块演示回调)"
     },
     {
-      "index": 190,
+      "index": 222,
       "name": "滚动条_解绑数值被改变",
       "signature": "滚动条_解绑数值被改变(控件)",
       "description": "移除滚动条实例由代码绑定的“数值被改变”处理器。",
@@ -6277,7 +7349,7 @@
       "demoInvocation": "滚动条_解绑数值被改变(演示ScrollBar控件)"
     },
     {
-      "index": 191,
+      "index": 223,
       "name": "滚动条_绑定鼠标按下",
       "signature": "滚动条_绑定鼠标按下(控件, 处理器)",
       "description": "为滚动条实例绑定“鼠标按下”处理器，处理器必须使用 &名称。",
@@ -6315,7 +7387,7 @@
       "demoInvocation": "滚动条_绑定鼠标按下(演示ScrollBar控件, &模块演示回调)"
     },
     {
-      "index": 192,
+      "index": 224,
       "name": "滚动条_解绑鼠标按下",
       "signature": "滚动条_解绑鼠标按下(控件)",
       "description": "移除滚动条实例由代码绑定的“鼠标按下”处理器。",
@@ -6344,7 +7416,141 @@
       "demoInvocation": "滚动条_解绑鼠标按下(演示ScrollBar控件)"
     },
     {
-      "index": 193,
+      "index": 225,
+      "name": "滚动条_绑定鼠标移动",
+      "signature": "滚动条_绑定鼠标移动(控件, 处理器)",
+      "description": "为滚动条实例绑定“鼠标移动”处理器，处理器必须使用 &名称。",
+      "insertText": "滚动条_绑定鼠标移动($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "滚动条_绑定鼠标移动",
+        "runtimeName": "滚动条_绑定鼠标移动",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ScrollBar"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 ScrollBar；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            },
+            "description": "必须使用 &处理器名；必须无参数，返回类型必须是 空。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "滚动条_绑定鼠标移动(演示ScrollBar控件, &模块演示回调)"
+    },
+    {
+      "index": 226,
+      "name": "滚动条_解绑鼠标移动",
+      "signature": "滚动条_解绑鼠标移动(控件)",
+      "description": "移除滚动条实例由代码绑定的“鼠标移动”处理器。",
+      "insertText": "滚动条_解绑鼠标移动($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "滚动条_解绑鼠标移动",
+        "runtimeName": "滚动条_解绑鼠标移动",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ScrollBar"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 ScrollBar；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "滚动条_解绑鼠标移动(演示ScrollBar控件)"
+    },
+    {
+      "index": 227,
+      "name": "滚动条_绑定鼠标抬起",
+      "signature": "滚动条_绑定鼠标抬起(控件, 处理器)",
+      "description": "为滚动条实例绑定“鼠标抬起”处理器，处理器必须使用 &名称。",
+      "insertText": "滚动条_绑定鼠标抬起($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "滚动条_绑定鼠标抬起",
+        "runtimeName": "滚动条_绑定鼠标抬起",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ScrollBar"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 ScrollBar；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            },
+            "description": "必须使用 &处理器名；必须无参数，返回类型必须是 空。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "滚动条_绑定鼠标抬起(演示ScrollBar控件, &模块演示回调)"
+    },
+    {
+      "index": 228,
+      "name": "滚动条_解绑鼠标抬起",
+      "signature": "滚动条_解绑鼠标抬起(控件)",
+      "description": "移除滚动条实例由代码绑定的“鼠标抬起”处理器。",
+      "insertText": "滚动条_解绑鼠标抬起($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "滚动条_解绑鼠标抬起",
+        "runtimeName": "滚动条_解绑鼠标抬起",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ScrollBar"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 ScrollBar；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "滚动条_解绑鼠标抬起(演示ScrollBar控件)"
+    },
+    {
+      "index": 229,
       "name": "滚动条_绑定鼠标移入",
       "signature": "滚动条_绑定鼠标移入(控件, 处理器)",
       "description": "为滚动条实例绑定“鼠标移入”处理器，处理器必须使用 &名称。",
@@ -6382,7 +7588,7 @@
       "demoInvocation": "滚动条_绑定鼠标移入(演示ScrollBar控件, &模块演示回调)"
     },
     {
-      "index": 194,
+      "index": 230,
       "name": "滚动条_解绑鼠标移入",
       "signature": "滚动条_解绑鼠标移入(控件)",
       "description": "移除滚动条实例由代码绑定的“鼠标移入”处理器。",
@@ -6411,7 +7617,7 @@
       "demoInvocation": "滚动条_解绑鼠标移入(演示ScrollBar控件)"
     },
     {
-      "index": 195,
+      "index": 231,
       "name": "滚动条_绑定鼠标移出",
       "signature": "滚动条_绑定鼠标移出(控件, 处理器)",
       "description": "为滚动条实例绑定“鼠标移出”处理器，处理器必须使用 &名称。",
@@ -6449,7 +7655,7 @@
       "demoInvocation": "滚动条_绑定鼠标移出(演示ScrollBar控件, &模块演示回调)"
     },
     {
-      "index": 196,
+      "index": 232,
       "name": "滚动条_解绑鼠标移出",
       "signature": "滚动条_解绑鼠标移出(控件)",
       "description": "移除滚动条实例由代码绑定的“鼠标移出”处理器。",
@@ -6478,7 +7684,7 @@
       "demoInvocation": "滚动条_解绑鼠标移出(演示ScrollBar控件)"
     },
     {
-      "index": 197,
+      "index": 233,
       "name": "滚动条_绑定获得焦点",
       "signature": "滚动条_绑定获得焦点(控件, 处理器)",
       "description": "为滚动条实例绑定“获得焦点”处理器，处理器必须使用 &名称。",
@@ -6516,7 +7722,7 @@
       "demoInvocation": "滚动条_绑定获得焦点(演示ScrollBar控件, &模块演示回调)"
     },
     {
-      "index": 198,
+      "index": 234,
       "name": "滚动条_解绑获得焦点",
       "signature": "滚动条_解绑获得焦点(控件)",
       "description": "移除滚动条实例由代码绑定的“获得焦点”处理器。",
@@ -6545,7 +7751,7 @@
       "demoInvocation": "滚动条_解绑获得焦点(演示ScrollBar控件)"
     },
     {
-      "index": 199,
+      "index": 235,
       "name": "滚动条_绑定失去焦点",
       "signature": "滚动条_绑定失去焦点(控件, 处理器)",
       "description": "为滚动条实例绑定“失去焦点”处理器，处理器必须使用 &名称。",
@@ -6583,7 +7789,7 @@
       "demoInvocation": "滚动条_绑定失去焦点(演示ScrollBar控件, &模块演示回调)"
     },
     {
-      "index": 200,
+      "index": 236,
       "name": "滚动条_解绑失去焦点",
       "signature": "滚动条_解绑失去焦点(控件)",
       "description": "移除滚动条实例由代码绑定的“失去焦点”处理器。",
@@ -6612,7 +7818,7 @@
       "demoInvocation": "滚动条_解绑失去焦点(演示ScrollBar控件)"
     },
     {
-      "index": 201,
+      "index": 237,
       "name": "图片框_绑定被单击",
       "signature": "图片框_绑定被单击(控件, 处理器)",
       "description": "为图片框实例绑定“被单击”处理器，处理器必须使用 &名称。",
@@ -6650,7 +7856,7 @@
       "demoInvocation": "图片框_绑定被单击(演示Image控件, &模块演示回调)"
     },
     {
-      "index": 202,
+      "index": 238,
       "name": "图片框_解绑被单击",
       "signature": "图片框_解绑被单击(控件)",
       "description": "移除图片框实例由代码绑定的“被单击”处理器。",
@@ -6679,7 +7885,7 @@
       "demoInvocation": "图片框_解绑被单击(演示Image控件)"
     },
     {
-      "index": 203,
+      "index": 239,
       "name": "图片框_绑定鼠标按下",
       "signature": "图片框_绑定鼠标按下(控件, 处理器)",
       "description": "为图片框实例绑定“鼠标按下”处理器，处理器必须使用 &名称。",
@@ -6717,7 +7923,7 @@
       "demoInvocation": "图片框_绑定鼠标按下(演示Image控件, &模块演示回调)"
     },
     {
-      "index": 204,
+      "index": 240,
       "name": "图片框_解绑鼠标按下",
       "signature": "图片框_解绑鼠标按下(控件)",
       "description": "移除图片框实例由代码绑定的“鼠标按下”处理器。",
@@ -6746,7 +7952,141 @@
       "demoInvocation": "图片框_解绑鼠标按下(演示Image控件)"
     },
     {
-      "index": 205,
+      "index": 241,
+      "name": "图片框_绑定鼠标移动",
+      "signature": "图片框_绑定鼠标移动(控件, 处理器)",
+      "description": "为图片框实例绑定“鼠标移动”处理器，处理器必须使用 &名称。",
+      "insertText": "图片框_绑定鼠标移动($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "图片框_绑定鼠标移动",
+        "runtimeName": "图片框_绑定鼠标移动",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Image"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 Image；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            },
+            "description": "必须使用 &处理器名；必须无参数，返回类型必须是 空。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "图片框_绑定鼠标移动(演示Image控件, &模块演示回调)"
+    },
+    {
+      "index": 242,
+      "name": "图片框_解绑鼠标移动",
+      "signature": "图片框_解绑鼠标移动(控件)",
+      "description": "移除图片框实例由代码绑定的“鼠标移动”处理器。",
+      "insertText": "图片框_解绑鼠标移动($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "图片框_解绑鼠标移动",
+        "runtimeName": "图片框_解绑鼠标移动",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Image"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 Image；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "图片框_解绑鼠标移动(演示Image控件)"
+    },
+    {
+      "index": 243,
+      "name": "图片框_绑定鼠标抬起",
+      "signature": "图片框_绑定鼠标抬起(控件, 处理器)",
+      "description": "为图片框实例绑定“鼠标抬起”处理器，处理器必须使用 &名称。",
+      "insertText": "图片框_绑定鼠标抬起($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "图片框_绑定鼠标抬起",
+        "runtimeName": "图片框_绑定鼠标抬起",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Image"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 Image；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            },
+            "description": "必须使用 &处理器名；必须无参数，返回类型必须是 空。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "图片框_绑定鼠标抬起(演示Image控件, &模块演示回调)"
+    },
+    {
+      "index": 244,
+      "name": "图片框_解绑鼠标抬起",
+      "signature": "图片框_解绑鼠标抬起(控件)",
+      "description": "移除图片框实例由代码绑定的“鼠标抬起”处理器。",
+      "insertText": "图片框_解绑鼠标抬起($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "图片框_解绑鼠标抬起",
+        "runtimeName": "图片框_解绑鼠标抬起",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "Image"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 Image；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "图片框_解绑鼠标抬起(演示Image控件)"
+    },
+    {
+      "index": 245,
       "name": "图片框_绑定鼠标移入",
       "signature": "图片框_绑定鼠标移入(控件, 处理器)",
       "description": "为图片框实例绑定“鼠标移入”处理器，处理器必须使用 &名称。",
@@ -6784,7 +8124,7 @@
       "demoInvocation": "图片框_绑定鼠标移入(演示Image控件, &模块演示回调)"
     },
     {
-      "index": 206,
+      "index": 246,
       "name": "图片框_解绑鼠标移入",
       "signature": "图片框_解绑鼠标移入(控件)",
       "description": "移除图片框实例由代码绑定的“鼠标移入”处理器。",
@@ -6813,7 +8153,7 @@
       "demoInvocation": "图片框_解绑鼠标移入(演示Image控件)"
     },
     {
-      "index": 207,
+      "index": 247,
       "name": "图片框_绑定鼠标移出",
       "signature": "图片框_绑定鼠标移出(控件, 处理器)",
       "description": "为图片框实例绑定“鼠标移出”处理器，处理器必须使用 &名称。",
@@ -6851,7 +8191,7 @@
       "demoInvocation": "图片框_绑定鼠标移出(演示Image控件, &模块演示回调)"
     },
     {
-      "index": 208,
+      "index": 248,
       "name": "图片框_解绑鼠标移出",
       "signature": "图片框_解绑鼠标移出(控件)",
       "description": "移除图片框实例由代码绑定的“鼠标移出”处理器。",
@@ -6880,7 +8220,7 @@
       "demoInvocation": "图片框_解绑鼠标移出(演示Image控件)"
     },
     {
-      "index": 209,
+      "index": 249,
       "name": "动态图像控件_绑定被单击",
       "signature": "动态图像控件_绑定被单击(控件, 处理器)",
       "description": "为动态图像控件实例绑定“被单击”处理器，处理器必须使用 &名称。",
@@ -6918,7 +8258,7 @@
       "demoInvocation": "动态图像控件_绑定被单击(演示AnimatedImage控件, &模块演示回调)"
     },
     {
-      "index": 210,
+      "index": 250,
       "name": "动态图像控件_解绑被单击",
       "signature": "动态图像控件_解绑被单击(控件)",
       "description": "移除动态图像控件实例由代码绑定的“被单击”处理器。",
@@ -6947,7 +8287,7 @@
       "demoInvocation": "动态图像控件_解绑被单击(演示AnimatedImage控件)"
     },
     {
-      "index": 211,
+      "index": 251,
       "name": "动态图像控件_绑定鼠标按下",
       "signature": "动态图像控件_绑定鼠标按下(控件, 处理器)",
       "description": "为动态图像控件实例绑定“鼠标按下”处理器，处理器必须使用 &名称。",
@@ -6985,7 +8325,7 @@
       "demoInvocation": "动态图像控件_绑定鼠标按下(演示AnimatedImage控件, &模块演示回调)"
     },
     {
-      "index": 212,
+      "index": 252,
       "name": "动态图像控件_解绑鼠标按下",
       "signature": "动态图像控件_解绑鼠标按下(控件)",
       "description": "移除动态图像控件实例由代码绑定的“鼠标按下”处理器。",
@@ -7014,7 +8354,141 @@
       "demoInvocation": "动态图像控件_解绑鼠标按下(演示AnimatedImage控件)"
     },
     {
-      "index": 213,
+      "index": 253,
+      "name": "动态图像控件_绑定鼠标移动",
+      "signature": "动态图像控件_绑定鼠标移动(控件, 处理器)",
+      "description": "为动态图像控件实例绑定“鼠标移动”处理器，处理器必须使用 &名称。",
+      "insertText": "动态图像控件_绑定鼠标移动($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "动态图像控件_绑定鼠标移动",
+        "runtimeName": "动态图像控件_绑定鼠标移动",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "AnimatedImage"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 AnimatedImage；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            },
+            "description": "必须使用 &处理器名；必须无参数，返回类型必须是 空。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "动态图像控件_绑定鼠标移动(演示AnimatedImage控件, &模块演示回调)"
+    },
+    {
+      "index": 254,
+      "name": "动态图像控件_解绑鼠标移动",
+      "signature": "动态图像控件_解绑鼠标移动(控件)",
+      "description": "移除动态图像控件实例由代码绑定的“鼠标移动”处理器。",
+      "insertText": "动态图像控件_解绑鼠标移动($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "动态图像控件_解绑鼠标移动",
+        "runtimeName": "动态图像控件_解绑鼠标移动",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "AnimatedImage"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 AnimatedImage；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "动态图像控件_解绑鼠标移动(演示AnimatedImage控件)"
+    },
+    {
+      "index": 255,
+      "name": "动态图像控件_绑定鼠标抬起",
+      "signature": "动态图像控件_绑定鼠标抬起(控件, 处理器)",
+      "description": "为动态图像控件实例绑定“鼠标抬起”处理器，处理器必须使用 &名称。",
+      "insertText": "动态图像控件_绑定鼠标抬起($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "动态图像控件_绑定鼠标抬起",
+        "runtimeName": "动态图像控件_绑定鼠标抬起",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "AnimatedImage"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 AnimatedImage；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            },
+            "description": "必须使用 &处理器名；必须无参数，返回类型必须是 空。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "动态图像控件_绑定鼠标抬起(演示AnimatedImage控件, &模块演示回调)"
+    },
+    {
+      "index": 256,
+      "name": "动态图像控件_解绑鼠标抬起",
+      "signature": "动态图像控件_解绑鼠标抬起(控件)",
+      "description": "移除动态图像控件实例由代码绑定的“鼠标抬起”处理器。",
+      "insertText": "动态图像控件_解绑鼠标抬起($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "动态图像控件_解绑鼠标抬起",
+        "runtimeName": "动态图像控件_解绑鼠标抬起",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "AnimatedImage"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 AnimatedImage；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "动态图像控件_解绑鼠标抬起(演示AnimatedImage控件)"
+    },
+    {
+      "index": 257,
       "name": "动态图像控件_绑定鼠标移入",
       "signature": "动态图像控件_绑定鼠标移入(控件, 处理器)",
       "description": "为动态图像控件实例绑定“鼠标移入”处理器，处理器必须使用 &名称。",
@@ -7052,7 +8526,7 @@
       "demoInvocation": "动态图像控件_绑定鼠标移入(演示AnimatedImage控件, &模块演示回调)"
     },
     {
-      "index": 214,
+      "index": 258,
       "name": "动态图像控件_解绑鼠标移入",
       "signature": "动态图像控件_解绑鼠标移入(控件)",
       "description": "移除动态图像控件实例由代码绑定的“鼠标移入”处理器。",
@@ -7081,7 +8555,7 @@
       "demoInvocation": "动态图像控件_解绑鼠标移入(演示AnimatedImage控件)"
     },
     {
-      "index": 215,
+      "index": 259,
       "name": "动态图像控件_绑定鼠标移出",
       "signature": "动态图像控件_绑定鼠标移出(控件, 处理器)",
       "description": "为动态图像控件实例绑定“鼠标移出”处理器，处理器必须使用 &名称。",
@@ -7119,7 +8593,7 @@
       "demoInvocation": "动态图像控件_绑定鼠标移出(演示AnimatedImage控件, &模块演示回调)"
     },
     {
-      "index": 216,
+      "index": 260,
       "name": "动态图像控件_解绑鼠标移出",
       "signature": "动态图像控件_解绑鼠标移出(控件)",
       "description": "移除动态图像控件实例由代码绑定的“鼠标移出”处理器。",
@@ -7148,7 +8622,7 @@
       "demoInvocation": "动态图像控件_解绑鼠标移出(演示AnimatedImage控件)"
     },
     {
-      "index": 217,
+      "index": 261,
       "name": "动态图像控件_绑定播放完毕",
       "signature": "动态图像控件_绑定播放完毕(控件, 处理器)",
       "description": "为动态图像控件实例绑定“播放完毕”处理器，处理器必须使用 &名称。",
@@ -7186,7 +8660,7 @@
       "demoInvocation": "动态图像控件_绑定播放完毕(演示AnimatedImage控件, &模块演示回调)"
     },
     {
-      "index": 218,
+      "index": 262,
       "name": "动态图像控件_解绑播放完毕",
       "signature": "动态图像控件_解绑播放完毕(控件)",
       "description": "移除动态图像控件实例由代码绑定的“播放完毕”处理器。",
@@ -7215,7 +8689,7 @@
       "demoInvocation": "动态图像控件_解绑播放完毕(演示AnimatedImage控件)"
     },
     {
-      "index": 219,
+      "index": 263,
       "name": "进度条_绑定鼠标按下",
       "signature": "进度条_绑定鼠标按下(控件, 处理器)",
       "description": "为进度条实例绑定“鼠标按下”处理器，处理器必须使用 &名称。",
@@ -7253,7 +8727,7 @@
       "demoInvocation": "进度条_绑定鼠标按下(演示ProgressBar控件, &模块演示回调)"
     },
     {
-      "index": 220,
+      "index": 264,
       "name": "进度条_解绑鼠标按下",
       "signature": "进度条_解绑鼠标按下(控件)",
       "description": "移除进度条实例由代码绑定的“鼠标按下”处理器。",
@@ -7282,7 +8756,141 @@
       "demoInvocation": "进度条_解绑鼠标按下(演示ProgressBar控件)"
     },
     {
-      "index": 221,
+      "index": 265,
+      "name": "进度条_绑定鼠标移动",
+      "signature": "进度条_绑定鼠标移动(控件, 处理器)",
+      "description": "为进度条实例绑定“鼠标移动”处理器，处理器必须使用 &名称。",
+      "insertText": "进度条_绑定鼠标移动($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "进度条_绑定鼠标移动",
+        "runtimeName": "进度条_绑定鼠标移动",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ProgressBar"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 ProgressBar；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            },
+            "description": "必须使用 &处理器名；必须无参数，返回类型必须是 空。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "进度条_绑定鼠标移动(演示ProgressBar控件, &模块演示回调)"
+    },
+    {
+      "index": 266,
+      "name": "进度条_解绑鼠标移动",
+      "signature": "进度条_解绑鼠标移动(控件)",
+      "description": "移除进度条实例由代码绑定的“鼠标移动”处理器。",
+      "insertText": "进度条_解绑鼠标移动($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "进度条_解绑鼠标移动",
+        "runtimeName": "进度条_解绑鼠标移动",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ProgressBar"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 ProgressBar；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "进度条_解绑鼠标移动(演示ProgressBar控件)"
+    },
+    {
+      "index": 267,
+      "name": "进度条_绑定鼠标抬起",
+      "signature": "进度条_绑定鼠标抬起(控件, 处理器)",
+      "description": "为进度条实例绑定“鼠标抬起”处理器，处理器必须使用 &名称。",
+      "insertText": "进度条_绑定鼠标抬起($1, &$2)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "进度条_绑定鼠标抬起",
+        "runtimeName": "进度条_绑定鼠标抬起",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ProgressBar"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 ProgressBar；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            },
+            "description": "必须使用 &处理器名；必须无参数，返回类型必须是 空。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "进度条_绑定鼠标抬起(演示ProgressBar控件, &模块演示回调)"
+    },
+    {
+      "index": 268,
+      "name": "进度条_解绑鼠标抬起",
+      "signature": "进度条_解绑鼠标抬起(控件)",
+      "description": "移除进度条实例由代码绑定的“鼠标抬起”处理器。",
+      "insertText": "进度条_解绑鼠标抬起($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "进度条_解绑鼠标抬起",
+        "runtimeName": "进度条_解绑鼠标抬起",
+        "parameters": [
+          {
+            "name": "控件",
+            "type": "controlRef",
+            "controlTypes": [
+              "ProgressBar"
+            ],
+            "controlKinds": [
+              "visual"
+            ],
+            "scope": "currentWindow",
+            "runtimeRepresentation": "wideName",
+            "description": "裸写的可视控件名称（不能加引号），只在当前窗口内解析、且类型必须是 ProgressBar；生成 C++ 时按对象名定位。对象不存在、同名歧义或类型不兼容会给出中文诊断，按住 Ctrl 单击可跳转到设计器选中该对象。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "进度条_解绑鼠标抬起(演示ProgressBar控件)"
+    },
+    {
+      "index": 269,
       "name": "进度条_绑定鼠标移入",
       "signature": "进度条_绑定鼠标移入(控件, 处理器)",
       "description": "为进度条实例绑定“鼠标移入”处理器，处理器必须使用 &名称。",
@@ -7320,7 +8928,7 @@
       "demoInvocation": "进度条_绑定鼠标移入(演示ProgressBar控件, &模块演示回调)"
     },
     {
-      "index": 222,
+      "index": 270,
       "name": "进度条_解绑鼠标移入",
       "signature": "进度条_解绑鼠标移入(控件)",
       "description": "移除进度条实例由代码绑定的“鼠标移入”处理器。",
@@ -7349,7 +8957,7 @@
       "demoInvocation": "进度条_解绑鼠标移入(演示ProgressBar控件)"
     },
     {
-      "index": 223,
+      "index": 271,
       "name": "进度条_绑定鼠标移出",
       "signature": "进度条_绑定鼠标移出(控件, 处理器)",
       "description": "为进度条实例绑定“鼠标移出”处理器，处理器必须使用 &名称。",
@@ -7387,7 +8995,7 @@
       "demoInvocation": "进度条_绑定鼠标移出(演示ProgressBar控件, &模块演示回调)"
     },
     {
-      "index": 224,
+      "index": 272,
       "name": "进度条_解绑鼠标移出",
       "signature": "进度条_解绑鼠标移出(控件)",
       "description": "移除进度条实例由代码绑定的“鼠标移出”处理器。",
@@ -7416,7 +9024,7 @@
       "demoInvocation": "进度条_解绑鼠标移出(演示ProgressBar控件)"
     },
     {
-      "index": 225,
+      "index": 273,
       "name": "窗口_取消关闭",
       "signature": "窗口_取消关闭()",
       "description": "在窗口“关闭前”事件中取消本次关闭请求。",
@@ -7431,7 +9039,7 @@
       "demoInvocation": "窗口_取消关闭()"
     },
     {
-      "index": 226,
+      "index": 274,
       "name": "窗口_取事件宽度",
       "signature": "窗口_取事件宽度()",
       "description": "返回最近窗口大小事件中的客户区宽度。普通 Win32 窗口项目返回设计器逻辑坐标（DIP，已按窗口 DPI 还原），可直接喂给 控件_设置位置大小、EdgeView_置区域位置 等逻辑坐标命令；new_emoji 后端返回物理像素，需按 窗口_取事件DPI 自行换算。",
@@ -7446,7 +9054,7 @@
       "demoInvocation": "窗口_取事件宽度()"
     },
     {
-      "index": 227,
+      "index": 275,
       "name": "窗口_取事件高度",
       "signature": "窗口_取事件高度()",
       "description": "返回最近窗口大小事件中的客户区高度。普通 Win32 窗口项目返回设计器逻辑坐标（DIP，已按窗口 DPI 还原），可直接喂给 控件_设置位置大小、EdgeView_置区域位置 等逻辑坐标命令；new_emoji 后端返回物理像素，需按 窗口_取事件DPI 自行换算。",
@@ -7461,7 +9069,7 @@
       "demoInvocation": "窗口_取事件高度()"
     },
     {
-      "index": 228,
+      "index": 276,
       "name": "窗口_取事件横坐标",
       "signature": "窗口_取事件横坐标()",
       "description": "返回最近窗口移动事件中的屏幕横坐标。",
@@ -7476,7 +9084,7 @@
       "demoInvocation": "窗口_取事件横坐标()"
     },
     {
-      "index": 229,
+      "index": 277,
       "name": "窗口_取事件纵坐标",
       "signature": "窗口_取事件纵坐标()",
       "description": "返回最近窗口移动事件中的屏幕纵坐标。",
@@ -7491,7 +9099,7 @@
       "demoInvocation": "窗口_取事件纵坐标()"
     },
     {
-      "index": 230,
+      "index": 278,
       "name": "窗口_取是否激活",
       "signature": "窗口_取是否激活()",
       "description": "返回当前窗口是否为活动窗口。",
@@ -7506,7 +9114,7 @@
       "demoInvocation": "窗口_取是否激活()"
     },
     {
-      "index": 231,
+      "index": 279,
       "name": "窗口_取是否可见",
       "signature": "窗口_取是否可见()",
       "description": "返回当前窗口是否可见。",
@@ -7521,7 +9129,7 @@
       "demoInvocation": "窗口_取是否可见()"
     },
     {
-      "index": 232,
+      "index": 280,
       "name": "窗口_取当前状态",
       "signature": "窗口_取当前状态()",
       "description": "返回窗口状态：0 正常、1 最小化、2 最大化。",
@@ -7536,7 +9144,7 @@
       "demoInvocation": "窗口_取当前状态()"
     },
     {
-      "index": 233,
+      "index": 281,
       "name": "窗口_取事件键码",
       "signature": "窗口_取事件键码()",
       "description": "返回最近键盘事件中的 Win32 虚拟键码。",
@@ -7551,7 +9159,7 @@
       "demoInvocation": "窗口_取事件键码()"
     },
     {
-      "index": 234,
+      "index": 282,
       "name": "窗口_取事件字符",
       "signature": "窗口_取事件字符()",
       "description": "返回最近字符输入事件中的 Unicode 字符。",
@@ -7567,7 +9175,7 @@
       "demoInvocation": "窗口_取事件字符()"
     },
     {
-      "index": 235,
+      "index": 283,
       "name": "窗口_取Ctrl键状态",
       "signature": "窗口_取Ctrl键状态()",
       "description": "返回最近键盘事件发生时 Ctrl 键是否按下。",
@@ -7582,7 +9190,7 @@
       "demoInvocation": "窗口_取Ctrl键状态()"
     },
     {
-      "index": 236,
+      "index": 284,
       "name": "窗口_取Shift键状态",
       "signature": "窗口_取Shift键状态()",
       "description": "返回最近键盘事件发生时 Shift 键是否按下。",
@@ -7597,7 +9205,7 @@
       "demoInvocation": "窗口_取Shift键状态()"
     },
     {
-      "index": 237,
+      "index": 285,
       "name": "窗口_取Alt键状态",
       "signature": "窗口_取Alt键状态()",
       "description": "返回最近键盘事件发生时 Alt 键是否按下。",
@@ -7612,7 +9220,7 @@
       "demoInvocation": "窗口_取Alt键状态()"
     },
     {
-      "index": 238,
+      "index": 286,
       "name": "窗口_标记按键已处理",
       "signature": "窗口_标记按键已处理()",
       "description": "在窗口键盘事件中阻止消息继续交给子控件或默认窗口过程。",
@@ -7627,7 +9235,7 @@
       "demoInvocation": "窗口_标记按键已处理()"
     },
     {
-      "index": 239,
+      "index": 287,
       "name": "窗口_取事件DPI",
       "signature": "窗口_取事件DPI()",
       "description": "返回最近 DPI 改变事件中的新 DPI。",
@@ -7642,7 +9250,7 @@
       "demoInvocation": "窗口_取事件DPI()"
     },
     {
-      "index": 240,
+      "index": 288,
       "name": "窗口_取拖入文件数量",
       "signature": "窗口_取拖入文件数量()",
       "description": "返回最近文件拖入事件中的文件和目录数量。",
@@ -7657,7 +9265,7 @@
       "demoInvocation": "窗口_取拖入文件数量()"
     },
     {
-      "index": 241,
+      "index": 289,
       "name": "窗口_取拖入文件",
       "signature": "窗口_取拖入文件(索引)",
       "description": "按从 0 开始的索引返回最近拖入的 Unicode 路径，越界返回空文本。",
@@ -7679,7 +9287,7 @@
       "demoInvocation": "窗口_取拖入文件(1)"
     },
     {
-      "index": 242,
+      "index": 290,
       "name": "窗口_取自身句柄",
       "signature": "窗口_取自身句柄()",
       "description": "返回当前窗口自己的 HWND（长整数），窗口尚未创建时返回 0；用于给 窗口_设置标题、窗口_移动 等以 HWND 为首参的窗口操作命令提供句柄，纯 Win32 项目取自身句柄只有这一条入口。",
@@ -7694,7 +9302,7 @@
       "demoInvocation": "窗口_取自身句柄()"
     },
     {
-      "index": 243,
+      "index": 291,
       "name": "窗口_取自身标题",
       "signature": "窗口_取自身标题()",
       "description": "返回当前窗口标题栏文本，窗口尚未创建时返回空文本。",
@@ -7710,7 +9318,7 @@
       "demoInvocation": "窗口_取自身标题()"
     },
     {
-      "index": 244,
+      "index": 292,
       "name": "窗口_设置自身标题",
       "signature": "窗口_设置自身标题(标题)",
       "description": "直接修改当前窗口标题栏文本，无需先取句柄；传空文本清空标题，成功返回真。",
@@ -7730,6 +9338,21 @@
         "encoding": "wide"
       },
       "demoInvocation": "窗口_设置自身标题(\"演示参数1\")"
+    },
+    {
+      "index": 293,
+      "name": "窗口_关闭自身",
+      "signature": "窗口_关闭自身()",
+      "description": "关闭当前窗口自己（与点标题栏 × 等价的标准关闭流程）：先派发窗口「关闭中」事件（处理器里用 窗口_取消关闭 可拦截），随后销毁窗口并派发「已关闭」事件。最后一个窗口关闭时程序退出；登录界面先 打开窗口(主页窗口) 再调用本命令即可切换主窗口，隐藏登录窗口用 窗口_显示(窗口_取自身句柄(), 0)。",
+      "insertText": "窗口_关闭自身()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "窗口_关闭自身",
+        "runtimeName": "窗口_关闭自身",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "窗口_关闭自身()"
     }
   ]
 }

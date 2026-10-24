@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-19T09:25:32.624Z",
+  "generatedAt": "2026-10-24T03:43:55.813Z",
   "module": {
     "id": "lingbuilder.websocket.client",
     "name": "WebSocket 客户端模块",
-    "version": "2.0.0",
+    "version": "2.1.0",
     "description": "提供受管 WinHTTP WebSocket 客户端、多连接、后台接收、文本与二进制消息、wss://、代理、身份验证、证书固定、自动重连、资源限制和运行统计。"
   },
-  "commandCount": 51,
+  "commandCount": 53,
   "commands": [
     {
       "index": 1,
@@ -1153,6 +1153,68 @@
     },
     {
       "index": 38,
+      "name": "WS_发送文本到连接异步",
+      "signature": "WS_发送文本到连接异步(连接, 内容)",
+      "description": "向指定已连接客户端异步发送一条完整 UTF-8 文本消息：立即返回，发送在后台线程执行（参数与大小校验同步完成）。半开 TCP 会让同步发送阻塞内核重传数十秒，UI 线程发送指令一律用本命令。",
+      "insertText": "WS_发送文本到连接异步($1, \"$2\")",
+      "returnType": "逻辑型",
+      "category": "消息",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_发送文本到连接异步",
+        "runtimeName": "WS_发送文本到连接异步",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的受管连接 ID；ID 无效或已销毁时命令返回假。"
+          },
+          {
+            "name": "内容",
+            "type": "wideString",
+            "description": "要发送的文本，按 UTF-8 编码为一条完整消息；含未配对代理项或超过单次发送上限时返回假。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "WS_发送文本到连接异步(示例值, \"示例值\")",
+        "description": "向指定已连接客户端异步发送一条完整 UTF-8 文本消息：立即返回，发送在后台线程执行（参数与大小校验同步完成）。半开 TCP 会让同步发送阻塞内核重传数十秒，UI 线程发送指令一律用本命令。"
+      },
+      "demoInvocation": "WS_发送文本到连接异步(0, \"演示参数2\")"
+    },
+    {
+      "index": 39,
+      "name": "WS_发送二进制到连接异步",
+      "signature": "WS_发送二进制到连接异步(连接, 数据)",
+      "description": "向指定已连接客户端异步发送一条完整二进制消息：立即返回，发送在后台线程执行（大小校验同步完成）。",
+      "insertText": "WS_发送二进制到连接异步($1, $2)",
+      "returnType": "逻辑型",
+      "category": "消息",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_发送二进制到连接异步",
+        "runtimeName": "WS_发送二进制到连接异步",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接",
+            "description": "WS_创建连接 返回的受管连接 ID；ID 无效或已销毁时命令返回假。"
+          },
+          {
+            "name": "数据",
+            "type": "bytes",
+            "description": "要发送的字节集，作为一条完整二进制消息；超过单次发送上限时返回假。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "WS_发送二进制到连接异步()",
+        "description": "向指定已连接客户端异步发送一条完整二进制消息：立即返回，发送在后台线程执行（大小校验同步完成）。"
+      },
+      "demoInvocation": "WS_发送二进制到连接异步(0, {})"
+    },
+    {
+      "index": 40,
       "name": "WS_取当前事件类型",
       "signature": "WS_取当前事件类型()",
       "description": "返回当前回调事件类型：已连接、文本、二进制、已断开、错误或重连。",
@@ -1172,7 +1234,7 @@
       "demoInvocation": "WS_取当前事件类型()"
     },
     {
-      "index": 39,
+      "index": 41,
       "name": "WS_取当前连接",
       "signature": "WS_取当前连接()",
       "description": "返回当前事件对应的受管连接 ID。",
@@ -1192,7 +1254,7 @@
       "demoInvocation": "WS_取当前连接()"
     },
     {
-      "index": 40,
+      "index": 42,
       "name": "WS_取当前消息类型",
       "signature": "WS_取当前消息类型()",
       "description": "返回当前消息类型：文本或二进制；其它事件返回空文本。",
@@ -1212,7 +1274,7 @@
       "demoInvocation": "WS_取当前消息类型()"
     },
     {
-      "index": 41,
+      "index": 43,
       "name": "WS_取当前文本",
       "signature": "WS_取当前文本()",
       "description": "返回当前文本消息的不可变快照。",
@@ -1232,7 +1294,7 @@
       "demoInvocation": "WS_取当前文本()"
     },
     {
-      "index": 42,
+      "index": 44,
       "name": "WS_取当前二进制",
       "signature": "WS_取当前二进制()",
       "description": "返回当前二进制消息的独立字节集副本。",
@@ -1252,7 +1314,7 @@
       "demoInvocation": "WS_取当前二进制()"
     },
     {
-      "index": 43,
+      "index": 45,
       "name": "WS_取当前关闭代码",
       "signature": "WS_取当前关闭代码()",
       "description": "返回当前断开事件的 WebSocket 关闭状态码。",
@@ -1272,7 +1334,7 @@
       "demoInvocation": "WS_取当前关闭代码()"
     },
     {
-      "index": 44,
+      "index": 46,
       "name": "WS_取当前关闭原因",
       "signature": "WS_取当前关闭原因()",
       "description": "返回当前断开事件的 UTF-8 关闭原因。",
@@ -1292,7 +1354,7 @@
       "demoInvocation": "WS_取当前关闭原因()"
     },
     {
-      "index": 45,
+      "index": 47,
       "name": "WS_取当前错误",
       "signature": "WS_取当前错误()",
       "description": "返回当前错误事件的中文说明。",
@@ -1312,7 +1374,7 @@
       "demoInvocation": "WS_取当前错误()"
     },
     {
-      "index": 46,
+      "index": 48,
       "name": "WS_取当前重连次数",
       "signature": "WS_取当前重连次数()",
       "description": "返回当前重连事件对应的重试序号。",
@@ -1332,7 +1394,7 @@
       "demoInvocation": "WS_取当前重连次数()"
     },
     {
-      "index": 47,
+      "index": 49,
       "name": "WS_连接",
       "signature": "WS_连接(地址)",
       "description": "旧版单连接兼容入口；同步等待最多 30 秒，新代码应使用受管连接和事件处理器。",
@@ -1359,7 +1421,7 @@
       "demoInvocation": "WS_连接(\"https://example.com\")"
     },
     {
-      "index": 48,
+      "index": 50,
       "name": "WS_发送文本",
       "signature": "WS_发送文本(内容)",
       "description": "旧版兼容入口；向默认受管连接发送文本。",
@@ -1386,7 +1448,7 @@
       "demoInvocation": "WS_发送文本(\"演示参数1\")"
     },
     {
-      "index": 49,
+      "index": 51,
       "name": "WS_接收到调试输出",
       "signature": "WS_接收到调试输出()",
       "description": "旧版阻塞兼容入口；等待一条默认连接文本消息并写入调试输出。",
@@ -1407,7 +1469,7 @@
       "demoInvocation": "WS_接收到调试输出()"
     },
     {
-      "index": 50,
+      "index": 52,
       "name": "WS_接收文本",
       "signature": "WS_接收文本()",
       "description": "旧版阻塞兼容入口；等待并返回默认连接的下一条文本消息。",
@@ -1428,7 +1490,7 @@
       "demoInvocation": "WS_接收文本()"
     },
     {
-      "index": 51,
+      "index": 53,
       "name": "WS_关闭",
       "signature": "WS_关闭()",
       "description": "旧版兼容入口；关闭并销毁默认受管连接。",

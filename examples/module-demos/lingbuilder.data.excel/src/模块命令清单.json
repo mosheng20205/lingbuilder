@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-19T09:25:32.435Z",
+  "generatedAt": "2026-10-24T03:43:55.580Z",
   "module": {
     "id": "lingbuilder.data.excel",
     "name": "Excel 表格模块",
-    "version": "1.0.0",
-    "description": "读写 .xlsx 工作簿：多工作表、按单元格坐标读写、公式、日期、追加行、常用格式和插入删除行列，无需安装 Microsoft Excel。创建模式支持全部格式能力，打开模式可保真修改既有报表数值。"
+    "version": "1.1.0",
+    "description": "读写 .xlsx 工作簿：多工作表、按单元格坐标读写、公式、日期、追加行、常用格式、插入删除行列与导出 PDF，无需安装 Microsoft Excel。创建模式支持全部格式能力，打开模式可保真修改既有报表数值。"
   },
-  "commandCount": 45,
+  "commandCount": 46,
   "commands": [
     {
       "index": 1,
@@ -1208,6 +1208,35 @@
     },
     {
       "index": 43,
+      "name": "Excel_导出PDF",
+      "signature": "Excel_导出PDF(工作簿, 输出路径)",
+      "description": "把当前工作表已用区域导出为 PDF 表格：列宽按内容自适应，首行加粗，跨页自动重复表头；中文走 CID 字体方案（Chrome/Edge/WPS 可直接显示）。区域上限 60 列 × 20000 行。",
+      "insertText": "Excel_导出PDF(0, \"$2\")",
+      "returnType": "逻辑型",
+      "category": "转换",
+      "binding": {
+        "command": "Excel_导出PDF",
+        "runtimeName": "Excel_导出PDF",
+        "parameters": [
+          {
+            "name": "工作簿",
+            "type": "Excel工作簿",
+            "description": "由 Excel_创建工作簿 或 Excel_打开工作簿 返回的受管工作簿。"
+          },
+          {
+            "name": "输出路径",
+            "type": "wideString",
+            "description": "生成的 .pdf 写出路径；目录必须已存在。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "Excel_导出PDF(报表, \"输出/月度报表.pdf\")"
+      },
+      "demoInvocation": "Excel_导出PDF(0, \"module-demo-temp.txt\")"
+    },
+    {
+      "index": 44,
       "name": "Excel_取错误",
       "signature": "Excel_取错误()",
       "description": "返回当前线程最近一次 Excel 模块错误的中文说明。",
@@ -1224,7 +1253,7 @@
       "demoInvocation": "Excel_取错误()"
     },
     {
-      "index": 44,
+      "index": 45,
       "name": "Excel_取版本",
       "signature": "Excel_取版本()",
       "description": "返回随附运行桥版本与内置库信息。",
@@ -1241,7 +1270,7 @@
       "demoInvocation": "Excel_取版本()"
     },
     {
-      "index": 45,
+      "index": 46,
       "name": "Excel_是否可用",
       "signature": "Excel_是否可用()",
       "description": "检查随附运行桥 LingBuilderExcel.dll 是否可以加载且全部导出可用。",

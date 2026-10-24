@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-19T09:25:32.647Z",
+  "generatedAt": "2026-10-24T03:43:55.839Z",
   "module": {
     "id": "lingbuilder.win32.window-utils",
     "name": "Win32窗口操作模块",
     "version": "1.0.0",
     "description": "通过 HWND 安全封装常用窗口查找、标题、显示和位置操作，并提供无边框窗口的拖拽与边缘缩放入口。"
   },
-  "commandCount": 11,
+  "commandCount": 12,
   "commands": [
     {
       "index": 1,
@@ -129,6 +129,27 @@
     },
     {
       "index": 6,
+      "name": "窗口_关闭",
+      "signature": "窗口_关闭(窗口句柄)",
+      "description": "按句柄关闭任意顶层窗口（与点标题栏 × 等价的标准关闭流程，不是硬销毁）。",
+      "insertText": "窗口_关闭(0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "窗口_关闭",
+        "runtimeName": "窗口_关闭",
+        "parameters": [
+          {
+            "name": "窗口句柄",
+            "type": "handle",
+            "description": "要关闭的窗口句柄；通常来自 窗口_按标题查找 或 窗口_取自身句柄，句柄无效时返回假。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "窗口_关闭(0)"
+    },
+    {
+      "index": 7,
       "name": "窗口_移动",
       "signature": "窗口_移动(窗口句柄, 横坐标, 纵坐标, 宽度, 高度)",
       "description": "移动窗口并设置尺寸。",
@@ -169,7 +190,7 @@
       "demoInvocation": "窗口_移动(0, 1, 1, 1, 1)"
     },
     {
-      "index": 7,
+      "index": 8,
       "name": "窗口_置前台",
       "signature": "窗口_置前台(窗口句柄)",
       "description": "请求将窗口切换到前台。",
@@ -190,7 +211,7 @@
       "demoInvocation": "窗口_置前台(0)"
     },
     {
-      "index": 8,
+      "index": 9,
       "name": "窗口_是否最大化",
       "signature": "窗口_是否最大化(窗口句柄)",
       "description": "判断窗口当前是否处于最大化（IsZoomed）状态。",
@@ -212,7 +233,7 @@
       "demoInvocation": "窗口_是否最大化(0)"
     },
     {
-      "index": 9,
+      "index": 10,
       "name": "窗口_取边界JSON",
       "signature": "窗口_取边界JSON(窗口句柄)",
       "description": "以 JSON 返回窗口屏幕边界（物理像素）：{\"x\":0,\"y\":0,\"width\":0,\"height\":0}；窗口无效时返回 {}。",
@@ -235,7 +256,7 @@
       "demoInvocation": "窗口_取边界JSON(0)"
     },
     {
-      "index": 10,
+      "index": 11,
       "name": "窗口_开始拖拽",
       "signature": "窗口_开始拖拽(窗口句柄)",
       "description": "对无边框窗口启动系统标题栏拖拽：向窗口发送 WM_NCLBUTTONDOWN(HTCAPTION)，进入系统移动循环，直到用户松开鼠标。适合在网页自绘标题栏的 mousedown 处理器里经浏览器桥调用；调用量较大的界面建议节流。",
@@ -257,7 +278,7 @@
       "demoInvocation": "窗口_开始拖拽(0)"
     },
     {
-      "index": 11,
+      "index": 12,
       "name": "窗口_开始边缘缩放",
       "signature": "窗口_开始边缘缩放(窗口句柄, 边缘代码)",
       "description": "对无边框窗口启动系统边缘缩放：向窗口发送 WM_NCLBUTTONDOWN 并携带 Win32 命中代码。边缘代码：10 左、11 右、12 上、13 左上、14 右上、15 下、16 左下、17 右下；其它值返回假。",

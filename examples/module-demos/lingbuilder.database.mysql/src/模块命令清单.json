@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-19T09:25:32.443Z",
+  "generatedAt": "2026-10-24T03:43:55.594Z",
   "module": {
     "id": "lingbuilder.database.mysql",
     "name": "MySQL 数据库模块",

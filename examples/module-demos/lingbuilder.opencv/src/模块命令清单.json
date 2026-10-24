@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-19T09:25:32.584Z",
+  "generatedAt": "2026-10-24T03:43:55.761Z",
   "module": {
     "id": "lingbuilder.opencv",
     "name": "OpenCV 图像处理模块",
-    "version": "1.0.0",
-    "description": "基于 OpenCV 4.14.0 的 x64 本地图像处理、模板匹配、轮廓分析和单/双缺口候选分析模块。"
+    "version": "1.2.0",
+    "description": "基于 OpenCV 4.14.0 的 x64 本地图像处理、模板匹配、轮廓分析、单/双缺口候选分析与视频帧读取写出模块，支持文件与内存字节集双入口；读出的帧直接流入既有图像命令链。"
   },
-  "commandCount": 33,
+  "commandCount": 47,
   "commands": [
     {
       "index": 1,
@@ -63,6 +63,38 @@
     },
     {
       "index": 3,
+      "name": "OpenCV_加载图像字节集",
+      "signature": "OpenCV_加载图像字节集(图片数据, 读取模式)",
+      "description": "从内存字节集加载图像并返回受管图像句柄；投屏帧等内存图像的免落盘入口，失败返回 0 并可用 OpenCV_取错误 查看原因。",
+      "insertText": "OpenCV_加载图像字节集(0, \"$2\")",
+      "returnType": "长整数型",
+      "returnDescription": "成功返回 OpenCV图像句柄，失败返回 0。",
+      "binding": {
+        "command": "OpenCV_加载图像字节集",
+        "runtimeName": "OpenCV_加载图像字节集",
+        "parameters": [
+          {
+            "name": "图片数据",
+            "type": "bytes",
+            "description": "图片文件内容字节集（PNG/JPG/BMP/WebP 等 OpenCV 可解码格式，imdecode 内存解码，无需落盘）；投屏帧、截图字节集、网络下载图像直传此处。"
+          },
+          {
+            "name": "读取模式",
+            "type": "wideString",
+            "description": "彩色、灰度或原样，含义与 OpenCV_加载图像 一致。"
+          }
+        ],
+        "returnType": "handle",
+        "targetIds": [
+          "windows-msvc-x64"
+        ],
+        "encoding": "wide",
+        "example": "OpenCV_加载图像字节集(帧数据, \"彩色\")"
+      },
+      "demoInvocation": "OpenCV_加载图像字节集({}, \"演示参数2\")"
+    },
+    {
+      "index": 4,
       "name": "OpenCV_保存图像",
       "signature": "OpenCV_保存图像(图像, 路径, 质量)",
       "description": "按目标扩展名保存图像。",
@@ -98,7 +130,7 @@
       "demoInvocation": "OpenCV_保存图像(0, \"module-demo-temp.txt\", 1)"
     },
     {
-      "index": 4,
+      "index": 5,
       "name": "OpenCV_克隆图像",
       "signature": "OpenCV_克隆图像(图像)",
       "description": "深复制图像并返回新句柄。",
@@ -122,7 +154,7 @@
       "demoInvocation": "OpenCV_克隆图像(0)"
     },
     {
-      "index": 5,
+      "index": 6,
       "name": "OpenCV_释放图像",
       "signature": "OpenCV_释放图像(图像)",
       "description": "释放一个受管图像句柄。",
@@ -146,7 +178,7 @@
       "demoInvocation": "OpenCV_释放图像(0)"
     },
     {
-      "index": 6,
+      "index": 7,
       "name": "OpenCV_释放全部",
       "signature": "OpenCV_释放全部()",
       "description": "释放当前进程中全部 OpenCV 图像与结果句柄。",
@@ -164,7 +196,7 @@
       "demoInvocation": "OpenCV_释放全部()"
     },
     {
-      "index": 7,
+      "index": 8,
       "name": "OpenCV_取宽度",
       "signature": "OpenCV_取宽度(图像)",
       "description": "返回图像像素宽度。",
@@ -188,7 +220,7 @@
       "demoInvocation": "OpenCV_取宽度(0)"
     },
     {
-      "index": 8,
+      "index": 9,
       "name": "OpenCV_取高度",
       "signature": "OpenCV_取高度(图像)",
       "description": "返回图像像素高度。",
@@ -212,7 +244,7 @@
       "demoInvocation": "OpenCV_取高度(0)"
     },
     {
-      "index": 9,
+      "index": 10,
       "name": "OpenCV_取通道数",
       "signature": "OpenCV_取通道数(图像)",
       "description": "返回图像通道数。",
@@ -236,7 +268,359 @@
       "demoInvocation": "OpenCV_取通道数(0)"
     },
     {
-      "index": 10,
+      "index": 11,
+      "name": "OpenCV_打开视频",
+      "signature": "OpenCV_打开视频(路径)",
+      "description": "打开视频文件返回受管视频句柄；后端为 Windows Media Foundation（Win8+ 内置，无额外 DLL）。失败返回 0 并记录中文错误。",
+      "insertText": "OpenCV_打开视频(\"$1\")",
+      "returnType": "长整数型",
+      "returnDescription": "成功返回受管视频句柄（视频与摄像头共用），失败返回 0。",
+      "binding": {
+        "command": "OpenCV_打开视频",
+        "runtimeName": "OpenCV_打开视频",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString",
+            "description": "本地视频文件路径（mp4/avi/mov 等 Windows Media Foundation 可解容器）。"
+          }
+        ],
+        "returnType": "handle",
+        "targetIds": [
+          "windows-msvc-x64"
+        ],
+        "encoding": "wide",
+        "example": "局部 视频句柄 视频 = OpenCV_打开视频(\"素材/演示.mp4\")"
+      },
+      "demoInvocation": "OpenCV_打开视频(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 12,
+      "name": "OpenCV_打开摄像头",
+      "signature": "OpenCV_打开摄像头(索引)",
+      "description": "打开本机摄像头返回受管视频句柄；索引无效或设备被占用时返回 0。",
+      "insertText": "OpenCV_打开摄像头(0)",
+      "returnType": "长整数型",
+      "returnDescription": "成功返回受管视频句柄，失败返回 0。",
+      "binding": {
+        "command": "OpenCV_打开摄像头",
+        "runtimeName": "OpenCV_打开摄像头",
+        "parameters": [
+          {
+            "name": "索引",
+            "type": "int",
+            "description": "摄像头序号，从 0 起；多摄像头按系统枚举顺序。"
+          }
+        ],
+        "returnType": "handle",
+        "targetIds": [
+          "windows-msvc-x64"
+        ],
+        "example": "局部 视频句柄 摄像头 = OpenCV_打开摄像头(0)"
+      },
+      "demoInvocation": "OpenCV_打开摄像头(1)"
+    },
+    {
+      "index": 13,
+      "name": "OpenCV_取视频帧数",
+      "signature": "OpenCV_取视频帧数(视频)",
+      "description": "返回视频总帧数；直播流等不可seek来源可能返回 0。",
+      "insertText": "OpenCV_取视频帧数(0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "OpenCV_取视频帧数",
+        "runtimeName": "OpenCV_取视频帧数",
+        "parameters": [
+          {
+            "name": "视频",
+            "type": "handle",
+            "description": "OpenCV_打开视频 或 OpenCV_打开摄像头 返回的受管视频句柄。"
+          }
+        ],
+        "returnType": "int",
+        "targetIds": [
+          "windows-msvc-x64"
+        ]
+      },
+      "demoInvocation": "OpenCV_取视频帧数(0)"
+    },
+    {
+      "index": 14,
+      "name": "OpenCV_取视频帧率",
+      "signature": "OpenCV_取视频帧率(视频)",
+      "description": "返回视频帧率（帧/秒）。",
+      "insertText": "OpenCV_取视频帧率(0)",
+      "returnType": "双精度小数型",
+      "binding": {
+        "command": "OpenCV_取视频帧率",
+        "runtimeName": "OpenCV_取视频帧率",
+        "parameters": [
+          {
+            "name": "视频",
+            "type": "handle",
+            "description": "OpenCV_打开视频 或 OpenCV_打开摄像头 返回的受管视频句柄。"
+          }
+        ],
+        "returnType": "double",
+        "targetIds": [
+          "windows-msvc-x64"
+        ]
+      },
+      "demoInvocation": "OpenCV_取视频帧率(0)"
+    },
+    {
+      "index": 15,
+      "name": "OpenCV_取视频宽度",
+      "signature": "OpenCV_取视频宽度(视频)",
+      "description": "返回视频画面像素宽度。",
+      "insertText": "OpenCV_取视频宽度(0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "OpenCV_取视频宽度",
+        "runtimeName": "OpenCV_取视频宽度",
+        "parameters": [
+          {
+            "name": "视频",
+            "type": "handle",
+            "description": "OpenCV_打开视频 或 OpenCV_打开摄像头 返回的受管视频句柄。"
+          }
+        ],
+        "returnType": "int",
+        "targetIds": [
+          "windows-msvc-x64"
+        ]
+      },
+      "demoInvocation": "OpenCV_取视频宽度(0)"
+    },
+    {
+      "index": 16,
+      "name": "OpenCV_取视频高度",
+      "signature": "OpenCV_取视频高度(视频)",
+      "description": "返回视频画面像素高度。",
+      "insertText": "OpenCV_取视频高度(0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "OpenCV_取视频高度",
+        "runtimeName": "OpenCV_取视频高度",
+        "parameters": [
+          {
+            "name": "视频",
+            "type": "handle",
+            "description": "OpenCV_打开视频 或 OpenCV_打开摄像头 返回的受管视频句柄。"
+          }
+        ],
+        "returnType": "int",
+        "targetIds": [
+          "windows-msvc-x64"
+        ]
+      },
+      "demoInvocation": "OpenCV_取视频高度(0)"
+    },
+    {
+      "index": 17,
+      "name": "OpenCV_取视频位置",
+      "signature": "OpenCV_取视频位置(视频)",
+      "description": "返回当前读取位置（帧序号，从 0 起）。",
+      "insertText": "OpenCV_取视频位置(0)",
+      "returnType": "双精度小数型",
+      "binding": {
+        "command": "OpenCV_取视频位置",
+        "runtimeName": "OpenCV_取视频位置",
+        "parameters": [
+          {
+            "name": "视频",
+            "type": "handle",
+            "description": "OpenCV_打开视频 或 OpenCV_打开摄像头 返回的受管视频句柄。"
+          }
+        ],
+        "returnType": "double",
+        "targetIds": [
+          "windows-msvc-x64"
+        ]
+      },
+      "demoInvocation": "OpenCV_取视频位置(0)"
+    },
+    {
+      "index": 18,
+      "name": "OpenCV_跳转到帧",
+      "signature": "OpenCV_跳转到帧(视频, 帧索引)",
+      "description": "把读取位置跳到指定帧；之后 OpenCV_读下一帧 从该帧继续。",
+      "insertText": "OpenCV_跳转到帧(0, 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "OpenCV_跳转到帧",
+        "runtimeName": "OpenCV_跳转到帧",
+        "parameters": [
+          {
+            "name": "视频",
+            "type": "handle",
+            "description": "OpenCV_打开视频 或 OpenCV_打开摄像头 返回的受管视频句柄。"
+          },
+          {
+            "name": "帧索引",
+            "type": "double",
+            "description": "目标帧序号，从 0 起，不能为负。"
+          }
+        ],
+        "returnType": "bool",
+        "targetIds": [
+          "windows-msvc-x64"
+        ]
+      },
+      "demoInvocation": "OpenCV_跳转到帧(0, 1.0)"
+    },
+    {
+      "index": 19,
+      "name": "OpenCV_读下一帧",
+      "signature": "OpenCV_读下一帧(视频)",
+      "description": "读取下一帧并返回 OpenCV图像句柄——直接流入 灰度化/模板匹配/查找轮廓/分析缺口/识图/OCR 既有命令链。到末尾返回 0，原因读 OpenCV_取错误（「已到视频末尾」为正常结束信号）。帧为内部缓冲的深拷贝，用完以 OpenCV_释放图像 释放。",
+      "insertText": "OpenCV_读下一帧(0)",
+      "returnType": "长整数型",
+      "returnDescription": "成功返回 OpenCV图像句柄，末尾或失败返回 0。",
+      "binding": {
+        "command": "OpenCV_读下一帧",
+        "runtimeName": "OpenCV_读下一帧",
+        "parameters": [
+          {
+            "name": "视频",
+            "type": "handle",
+            "description": "OpenCV_打开视频 或 OpenCV_打开摄像头 返回的受管视频句柄。"
+          }
+        ],
+        "returnType": "handle",
+        "targetIds": [
+          "windows-msvc-x64"
+        ],
+        "example": "局部 OpenCV图像句柄 帧 = OpenCV_读下一帧(视频)"
+      },
+      "demoInvocation": "OpenCV_读下一帧(0)"
+    },
+    {
+      "index": 20,
+      "name": "OpenCV_关闭视频",
+      "signature": "OpenCV_关闭视频(视频)",
+      "description": "关闭并释放视频/摄像头句柄。",
+      "insertText": "OpenCV_关闭视频(0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "OpenCV_关闭视频",
+        "runtimeName": "OpenCV_关闭视频",
+        "parameters": [
+          {
+            "name": "视频",
+            "type": "handle",
+            "description": "OpenCV_打开视频 或 OpenCV_打开摄像头 返回的受管视频句柄。"
+          }
+        ],
+        "returnType": "bool",
+        "targetIds": [
+          "windows-msvc-x64"
+        ]
+      },
+      "demoInvocation": "OpenCV_关闭视频(0)"
+    },
+    {
+      "index": 21,
+      "name": "OpenCV_创建视频写出",
+      "signature": "OpenCV_创建视频写出(路径, 帧率, 宽度, 高度, 编码器)",
+      "description": "创建视频写出对象；全部写入帧必须与创建尺寸一致。",
+      "insertText": "OpenCV_创建视频写出(\"$1\", 0, 0, 0, \"$5\")",
+      "returnType": "长整数型",
+      "returnDescription": "成功返回受管写出句柄，失败返回 0（可尝试 MJPG 配 .avi）。",
+      "binding": {
+        "command": "OpenCV_创建视频写出",
+        "runtimeName": "OpenCV_创建视频写出",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString",
+            "description": "输出视频路径；MJPG 建议配 .avi，mp4v 配 .mp4。"
+          },
+          {
+            "name": "帧率",
+            "type": "double",
+            "description": "每秒帧数，必须大于 0。"
+          },
+          {
+            "name": "宽度",
+            "type": "int",
+            "description": "画面像素宽。"
+          },
+          {
+            "name": "高度",
+            "type": "int",
+            "description": "画面像素高。"
+          },
+          {
+            "name": "编码器",
+            "type": "wideString",
+            "description": "mp4v、MJPG 或 XVID。"
+          }
+        ],
+        "returnType": "handle",
+        "targetIds": [
+          "windows-msvc-x64"
+        ],
+        "encoding": "wide",
+        "example": "局部 写出句柄 写出 = OpenCV_创建视频写出(\"输出/结果.mp4\", 25, 640, 480, \"mp4v\")"
+      },
+      "demoInvocation": "OpenCV_创建视频写出(\"module-demo-temp.txt\", 1.0, 1, 1, \"演示参数5\")"
+    },
+    {
+      "index": 22,
+      "name": "OpenCV_写出帧",
+      "signature": "OpenCV_写出帧(写出, 图像)",
+      "description": "把 OpenCV图像句柄 的当前内容写入视频；尺寸必须与创建时一致。",
+      "insertText": "OpenCV_写出帧(0, 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "OpenCV_写出帧",
+        "runtimeName": "OpenCV_写出帧",
+        "parameters": [
+          {
+            "name": "写出",
+            "type": "handle",
+            "description": "OpenCV_创建视频写出 返回的受管写出句柄。"
+          },
+          {
+            "name": "图像",
+            "type": "handle",
+            "description": "OpenCV_加载图像 等命令返回的受管图像句柄；句柄类型不符、不存在或已释放时命令返回失败值。"
+          }
+        ],
+        "returnType": "bool",
+        "targetIds": [
+          "windows-msvc-x64"
+        ]
+      },
+      "demoInvocation": "OpenCV_写出帧(0, 0)"
+    },
+    {
+      "index": 23,
+      "name": "OpenCV_关闭写出",
+      "signature": "OpenCV_关闭写出(写出)",
+      "description": "收尾并释放视频写出句柄；未关闭的文件不可播放。",
+      "insertText": "OpenCV_关闭写出(0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "OpenCV_关闭写出",
+        "runtimeName": "OpenCV_关闭写出",
+        "parameters": [
+          {
+            "name": "写出",
+            "type": "handle",
+            "description": "OpenCV_创建视频写出 返回的受管写出句柄。"
+          }
+        ],
+        "returnType": "bool",
+        "targetIds": [
+          "windows-msvc-x64"
+        ]
+      },
+      "demoInvocation": "OpenCV_关闭写出(0)"
+    },
+    {
+      "index": 24,
       "name": "OpenCV_取错误",
       "signature": "OpenCV_取错误()",
       "description": "读取当前线程最近一次 OpenCV 操作的中文错误。",
@@ -255,7 +639,7 @@
       "demoInvocation": "OpenCV_取错误()"
     },
     {
-      "index": 11,
+      "index": 25,
       "name": "OpenCV_灰度化",
       "signature": "OpenCV_灰度化(图像)",
       "description": "转换为灰度图并返回新句柄。",
@@ -279,7 +663,7 @@
       "demoInvocation": "OpenCV_灰度化(0)"
     },
     {
-      "index": 12,
+      "index": 26,
       "name": "OpenCV_缩放",
       "signature": "OpenCV_缩放(图像, 宽度, 高度)",
       "description": "使用高质量插值缩放图像并返回新句柄。",
@@ -313,7 +697,7 @@
       "demoInvocation": "OpenCV_缩放(0, 1, 1)"
     },
     {
-      "index": 13,
+      "index": 27,
       "name": "OpenCV_裁剪",
       "signature": "OpenCV_裁剪(图像, 横坐标, 纵坐标, 宽度, 高度)",
       "description": "裁剪图像区域并返回新句柄。",
@@ -357,7 +741,7 @@
       "demoInvocation": "OpenCV_裁剪(0, 1, 1, 1, 1)"
     },
     {
-      "index": 14,
+      "index": 28,
       "name": "OpenCV_高斯模糊",
       "signature": "OpenCV_高斯模糊(图像, 卷积核, Sigma)",
       "description": "执行高斯模糊并返回新句柄。",
@@ -391,7 +775,7 @@
       "demoInvocation": "OpenCV_高斯模糊(0, 1, 1.0)"
     },
     {
-      "index": 15,
+      "index": 29,
       "name": "OpenCV_二值化",
       "signature": "OpenCV_二值化(图像, 阈值, 模式)",
       "description": "灰度化后执行固定或大津二值化。",
@@ -426,7 +810,7 @@
       "demoInvocation": "OpenCV_二值化(0, 1.0, \"演示参数3\")"
     },
     {
-      "index": 16,
+      "index": 30,
       "name": "OpenCV_自适应二值化",
       "signature": "OpenCV_自适应二值化(图像, 块大小, 常数, 反向)",
       "description": "执行高斯自适应二值化。",
@@ -465,7 +849,7 @@
       "demoInvocation": "OpenCV_自适应二值化(0, 1, 1.0, 真)"
     },
     {
-      "index": 17,
+      "index": 31,
       "name": "OpenCV_Canny边缘",
       "signature": "OpenCV_Canny边缘(图像, 低阈值, 高阈值)",
       "description": "灰度化后执行 Canny 边缘检测。",
@@ -499,7 +883,7 @@
       "demoInvocation": "OpenCV_Canny边缘(0, 1.0, 1.0)"
     },
     {
-      "index": 18,
+      "index": 32,
       "name": "OpenCV_形态学",
       "signature": "OpenCV_形态学(图像, 操作, 卷积核, 次数)",
       "description": "执行形态学操作并返回新句柄。",
@@ -539,7 +923,7 @@
       "demoInvocation": "OpenCV_形态学(0, \"演示参数2\", 1, 1)"
     },
     {
-      "index": 19,
+      "index": 33,
       "name": "OpenCV_模板匹配",
       "signature": "OpenCV_模板匹配(图像, 模板, 方法, 最低分数, 最大结果数)",
       "description": "执行模板匹配和重叠抑制，返回受管分析结果。",
@@ -585,7 +969,7 @@
       "demoInvocation": "OpenCV_模板匹配(0, 0, \"演示参数3\", 1.0, 1)"
     },
     {
-      "index": 20,
+      "index": 34,
       "name": "OpenCV_查找轮廓",
       "signature": "OpenCV_查找轮廓(图像, 最小面积, 最大面积, 最大结果数)",
       "description": "查找外部轮廓并按面积排序返回矩形候选。",
@@ -624,7 +1008,7 @@
       "demoInvocation": "OpenCV_查找轮廓(0, 1.0, 1.0, 1)"
     },
     {
-      "index": 21,
+      "index": 35,
       "name": "OpenCV_分析缺口",
       "signature": "OpenCV_分析缺口(背景图像, 滑块图像, 候选数量, 配置JSON)",
       "description": "使用模板边缘与轮廓的确定性规则分析单缺口或双缺口候选。",
@@ -666,7 +1050,7 @@
       "demoInvocation": "OpenCV_分析缺口(0, 0, 1, \"{}\")"
     },
     {
-      "index": 22,
+      "index": 36,
       "name": "OpenCV结果_取类型",
       "signature": "OpenCV结果_取类型(结果)",
       "description": "返回模板匹配、轮廓或缺口。",
@@ -691,7 +1075,7 @@
       "demoInvocation": "OpenCV结果_取类型(0)"
     },
     {
-      "index": 23,
+      "index": 37,
       "name": "OpenCV结果_取数量",
       "signature": "OpenCV结果_取数量(结果)",
       "description": "返回候选项数量。",
@@ -715,7 +1099,7 @@
       "demoInvocation": "OpenCV结果_取数量(0)"
     },
     {
-      "index": 24,
+      "index": 38,
       "name": "OpenCV结果_取横坐标",
       "signature": "OpenCV结果_取横坐标(结果, 索引)",
       "description": "返回候选矩形左上角横坐标。",
@@ -744,7 +1128,7 @@
       "demoInvocation": "OpenCV结果_取横坐标(0, 1)"
     },
     {
-      "index": 25,
+      "index": 39,
       "name": "OpenCV结果_取纵坐标",
       "signature": "OpenCV结果_取纵坐标(结果, 索引)",
       "description": "返回候选矩形左上角纵坐标。",
@@ -773,7 +1157,7 @@
       "demoInvocation": "OpenCV结果_取纵坐标(0, 1)"
     },
     {
-      "index": 26,
+      "index": 40,
       "name": "OpenCV结果_取宽度",
       "signature": "OpenCV结果_取宽度(结果, 索引)",
       "description": "返回候选矩形宽度。",
@@ -802,7 +1186,7 @@
       "demoInvocation": "OpenCV结果_取宽度(0, 1)"
     },
     {
-      "index": 27,
+      "index": 41,
       "name": "OpenCV结果_取高度",
       "signature": "OpenCV结果_取高度(结果, 索引)",
       "description": "返回候选矩形高度。",
@@ -831,7 +1215,7 @@
       "demoInvocation": "OpenCV结果_取高度(0, 1)"
     },
     {
-      "index": 28,
+      "index": 42,
       "name": "OpenCV结果_取中心横坐标",
       "signature": "OpenCV结果_取中心横坐标(结果, 索引)",
       "description": "返回候选中心横坐标。",
@@ -860,7 +1244,7 @@
       "demoInvocation": "OpenCV结果_取中心横坐标(0, 1)"
     },
     {
-      "index": 29,
+      "index": 43,
       "name": "OpenCV结果_取中心纵坐标",
       "signature": "OpenCV结果_取中心纵坐标(结果, 索引)",
       "description": "返回候选中心纵坐标。",
@@ -889,7 +1273,7 @@
       "demoInvocation": "OpenCV结果_取中心纵坐标(0, 1)"
     },
     {
-      "index": 30,
+      "index": 44,
       "name": "OpenCV结果_取置信度",
       "signature": "OpenCV结果_取置信度(结果, 索引)",
       "description": "返回 0～1 的候选置信度。",
@@ -918,7 +1302,7 @@
       "demoInvocation": "OpenCV结果_取置信度(0, 1)"
     },
     {
-      "index": 31,
+      "index": 45,
       "name": "OpenCV结果_取JSON",
       "signature": "OpenCV结果_取JSON(结果)",
       "description": "返回 schemaVersion 1 的 UTF-16 JSON 结果。",
@@ -943,7 +1327,7 @@
       "demoInvocation": "OpenCV结果_取JSON(0)"
     },
     {
-      "index": 32,
+      "index": 46,
       "name": "OpenCV结果_保存标注图",
       "signature": "OpenCV结果_保存标注图(结果, 路径, 质量)",
       "description": "保存带候选矩形和置信度标注的调试图。",
@@ -978,7 +1362,7 @@
       "demoInvocation": "OpenCV结果_保存标注图(0, \"module-demo-temp.txt\", 1)"
     },
     {
-      "index": 33,
+      "index": 47,
       "name": "OpenCV结果_释放",
       "signature": "OpenCV结果_释放(结果)",
       "description": "释放一个受管分析结果句柄。",

@@ -1,0 +1,444 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-24T03:43:55.759Z",
+  "module": {
+    "id": "lingbuilder.ocr",
+    "name": "微信OCR识别模块",
+    "version": "1.0.0",
+    "description": "借用本机微信 4.x 自带 OCR 组件的离线文字识别：首次识别自动探测微信安装并拉起其 OCR 组件进程（Weixin.exe --type=wxocr），返回行级文本、坐标与置信度，JSON 另含字符级坐标。不随包分发任何腾讯文件，需要用户已安装 Windows 版微信并完成过一次截图文字识别（触发组件下载）；仅支持 64 位构建（x64），32 位下命令返回中文错误。"
+  },
+  "commandCount": 19,
+  "commands": [
+    {
+      "index": 1,
+      "name": "OCR_取版本",
+      "signature": "OCR_取版本()",
+      "description": "返回模块版本与实现口径（借用本机微信 4.x OCR 组件，仅 64 位）。",
+      "insertText": "OCR_取版本()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "OCR_取版本",
+        "runtimeName": "OCR_取版本",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "OCR_取版本()"
+      },
+      "demoInvocation": "OCR_取版本()"
+    },
+    {
+      "index": 2,
+      "name": "OCR_取微信状态",
+      "signature": "OCR_取微信状态()",
+      "description": "探测本机微信与 OCR 组件（不启动进程），返回 JSON：found、versionDir、pluginVersion、wxocrDll 或 error。微信未下载 OCR 组件时错误里带触发下载的操作指引。",
+      "insertText": "OCR_取微信状态()",
+      "returnType": "文本型",
+      "returnDescription": "JSON 文本，始终可解析。",
+      "binding": {
+        "command": "OCR_取微信状态",
+        "runtimeName": "OCR_取微信状态",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "OCR_取微信状态()"
+      },
+      "demoInvocation": "OCR_取微信状态()"
+    },
+    {
+      "index": 3,
+      "name": "OCR_取错误",
+      "signature": "OCR_取错误()",
+      "description": "读取当前线程最近一次 OCR 操作的中文错误。",
+      "insertText": "OCR_取错误()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "OCR_取错误",
+        "runtimeName": "OCR_取错误",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "OCR_取错误()"
+    },
+    {
+      "index": 4,
+      "name": "OCR_停止",
+      "signature": "OCR_停止()",
+      "description": "停止 OCR 组件进程并复位会话；下次识别自动重新探测启动。组件长时间不用或识别失败后可用。",
+      "insertText": "OCR_停止()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "OCR_停止",
+        "runtimeName": "OCR_停止",
+        "parameters": [],
+        "returnType": "bool",
+        "example": "OCR_停止()"
+      },
+      "demoInvocation": "OCR_停止()"
+    },
+    {
+      "index": 5,
+      "name": "OCR_识别",
+      "signature": "OCR_识别(图片路径)",
+      "description": "识别图片中的全部文字并返回受管结果句柄；首次调用自动探测微信并启动其 OCR 组件（握手 15 秒、单图识别 120 秒超时）。失败返回 0，原因读 OCR_取错误()。",
+      "insertText": "OCR_识别(\"$1\")",
+      "returnType": "OCR结果句柄",
+      "returnDescription": "成功返回非 0 的 OCR结果句柄，失败返回 0。",
+      "binding": {
+        "command": "OCR_识别",
+        "runtimeName": "OCR_识别",
+        "parameters": [
+          {
+            "name": "图片路径",
+            "type": "wideString",
+            "description": "本地图片绝对或相对路径，支持中文；PNG/JPG/BMP 等微信可解码格式。"
+          }
+        ],
+        "returnType": "OCR结果句柄",
+        "encoding": "wide",
+        "example": "OCR_识别(\"截图.png\")"
+      },
+      "demoInvocation": "OCR_识别(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 6,
+      "name": "OCR_识别字节集",
+      "signature": "OCR_识别字节集(图片数据)",
+      "description": "识别字节集图片中的全部文字并返回受管结果句柄；前置与超时同 OCR_识别，结果读取/释放命令共用。失败返回 0，原因读 OCR_取错误()。",
+      "insertText": "OCR_识别字节集($1)",
+      "returnType": "OCR结果句柄",
+      "returnDescription": "成功返回非 0 的 OCR结果句柄，失败返回 0。",
+      "binding": {
+        "command": "OCR_识别字节集",
+        "runtimeName": "OCR_识别字节集",
+        "parameters": [
+          {
+            "name": "图片数据",
+            "type": "bytes",
+            "description": "图片文件内容字节集（PNG/JPG/BMP 等），内存入口无需先落盘；组件直传不可用时内部经临时文件识别并即时删除。"
+          }
+        ],
+        "returnType": "OCR结果句柄",
+        "example": "OCR_识别字节集(图片字节)"
+      },
+      "demoInvocation": "OCR_识别字节集({})"
+    },
+    {
+      "index": 7,
+      "name": "OCR结果_取行数",
+      "signature": "OCR结果_取行数(结果)",
+      "description": "返回识别行数；句柄无效返回 0。",
+      "insertText": "OCR结果_取行数($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "OCR结果_取行数",
+        "runtimeName": "OCR结果_取行数",
+        "parameters": [
+          {
+            "name": "结果",
+            "type": "OCR结果句柄",
+            "description": "OCR_识别 返回的受管结果。"
+          }
+        ],
+        "returnType": "int",
+        "example": "OCR结果_取行数(结果)"
+      },
+      "demoInvocation": "OCR结果_取行数(0)"
+    },
+    {
+      "index": 8,
+      "name": "OCR结果_取文本",
+      "signature": "OCR结果_取文本(结果, 索引)",
+      "description": "返回指定行的识别文本；越界返回空文本。",
+      "insertText": "OCR结果_取文本($1, $2)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "OCR结果_取文本",
+        "runtimeName": "OCR结果_取文本",
+        "parameters": [
+          {
+            "name": "结果",
+            "type": "OCR结果句柄",
+            "description": "OCR_识别 返回的受管结果。"
+          },
+          {
+            "name": "索引",
+            "type": "int",
+            "description": "行索引，从 0 起。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "OCR结果_取文本(结果, 0)"
+      },
+      "demoInvocation": "OCR结果_取文本(0, 1)"
+    },
+    {
+      "index": 9,
+      "name": "OCR结果_取全部文本",
+      "signature": "OCR结果_取全部文本(结果, 换行分隔)",
+      "description": "一次性取回全部识别文本；句柄无效返回空文本。",
+      "insertText": "OCR结果_取全部文本($1, 真)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "OCR结果_取全部文本",
+        "runtimeName": "OCR结果_取全部文本",
+        "parameters": [
+          {
+            "name": "结果",
+            "type": "OCR结果句柄",
+            "description": "OCR_识别 返回的受管结果。"
+          },
+          {
+            "name": "换行分隔",
+            "type": "bool",
+            "description": "真=行间用回车换行分隔，假=用空格分隔。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "OCR结果_取全部文本(结果, 真)"
+      },
+      "demoInvocation": "OCR结果_取全部文本(0, 真)"
+    },
+    {
+      "index": 10,
+      "name": "OCR结果_取置信度",
+      "signature": "OCR结果_取置信度(结果, 索引)",
+      "description": "返回指定行识别置信度（0～1）；越界返回 0。",
+      "insertText": "OCR结果_取置信度($1, $2)",
+      "returnType": "双精度小数型",
+      "binding": {
+        "command": "OCR结果_取置信度",
+        "runtimeName": "OCR结果_取置信度",
+        "parameters": [
+          {
+            "name": "结果",
+            "type": "OCR结果句柄",
+            "description": "OCR_识别 返回的受管结果。"
+          },
+          {
+            "name": "索引",
+            "type": "int",
+            "description": "行索引，从 0 起。"
+          }
+        ],
+        "returnType": "double",
+        "example": "OCR结果_取置信度(结果, 0)"
+      },
+      "demoInvocation": "OCR结果_取置信度(0, 1)"
+    },
+    {
+      "index": 11,
+      "name": "OCR结果_取左坐标",
+      "signature": "OCR结果_取左坐标(结果, 索引)",
+      "description": "返回指定行包围盒左边界横坐标（像素）；越界返回 -1。",
+      "insertText": "OCR结果_取左坐标($1, $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "OCR结果_取左坐标",
+        "runtimeName": "OCR结果_取左坐标",
+        "parameters": [
+          {
+            "name": "结果",
+            "type": "OCR结果句柄",
+            "description": "OCR_识别 返回的受管结果。"
+          },
+          {
+            "name": "索引",
+            "type": "int",
+            "description": "行索引，从 0 起。"
+          }
+        ],
+        "returnType": "int",
+        "example": "OCR结果_取左坐标(结果, 0)"
+      },
+      "demoInvocation": "OCR结果_取左坐标(0, 1)"
+    },
+    {
+      "index": 12,
+      "name": "OCR结果_取上坐标",
+      "signature": "OCR结果_取上坐标(结果, 索引)",
+      "description": "返回指定行包围盒上边界纵坐标（像素）；越界返回 -1。",
+      "insertText": "OCR结果_取上坐标($1, $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "OCR结果_取上坐标",
+        "runtimeName": "OCR结果_取上坐标",
+        "parameters": [
+          {
+            "name": "结果",
+            "type": "OCR结果句柄",
+            "description": "OCR_识别 返回的受管结果。"
+          },
+          {
+            "name": "索引",
+            "type": "int",
+            "description": "行索引，从 0 起。"
+          }
+        ],
+        "returnType": "int",
+        "example": "OCR结果_取上坐标(结果, 0)"
+      },
+      "demoInvocation": "OCR结果_取上坐标(0, 1)"
+    },
+    {
+      "index": 13,
+      "name": "OCR结果_取右坐标",
+      "signature": "OCR结果_取右坐标(结果, 索引)",
+      "description": "返回指定行包围盒右边界横坐标（像素）；越界返回 -1。",
+      "insertText": "OCR结果_取右坐标($1, $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "OCR结果_取右坐标",
+        "runtimeName": "OCR结果_取右坐标",
+        "parameters": [
+          {
+            "name": "结果",
+            "type": "OCR结果句柄",
+            "description": "OCR_识别 返回的受管结果。"
+          },
+          {
+            "name": "索引",
+            "type": "int",
+            "description": "行索引，从 0 起。"
+          }
+        ],
+        "returnType": "int",
+        "example": "OCR结果_取右坐标(结果, 0)"
+      },
+      "demoInvocation": "OCR结果_取右坐标(0, 1)"
+    },
+    {
+      "index": 14,
+      "name": "OCR结果_取下坐标",
+      "signature": "OCR结果_取下坐标(结果, 索引)",
+      "description": "返回指定行包围盒下边界纵坐标（像素）；越界返回 -1。",
+      "insertText": "OCR结果_取下坐标($1, $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "OCR结果_取下坐标",
+        "runtimeName": "OCR结果_取下坐标",
+        "parameters": [
+          {
+            "name": "结果",
+            "type": "OCR结果句柄",
+            "description": "OCR_识别 返回的受管结果。"
+          },
+          {
+            "name": "索引",
+            "type": "int",
+            "description": "行索引，从 0 起。"
+          }
+        ],
+        "returnType": "int",
+        "example": "OCR结果_取下坐标(结果, 0)"
+      },
+      "demoInvocation": "OCR结果_取下坐标(0, 1)"
+    },
+    {
+      "index": 15,
+      "name": "OCR结果_取宽度",
+      "signature": "OCR结果_取宽度(结果)",
+      "description": "返回原图宽度像素；句柄无效返回 0。",
+      "insertText": "OCR结果_取宽度($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "OCR结果_取宽度",
+        "runtimeName": "OCR结果_取宽度",
+        "parameters": [
+          {
+            "name": "结果",
+            "type": "OCR结果句柄",
+            "description": "OCR_识别 返回的受管结果。"
+          }
+        ],
+        "returnType": "int",
+        "example": "OCR结果_取宽度(结果)"
+      },
+      "demoInvocation": "OCR结果_取宽度(0)"
+    },
+    {
+      "index": 16,
+      "name": "OCR结果_取高度",
+      "signature": "OCR结果_取高度(结果)",
+      "description": "返回原图高度像素；句柄无效返回 0。",
+      "insertText": "OCR结果_取高度($1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "OCR结果_取高度",
+        "runtimeName": "OCR结果_取高度",
+        "parameters": [
+          {
+            "name": "结果",
+            "type": "OCR结果句柄",
+            "description": "OCR_识别 返回的受管结果。"
+          }
+        ],
+        "returnType": "int",
+        "example": "OCR结果_取高度(结果)"
+      },
+      "demoInvocation": "OCR结果_取高度(0)"
+    },
+    {
+      "index": 17,
+      "name": "OCR结果_取JSON",
+      "signature": "OCR结果_取JSON(结果)",
+      "description": "返回完整识别结果 JSON：errcode、width、height、lines[]（text、rate、left/top/right/bottom、chars[] 字符级坐标）。",
+      "insertText": "OCR结果_取JSON($1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "OCR结果_取JSON",
+        "runtimeName": "OCR结果_取JSON",
+        "parameters": [
+          {
+            "name": "结果",
+            "type": "OCR结果句柄",
+            "description": "OCR_识别 返回的受管结果。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "OCR结果_取JSON(结果)"
+      },
+      "demoInvocation": "OCR结果_取JSON(0)"
+    },
+    {
+      "index": 18,
+      "name": "OCR结果_释放",
+      "signature": "OCR结果_释放(结果)",
+      "description": "释放一个识别结果句柄；句柄无效返回假。",
+      "insertText": "OCR结果_释放($1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "OCR结果_释放",
+        "runtimeName": "OCR结果_释放",
+        "parameters": [
+          {
+            "name": "结果",
+            "type": "OCR结果句柄",
+            "description": "要释放的受管结果。"
+          }
+        ],
+        "returnType": "bool",
+        "example": "OCR结果_释放(结果)"
+      },
+      "demoInvocation": "OCR结果_释放(0)"
+    },
+    {
+      "index": 19,
+      "name": "OCR结果_释放全部",
+      "signature": "OCR结果_释放全部()",
+      "description": "释放当前进程内全部识别结果句柄。",
+      "insertText": "OCR结果_释放全部()",
+      "returnType": "空",
+      "binding": {
+        "command": "OCR结果_释放全部",
+        "runtimeName": "OCR结果_释放全部",
+        "parameters": [],
+        "returnType": "void"
+      },
+      "demoInvocation": "OCR结果_释放全部()"
+    }
+  ]
+}

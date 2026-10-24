@@ -1,0 +1,745 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-24T03:43:55.589Z",
+  "module": {
+    "id": "lingbuilder.data.word",
+    "name": "Word文档模块",
+    "version": "1.0.0",
+    "description": "读写 .docx 文档：标题/段落/表格/图片追加、{{占位符}} 模板批量替换、一键生成报告、导出 PDF（本模块子集）与表格 Excel 互转，无需安装 Microsoft Word。"
+  },
+  "commandCount": 27,
+  "commands": [
+    {
+      "index": 1,
+      "name": "Word_创建文档",
+      "signature": "Word_创建文档()",
+      "description": "新建一个仅存在于内存的 .docx 文档；调用 Word_保存文档 才写出文件。",
+      "insertText": "Word_创建文档()",
+      "returnType": "Word文档",
+      "returnDescription": "成功返回非 0 的 Word文档，失败返回 0。",
+      "category": "文档",
+      "binding": {
+        "command": "Word_创建文档",
+        "runtimeName": "Word_创建文档",
+        "parameters": [],
+        "returnType": "Word文档",
+        "example": "局部 Word文档 文档 = Word_创建文档()"
+      },
+      "demoInvocation": "Word_创建文档()"
+    },
+    {
+      "index": 2,
+      "name": "Word_打开文档",
+      "signature": "Word_打开文档(文件路径)",
+      "description": "打开既有 .docx 文档：可读段落表格、替换占位符、追加内容后另存。",
+      "insertText": "Word_打开文档(\"$1\")",
+      "returnType": "Word文档",
+      "returnDescription": "成功返回非 0 的 Word文档，失败返回 0。",
+      "category": "文档",
+      "binding": {
+        "command": "Word_打开文档",
+        "runtimeName": "Word_打开文档",
+        "parameters": [
+          {
+            "name": "文件路径",
+            "type": "wideString",
+            "description": "既有 .docx 文件路径；旧版 .doc 二进制格式会被明确拒绝，请先另存为 .docx。"
+          }
+        ],
+        "returnType": "Word文档",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Word_打开文档(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 3,
+      "name": "Word_保存文档",
+      "signature": "Word_保存文档(文档, 文件路径)",
+      "description": "把文档写出到指定路径（创建与打开模式通用；打开模式会保留原文档其余部分原样改写）。",
+      "insertText": "Word_保存文档(0, \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "Word_保存文档",
+        "runtimeName": "Word_保存文档",
+        "parameters": [
+          {
+            "name": "文档",
+            "type": "Word文档",
+            "description": "由 Word_创建文档 或 Word_打开文档 返回的受管文档。"
+          },
+          {
+            "name": "文件路径",
+            "type": "wideString",
+            "description": "要写出的 .docx 文件路径；目录必须已存在。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Word_保存文档(0, \"module-demo-temp.txt\")"
+    },
+    {
+      "index": 4,
+      "name": "Word_关闭文档",
+      "signature": "Word_关闭文档(文档)",
+      "description": "关闭并释放文档；未保存的修改会丢失。失效句柄返回假。",
+      "insertText": "Word_关闭文档(0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "Word_关闭文档",
+        "runtimeName": "Word_关闭文档",
+        "parameters": [
+          {
+            "name": "文档",
+            "type": "Word文档",
+            "description": "由 Word_创建文档 或 Word_打开文档 返回的受管文档。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "Word_关闭文档(0)"
+    },
+    {
+      "index": 5,
+      "name": "Word_释放全部",
+      "signature": "Word_释放全部()",
+      "description": "释放当前进程内全部文档句柄。",
+      "insertText": "Word_释放全部()",
+      "returnType": "空",
+      "category": "文档",
+      "binding": {
+        "command": "Word_释放全部",
+        "runtimeName": "Word_释放全部",
+        "parameters": [],
+        "returnType": "void"
+      },
+      "demoInvocation": "Word_释放全部()"
+    },
+    {
+      "index": 6,
+      "name": "Word_取全文本",
+      "signature": "Word_取全文本(文档)",
+      "description": "返回全部段落与表格单元格文本：段落之间换行分隔，单元格之间制表符分隔。",
+      "insertText": "Word_取全文本(0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "Word_取全文本",
+        "runtimeName": "Word_取全文本",
+        "parameters": [
+          {
+            "name": "文档",
+            "type": "Word文档",
+            "description": "由 Word_创建文档 或 Word_打开文档 返回的受管文档。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Word_取全文本(0)"
+    },
+    {
+      "index": 7,
+      "name": "Word_取段落数",
+      "signature": "Word_取段落数(文档)",
+      "description": "返回文档段落数（表格内段落不计入）。",
+      "insertText": "Word_取段落数(0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "Word_取段落数",
+        "runtimeName": "Word_取段落数",
+        "parameters": [
+          {
+            "name": "文档",
+            "type": "Word文档",
+            "description": "由 Word_创建文档 或 Word_打开文档 返回的受管文档。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "Word_取段落数(0)"
+    },
+    {
+      "index": 8,
+      "name": "Word_取段落文本",
+      "signature": "Word_取段落文本(文档, 索引)",
+      "description": "返回指定段落的文本；越界返回空文本并记录错误。",
+      "insertText": "Word_取段落文本(0, 0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "Word_取段落文本",
+        "runtimeName": "Word_取段落文本",
+        "parameters": [
+          {
+            "name": "文档",
+            "type": "Word文档",
+            "description": "由 Word_创建文档 或 Word_打开文档 返回的受管文档。"
+          },
+          {
+            "name": "索引",
+            "type": "int",
+            "description": "从 1 开始的段落序号。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Word_取段落文本(0, 1)"
+    },
+    {
+      "index": 9,
+      "name": "Word_取段落样式",
+      "signature": "Word_取段落样式(文档, 索引)",
+      "description": "返回段落样式：标题1～标题6 或 正文。",
+      "insertText": "Word_取段落样式(0, 0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "Word_取段落样式",
+        "runtimeName": "Word_取段落样式",
+        "parameters": [
+          {
+            "name": "文档",
+            "type": "Word文档",
+            "description": "由 Word_创建文档 或 Word_打开文档 返回的受管文档。"
+          },
+          {
+            "name": "索引",
+            "type": "int",
+            "description": "从 1 开始的段落序号。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Word_取段落样式(0, 1)"
+    },
+    {
+      "index": 10,
+      "name": "Word_取表格数",
+      "signature": "Word_取表格数(文档)",
+      "description": "返回文档表格数量（含未保存的新建表格）。",
+      "insertText": "Word_取表格数(0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "Word_取表格数",
+        "runtimeName": "Word_取表格数",
+        "parameters": [
+          {
+            "name": "文档",
+            "type": "Word文档",
+            "description": "由 Word_创建文档 或 Word_打开文档 返回的受管文档。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "Word_取表格数(0)"
+    },
+    {
+      "index": 11,
+      "name": "Word_取表格行数",
+      "signature": "Word_取表格行数(文档, 表格索引)",
+      "description": "返回表格行数；越界返回 0 并记录错误。",
+      "insertText": "Word_取表格行数(0, 0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "Word_取表格行数",
+        "runtimeName": "Word_取表格行数",
+        "parameters": [
+          {
+            "name": "文档",
+            "type": "Word文档",
+            "description": "由 Word_创建文档 或 Word_打开文档 返回的受管文档。"
+          },
+          {
+            "name": "表格索引",
+            "type": "int",
+            "description": "从 1 开始的表格序号。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "Word_取表格行数(0, 1)"
+    },
+    {
+      "index": 12,
+      "name": "Word_取表格列数",
+      "signature": "Word_取表格列数(文档, 表格索引)",
+      "description": "返回表格列数（按最大行宽计）。",
+      "insertText": "Word_取表格列数(0, 0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "Word_取表格列数",
+        "runtimeName": "Word_取表格列数",
+        "parameters": [
+          {
+            "name": "文档",
+            "type": "Word文档",
+            "description": "由 Word_创建文档 或 Word_打开文档 返回的受管文档。"
+          },
+          {
+            "name": "表格索引",
+            "type": "int",
+            "description": "从 1 开始的表格序号。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "Word_取表格列数(0, 1)"
+    },
+    {
+      "index": 13,
+      "name": "Word_取单元格文本",
+      "signature": "Word_取单元格文本(文档, 表格索引, 行, 列)",
+      "description": "返回表格单元格文本；越界返回空文本并记录错误。",
+      "insertText": "Word_取单元格文本(0, 0, 0, 0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "Word_取单元格文本",
+        "runtimeName": "Word_取单元格文本",
+        "parameters": [
+          {
+            "name": "文档",
+            "type": "Word文档",
+            "description": "由 Word_创建文档 或 Word_打开文档 返回的受管文档。"
+          },
+          {
+            "name": "表格索引",
+            "type": "int",
+            "description": "从 1 开始的表格序号。"
+          },
+          {
+            "name": "行",
+            "type": "int",
+            "description": "从 1 开始的行号。"
+          },
+          {
+            "name": "列",
+            "type": "int",
+            "description": "从 1 开始的列号。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Word_取单元格文本(0, 1, 1, 1)"
+    },
+    {
+      "index": 14,
+      "name": "Word_添加标题",
+      "signature": "Word_添加标题(文档, 文本, 级别)",
+      "description": "在文档末尾追加一个标题段落。",
+      "insertText": "Word_添加标题(0, \"$2\", 0)",
+      "returnType": "逻辑型",
+      "category": "写入",
+      "binding": {
+        "command": "Word_添加标题",
+        "runtimeName": "Word_添加标题",
+        "parameters": [
+          {
+            "name": "文档",
+            "type": "Word文档",
+            "description": "由 Word_创建文档 或 Word_打开文档 返回的受管文档。"
+          },
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "标题内容。"
+          },
+          {
+            "name": "级别",
+            "type": "int",
+            "description": "1～6 级标题。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Word_添加标题(0, \"演示参数2\", 1)"
+    },
+    {
+      "index": 15,
+      "name": "Word_添加段落",
+      "signature": "Word_添加段落(文档, 文本, 样式)",
+      "description": "在文档末尾追加一个文本段落。",
+      "insertText": "Word_添加段落(0, \"$2\", \"$3\")",
+      "returnType": "逻辑型",
+      "category": "写入",
+      "binding": {
+        "command": "Word_添加段落",
+        "runtimeName": "Word_添加段落",
+        "parameters": [
+          {
+            "name": "文档",
+            "type": "Word文档",
+            "description": "由 Word_创建文档 或 Word_打开文档 返回的受管文档。"
+          },
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "段落内容，可含换行（写成多行）。"
+          },
+          {
+            "name": "样式",
+            "type": "wideString",
+            "description": "标题1～标题6 或 正文；留空按正文。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Word_添加段落(0, \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 16,
+      "name": "Word_添加表格",
+      "signature": "Word_添加表格(文档, 行数, 列数)",
+      "description": "在文档末尾追加一个带边框的空表格，之后用 Word_设置单元格文本 填内容。",
+      "insertText": "Word_添加表格(0, 0, 0)",
+      "returnType": "逻辑型",
+      "category": "写入",
+      "binding": {
+        "command": "Word_添加表格",
+        "runtimeName": "Word_添加表格",
+        "parameters": [
+          {
+            "name": "文档",
+            "type": "Word文档",
+            "description": "由 Word_创建文档 或 Word_打开文档 返回的受管文档。"
+          },
+          {
+            "name": "行数",
+            "type": "int",
+            "description": "1～1000。"
+          },
+          {
+            "name": "列数",
+            "type": "int",
+            "description": "1～100。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "Word_添加表格(0, 1, 1)"
+    },
+    {
+      "index": 17,
+      "name": "Word_设置单元格文本",
+      "signature": "Word_设置单元格文本(文档, 表格索引, 行, 列, 文本)",
+      "description": "覆写表格单元格文本。",
+      "insertText": "Word_设置单元格文本(0, 0, 0, 0, \"$5\")",
+      "returnType": "逻辑型",
+      "category": "写入",
+      "binding": {
+        "command": "Word_设置单元格文本",
+        "runtimeName": "Word_设置单元格文本",
+        "parameters": [
+          {
+            "name": "文档",
+            "type": "Word文档",
+            "description": "由 Word_创建文档 或 Word_打开文档 返回的受管文档。"
+          },
+          {
+            "name": "表格索引",
+            "type": "int",
+            "description": "从 1 开始的表格序号（新建表格在前）。"
+          },
+          {
+            "name": "行",
+            "type": "int",
+            "description": "从 1 开始的行号。"
+          },
+          {
+            "name": "列",
+            "type": "int",
+            "description": "从 1 开始的列号。"
+          },
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "单元格内容，可含换行。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Word_设置单元格文本(0, 1, 1, 1, \"演示参数5\")"
+    },
+    {
+      "index": 18,
+      "name": "Word_添加图片",
+      "signature": "Word_添加图片(文档, 图片路径, 宽度, 高度)",
+      "description": "在文档末尾插入一张内联图片。",
+      "insertText": "Word_添加图片(0, \"$2\", 0, 0)",
+      "returnType": "逻辑型",
+      "category": "写入",
+      "binding": {
+        "command": "Word_添加图片",
+        "runtimeName": "Word_添加图片",
+        "parameters": [
+          {
+            "name": "文档",
+            "type": "Word文档",
+            "description": "由 Word_创建文档 或 Word_打开文档 返回的受管文档。"
+          },
+          {
+            "name": "图片路径",
+            "type": "wideString",
+            "description": "本地 PNG 或 JPEG 图片路径。"
+          },
+          {
+            "name": "宽度",
+            "type": "int",
+            "description": "显示宽度像素（96dpi）；传 0 按图片原始尺寸。"
+          },
+          {
+            "name": "高度",
+            "type": "int",
+            "description": "显示高度像素；传 0 按图片原始尺寸。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Word_添加图片(0, \"module-demo-temp.txt\", 1, 1)"
+    },
+    {
+      "index": 19,
+      "name": "Word_替换占位符",
+      "signature": "Word_替换占位符(文档, 占位名, 替换值)",
+      "description": "全文替换一处占位符，返回替换次数（0 表示模板中没有该占位符）。段落级合并 run 后替换，IME/拼写检查把 {{名称}} 拆进多个文本片段也能正确命中；表格单元格内同样生效。",
+      "insertText": "Word_替换占位符(0, \"$2\", \"$3\")",
+      "returnType": "整数型",
+      "returnDescription": "替换次数；模板未包含该占位符时为 0。",
+      "category": "模板",
+      "binding": {
+        "command": "Word_替换占位符",
+        "runtimeName": "Word_替换占位符",
+        "parameters": [
+          {
+            "name": "文档",
+            "type": "Word文档",
+            "description": "由 Word_创建文档 或 Word_打开文档 返回的受管文档。"
+          },
+          {
+            "name": "占位名",
+            "type": "wideString",
+            "description": "占位符名称，对应模板中的 {{占位名}} 或 {{ 占位名 }}。"
+          },
+          {
+            "name": "替换值",
+            "type": "wideString",
+            "description": "替换后的内容。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Word_替换占位符(0, \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 20,
+      "name": "Word_批量替换占位符",
+      "signature": "Word_批量替换占位符(文档, 替换JSON)",
+      "description": "按 JSON 对象批量替换全部占位符，返回总替换次数。",
+      "insertText": "Word_批量替换占位符(0, \"$2\")",
+      "returnType": "整数型",
+      "returnDescription": "总替换次数。",
+      "category": "模板",
+      "binding": {
+        "command": "Word_批量替换占位符",
+        "runtimeName": "Word_批量替换占位符",
+        "parameters": [
+          {
+            "name": "文档",
+            "type": "Word文档",
+            "description": "由 Word_创建文档 或 Word_打开文档 返回的受管文档。"
+          },
+          {
+            "name": "替换JSON",
+            "type": "wideString",
+            "description": "形如 {\"客户名称\":\"张三\",\"金额\":\"998.50\"} 的 JSON 对象。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Word_批量替换占位符(0, \"{}\")"
+    },
+    {
+      "index": 21,
+      "name": "Word_从JSON生成报告",
+      "signature": "Word_从JSON生成报告(模板路径, 数据JSON, 输出路径)",
+      "description": "一步完成「打开模板 → 批量替换 → 保存输出」，批量报告生成的主入口。",
+      "insertText": "Word_从JSON生成报告(\"$1\", \"$2\", \"$3\")",
+      "returnType": "逻辑型",
+      "category": "模板",
+      "binding": {
+        "command": "Word_从JSON生成报告",
+        "runtimeName": "Word_从JSON生成报告",
+        "parameters": [
+          {
+            "name": "模板路径",
+            "type": "wideString",
+            "description": ".docx 模板文件路径，内含 {{占位符}}。"
+          },
+          {
+            "name": "数据JSON",
+            "type": "wideString",
+            "description": "形如 {\"占位名\":\"值\"} 的 JSON 对象。"
+          },
+          {
+            "name": "输出路径",
+            "type": "wideString",
+            "description": "生成报告的 .docx 写出路径。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Word_从JSON生成报告(\"module-demo-temp.txt\", \"{}\", \"module-demo-temp.txt\")"
+    },
+    {
+      "index": 22,
+      "name": "Word_导出PDF",
+      "signature": "Word_导出PDF(文档, 输出路径)",
+      "description": "把文档导出为 PDF：中文走 CID 字体方案（查看器字体替换，Chrome/Edge/WPS 可直接显示），表格自动分页并重复表头，图片按比例嵌入。仅支持本模块内容子集（段落/表格/图片）；文档含文本框、浮动图形等未支持元素时明确报错并指出元素类型，不会静默丢内容。",
+      "insertText": "Word_导出PDF(0, \"$2\")",
+      "returnType": "逻辑型",
+      "category": "转换",
+      "binding": {
+        "command": "Word_导出PDF",
+        "runtimeName": "Word_导出PDF",
+        "parameters": [
+          {
+            "name": "文档",
+            "type": "Word文档",
+            "description": "由 Word_创建文档 或 Word_打开文档 返回的受管文档。"
+          },
+          {
+            "name": "输出路径",
+            "type": "wideString",
+            "description": "生成的 .pdf 写出路径。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Word_导出PDF(0, \"module-demo-temp.txt\")"
+    },
+    {
+      "index": 23,
+      "name": "Word_表格另存Excel",
+      "signature": "Word_表格另存Excel(文档, 表格索引, 输出路径)",
+      "description": "把文档中的表格导出为 .xlsx 工作表（Excel/WPS 可直接打开）。",
+      "insertText": "Word_表格另存Excel(0, 0, \"$3\")",
+      "returnType": "逻辑型",
+      "category": "转换",
+      "binding": {
+        "command": "Word_表格另存Excel",
+        "runtimeName": "Word_表格另存Excel",
+        "parameters": [
+          {
+            "name": "文档",
+            "type": "Word文档",
+            "description": "由 Word_创建文档 或 Word_打开文档 返回的受管文档。"
+          },
+          {
+            "name": "表格索引",
+            "type": "int",
+            "description": "从 1 开始的表格序号。"
+          },
+          {
+            "name": "输出路径",
+            "type": "wideString",
+            "description": "生成的 .xlsx 写出路径。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Word_表格另存Excel(0, 1, \"module-demo-temp.txt\")"
+    },
+    {
+      "index": 24,
+      "name": "Word_从Excel填充表格",
+      "signature": "Word_从Excel填充表格(文档, 表格索引, Excel路径)",
+      "description": "把 Excel 第一个工作表的数据按单元格坐标覆写到文档表格：Excel 第 1 行第 1 列写入表格 (1,1)。要求表格行列不小于数据区域，超出会明确报错。批量报告「Excel 数据 → Word 模板表格」的主链路。",
+      "insertText": "Word_从Excel填充表格(0, 0, \"$3\")",
+      "returnType": "逻辑型",
+      "category": "转换",
+      "binding": {
+        "command": "Word_从Excel填充表格",
+        "runtimeName": "Word_从Excel填充表格",
+        "parameters": [
+          {
+            "name": "文档",
+            "type": "Word文档",
+            "description": "由 Word_创建文档 或 Word_打开文档 返回的受管文档。"
+          },
+          {
+            "name": "表格索引",
+            "type": "int",
+            "description": "从 1 开始的表格序号（被填充的目标表）。"
+          },
+          {
+            "name": "Excel路径",
+            "type": "wideString",
+            "description": "数据来源 .xlsx 路径，读取第一个工作表。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Word_从Excel填充表格(0, 1, \"module-demo-temp.txt\")"
+    },
+    {
+      "index": 25,
+      "name": "Word_取错误",
+      "signature": "Word_取错误()",
+      "description": "返回当前线程最近一次 Word 模块错误的中文说明。",
+      "insertText": "Word_取错误()",
+      "returnType": "文本型",
+      "category": "诊断",
+      "binding": {
+        "command": "Word_取错误",
+        "runtimeName": "Word_取错误",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Word_取错误()"
+    },
+    {
+      "index": 26,
+      "name": "Word_取版本",
+      "signature": "Word_取版本()",
+      "description": "返回随附运行桥版本与内置组件信息。",
+      "insertText": "Word_取版本()",
+      "returnType": "文本型",
+      "category": "诊断",
+      "binding": {
+        "command": "Word_取版本",
+        "runtimeName": "Word_取版本",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Word_取版本()"
+    },
+    {
+      "index": 27,
+      "name": "Word_是否可用",
+      "signature": "Word_是否可用()",
+      "description": "检查随附运行桥 LingBuilderWord.dll 是否可以加载且全部导出可用。",
+      "insertText": "Word_是否可用()",
+      "returnType": "逻辑型",
+      "category": "诊断",
+      "binding": {
+        "command": "Word_是否可用",
+        "runtimeName": "Word_是否可用",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "Word_是否可用()"
+    }
+  ]
+}
