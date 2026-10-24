@@ -110,7 +110,7 @@ export function ProMembershipAdmin({ data, request, reload, role }: { data: any;
     {message && <div className={message.error ? 'alert' : 'form-success'} role="status">{message.text}</div>}
 
     <section className="panel">
-      <div className="panel-head"><div><span className="eyebrow">赞助名单</span><h2>按 QQ 聚合的赞助记录（{sponsors.length}）</h2><p>金额为活动截止前启用的赞助合计；「转入」会按规则自动定档，再补填注册邮箱即可提交。</p></div></div>
+      <div className="panel-head"><div><span className="eyebrow">赞助名单</span><h2>按 QQ 聚合的赞助记录（{sponsors.length}）</h2><p>金额为活动截止前启用的赞助合计；「转入」会按规则自动定档，再补填注册邮箱即可提交。2026-10-24 起规则收紧（不溯及既往）：不足 ¥99 赠一年仅限 2026-10-24 前已有赞助记录的 QQ，收紧后新增的小额赞助会显示「不符合」。</p></div></div>
       {sponsors.length ? <div className="table-wrap"><table>
         <thead><tr><th>QQ 号</th><th>笔数</th><th>累计金额</th><th>可转金额</th><th>判定档位</th><th>最近赞助</th><th>已转入</th>{canWrite && <th>操作</th>}</tr></thead>
         <tbody>{sponsors.map(sponsor => <tr key={sponsor.qqNumber}>

@@ -9,7 +9,13 @@ type JsonRecord = Record<string, unknown>;
 
 // 赞助转 Pro 活动规则（2026-10-05 拍板）：活动截止 2026-11-11（北京时间）；
 // 截止前累计赞助 ≥ ¥99 → 永久买断；< ¥99 → 赠送一年（参照 99/年 档）。
+// 2026-10-24 收紧（不溯及既往）：「< ¥99 赠一年」仅限收紧当日零点前已有赞助记录的 QQ——
+// 否则活动期内新增 ¥0.01 赞助也能白得一年 Pro（再补差 ¥200 可拿 ¥299 永久档）。
+// 生产核查：10-05~10-23 活动期赞助共 8 QQ/9 笔均为 ¥50+ 真实金额、无小额薅羊毛，全部保留赠一年资格。
+// 收紧后新增的赞助只参与「累计满 ¥99 转永久」档。
 export const SPONSOR_ACTIVITY_DEADLINE = new Date('2026-11-11T23:59:59+08:00');
+// 老赞助者基线：首笔启用赞助早于 2026-10-24 零点（规则收紧当日，即日起新增不再赠一年）。
+export const SPONSOR_LEGACY_BASELINE = new Date('2026-10-24T00:00:00+08:00');
 export const SPONSOR_PERPETUAL_THRESHOLD_MINOR = 9900;
 export const YEARLY_DURATION_DAYS = 365;
 // 年费会员升级买断的默认补差价：299（买断）− 99（年费）= 200 元，管理员可改。
@@ -136,7 +142,7 @@ export class ProMembershipService {
     return { ok: true, rules: grouped, updatedAt };
   }
 
-  /** 按QQ聚合全部赞助记录：活动截止前的启用金额决定可转入档位；已转入的标注会员邮箱。 */
+  /** 按QQ聚合全部赞助记录：活动截止前的启用金额决定可转入档位（满99买断；不足99赠一年仅限活动上线前的老赞助者）；已转入的标注会员邮箱。 */
   async sponsorSummary(): Promise<SponsorSummaryRow[]> {
     const [rows, memberships] = await Promise.all([
       this.prisma.websiteSponsor.findMany({ orderBy: { sponsoredAt: 'asc' } }),
@@ -148,6 +154,7 @@ export class ProMembershipService {
       if (qq && !membership.revokedAt) converted.set(qq, membership.user?.email || '');
     }
     const aggregated = new Map<string, SponsorSummaryRow>();
+    const firstEligibleAt = new Map<string, number>();
     for (const row of rows) {
       const qq = String(row.qqNumber || '').trim();
       if (!qq) continue;
@@ -155,14 +162,22 @@ export class ProMembershipService {
       entry.count += 1;
       const amount = Number(row.amountCents) || 0;
       entry.totalMinor += amount;
-      if (row.enabled !== false && new Date(row.sponsoredAt).getTime() <= SPONSOR_ACTIVITY_DEADLINE.getTime()) entry.eligibleMinor += amount;
+      if (row.enabled !== false && new Date(row.sponsoredAt).getTime() <= SPONSOR_ACTIVITY_DEADLINE.getTime()) {
+        entry.eligibleMinor += amount;
+        const at = new Date(row.sponsoredAt).getTime();
+        const first = firstEligibleAt.get(qq);
+        if (first === undefined || at < first) firstEligibleAt.set(qq, at);
+      }
       const sponsoredAt = new Date(row.sponsoredAt).toISOString();
       if (sponsoredAt > entry.lastSponsoredAt) entry.lastSponsoredAt = sponsoredAt;
       aggregated.set(qq, entry);
     }
     const list = [...aggregated.values()].sort((a, b) => b.eligibleMinor - a.eligibleMinor || b.totalMinor - a.totalMinor);
     for (const entry of list) {
-      entry.eligibleTier = entry.eligibleMinor >= SPONSOR_PERPETUAL_THRESHOLD_MINOR ? 'perpetual' : entry.eligibleMinor > 0 ? 'yearly' : 'none';
+      const firstAt = firstEligibleAt.get(entry.qqNumber);
+      entry.eligibleTier = entry.eligibleMinor >= SPONSOR_PERPETUAL_THRESHOLD_MINOR
+        ? 'perpetual'
+        : entry.eligibleMinor > 0 && firstAt !== undefined && firstAt < SPONSOR_LEGACY_BASELINE.getTime() ? 'yearly' : 'none';
       entry.convertedEmail = converted.get(entry.qqNumber) || '';
     }
     return list;
@@ -184,7 +199,10 @@ export class ProMembershipService {
       if (!/^\d{5,12}$/u.test(sponsorQq)) throw validation('赞助转入必须填写有效的赞助 QQ 号（5 至 12 位数字）。');
       const summary = await this.sponsorSummary();
       const entry = summary.find(item => item.qqNumber === sponsorQq);
-      if (!entry || entry.eligibleTier === 'none') throw validation(`该 QQ 在活动截止（${formatDate(SPONSOR_ACTIVITY_DEADLINE)}）前没有启用的赞助记录，不符合转入条件。`);
+      if (!entry || entry.eligibleTier === 'none') {
+        if (entry && entry.eligibleMinor > 0) throw validation(`该 QQ 累计赞助 ${formatYuan(entry.eligibleMinor)}，但首笔赞助在 2026-10-24 规则收紧之后：不足 ¥99 赠一年已停止，累计满 ¥99 后可转入永久档。`);
+        throw validation(`该 QQ 在活动截止（${formatDate(SPONSOR_ACTIVITY_DEADLINE)}）前没有启用的赞助记录，不符合转入条件。`);
+      }
       const computed = entry.eligibleTier;
       if (tier !== 'auto' && tier !== computed) throw validation(`按活动规则该 QQ 累计 ${formatYuan(entry.eligibleMinor)}，只能转入${computed === 'perpetual' ? '永久买断' : '一年'}档，不能自选其它档位。`);
       tier = computed;
