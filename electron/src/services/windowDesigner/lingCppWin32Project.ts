@@ -13,6 +13,7 @@ import { NETWORK_LIBRARY_MODULES } from '../modules/networkLibraryModules';
 import { DATA_MEDIA_MODULES } from '../modules/dataMediaModules';
 import { PLATFORM_ADVANCED_MODULES } from '../modules/platformAdvancedModules';
 import { findLingCppMethod, isLingCppCommentLine, normalizeIdentifier, parseLingCpp } from '../lingCpp/parser';
+import { allowsControlReferenceLiteralZero } from '../lingCpp/controlReferenceLiteralZero';
 import { createProjectDllDeclarationModule, buildProjectDllMemoryResourceLines, collectProjectDllMissingSystemAliasDiagnostics, getProjectDllMemoryLibrarySpecs } from '../lingCpp/projectDllCommandService';
 import {
   LingCppAst,
@@ -60,6 +61,7 @@ import { generateSystemLibraryRuntime } from './systemLibraryRuntime';
 import { generateNetworkLibraryRuntime } from './networkLibraryRuntime';
 import { generateDataMediaRuntime } from './dataMediaRuntime';
 import { generateQrCodeRuntime } from './qrCodeRuntime';
+import { generateBarcodeRuntime } from './barcodeRuntime';
 import { generateWxOcrRuntime } from './wxOcrRuntime';
 import { generateSharedTableRuntime } from './tabularSourceRuntime';
 import { generateComWindowMethods, generateComWndProcCase, generatePlatformAdvancedRuntime } from './platformAdvancedRuntime';
@@ -329,12 +331,29 @@ interface LingCppTranslationContext {
   wideStringVariables: ReadonlySet<string>;
   /** 元素类型是文本型的数组：数组成员型命令的文本性由它们决定。 */
   wideStringArrayVariables: ReadonlySet<string>;
+  /**
+   * 处理器闭包如何引用同类处理器：Win32 窗口类是成员方法（this->），
+   * new_emoji 后端是 static 自由函数（无 this），必须由生成入口按后端声明。
+   */
+  windowSelfReference: 'member' | 'none';
+  /**
+   * 裸「返回()」在当前方法上下文里翻译成的 C++ 语句：普通子程序/处理器是
+   * return;，而 new_emoji 后端的「创建完毕」整体内联进返回 int 的 wWinMain，
+   * 裸 return; 会吃 C2561，必须由创建完毕内联点改发 return 0;。
+   */
+  earlyReturnCpp?: string;
+}
+
+interface LingCppBackendTranslationOptions {
+  windowSelfReference?: 'member' | 'none';
+  earlyReturnCpp?: string;
 }
 
 const EMPTY_TRANSLATION_CONTEXT: LingCppTranslationContext = {
   runtimeControlVariables: new Set<string>(),
   wideStringVariables: new Set<string>(),
-  wideStringArrayVariables: new Set<string>()
+  wideStringArrayVariables: new Set<string>(),
+  windowSelfReference: 'member'
 };
 
 interface AggregatedLingCppProjectSources {
@@ -1487,6 +1506,7 @@ const NEW_EMOJI_DATA_BRIDGE_COMMANDS = [
   'NE富列表_取样式', 'NE富列表_取倒计时状态', 'NE富列表_更新条目', 'NE富列表_删除条目', 'NE富列表_条目覆盖',
   'NE富列表_追加倒计时', 'NE富列表_清空条目',
   'NE_设置窗口图标字节', 'NE_显示提问框', 'NE_显示通知', 'NE_显示加载遮罩', 'NE_关闭加载遮罩',
+  'NE无限滚动_追加列表项', 'NE空状态_设置动作回调', 'NE无限滚动_设置加载回调',
   'NE标签页_设置激活索引', 'NE标签页_取激活索引', 'NE标签页_取激活标题', 'NE标签页_取项目数量',
   'NE标签页_添加项目', 'NE标签页_关闭项目', 'NE标签页_设置滚动偏移', 'NE标签页_滚动',
   'NE标签页_设置标签样式', 'NE标签页_设置标签位置', 'NE标签页_设置表头对齐',
@@ -1495,6 +1515,13 @@ const NEW_EMOJI_DATA_BRIDGE_COMMANDS = [
   'NE标签页_设置项目可关闭', 'NE标签页_设置项目状态', 'NE标签页_设置新建按钮可见', 'NE标签页_设置拖拽选项',
   'NE标签页_取项矩形', 'NE标签页_取项矩形2', 'NE标签页_取标签条内容宽'
 ];
+
+// 回调桥命令清单：这些命令的 cb 形参在 .lcpp 里写 &处理器名，底层导出收函数指针——
+// 生成器按源码引用产出静态跳板 + 查找表，并以中文命令名发射同名宽字符助手（调用点不发 EU_ 运行名）。
+const NEW_EMOJI_HANDLER_BRIDGE_COMMANDS = new Set([
+  'NE空状态_设置动作回调',
+  'NE无限滚动_设置加载回调',
+]);
 
 // 数据桥接助手按需生成：源码未引用这些命令时不产出任何助手，
 // 保持历史工程生成结果不变（部分测试对生成 C++ 做整文件 EU_ 扫描）。
@@ -1515,7 +1542,13 @@ function generateNewEmojiDataBridgeCpp(
       return method ? [{ name, method }] : [];
     });
   };
-  const buildTrampoline = (callback: string, parameters: string, callbackType: string, method: LingCppMethod) => {
+  const buildTrampoline = (
+    callback: string,
+    parameters: string,
+    callbackType: string,
+    method: LingCppMethod,
+    expressionOverrides?: Record<number, string>
+  ) => {
     const binding: NewEmojiCatalogEventBinding = {
       command: 'LB_NE_MsgBox',
       eventName: 'Result',
@@ -1523,32 +1556,97 @@ function generateNewEmojiDataBridgeCpp(
       method
     };
     return `static void __stdcall ${callback}(${parameters}) {
-${generateNewEmojiEventParameterDeclarations(binding, enabledModules, program.dataTypes)}
+${generateNewEmojiEventParameterDeclarations(binding, enabledModules, program.dataTypes, expressionOverrides)}
 ${generateNewEmojiMethodBody(method, enabledModules, program.dataTypes)}
 }`;
   };
-  const resultHandlers = collectHandlers(['NE_显示消息框', 'NE_显示确认框']);
+  const messageHandlers = collectHandlers(['NE_显示消息框']);
+  const confirmHandlers = collectHandlers(['NE_显示确认框']);
   const exHandlers = collectHandlers(['NE_显示扩展消息框']);
-  const resultTrampolines = resultHandlers.map((item, index) => buildTrampoline(
-    `LB_NE_MsgBoxResultCb_${index + 1}`,
+  const promptHandlers = collectHandlers(['NE_显示提问框']);
+  const messageTrampolines = messageHandlers.map((item, index) => buildTrampoline(
+    `LB_NE_MessageBoxResultCb_${index + 1}`,
     'int lb_messagebox_id, int lb_result',
     'MessageBoxResultCallback',
-    item.method
+    item.method,
+    { 1: 'LB_NE_MapMessageBoxResult(lb_result)' }
+  ));
+  const confirmTrampolines = confirmHandlers.map((item, index) => buildTrampoline(
+    `LB_NE_ConfirmBoxResultCb_${index + 1}`,
+    'int lb_messagebox_id, int lb_result',
+    'MessageBoxResultCallback',
+    item.method,
+    { 1: 'LB_NE_MapConfirmBoxResult(lb_result)' }
   ));
   const exTrampolines = exHandlers.map((item, index) => buildTrampoline(
     `LB_NE_MsgBoxExCb_${index + 1}`,
     'int lb_messagebox_id, int lb_action, const unsigned char* lb_value_utf8, int lb_value_utf8_length',
     'MessageBoxExCallback',
-    item.method
+    item.method,
+    { 1: 'LB_NE_MapMessageBoxExAction(lb_action)' }
   ));
-  const resultCases = resultHandlers.map((item, index) => `    if (std::wcscmp(handlerName, L"${escapeWideString(item.name)}") == 0) return LB_NE_MsgBoxResultCb_${index + 1};`).join('\n');
+  const promptTrampolines = promptHandlers.map((item, index) => buildTrampoline(
+    `LB_NE_PromptBoxCb_${index + 1}`,
+    'int lb_messagebox_id, int lb_action, const unsigned char* lb_value_utf8, int lb_value_utf8_length',
+    'MessageBoxExCallback',
+    item.method,
+    { 1: 'LB_NE_MapMessageBoxExAction(lb_action)' }
+  ));
+  const messageCases = messageHandlers.map((item, index) => `    if (std::wcscmp(handlerName, L"${escapeWideString(item.name)}") == 0) return LB_NE_MessageBoxResultCb_${index + 1};`).join('\n');
+  const confirmCases = confirmHandlers.map((item, index) => `    if (std::wcscmp(handlerName, L"${escapeWideString(item.name)}") == 0) return LB_NE_ConfirmBoxResultCb_${index + 1};`).join('\n');
   const exCases = exHandlers.map((item, index) => `    if (std::wcscmp(handlerName, L"${escapeWideString(item.name)}") == 0) return LB_NE_MsgBoxExCb_${index + 1};`).join('\n');
+  const promptCases = promptHandlers.map((item, index) => `    if (std::wcscmp(handlerName, L"${escapeWideString(item.name)}") == 0) return LB_NE_PromptBoxCb_${index + 1};`).join('\n');
+  const emptyActionHandlers = collectHandlers(['NE空状态_设置动作回调']);
+  const infiniteLoadHandlers = collectHandlers(['NE无限滚动_设置加载回调']);
+  const emptyActionTrampolines = emptyActionHandlers.map((item, index) => {
+    const binding: NewEmojiCatalogEventBinding = { command: 'LB_NE_EmptyAction', eventName: 'Action', callbackType: 'ElementClickCallback', method: item.method };
+    return `static void __stdcall LB_NE_EmptyActionCb_${index + 1}(int lb_element_id) {
+${generateNewEmojiEventParameterDeclarations(binding, enabledModules, program.dataTypes)}
+${generateNewEmojiMethodBody(item.method, enabledModules, program.dataTypes)}
+}`;
+  });
+  const infiniteLoadTrampolines = infiniteLoadHandlers.map((item, index) => {
+    const binding: NewEmojiCatalogEventBinding = { command: 'LB_NE_InfiniteScrollLoad', eventName: 'LoadMore', callbackType: 'ElementValueCallback', method: item.method };
+    return `static void __stdcall LB_NE_InfiniteScrollLoadCb_${index + 1}(int lb_element_id, int lb_value, int lb_range_start, int lb_range_end) {
+${generateNewEmojiEventParameterDeclarations(binding, enabledModules, program.dataTypes)}
+${generateNewEmojiMethodBody(item.method, enabledModules, program.dataTypes)}
+}`;
+  });
+  const emptyActionCases = emptyActionHandlers.map((item, index) => `    if (std::wcscmp(handlerName, L"${escapeWideString(item.name)}") == 0) return LB_NE_EmptyActionCb_${index + 1};`).join('\n');
+  const infiniteLoadCases = infiniteLoadHandlers.map((item, index) => `    if (std::wcscmp(handlerName, L"${escapeWideString(item.name)}") == 0) return LB_NE_InfiniteScrollLoadCb_${index + 1};`).join('\n');
   return `${NEW_EMOJI_DATA_BRIDGE_HELPERS}
-${resultTrampolines.join('\n\n')}
+// 原生回调枚举为 1 确认 / 0 取消 / -1 关闭；高层命令按模块清单统一为
+// 消息框 1 确认/2 关闭，确认框与扩展消息框/提问框 1 确认/2 取消/3 关闭。
+static int LB_NE_MapMessageBoxResult(int action) {
+    if (action <= 0) return 2;
+    return action;
+}
 
-static LB_NE_MsgBoxResultFn LB_NE_FindMsgBoxResultHandler(const wchar_t* handlerName) {
+static int LB_NE_MapConfirmBoxResult(int action) {
+    if (action == 0) return 2;
+    if (action < 0) return 3;
+    return action;
+}
+
+static int LB_NE_MapMessageBoxExAction(int action) {
+    if (action == 0) return 2;
+    if (action < 0) return 3;
+    return action;
+}
+
+${messageTrampolines.join('\n\n')}
+
+static LB_NE_MsgBoxResultFn LB_NE_FindMessageBoxResultHandler(const wchar_t* handlerName) {
     if (!handlerName || !*handlerName) return nullptr;
-${resultCases}
+${messageCases}
+    return nullptr;
+}
+
+${confirmTrampolines.join('\n\n')}
+
+static LB_NE_MsgBoxResultFn LB_NE_FindConfirmBoxResultHandler(const wchar_t* handlerName) {
+    if (!handlerName || !*handlerName) return nullptr;
+${confirmCases}
     return nullptr;
 }
 
@@ -1558,6 +1656,49 @@ static LB_NE_MsgBoxExFn LB_NE_FindMsgBoxExHandler(const wchar_t* handlerName) {
     if (!handlerName || !*handlerName) return nullptr;
 ${exCases}
     return nullptr;
+}
+
+${promptTrampolines.join('\n\n')}
+
+static LB_NE_MsgBoxExFn LB_NE_FindPromptBoxHandler(const wchar_t* handlerName) {
+    if (!handlerName || !*handlerName) return nullptr;
+${promptCases}
+    return nullptr;
+}
+
+// NE空状态_设置动作回调 / NE无限滚动_设置加载回调：底层导出收函数指针，
+// .lcpp 侧只写 &处理器名——生成器按源码引用生成静态跳板 + 查找表，
+// 同名宽字符助手把名字解析成跳板后再调原生导出。
+${emptyActionTrampolines.join('\n\n')}
+
+static LB_NE_EmptyActionFn LB_NE_FindEmptyActionHandler(const wchar_t* handlerName) {
+    if (!handlerName || !*handlerName) return nullptr;
+${emptyActionCases}
+    return nullptr;
+}
+
+${infiniteLoadTrampolines.join('\n\n')}
+
+static LB_NE_InfiniteScrollLoadFn LB_NE_FindInfiniteScrollLoadHandler(const wchar_t* handlerName) {
+    if (!handlerName || !*handlerName) return nullptr;
+${infiniteLoadCases}
+    return nullptr;
+}
+
+static bool NE空状态_设置动作回调(HWND hwnd, int elementId, const wchar_t* handlerName) {
+    if (!hwnd || !IsWindow(hwnd)) return false;
+    LB_NE_EmptyActionFn handler = LB_NE_FindEmptyActionHandler(handlerName);
+    if (!handler) return false;
+    EU_SetEmptyActionCallback(hwnd, elementId, handler);
+    return true;
+}
+
+static bool NE无限滚动_设置加载回调(HWND hwnd, int elementId, const wchar_t* handlerName) {
+    if (!hwnd || !IsWindow(hwnd)) return false;
+    LB_NE_InfiniteScrollLoadFn handler = LB_NE_FindInfiniteScrollLoadHandler(handlerName);
+    if (!handler) return false;
+    EU_SetInfiniteScrollLoadCallback(hwnd, elementId, handler);
+    return true;
 }`;
 }
 
@@ -1733,6 +1874,14 @@ static void NE徽标_设置文本(const wchar_t* controlName, const std::wstring
     EU_SetBadgeValue(g_newEmojiWindow, element->id, reinterpret_cast<const unsigned char*>(utf8.data()), static_cast<int>(utf8.size()));
 }
 
+static bool NE无限滚动_追加列表项(const wchar_t* controlName, const std::wstring& itemsText) {
+    const LB_NE_ElementRef* element = LB_NE_FindTypedElement(controlName, { L"InfiniteScroll" });
+    if (!element) return false;
+    const std::string utf8 = LB_NE_ToUtf8(itemsText.c_str());
+    EU_AppendInfiniteScrollItems(g_newEmojiWindow, element->id, reinterpret_cast<const unsigned char*>(utf8.data()), static_cast<int>(utf8.size()));
+    return true;
+}
+
 static int NE_设置窗口图标(HWND hwnd, const std::wstring& iconPath) {
     if (!hwnd || !IsWindow(hwnd)) return 0;
     const std::string utf8 = LB_NE_ToUtf8(iconPath.c_str());
@@ -1746,12 +1895,18 @@ static int NE_设置主题令牌(HWND hwnd, const std::wstring& tokenName, int c
 }
 
 // 消息框回调按 &处理器名 派发：跳板由生成器按源码中实际引用的处理器生成，
-// 查找表在 LB_NE_FindMsgBox*Handler 中；未引用任何处理器时查找返回空指针，
+// 查找表在 LB_NE_Find*Handler 中；未引用任何处理器时查找返回空指针，
 // 原生层仍会正常弹出消息框，只是没有回调。
 using LB_NE_MsgBoxResultFn = void (__stdcall *)(int, int);
 using LB_NE_MsgBoxExFn = void (__stdcall *)(int, int, const unsigned char*, int);
-static LB_NE_MsgBoxResultFn LB_NE_FindMsgBoxResultHandler(const wchar_t* handlerName);
+using LB_NE_EmptyActionFn = void (__stdcall *)(int);
+using LB_NE_InfiniteScrollLoadFn = void (__stdcall *)(int, int, int, int);
+static LB_NE_MsgBoxResultFn LB_NE_FindMessageBoxResultHandler(const wchar_t* handlerName);
+static LB_NE_MsgBoxResultFn LB_NE_FindConfirmBoxResultHandler(const wchar_t* handlerName);
 static LB_NE_MsgBoxExFn LB_NE_FindMsgBoxExHandler(const wchar_t* handlerName);
+static LB_NE_MsgBoxExFn LB_NE_FindPromptBoxHandler(const wchar_t* handlerName);
+static LB_NE_EmptyActionFn LB_NE_FindEmptyActionHandler(const wchar_t* handlerName);
+static LB_NE_InfiniteScrollLoadFn LB_NE_FindInfiniteScrollLoadHandler(const wchar_t* handlerName);
 
 static int NE_显示消息框(HWND hwnd, const std::wstring& title, const std::wstring& text, const std::wstring& confirmText, const wchar_t* handlerName) {
     if (!hwnd || !IsWindow(hwnd)) return 0;
@@ -1762,7 +1917,7 @@ static int NE_显示消息框(HWND hwnd, const std::wstring& title, const std::w
         reinterpret_cast<const unsigned char*>(titleUtf8.data()), static_cast<int>(titleUtf8.size()),
         reinterpret_cast<const unsigned char*>(textUtf8.data()), static_cast<int>(textUtf8.size()),
         reinterpret_cast<const unsigned char*>(confirmUtf8.data()), static_cast<int>(confirmUtf8.size()),
-        LB_NE_FindMsgBoxResultHandler(handlerName));
+        LB_NE_FindMessageBoxResultHandler(handlerName));
 }
 
 static int NE_显示确认框(HWND hwnd, const std::wstring& title, const std::wstring& text,
@@ -1777,7 +1932,7 @@ static int NE_显示确认框(HWND hwnd, const std::wstring& title, const std::w
         reinterpret_cast<const unsigned char*>(textUtf8.data()), static_cast<int>(textUtf8.size()),
         reinterpret_cast<const unsigned char*>(confirmUtf8.data()), static_cast<int>(confirmUtf8.size()),
         reinterpret_cast<const unsigned char*>(cancelUtf8.data()), static_cast<int>(cancelUtf8.size()),
-        LB_NE_FindMsgBoxResultHandler(handlerName));
+        LB_NE_FindConfirmBoxResultHandler(handlerName));
 }
 
 static int NE_显示扩展消息框(HWND hwnd, const std::wstring& title, const std::wstring& text,
@@ -2205,7 +2360,7 @@ static int NE_显示提问框(HWND hwnd, const std::wstring& title, const std::w
         reinterpret_cast<const unsigned char*>(confirmUtf8.data()), static_cast<int>(confirmUtf8.size()),
         reinterpret_cast<const unsigned char*>(cancelUtf8.data()), static_cast<int>(cancelUtf8.size()),
         boxType, center ? 1 : 0, rich ? 1 : 0, distinguishCancelClose ? 1 : 0,
-        LB_NE_FindMsgBoxExHandler(handlerName));
+        LB_NE_FindPromptBoxHandler(handlerName));
 }
 
 static int NE_显示通知(HWND hwnd, const std::wstring& title, const std::wstring& body,
@@ -2590,6 +2745,7 @@ function generateNewEmojiMainCpp(
     generateNetworkLibraryRuntime(enabledModules),
     generateDataMediaRuntime(enabledModules),
     generateQrCodeRuntime(enabledModules),
+    generateBarcodeRuntime(enabledModules),
     generateWxOcrRuntime(enabledModules),
     generatePlatformAdvancedRuntime(enabledModules),
     generateEmbeddedResourceRuntime(enabledModules, getEmbeddedResourceSpecsOrEmpty(project), project.id),
@@ -2924,7 +3080,7 @@ function generateNewEmojiMainCpp(
   const createdHandler = findWindowCreatedHandler(window, program);
   const createdMethod = createdHandler ? findLingCppMethod(program, createdHandler) : undefined;
   const createdBody = createdMethod
-    ? generateNewEmojiMethodBody(createdMethod, enabledModules, program.dataTypes)
+    ? generateNewEmojiMethodBody(createdMethod, enabledModules, program.dataTypes, 'return 0;')
     : '    调试输出(L"new_emoji 窗口创建完毕");';
   const initialFocusControl = controls.find(control => (
     control.visibility !== 'Collapsed'
@@ -3024,6 +3180,23 @@ function generateNewEmojiMainCpp(
     const statements = [body, fallback ? `    ${fallback}` : ''].filter(Boolean).join('\n') || '    // 空方法。';
     return `static ${returnType} ${toCppIdentifier(method.name)}(${formatCppParameters(method.parameters, enabledModules, program.dataTypes)}) {\n${statements}\n}`;
   }).join('\n\n');
+  // 「延迟调用」处理器表：事件块不是 C++ 函数，NE 后端把 &名字 引用生成为无参 trampoline
+  // 再按名字绑定，与 Win32 后端编译期 this->处理器() 调用语义等价。
+  const newEmojiDelayedCallHandlers = getNewEmojiBoundHandlerNames(program.source, '延迟调用')
+    .map(name => ({ name, method: findLingCppMethod(program, name) }))
+    .filter((item): item is { name: string; method: LingCppMethod } => Boolean(item.method));
+  const newEmojiDelayedCallRuntime = `${newEmojiDelayedCallHandlers.map((item, index) => {
+    const returnType = toCppType(item.method.returnType, 'return', enabledModules, program.dataTypes);
+    const body = generateNewEmojiMethodBody(item.method, enabledModules, program.dataTypes);
+    const fallback = defaultReturnStatement(returnType, program.dataTypes);
+    return `static ${returnType} LB_NE_DelayedCall_${index + 1}_${toCppIdentifier(item.name)}() {\n${body}${fallback ? `${body ? '\n' : ''}    ${fallback}` : ''}\n}`;
+  }).join('\n\n')}
+
+static LB_NEDelayedCallback LB_NE_FindDelayedCallHandler(const wchar_t* handlerName) {
+    if (!handlerName || !*handlerName) return nullptr;
+${newEmojiDelayedCallHandlers.map((item, index) => `    if (std::wcscmp(handlerName, L"${escapeWideString(item.name)}") == 0) return LB_NE_DelayedCall_${index + 1}_${toCppIdentifier(item.name)};`).join('\n')}
+    return nullptr;
+}`;
   const webSocketHandlerMethods = (webSocketClientRuntime || webSocketServerRuntime || httpServerRuntime || httpClientRuntime || cdpClientRuntime || sunnyNetRuntime)
     ? Array.from(new Map((sourceClass?.methods || [])
       .filter(method => method.parameters.length === 0)
@@ -4175,6 +4348,70 @@ static void 结束() {
     }
 }
 
+// ===== 延迟调用：message-only 宿主窗口承载一次性 WM_TIMER =====
+// new_emoji 的窗口过程由引擎 DLL 持有，直接在主窗口上 SetTimer 会被引擎的 WM_TIMER
+// 分支消费（未知 ID 落到 InvalidateRect，回调永远收不到）。这里自建 message-only
+// 窗口承载计时器：WM_TIMER 仍由引擎 EU_RunMessageLoop 的 GetMessage/DispatchMessage
+// 派发到本窗口过程，回调因此在界面线程执行，等待期间消息泵照常运转。
+typedef void (*LB_NEDelayedCallback)();
+static LB_NEDelayedCallback LB_NE_FindDelayedCallHandler(const wchar_t* handlerName);
+static constexpr UINT_PTR LB_NEDelayedCallTimerBase = 0x4C490000u;
+static constexpr UINT_PTR LB_NEDelayedCallTimerMax = 0x4C49FFFFu;
+static std::map<UINT_PTR, LB_NEDelayedCallback> LB_NEDelayedCalls;
+static HWND LB_NEDelayedCallHost = nullptr;
+
+static LRESULT CALLBACK LB_NEDelayedCallHostProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
+    if (message == WM_TIMER) {
+        const auto found = LB_NEDelayedCalls.find(static_cast<UINT_PTR>(wparam));
+        if (found != LB_NEDelayedCalls.end()) {
+            KillTimer(hwnd, static_cast<UINT_PTR>(wparam));
+            const LB_NEDelayedCallback callback = found->second;
+            LB_NEDelayedCalls.erase(found);
+            // 主窗口已销毁时丢弃未到期回调：处理器只允许操作仍然存在的界面元素。
+            if (callback && g_newEmojiWindow && IsWindow(g_newEmojiWindow)) callback();
+            return 0;
+        }
+    } else if (message == WM_NCDESTROY) {
+        LB_NEDelayedCalls.clear();
+        LB_NEDelayedCallHost = nullptr;
+    }
+    return DefWindowProcW(hwnd, message, wparam, lparam);
+}
+
+static void LB_NE_InitializeDelayedCallHost() {
+    if (LB_NEDelayedCallHost && IsWindow(LB_NEDelayedCallHost)) return;
+    static bool lbHostClassRegistered = false;
+    if (!lbHostClassRegistered) {
+        WNDCLASSEXW windowClass = {};
+        windowClass.cbSize = sizeof(windowClass);
+        windowClass.lpfnWndProc = LB_NEDelayedCallHostProc;
+        windowClass.hInstance = GetModuleHandleW(nullptr);
+        windowClass.lpszClassName = L"LingBuilderNEDelayedCallHost";
+        if (!RegisterClassExW(&windowClass)) return;
+        lbHostClassRegistered = true;
+    }
+    LB_NEDelayedCallHost = CreateWindowExW(0, L"LingBuilderNEDelayedCallHost", L"", 0, 0, 0, 0, 0,
+                                          HWND_MESSAGE, nullptr, GetModuleHandleW(nullptr), nullptr);
+}
+
+static bool 延迟调用(int milliseconds, const wchar_t* handlerName) {
+    if (!g_newEmojiWindow || !IsWindow(g_newEmojiWindow)) return false;
+    if (!LB_NEDelayedCallHost || !IsWindow(LB_NEDelayedCallHost)) LB_NE_InitializeDelayedCallHost();
+    if (!LB_NEDelayedCallHost) return false;
+    const LB_NEDelayedCallback callback = LB_NE_FindDelayedCallHandler(handlerName);
+    if (!callback) {
+        LB_NE_Log(L"延迟调用：未找到与 &处理器 名称匹配的无参处理器。");
+        return false;
+    }
+    if (milliseconds < 0) milliseconds = 0;
+    UINT_PTR timerId = LB_NEDelayedCallTimerBase;
+    while (timerId <= LB_NEDelayedCallTimerMax && LB_NEDelayedCalls.count(timerId)) ++timerId;
+    if (timerId > LB_NEDelayedCallTimerMax) return false;
+    if (SetTimer(LB_NEDelayedCallHost, timerId, static_cast<UINT>(milliseconds), nullptr) == 0) return false;
+    LB_NEDelayedCalls[timerId] = callback;
+    return true;
+}
+
 ${newEmojiUserMethodDeclarations}
 
 ${generateNewEmojiFbroRuntime(fbroModuleEnabled, fbroControls, program, enabledModules)}
@@ -4229,6 +4466,8 @@ ${catalogEventCallbackBlocks.join('\n\n')}
 
 ${uploadCallbackBlocks.join('\n\n')}
 
+${newEmojiDelayedCallRuntime}
+
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
 ${fbroModuleEnabled ? `    const int fbroSubprocessExitCode = LB_FBro_RunCefSubprocessIfRequested();
     if (fbroSubprocessExitCode != LB_FBRO_CEF_SUBPROCESS_NOT_REQUESTED) return fbroSubprocessExitCode;
@@ -4254,6 +4493,8 @@ ${uiaCleanupLine}
         if (SUCCEEDED(comResult)) CoUninitialize();
         return 2;
     }
+    // 延迟调用的 message-only 宿主窗口必须在界面线程创建，否则 WM_TIMER 无处派发。
+    LB_NE_InitializeDelayedCallHost();
 ${webSocketClientEventWindowSetup}
 ${cdpClientEventWindowSetup}
 ${httpClientEventWindowSetup}
@@ -4411,8 +4652,10 @@ function selectKnownCef3Branches(source: string): string {
   return output.join('\n');
 }
 
-function generateNewEmojiMethodBody(method: LingCppMethod, enabledModules: InstalledModule[], dataTypes: LingCppDataType[]): string {
-  return [generateLocalDeclarations(method, enabledModules, dataTypes), translateMethodStatements(method, enabledModules, dataTypes)]
+function generateNewEmojiMethodBody(method: LingCppMethod, enabledModules: InstalledModule[], dataTypes: LingCppDataType[], earlyReturnCpp?: string): string {
+  // new_emoji 后端的方法体是 static 自由函数：处理器回调一律不带 this。
+  // 「创建完毕」会被整体内联进返回 int 的 wWinMain，调用点必须传 earlyReturnCpp = 'return 0;'。
+  return [generateLocalDeclarations(method, enabledModules, dataTypes), translateMethodStatements(method, enabledModules, dataTypes, { windowSelfReference: 'none', earlyReturnCpp })]
     .filter(Boolean)
     .join('\n')
     .replace(/^ {8}/gmu, '    ');
@@ -4632,6 +4875,13 @@ static std::wstring 窗口_取自身标题() {
 }
 static bool 窗口_设置自身标题(const wchar_t* title) {
     return g_newEmojiWindow && SetWindowTextW(g_newEmojiWindow, title ? title : L"") != FALSE;
+}
+// 关闭自身 = 标准关闭流程（引擎 EU_CloseWindow 语义，非 结束() 的直接销毁）：
+// WM_CLOSE 经 LB_NE_WindowEventSubclass 派发 Closing 事件、窗口_取消关闭 可拦截、再派发 Closed。
+static bool 窗口_关闭自身() {
+    if (!g_newEmojiWindow) return false;
+    PostMessageW(g_newEmojiWindow, WM_CLOSE, 0, 0);
+    return true;
 }
 
 static void LB_NE_DispatchWindowEvent(const wchar_t* eventName) {
@@ -9183,6 +9433,9 @@ function getNewEmojiEventArgumentExpressions(binding: NewEmojiCatalogEventBindin
     'EU_SetOmniboxIconButtonCallback.ValueChanged': ['lb_value', 'lb_range_start', 'lb_range_end'],
     '设置地址栏图标按钮回调_整数.ValueChanged': ['lb_value', 'lb_range_start', 'lb_range_end'],
     'ElementValueCallback.ValueChanged': ['lb_value', 'lb_range_start', 'lb_range_end'],
+    // NE空状态动作回调 / NE无限滚动加载回调：数据桥跳板按 ElementClick/ElementValue 原生 ABI 直派发。
+    'ElementClickCallback.Action': ['lb_element_id'],
+    'ElementValueCallback.LoadMore': ['lb_element_id', 'lb_value', 'lb_range_start', 'lb_range_end'],
     'RichListEventCallback.ItemClicked': ['lb_event_json'],
     'RichListEventCallback.ItemDoubleClicked': ['lb_event_json'],
     'RichListEventCallback.ButtonClicked': ['lb_event_json'],
@@ -9208,12 +9461,13 @@ function getNewEmojiEventArgumentExpressions(binding: NewEmojiCatalogEventBindin
 function generateNewEmojiEventParameterDeclarations(
   binding: NewEmojiCatalogEventBinding,
   enabledModules: InstalledModule[],
-  dataTypes: LingCppDataType[]
+  dataTypes: LingCppDataType[],
+  expressionOverrides: Record<number, string> = {}
 ): string {
   const expressions = getNewEmojiEventArgumentExpressions(binding);
   return binding.method.parameters.map((parameter, index) => {
     const type = toCppType(parameter.type, 'parameter', enabledModules, dataTypes);
-    const expression = expressions[index] || '{}';
+    const expression = expressionOverrides[index] || expressions[index] || '{}';
     return `    ${type} ${toCppIdentifier(parameter.name)} = ${expression};`;
   }).join('\n');
 }
@@ -9388,7 +9642,7 @@ function generateNewEmojiCatalogCreateCall(
     if (/Callback/u.test(parameter.type) || name === 'cb') return 'nullptr';
 
     if (name.endsWith('_bytes')) {
-      const stringValue = getNewEmojiCatalogStringValue(control, propertyKey);
+      const stringValue = getNewEmojiCatalogStringValue(control, propertyKey, contribution);
       const stringVariable = `${variable}_utf8_${index + 1}`;
       beforeLines.push(`    std::string ${stringVariable} = LB_NE_ToUtf8(L"${escapeWideString(stringValue)}");`);
       utf8Variables.set(propertyKey, stringVariable);
@@ -9426,14 +9680,43 @@ function isDeferredNewEmojiShowControl(control: LingControl): boolean {
     || control.designerType?.endsWith('/MessageBox') === true;
 }
 
-function getNewEmojiCatalogStringValue(control: LingControl, key: string): string {
-  const value = readNewEmojiCatalogProperty(control, key);
-  if (Array.isArray(value)) {
-    return value.map(item => typeof item === 'string' ? item : JSON.stringify(item)).join('|');
-  }
+// stringList 型属性的拼接符：items/options/columns 等是引擎的 | 分隔协议，
+// 而 body/content/desc 这类正文是单段多行文本控件，必须用换行拼——'|' 会被
+// DrawTextLayout 原样画出来，多行正文就变成一行带竖线的文本。
+const NEW_EMOJI_MULTILINE_PROPERTY_KEY = /^(?:body|content|desc|subtitle)$/u;
+
+function joinNewEmojiStringList(key: string, value: unknown[]): string {
+  const parts = value.map(item => typeof item === 'string' ? item : JSON.stringify(item));
+  return parts.join(NEW_EMOJI_MULTILINE_PROPERTY_KEY.test(key) ? '\n' : '|');
+}
+
+function getNewEmojiCatalogStringValue(
+  control: LingControl,
+  key: string,
+  contribution?: ModuleDesignerControlContribution
+): string {
+  const value = readNewEmojiCatalogPropertyWithDeclaredDefault(control, contribution, key);
+  if (Array.isArray(value)) return joinNewEmojiStringList(key, value);
   if (value !== undefined && value !== null && String(value).length > 0) return String(value);
   if (/text|title|label|caption|body|content|message|desc|detail|subtitle|value/u.test(key)) return control.content;
   return '';
+}
+
+// 设计器属性面板取值口径是 properties[key] ?? 声明默认值（WpfDesigner 的属性控件），
+// 生成器只读 properties：脚本生成或旧版工程没落盘该键时会发出空值，运行期退化成
+// 引擎兜底——Popconfirm 图标从 ⚠️ 退成 "!"，iconVisible 缺省还会把图标整个隐藏。
+// 这张白名单登记「缺键时必须回落到模块声明默认值」的外观属性，保证设计器所见即 exe 所得；
+// 未登记属性仍走引擎兜底，避免把历史静默默认值一次性改成声明默认值引发全量视觉漂移。
+const NEW_EMOJI_DECLARED_DEFAULT_PROPERTY_KEYS = new Set(['icon', 'iconColor', 'iconVisible', 'confirm', 'cancel']);
+
+function readNewEmojiCatalogPropertyWithDeclaredDefault(
+  control: LingControl,
+  contribution: ModuleDesignerControlContribution | undefined,
+  key: string
+): unknown {
+  const value = readNewEmojiCatalogProperty(control, key);
+  if (value !== undefined || !NEW_EMOJI_DECLARED_DEFAULT_PROPERTY_KEYS.has(key)) return value;
+  return contribution?.properties?.find(property => property.key === key)?.defaultValue;
 }
 
 function scaleNewEmojiRuntimeValue(value: unknown, parameter: ModuleDesignerRuntimeParameter): number | undefined {
@@ -9475,7 +9758,15 @@ function readNewEmojiCatalogProperty(control: LingControl, key: string): unknown
     if (key === 'headerVisible') return control.properties?.headerVisible !== false;
     if (key === 'contentVisible') return true;
   }
-  if (key === 'content') return control.content;
+  // 弹层控件的正文（Popover/Popconfirm/Tooltip）在设计器里是 properties.content，
+  // 与控件自身文本（control.content）同名字段。以前一律返回 control.content，
+  // 导致气泡正文被丢弃、创建参数与 EU_Set*Content 全发空串。
+  if (key === 'content') {
+    const properties = control.properties || {};
+    return Object.prototype.hasOwnProperty.call(properties, 'content')
+      ? properties.content
+      : control.content;
+  }
   if (key === 'foreground') return control.foreground;
   if (key === 'background') return control.background;
   if (key === 'visible') return control.visibility !== 'Collapsed';
@@ -9664,7 +9955,7 @@ function generateNewEmojiCatalogPropertySetterCalls(
         && propertyKey === 'items'
         ? 'itemsEx'
         : propertyKey;
-      const value = readNewEmojiCatalogProperty(control, valuePropertyKey);
+      const value = readNewEmojiCatalogPropertyWithDeclaredDefault(control, contribution, valuePropertyKey);
       if (relationshipKeys.has(valuePropertyKey)) {
         return typeof value === 'string' && value ? controlVariables.get(value) || '0' : '0';
       }
@@ -9796,7 +10087,7 @@ function serializeNewEmojiUtf8Property(control: LingControl, propertyKey: string
         .map(field => String(field ?? '').replace(/[\t\r\n]/gu, ' ')).join('\t')).join('\n');
     }
   }
-  if (Array.isArray(value)) return value.map(item => typeof item === 'string' ? item : JSON.stringify(item)).join('|');
+  if (Array.isArray(value)) return joinNewEmojiStringList(propertyKey, value);
   return value === undefined || value === null ? '' : String(value);
 }
 
@@ -11079,7 +11370,10 @@ function generateMainCpp(
   const projectDataTypesDefinition = generateProjectDataTypesDefinition(program, enabledModules);
   const projectGlobalsDefinition = generateProjectGlobalsDefinition(program, enabledModules);
   const functionLibraryMethods = generateFunctionLibraryMethods(program, enabledModules);
-  const selectedWindowIndex = Math.max(0, project.windows.findIndex(window => window.id === selectedWindow.id));
+  // 启动窗口取项目级 startupWindowId（缺省/失效回退第一个窗口），与设计器当前预览窗口解耦：
+  // F5 运行的永远是定义好的启动窗口，不会因在设计器里预览了另一个窗口而改变。
+  const startupWindow = project.windows.find(window => window.id === project.startupWindowId) || project.windows[0];
+  const startWindowIndex = Math.max(0, project.windows.findIndex(window => window.id === startupWindow.id));
   const controlArrays = project.windows
     .map((window, index) => generateControlArray(window, index, program, project.resources || []))
     .join('\n\n');
@@ -11134,6 +11428,7 @@ function generateMainCpp(
     generateNetworkLibraryRuntime(enabledModules),
     generateDataMediaRuntime(enabledModules),
     generateQrCodeRuntime(enabledModules),
+    generateBarcodeRuntime(enabledModules),
     generateWxOcrRuntime(enabledModules),
     generatePlatformAdvancedRuntime(enabledModules),
     generateEmbeddedResourceRuntime(enabledModules, getEmbeddedResourceSpecsOrEmpty(project), project.id),
@@ -12638,7 +12933,7 @@ ${windowSpecs}
 };
 
 static const int g_windowCount = static_cast<int>(sizeof(g_windows) / sizeof(g_windows[0]));
-static const int g_startWindowIndex = ${selectedWindowIndex};
+static const int g_startWindowIndex = ${startWindowIndex};
 static bool g_lingbuilderCronDaemonMode = false;
 
 static HWND OpenGeneratedWindow(int windowIndex, int showCommand, const wchar_t* placement = nullptr, int x = CW_USEDEFAULT, int y = CW_USEDEFAULT, bool hasCustomPosition = false);
@@ -24801,6 +25096,13 @@ ${comWindowMethods}
     bool 窗口_设置自身标题(const wchar_t* title) {
         return hwnd_ && SetWindowTextW(hwnd_, title ? title : L"") != FALSE;
     }
+    // 关闭自身 = 标准 WM_CLOSE 流程（非 KillWindow）：派发 Closing 事件、窗口_取消关闭 可拦截；
+    // WM_DESTROY 里窗口计数减一，最后一个窗口关闭才 PostQuitMessage，所以先 打开窗口 再关闭启动窗口不退程序。
+    bool 窗口_关闭自身() {
+        if (!hwnd_) return false;
+        PostMessageW(hwnd_, WM_CLOSE, 0, 0);
+        return true;
+    }
 
     // 到文本 等命令的文本结果类型：历史上是 std::wstring 的派生类型（另带隐式 const wchar_t* 转换），
     // 那份隐式转换会与 std::operator+ 叠加成「转换相似」的重载二义——只要表达式里出现
@@ -32364,7 +32666,7 @@ function generateNewEmojiFunctionLibraryDefinitions(program: LingCppProgram, ena
   if (entries.length === 0) return '// 当前项目暂无独立功能库定义。';
   return entries.map(({ library, method }) => {
     const returnType = toCppType(method.returnType, 'return', enabledModules, program.dataTypes);
-    const body = [generateLocalDeclarations(method, enabledModules, program.dataTypes), translateMethodStatements(method, enabledModules, program.dataTypes)]
+    const body = [generateLocalDeclarations(method, enabledModules, program.dataTypes), translateMethodStatements(method, enabledModules, program.dataTypes, { windowSelfReference: 'none' })]
       .filter(Boolean).join('\n').replace(/^ {8}/gmu, '    ');
     const fallback = defaultReturnStatement(returnType, program.dataTypes);
     return `static ${returnType} ${functionLibraryCppName(library.name, method.name)}(${formatCppParameters(method.parameters, enabledModules, program.dataTypes)}) {\n${body}${fallback ? `${body ? '\n' : ''}    ${fallback}` : ''}\n}`;
@@ -32503,7 +32805,8 @@ function defaultReturnStatement(returnType: string, dataTypes: LingCppDataType[]
 function createMethodTranslationContext(
   method: LingCppMethod,
   enabledModules: InstalledModule[],
-  dataTypes: LingCppDataType[] = []
+  dataTypes: LingCppDataType[] = [],
+  options: LingCppBackendTranslationOptions = {}
 ): LingCppTranslationContext {
   const runtimeControlVariables = new Set<string>();
   const wideStringVariables = new Set<string>();
@@ -32518,15 +32821,22 @@ function createMethodTranslationContext(
     if (isArray) wideStringArrayVariables.add(name);
     else wideStringVariables.add(name);
   });
-  return { runtimeControlVariables, wideStringVariables, wideStringArrayVariables };
+  return {
+    runtimeControlVariables,
+    wideStringVariables,
+    wideStringArrayVariables,
+    earlyReturnCpp: options.earlyReturnCpp,
+    windowSelfReference: options.windowSelfReference || 'member'
+  };
 }
 
 function translateMethodStatementsWithMetadata(
   method: LingCppMethod,
   enabledModules: InstalledModule[] = [],
-  dataTypes: LingCppDataType[] = []
+  dataTypes: LingCppDataType[] = [],
+  options: LingCppBackendTranslationOptions = {}
 ): TranslatedStatementLine[] {
-  const translationContext = createMethodTranslationContext(method, enabledModules, dataTypes);
+  const translationContext = createMethodTranslationContext(method, enabledModules, dataTypes, options);
   const translated = translateLingCppStatementBlock(method.statements, enabledModules, translationContext);
   const localConstants = [...(method.locals || [])]
     .filter(local => local.isConstant)
@@ -32785,9 +33095,10 @@ function translateStatementToMetadata(
 function translateMethodStatements(
   method: LingCppMethod,
   enabledModules: InstalledModule[] = [],
-  dataTypes: LingCppDataType[] = []
+  dataTypes: LingCppDataType[] = [],
+  options: LingCppBackendTranslationOptions = {}
 ): string {
-  return translateMethodStatementsWithMetadata(method, enabledModules, dataTypes)
+  return translateMethodStatementsWithMetadata(method, enabledModules, dataTypes, options)
     .map(item => `        ${item.code}`)
     .join('\n');
 }
@@ -32866,7 +33177,7 @@ function translateStatement(
 
   // \b 是 ASCII 词边界，对纯中文语句永远不成立；裸「返回」必须按整句匹配。
   if (/^返回\s*[（(]?\s*[）)]?\s*;?\s*$/u.test(statement)) {
-    return 'return;';
+    return translationContext.earlyReturnCpp || 'return;';
   }
 
   // 连续赋值(值, 目标1, ...)：一值多目标语言级语句，展开为逐条赋值（求值一次语义
@@ -32897,7 +33208,12 @@ function translateStatement(
     if (binding) {
       const managedCall = translateManagedModuleInvocation(callStatement.argumentsText, binding, enabledModules, translationContext);
       const aria2ProgressCall = binding.command === 'Aria2_下载' && splitCallArguments(callStatement.argumentsText).length >= 6;
-      const runtimeName = aria2ProgressCall ? 'Aria2_下载_窗口' : toCppIdentifier(binding.runtimeName);
+      // 回调桥命令：底层导出收函数指针，同名宽字符助手把 &处理器名 解析成生成器跳板，
+      // 因此调用点必须发中文命令名（助手名），不能发 EU_ 运行名。
+      const handlerBridgeCall = NEW_EMOJI_HANDLER_BRIDGE_COMMANDS.has(binding.command);
+      const runtimeName = aria2ProgressCall ? 'Aria2_下载_窗口'
+        : handlerBridgeCall ? toCppIdentifier(binding.command)
+        : toCppIdentifier(binding.runtimeName);
       const argumentsText = translateModuleCallArguments(callStatement.argumentsText, binding, enabledModules, translationContext);
       return `${managedCall || `${runtimeName}(${aria2ProgressCall ? `hwnd_, ${argumentsText}` : argumentsText})`};`;
     }
@@ -33095,7 +33411,23 @@ function translateModuleCallArguments(
       if (parameterType === 'handle' && argument.trim() === '当前窗口' && /^(?:NE_|EU_)/u.test(binding.runtimeName || binding.command || '')) {
         return 'g_newEmojiWindow';
       }
+      if (parameterType === 'handle' && /^(?:NE_|EU_)/u.test(binding.runtimeName || binding.command || '')) {
+        // NE_/EU_ 数据桥与原生导出封装的窗口句柄形参是 HWND，而 窗口_取自身句柄()
+        // 等返回 long long：字面量 0 可隐式转空指针，其余整型表达式必须显式转换，
+        // 否则 MSVC C2664（long long → HWND）在编译期才爆出来。
+        const trimmedHandle = argument.trim();
+        if (/^0+$/u.test(trimmedHandle)) return '0';
+        if (trimmedHandle !== '当前窗口') {
+          const translatedHandle = translateLingCppExpression(argument, enabledModules, translationContext);
+          if (translatedHandle !== 'g_newEmojiWindow') {
+            return `reinterpret_cast<HWND>(${translatedHandle})`;
+          }
+        }
+      }
       if (parameterType === 'controlRef') {
+        // 特例表里的 controlRef 参数允许整数零字面量 0 表示窗口级目标：原样透传 0，
+        // 不得当成控件名去 FindElement("0")（如 NE_显示加载遮罩 的目标控件）。
+        if (argument.trim() === '0' && allowsControlReferenceLiteralZero(binding.command, parameter.name)) return '0';
         const bareControlName = argument.trim().match(/^[\p{L}_][\p{L}\p{N}_]*$/u)?.[0];
         if (bareControlName === '当前窗口' && parameter.runtimeRepresentation === 'nativeHandle') return 'hwnd_';
         if (bareControlName === '当前窗口' && parameter.runtimeRepresentation === 'stableId') return '0';
@@ -33164,6 +33496,11 @@ function translateManagedModuleInvocation(
     const delayValue = translateLingCppExpression(args[invocation.delayParameterIndex] || '0', enabledModules, translationContext);
     const handlerName = parseManagedHandlerReference(args[invocation.handlerParameterIndex]);
     if (!handlerName) return undefined;
+    // new_emoji 后端没有窗口类，处理器由生成器在 main.cpp 里展开成自由函数 trampoline；
+    // 传名字字符串后按名字绑定，结构等价于 Win32 的编译期 this-> 调用。
+    if (translationContext.windowSelfReference === 'none') {
+      return `${toCppIdentifier(binding.runtimeName)}(${delayValue}, L"${escapeWideString(handlerName)}")`;
+    }
     return `${toCppIdentifier(binding.runtimeName)}(${delayValue}, [this]() { this->${toCppIdentifier(handlerName)}(); })`;
   }
   if (invocation.kind !== 'managedTask') return undefined;

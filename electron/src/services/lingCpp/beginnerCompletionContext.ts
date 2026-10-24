@@ -12,6 +12,8 @@ export interface BeginnerCompletionContext {
   isConstantReference: boolean;
   parenDepth: number;
   isWindowTargetContext: boolean;
+  /** 打开窗口族首参尚未敲引号的裸窗口名输入中（如 打开窗口(自）：同样出窗口清单。 */
+  isWindowTargetBareContext: boolean;
   isWindowPlacementContext: boolean;
 }
 
@@ -95,6 +97,7 @@ export function getBeginnerCompletionContext(value: string, cursor: number): Beg
       isConstantReference: false,
       parenDepth: 0,
       isWindowTargetContext: false,
+      isWindowTargetBareContext: false,
       isWindowPlacementContext: false
     };
   }
@@ -104,6 +107,7 @@ export function getBeginnerCompletionContext(value: string, cursor: number): Beg
   const syntax = scanBeginnerCodePrefix(linePrefix);
   const isAssignmentValue = /(?:^|[^=!<>])(?:=|＝)\s*$/u.test(beforeToken);
   const isWindowTargetContext = /(?:^|\s)(?:打开窗口|窗口_打开|载入窗口|载入新窗口)\s*[（(]\s*["“][^"”\n]*$/u.test(linePrefix);
+  const isWindowTargetBareContext = /(?:^|\s)(?:打开窗口|窗口_打开|载入窗口|载入新窗口)\s*[（(]\s*[\p{L}\p{N}_]*$/u.test(linePrefix);
   const isWindowPlacementContext = /(?:^|\s)(?:打开窗口|窗口_打开|载入窗口|载入新窗口)\s*[（(]\s*(?:L)?["“][^"”\n]*["”]\s*[,，]\s*(?:(?:L)?["“][^"”\n]*|[\w\u4e00-\u9fa5-]*)$/u.test(linePrefix);
 
   return {
@@ -114,13 +118,14 @@ export function getBeginnerCompletionContext(value: string, cursor: number): Beg
     isNumericLiteral: /^[0-9]/u.test(token),
     isConstantReference: syntax.isInsideString || syntax.isInsideComment || linePrefix.trimStart().startsWith('@') ? false : /#$/u.test(beforeToken),
     isWindowTargetContext,
+    isWindowTargetBareContext,
     isWindowPlacementContext,
     ...syntax
   };
 }
 
 export function shouldShowBeginnerCompletion(context: BeginnerCompletionContext, includeAll: boolean): boolean {
-  if (context.isWindowTargetContext || context.isWindowPlacementContext) return true;
+  if (context.isWindowTargetContext || context.isWindowTargetBareContext || context.isWindowPlacementContext) return true;
   if (context.isInsideString || context.isInsideComment) return false;
   // 刚敲下 # 时 token 为空，也必须立即弹出常量清单（易语言习惯）。
   if (context.isConstantReference) return true;

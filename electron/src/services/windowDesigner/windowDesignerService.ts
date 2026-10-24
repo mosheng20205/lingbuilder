@@ -886,8 +886,20 @@ export function normalizeWindowDesignerState(state?: Partial<PersistedWindowDesi
       controls
     };
   });
+  // 启动窗口归一化：缺省或指向已删除窗口时回落到第一个窗口——F5/构建的启动窗口必须是
+  // 项目里的确定性字段，不能跟随设计器当前预览窗口（用户 2026-10-23 定案）。
+  const normalizedStartupWindowId = normalizedWindows.some(window => window.id === migratedProject.startupWindowId)
+    ? migratedProject.startupWindowId
+    : normalizedWindows[0]?.id;
+  if (normalizedStartupWindowId !== migratedProject.startupWindowId) projectChanged = true;
   const project = projectChanged
-    ? { ...migratedProject, schemaVersion: 2 as const, resources: migratedProject.resources || [], windows: normalizedWindows }
+    ? {
+        ...migratedProject,
+        schemaVersion: 2 as const,
+        resources: migratedProject.resources || [],
+        windows: normalizedWindows,
+        startupWindowId: normalizedStartupWindowId
+      }
     : sourceProject;
   normalizedProjectCache.set(sourceProject, project);
   if (project !== sourceProject) normalizedProjectCache.set(project, project);

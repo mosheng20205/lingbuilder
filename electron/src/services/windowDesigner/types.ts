@@ -363,6 +363,8 @@ export interface LingWindowProject {
   id: string;
   name: string;
   windows: LingWindowModel[];
+  /** 启动窗口：F5/构建运行时 exe 首个创建并显示的窗口；缺省或指向不存在窗口时回退第一个窗口，不跟随设计器当前预览窗口。 */
+  startupWindowId?: string;
   resources?: LingDesignerResource[];
   /** 项目级内嵌资源（资源号 2301 起，与内嵌文件 2001+/站点 2101+/项目 DLL 2201+ 段互不冲突）。 */
   embeddedResources?: LingEmbeddedResource[];

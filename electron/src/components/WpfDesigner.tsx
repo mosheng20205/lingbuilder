@@ -2198,7 +2198,9 @@ const WpfDesigner = React.forwardRef<WpfDesignerHandle, WpfDesignerProps>(functi
 
     setProject(prev => ({
       ...prev,
-      windows: nextWindows
+      windows: nextWindows,
+      // 删除的正好是启动窗口时，把启动窗口回落到剩余第一个窗口，避免 startupWindowId 悬空。
+      ...(prev.startupWindowId === deletedWindow?.id ? { startupWindowId: nextWindows[0]?.id } : {})
     }));
     setActiveWindowId(nextWindow.id);
     setSelectedControlId(nextWindow.controls[0]?.id || null);
@@ -3513,6 +3515,7 @@ const WpfDesigner = React.forwardRef<WpfDesignerHandle, WpfDesignerProps>(functi
         >
           {project.windows.map(window => {
             const isActive = window.id === activeWindow.id;
+            const isStartupWindow = window.id === (project.startupWindowId || project.windows[0]?.id);
             return (
               <button
                 key={window.id}
@@ -3528,6 +3531,14 @@ const WpfDesigner = React.forwardRef<WpfDesignerHandle, WpfDesignerProps>(functi
               >
                 <Monitor className="w-3.5 h-3.5" />
                 <span>{window.title}</span>
+                {isStartupWindow && (
+                  <span
+                    className={`px-1 rounded text-[9px] font-bold ${isDarkMode ? 'bg-emerald-500/20 text-emerald-300' : 'bg-emerald-100 text-emerald-700'}`}
+                    title="启动窗口：F5 运行时首先打开本窗口"
+                  >
+                    启动
+                  </span>
+                )}
               </button>
             );
           })}
@@ -4329,6 +4340,8 @@ const WpfDesigner = React.forwardRef<WpfDesignerHandle, WpfDesignerProps>(functi
                     window={activeWindow}
                     isDarkMode={isDarkMode}
                     newEmojiAvailable={newEmojiModuleEnabled}
+                    isStartupWindow={activeWindow.id === (project.startupWindowId || project.windows[0]?.id)}
+                    onSetStartupWindow={() => setProject(previous => ({ ...previous, startupWindowId: activeWindow.id }))}
                     embeddedResources={project.embeddedResources || []}
                     embeddedResourceModuleEnabled={enabledDesignerModules.has(EMBEDDED_RESOURCE_MODULE_ID)}
                     onEmbeddedResourcesChange={resources => setProject(previous => ({ ...previous, embeddedResources: resources }))}
@@ -5982,6 +5995,8 @@ function WindowProperties({
   window,
   isDarkMode,
   newEmojiAvailable,
+  isStartupWindow,
+  onSetStartupWindow,
   embeddedResources,
   embeddedResourceModuleEnabled,
   onEmbeddedResourcesChange,
@@ -5992,6 +6007,10 @@ function WindowProperties({
   window: LingWindowModel;
   isDarkMode: boolean;
   newEmojiAvailable: boolean;
+  /** 本窗口是否为项目启动窗口（F5 运行时首先打开的窗口）。 */
+  isStartupWindow: boolean;
+  /** 把本窗口设为项目启动窗口。 */
+  onSetStartupWindow: () => void;
   /** 项目级内嵌资源清单（跨窗口共享，保存在 window-designer.json 顶层）。 */
   embeddedResources: LingEmbeddedResource[];
   embeddedResourceModuleEnabled: boolean;
@@ -6086,6 +6105,26 @@ function WindowProperties({
   return (
     <div className="space-y-2">
       <PropertyGroup title="当前窗口 / 布局" isDarkMode={isDarkMode}>
+        <PropertyRow label="启动窗口" isDarkMode={isDarkMode}>
+          {isStartupWindow ? (
+            <span className={`text-[11px] leading-4 ${isDarkMode ? 'text-emerald-300' : 'text-emerald-700'}`}>
+              本窗口是启动窗口，F5 运行时首先打开
+            </span>
+          ) : (
+            <button
+              onClick={onSetStartupWindow}
+              className={`w-full rounded border px-2 py-0.5 text-xs cursor-pointer ${
+                isDarkMode
+                  ? 'bg-[#1b1b20] border-[#3c3c44] text-slate-200 hover:border-emerald-500'
+                  : 'bg-white border-slate-300 text-slate-800 hover:border-emerald-500'
+              }`}
+              aria-label="设为启动窗口"
+              title="把当前窗口设为启动窗口：F5 运行程序时首先打开本窗口"
+            >
+              设为启动窗口
+            </button>
+          )}
+        </PropertyRow>
         <PropertyRow label="设计后端" isDarkMode={isDarkMode}>
           <select
             value={migrateDesignerBackend(window.designerBackend, newEmojiAvailable)}

@@ -26,6 +26,8 @@ export interface LingCppPresentationTokenContext {
   knownLocals?: ReadonlySet<string>;
   knownProcedures: ReadonlySet<string>;
   controlReferences?: ReadonlySet<string>;
+  /** 设计器窗口引用（窗口类名/标题）：打开窗口族的目标窗口按控件引用同色显示。 */
+  windowReferences?: ReadonlySet<string>;
   nativeVariables?: ReadonlySet<string>;
   previousSignificantToken?: string;
   nextSignificantToken?: string;
@@ -150,6 +152,7 @@ export function classifyLingCppPresentationToken(
   if (LING_CPP_TYPES.test(token)) return 'type';
   if (context.moduleCommands.has(token)) return 'module-command';
   if (context.controlReferences?.has(token)) return 'control-reference';
+  if (context.windowReferences?.has(token)) return 'control-reference';
   if (context.knownMembers.has(token)) return 'member';
   if (context.knownProcedures.has(token)) return 'procedure';
   if (OPERATORS.test(token)) return 'operator';

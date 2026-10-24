@@ -29,7 +29,8 @@ import {
   getLingCppInlineHints,
   getLingCppSemanticDiagnostics,
   getLingCppStructuredReadingRows,
-  getLingCppSymbols
+  getLingCppSymbols,
+  getLingCppWindowTargetReferences
 } from '../services/lingCpp/languageService';
 import { createLingCppMonarchLanguage } from '../services/lingCpp/monacoTokens';
 import {
@@ -913,14 +914,16 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
           tokenModifiers: []
         }),
         provideDocumentSemanticTokens: (model: any) => ({
-          data: buildLingCppControlReferenceSemanticTokenData(
-            getLingCppControlReferences(
+          data: buildLingCppControlReferenceSemanticTokenData([
+            ...getLingCppControlReferences(
               model.getValue(),
               lingCppDesignerProjectSnapshot,
               lingCppModuleContextSnapshot,
               lingCppFilePathSnapshot
-            ).filter(reference => reference.status === 'resolved').map(reference => reference.range)
-          )
+            ).filter(reference => reference.status === 'resolved').map(reference => reference.range),
+            // 打开窗口族的裸窗口名与控件引用同色（设计器窗口也是设计器对象）。
+            ...getLingCppWindowTargetReferences(model.getValue(), lingCppDesignerProjectSnapshot)
+          ])
         }),
         releaseDocumentSemanticTokens: () => undefined
       });

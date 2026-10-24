@@ -4,6 +4,7 @@ import { isProAccessActive, PRO_COMMAND_DIAGNOSTIC_ID_PREFIX, type ProCommandAut
 import { collectLingCppStringLiteralRegions } from './stringLiteralRegions';
 import { splitEplBinaryExpression } from '../windowDesigner/eplToCppRules';
 import { collectLingCppTextBlockOpaqueLines, scanLingCppTextBlockRanges } from './textBlock';
+import { splitLingCppLineComment } from './beginnerSyntaxPresentation';
 import { collectInlineCppLines, collectInlineCppReplacementHints, isInlineCppLineExempt } from './inlineCppKnowledge';
 import { LIST_VIEW_ADVANCED_API } from '../modules/listViewApiCatalog';
 import { DATA_GRID_API } from '../modules/dataGridApiCatalog';
@@ -2653,7 +2654,9 @@ function getOpenWindowTargetCompletionItems(
   designerProject?: LingWindowProject
 ): LingCppCompletionItem[] | undefined {
   const linePrefix = getLinePrefixBeforeColumn(context.source, context.line, context.column);
-  if (!/(?:^|\s)(?:打开窗口|窗口_打开|载入窗口|载入新窗口)\s*[（(]\s*["“][^"”\n]*$/u.test(linePrefix)) {
+  // 引号形态（打开窗口("自）与裸窗口名形态（打开窗口(自）都出窗口清单；
+  // 运行期两种形态等价，裸名与控件引用书写契约一致。
+  if (!/(?:^|\s)(?:打开窗口|窗口_打开|载入窗口|载入新窗口)\s*[（(]\s*(?:["“][^"”\n]*|[\p{L}\p{N}_]*)$/u.test(linePrefix)) {
     return undefined;
   }
   if (!designerProject) return [];
@@ -2728,6 +2731,68 @@ function getLinePrefixBeforeColumn(source: string, line: number, column: number)
   const lines = splitLines(source);
   const lineText = lines[Math.max(0, line - 1)] || '';
   return lineText.slice(0, Math.max(0, column - 1));
+}
+
+export interface LingCppWindowTargetReferenceRange {
+  name: string;
+  windowId: string;
+  startLine: number;
+  startColumn: number;
+  endLine: number;
+  endColumn: number;
+}
+
+const OPEN_WINDOW_TARGET_SCAN_PATTERN = /(?:^|[^\p{L}\p{N}_])(?:打开窗口|窗口_打开|载入窗口|载入新窗口)[ \t]*[（(][ \t]*([\p{L}\p{N}_]+)/gu;
+
+/**
+ * 扫描 打开窗口/窗口_打开/载入窗口/载入新窗口 首参的「裸窗口名」引用（不带引号形态）。
+ * 运行期按「窗口标题或类名」匹配（生成 C++ 的 WindowSpecMatchesName），这里用同一口径：
+ * 命中设计器任一窗口的类名/标题才算已解析引用，供 Monaco 语义着色与新手编辑器共享，
+ * 未命中的名字保持普通标识符颜色，不给假着色。仅识别命令与目标同行的单行调用形态。
+ */
+export function getLingCppWindowTargetReferences(
+  source: string,
+  project?: LingWindowProject
+): LingCppWindowTargetReferenceRange[] {
+  if (!project || project.windows.length === 0) return [];
+  const windowIdsByName = new Map<string, string>();
+  project.windows.forEach(window => {
+    const className = (window.className || '').trim();
+    const title = (window.title || '').trim();
+    if (className && !windowIdsByName.has(className)) windowIdsByName.set(className, window.id);
+    if (title && !windowIdsByName.has(title)) windowIdsByName.set(title, window.id);
+  });
+  if (windowIdsByName.size === 0) return [];
+
+  const lines = source.split(/\r?\n/u);
+  const opaqueLines = collectLingCppTextBlockOpaqueLines(scanLingCppTextBlockRanges(lines), lines.length);
+  const references: LingCppWindowTargetReferenceRange[] = [];
+  lines.forEach((line, lineIndex) => {
+    const lineNumber = lineIndex + 1;
+    if (opaqueLines.has(lineNumber)) return;
+    const { code } = splitLingCppLineComment(line);
+    if (!code.trim() || code.trimStart().startsWith('@')) return;
+    const literalRegions = collectLingCppStringLiteralRegions(code);
+    const insideLiteral = (offset: number) => literalRegions.some(region => offset >= region.start && offset < region.end);
+    OPEN_WINDOW_TARGET_SCAN_PATTERN.lastIndex = 0;
+    for (let match = OPEN_WINDOW_TARGET_SCAN_PATTERN.exec(code); match; match = OPEN_WINDOW_TARGET_SCAN_PATTERN.exec(code)) {
+      const name = match[1];
+      if (!name) continue;
+      const nameStart = match.index + match[0].length - name.length;
+      if (insideLiteral(nameStart)) continue;
+      const windowId = windowIdsByName.get(name);
+      if (!windowId) continue;
+      references.push({
+        name,
+        windowId,
+        startLine: lineNumber,
+        startColumn: nameStart + 1,
+        endLine: lineNumber,
+        endColumn: nameStart + 1 + name.length
+      });
+    }
+  });
+  return references;
 }
 
 function memberNote(type: string, name: string): string {

@@ -58,7 +58,7 @@ import {
   saveWindowDesignerSelection,
   saveWindowDesignerState
 } from '../src/services/windowDesigner/windowDesignerService';
-import { generateLingCppNativeWin32Project } from '../src/services/windowDesigner/lingCppWin32Project';
+import { generateLingCppNativeWin32Project, type GenerateLingCppNativeWin32ProjectOptions } from '../src/services/windowDesigner/lingCppWin32Project';
 import { normalizeImageListResourcePath, normalizeImageListResourcePaths } from '../src/services/windowDesigner/imageListResourceModel';
 import { generateNativeWin32Project } from '../src/services/windowDesigner/nativeWin32Project';
 import { writeGeneratedProjectFiles } from '../src/services/windowDesigner/generatedProjectFileService';
@@ -610,6 +610,70 @@ test('F5 后台启动的普通 Win32 启动窗口在消息循环前执行一次�
   assert.doesNotMatch(cpp.slice(helperStart, helperEnd), /SetTimer/u);
   const openWindow = cpp.slice(cpp.indexOf('HWND Open('), cpp.indexOf('void AttachPropertyPage'));
   assert.doesNotMatch(openWindow, /EnsureStartWindowForeground|SetForegroundWindow|HWND_TOPMOST/u);
+});
+
+test('F5 启动窗口固定为项目 startupWindowId，不跟随设计器当前预览窗口', () => {
+  const windows = [
+    { id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '登录窗口', width: 640, height: 480, background: '#202028', description: '', controls: [] },
+    { id: 'home', fileName: 'Window2.xml', className: '自定义窗体2', title: '主页窗口', width: 640, height: 480, background: '#202028', description: '', controls: [] }
+  ];
+  const source = `类 主窗口
+    事件 创建完毕()
+        打开窗口(自定义窗体2)
+    结束
+结束类
+
+类 自定义窗体2 : 公开 窗体
+公开:
+    事件 _自定义窗体2_创建完毕()
+        调试输出("主页窗口载入")
+    结束
+结束类`;
+  const toCpp = (project: LingWindowProject, options: GenerateLingCppNativeWin32ProjectOptions) =>
+    generateLingCppNativeWin32Project(project, options).files
+      .reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
+
+  // 设计器活动窗口/编辑源码都是主窗口，但启动窗口定义为主页窗口：exe 必须先开主页窗口。
+  const fixedProject: LingWindowProject = { schemaVersion: 2, id: 'startup-window-fixed', name: '启动窗口固定', startupWindowId: 'home', windows };
+  const startupCpp = toCpp(fixedProject, { activeWindowId: 'main', lingCppSourceCode: source });
+  assert.match(startupCpp, /static const int g_startWindowIndex = 1;/u);
+  assert.deepEqual(generateLingCppNativeWin32Project(fixedProject, {
+    activeWindowId: 'main',
+    lingCppSourceCode: source
+  }).blockingDiagnostics, []);
+
+  // startupWindowId 失效（指向已删除窗口）或旧项目缺省时回退第一个窗口。
+  const fallbackCpp = toCpp(
+    { schemaVersion: 2, id: 'startup-window-fallback', name: '启动窗口回退', startupWindowId: 'missing', windows },
+    { activeWindowId: 'main', lingCppSourceCode: source }
+  );
+  assert.match(fallbackCpp, /static const int g_startWindowIndex = 0;/u);
+  const legacyCpp = toCpp(
+    { schemaVersion: 2, id: 'startup-window-legacy', name: '旧项目无启动窗口', windows },
+    { activeWindowId: 'main', lingCppSourceCode: source }
+  );
+  assert.match(legacyCpp, /static const int g_startWindowIndex = 0;/u);
+});
+
+test('设计器归一化为缺省或失效的启动窗口回落第一个窗口并保留有效值', () => {
+  const windows = [
+    { id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '登录窗口', width: 640, height: 480, background: '#202028', description: '', controls: [] },
+    { id: 'home', fileName: 'Window2.xml', className: '自定义窗体2', title: '主页窗口', width: 640, height: 480, background: '#202028', description: '', controls: [] }
+  ];
+  const normalize = (project: LingWindowProject) => normalizeWindowDesignerState({
+    project,
+    activeWindowId: 'main',
+    selectedControlId: null
+  });
+
+  const defaulted = normalize({ schemaVersion: 2, id: 'startup-normalize-default', name: '启动窗口缺省', windows });
+  assert.equal(defaulted.project.startupWindowId, 'main');
+
+  const invalid = normalize({ schemaVersion: 2, id: 'startup-normalize-invalid', name: '启动窗口失效', startupWindowId: 'missing', windows });
+  assert.equal(invalid.project.startupWindowId, 'main');
+
+  const kept = normalize({ schemaVersion: 2, id: 'startup-normalize-kept', name: '启动窗口有效', startupWindowId: 'home', windows });
+  assert.equal(kept.project.startupWindowId, 'home');
 });
 
 function createControl(id: string, parentId?: string, type: LingControl['type'] = 'Button'): LingControl {
@@ -2714,6 +2778,30 @@ test('new_emoji 契约覆盖可移植 Win32 基础命令和完整窗口事件上
     assert.ok(bindingNames.has(commandName), `契约命令必须存在于 Win32 基础模块 binding：${commandName}`);
     assert.ok(cpp.includes(`${commandName}(`), `new_emoji 运行时必须实现契约命令：${commandName}`);
   }
+  // 窗口_关闭自身：双后端都必须是「标准关闭流程」（PostMessage WM_CLOSE），不是 结束() 的直接销毁——
+  // Win32 靠窗口计数保证最后一窗才退出，NE 靠 WM_CLOSE 子类化派发 Closing/可取消。
+  // 本用例是 new_emoji 后端模型，断言 NE 形态；Win32 形态（hwnd_ 变体）由
+  // scripts/smoke-win32-close-self.ts 双平台冒烟与 win32-basic 文档表钉住。
+  assert.ok(cpp.includes('bool 窗口_关闭自身()'), 'new_emoji 运行时必须实现 窗口_关闭自身');
+  assert.ok(cpp.includes('if (!g_newEmojiWindow) return false;\n    PostMessageW(g_newEmojiWindow, WM_CLOSE, 0, 0);'), 'NE 后端 窗口_关闭自身 必须走标准 WM_CLOSE 流程');
+
+  // 延迟调用：new_emoji 后端没有窗口类与可截获的 WM_TIMER（引擎窗口过程会消费主窗口
+  // 定时器消息），改为 message-only 宿主窗口承载一次性计时器 + 生成器侧处理器 trampoline。
+  // 处理器写成「事件」形态验证 trampoline 覆盖：事件块本身不会作为 C++ 函数自动发射。
+  const delayed = generateLingCppNativeWin32Project(project, {
+    lingCppSourceCode: '类 MainWindow\n    空 触发()\n        延迟调用(3000, &_加载完成)\n    结束\n    事件 _加载完成()\n        调试输出("延迟完成")\n    结束\n结束类',
+    enabledModules: [basicModule, newEmojiModule]
+  });
+  assert.deepEqual(delayed.blockingDiagnostics, []);
+  const delayedCpp = delayed.files.reduce((acc, file) => file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
+  assert.match(delayedCpp, /延迟调用\(3000, L"_加载完成"\);/u);
+  assert.match(delayedCpp, /static void LB_NE_DelayedCall_1_加载完成\(\) \{/u);
+  assert.match(delayedCpp, /if \(std::wcscmp\(handlerName, L"_加载完成"\) == 0\) return LB_NE_DelayedCall_1_加载完成;/u);
+  assert.match(delayedCpp, /static bool 延迟调用\(int milliseconds, const wchar_t\* handlerName\)/u);
+  assert.match(delayedCpp, /LB_NE_InitializeDelayedCallHost\(\);/u);
+  assert.match(delayedCpp, /CreateWindowExW\(0, L"LingBuilderNEDelayedCallHost"[\s\S]*?HWND_MESSAGE/u);
+  // 主窗口销毁后未到期回调一律丢弃，保证「窗口销毁后不再触发」。
+  assert.match(delayedCpp, /if \(callback && g_newEmojiWindow && IsWindow\(g_newEmojiWindow\)\) callback\(\);/u);
 
   const textModule: InstalledModule = {
     manifest: BUILTIN_MODULES.find(module => module.id === 'lingbuilder.std.text')!,
@@ -6186,6 +6274,111 @@ test('new_emoji 真实清单审计：仅启用 new_emoji 时全部 designerContr
     return !resolveDesignerControlAddGate({ type: previewType, moduleControl: control, enabledDesignerModules: enabled }).allowed;
   });
   assert.deepEqual(blocked.map(control => control.label), [], '只启用 new_emoji 时不应有任何 designerControl 被门禁拦截');
+});
+
+test('new_emoji 气泡三件套把设计器 properties.content 发射到创建与设置命令', { skip: !fsSync.existsSync(REAL_NEW_EMOJI_MANIFEST_PATH) }, () => {
+  // 2026-10-23 实锤：Popover/Popconfirm/Tooltip 的正文声明为 designer 属性 content，
+  // 与控件自身文本（control.content）同名字段；发射器旧口径无条件取 control.content，
+  // 导致 EU_Create* 与 EU_Set*Content 全发空串，运行期气泡只剩标题。
+  const manifest = JSON.parse(fsSync.readFileSync(REAL_NEW_EMOJI_MANIFEST_PATH, 'utf8')) as {
+    contributes?: { designerControls?: Array<{ type: string }> };
+  };
+  const bubbleTypes = new Set(['Popover', 'Popconfirm', 'Tooltip']);
+  const designerControls = (manifest.contributes?.designerControls || []).filter(control => bubbleTypes.has(control.type));
+  assert.equal(designerControls.length, 3, '真实清单必须包含 Popover/Popconfirm/Tooltip 三个气泡控件');
+
+  const newEmojiModule: InstalledModule = {
+    manifest: {
+      schemaVersion: 2, id: 'lingbuilder.new_emoji.ui', name: 'new_emoji 原生界面库', version: '1.0.0',
+      category: '界面', description: '测试模块',
+      targets: [
+        { id: 'windows-msvc-win32', platform: 'windows', arch: 'win32', toolchain: 'msvc', includeDirs: ['include'], libs: ['lib/Win32/new_emoji.lib'] },
+        { id: 'windows-msvc-x64', platform: 'windows', arch: 'x64', toolchain: 'msvc', includeDirs: ['include'], libs: ['lib/x64/new_emoji.lib'] }
+      ],
+      contributes: { designerControls }
+    } as unknown as InstalledModule['manifest'],
+    installPath: 'C:/modules/lingbuilder.new_emoji.ui', isInstalled: true, isEnabledForProject: true, diagnostics: []
+  };
+
+  const popoverContent = '部署密钥用于把构建产物\\n推送到你的服务器。\\n只显示一次，请妥善保存。';
+  const tooltipContent = '当前已是最新版本，点这里查看更新日志。';
+  const controls: LingControl[] = [
+    {
+      ...createControl('popover', undefined, 'Label'), name: '帮助气泡',
+      designerType: 'lingbuilder.new_emoji.ui/Popover', content: '', x: 20, y: 20, width: 280, height: 80,
+      properties: {
+        label: '🔎 什么是部署密钥？', title: '部署密钥',
+        content: ['部署密钥用于把构建产物\n推送到你的服务器。\n只显示一次，请妥善保存。'],
+        placement: 0, open: false, popupWidth: 300, popupHeight: 150
+      }
+    },
+    {
+      ...createControl('popconfirm', undefined, 'Label'), name: '删除确认',
+      designerType: 'lingbuilder.new_emoji.ui/Popconfirm', content: '', x: 20, y: 120, width: 300, height: 80,
+      properties: {
+        label: '🗑️ 删除缓存目录', title: '确认删除？',
+        // 两条 stringList 成员：正文按换行拼接（'|' 会被 DrawTextLayout 原样画出来）。
+        content: ['缓存目录将被清空，', '不影响项目源码。'],
+        confirm: '清空', cancel: '再想想', placement: 0, open: false
+      }
+    },
+    {
+      ...createControl('tooltip', undefined, 'Label'), name: '版本提示',
+      designerType: 'lingbuilder.new_emoji.ui/Tooltip', content: '', x: 20, y: 220, width: 260, height: 42,
+      properties: { label: 'v2.4.0', content: tooltipContent, placement: 0, open: false, showDelay: 120 }
+    }
+  ];
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'new-emoji-bubble-content',
+    name: '气泡正文发射',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: 'MainWindow', title: '气泡正文发射',
+      width: 720, height: 480, background: '#111827', description: '', designerBackend: 'new-emoji', controls
+    }]
+  };
+  const cpp = generateLingCppNativeWin32Project(project, {
+    enabledModules: [newEmojiModule],
+    lingCppSourceCode: '类 MainWindow\n结束类'
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
+
+  // 同一命令在 lingbuilder_runtime.h 里还有一份运行时包装（形如 int elementId = ...），
+  // 这里只取 main.cpp 的设计期创建调用（形如 int ne_element_1 = EU_CreatePopover(...)）。
+  const callOf = (command: string, designerCallOnly = false): string[] => [...cpp.matchAll(
+    new RegExp(`${designerCallOnly ? 'int ne_element_\\w+ = ' : ''}${command}\\([^;]*\\);`, 'gu')
+  )].map(match => match[0]);
+  const designerCallOf = (command: string): string => callOf(command, true)[0] || '';
+  const literal = (text: string) => `LB_NE_ToUtf8(L"${text}")`;
+  // 宽字符实参在调用前先落到 std::string 变量（ne_element_N_utf8_M / ..._setter_X_Y），
+  // 所以既要接受调用内联字面量，也要顺着实参变量名核对它的声明。
+  const callCarries = (call: string, text: string): boolean => {
+    if (!call) return false;
+    if (call.includes(literal(text))) return true;
+    const names = [...call.matchAll(/(\w+)\.data\(\)/gu)].map(match => match[1]!);
+    return names.some(name => cpp.includes(`std::string ${name} = ${literal(text)};`));
+  };
+
+  const popoverCreate = designerCallOf('EU_CreatePopover');
+  assert.ok(popoverCreate, '必须生成 EU_CreatePopover');
+  assert.ok(callCarries(popoverCreate, popoverContent), `EU_CreatePopover 的 content 实参必须是设计器正文（实际：${popoverCreate}）`);
+  assert.ok(callCarries(callOf('EU_SetPopoverContent')[0] || '', popoverContent), 'EU_SetPopoverContent 必须逐字下发设计器正文');
+
+  const popconfirmCreate = designerCallOf('EU_CreatePopconfirm');
+  assert.ok(callCarries(popconfirmCreate, '缓存目录将被清空，\\n不影响项目源码。'), 'Popconfirm 创建参数的多条正文必须按换行拼接');
+  assert.ok(callCarries(popconfirmCreate, '清空') && callCarries(popconfirmCreate, '再想想'), 'Popconfirm 创建参数必须带上 confirm/cancel 文本');
+  const popconfirmContent = callOf('EU_SetPopconfirmContent')[0] || '';
+  assert.ok(callCarries(popconfirmContent, '确认删除？'), 'EU_SetPopconfirmContent 第一个文本参数是标题');
+  assert.ok(callCarries(popconfirmContent, '缓存目录将被清空，\\n不影响项目源码。'), 'EU_SetPopconfirmContent 必须逐字下发设计器正文');
+  const popconfirmIcon = callOf('EU_SetPopconfirmIcon')[0] || '';
+  // 工程没存 icon/iconColor/iconVisible 时必须回落到模块声明默认值（设计器属性面板显示的就是这一份），
+  // 否则运行期退化成引擎兜底的 "!"，甚至因 iconVisible=0 把图标整个隐藏。
+  assert.ok(callCarries(popconfirmIcon, '⚠️'), `缺键时图标必须回落声明默认 ⚠️（实际：${popconfirmIcon}）`);
+  assert.ok(popconfirmIcon.includes('0xFFE6A23Cu'), `缺键时图标颜色必须回落声明默认 #FFE6A23C（实际：${popconfirmIcon}）`);
+  assert.ok(/static_cast<int>\(\w+\.size\(\)\), 0xFFE6A23Cu, 1\);/u.test(popconfirmIcon), `缺键时图标必须保持可见（实际：${popconfirmIcon}）`);
+
+  const tooltipCreate = designerCallOf('EU_CreateTooltip');
+  assert.ok(callCarries(tooltipCreate, tooltipContent), `EU_CreateTooltip 的 content 实参必须是设计器正文（实际：${tooltipCreate}）`);
+  assert.ok(callCarries(callOf('EU_SetTooltipContent')[0] || '', tooltipContent), 'EU_SetTooltipContent 必须逐字下发设计器正文');
 });
 
 test('事件处理器先于子程序定义调用保持合法，且不得生成类内前向声明（MSVC C2535 红线）', () => {

@@ -242,7 +242,7 @@ export function getCodeExplanation(source: string, line: number, _column = 1): C
     return explain(line, '调试输出', '调试输出会把文字写到运行日志里，适合检查事件有没有执行。', '调试输出("按钮被点击")');
   }
   if (/打开窗口|窗口_打开|载入窗口|载入新窗口/u.test(current)) {
-    return explain(line, '打开窗口', '打开窗口会载入并显示设计器里已有的另一个窗口，第二个参数可以指定打开位置，例如居中、左上角或右下角。', '打开窗口("关于太空冒险客户端", "居中")', '常见错误：第一个参数填写目标窗口标题或类名，不是 .xml 文件名。');
+    return explain(line, '打开窗口', '打开窗口会载入并显示设计器里已有的另一个窗口，第二个参数可以指定打开位置，例如居中、左上角或右下角。', '打开窗口(关于太空冒险客户端, "居中")', '常见错误：第一个参数填写目标窗口标题或类名（裸名，与控件引用一致），不是 .xml 文件名。');
   }
   if (/^(?:结束|缁撴潫)\s*[（(]\s*[）)]\s*;?\s*$/u.test(current)) {
     return explain(line, '结束', '结束会关闭当前程序。新手建议只在“退出”按钮事件里使用。');
@@ -412,7 +412,11 @@ function parseActionStatement(text: string, line: number): LingCppActionBlock {
     return { id: `action-${line}`, kind: 'set-control-text', label: '修改控件文字', description: '把控件显示文字改成新内容', line, params: { text: quoted }, sourceText: text };
   }
   if (/打开窗口|窗口_打开|载入窗口|载入新窗口/u.test(text)) {
-    return { id: `action-${line}`, kind: 'open-window', label: '打开窗口', description: '打开另一个窗口', line, params: { window: quoted }, sourceText: text };
+    // 目标窗口支持裸名与带引号两种历史形态：裸名是推荐形态（与控件引用一致），
+    // 带引号的旧代码在动作表单里编辑后回写为裸名。
+    const target = text.match(/(?:打开窗口|窗口_打开|载入窗口|载入新窗口)\s*[（(]\s*(?:L)?(?:"([^"]*)"|“([^”]*)”|([\p{L}\p{N}_]+))/u);
+    const window = (target?.[1] ?? target?.[2] ?? target?.[3] ?? '').trim();
+    return { id: `action-${line}`, kind: 'open-window', label: '打开窗口', description: '打开另一个窗口', line, params: { window }, sourceText: text };
   }
   return { id: `action-${line}`, kind: 'advanced-code', label: '高级代码块', description: '暂不能用动作表单编辑，但会原样保留', line, params: {}, readonly: true, sourceText: text };
 }
@@ -423,7 +427,7 @@ function actionToSource(action: LingCppActionBlock): string {
   if (action.kind === 'debug-output') return `        调试输出("${text}")`;
   if (action.kind === 'exit-program') return '        结束()';
   if (action.kind === 'set-control-text') return `        ${action.params.control || '按钮1'}.文字 = "${text}"`;
-  if (action.kind === 'open-window') return `        打开窗口("${action.params.window || '新窗口'}")`;
+  if (action.kind === 'open-window') return `        打开窗口(${action.params.window || '新窗口'})`;
   return action.sourceText || '        调试输出("高级代码")';
 }
 

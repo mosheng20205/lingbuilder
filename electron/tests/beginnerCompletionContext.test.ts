@@ -106,3 +106,31 @@ test('新手编辑器仍禁止在字符串和注释中弹出普通命令补全',
   assert.equal(shouldShowBeginnerCompletion(getBeginnerCompletionContext(stringSource, stringSource.length), false), false);
   assert.equal(shouldShowBeginnerCompletion(getBeginnerCompletionContext(commentSource, commentSource.length), false), false);
 });
+
+test('打开窗口首参裸窗口名输入中直接弹出窗口清单', () => {
+  const bareTyping = getBeginnerCompletionContext('打开窗口(自', '打开窗口(自'.length);
+  assert.equal(bareTyping.isWindowTargetBareContext, true);
+  assert.equal(bareTyping.isWindowTargetContext, false);
+  assert.equal(bareTyping.token, '自');
+  assert.equal(shouldShowBeginnerCompletion(bareTyping, false), true);
+
+  const justParen = getBeginnerCompletionContext('        打开窗口(', '        打开窗口('.length);
+  assert.equal(justParen.isWindowTargetBareContext, true);
+  assert.equal(justParen.token, '');
+  assert.equal(shouldShowBeginnerCompletion(justParen, false), true);
+
+  const aliasedCommand = getBeginnerCompletionContext('载入新窗口(主', '载入新窗口(主'.length);
+  assert.equal(aliasedCommand.isWindowTargetBareContext, true);
+
+  const quotedTyping = getBeginnerCompletionContext('打开窗口("自', '打开窗口("自'.length);
+  assert.equal(quotedTyping.isWindowTargetContext, true);
+  assert.equal(quotedTyping.isWindowTargetBareContext, false);
+
+  const closedCall = getBeginnerCompletionContext('打开窗口(自定义窗体2)', '打开窗口(自定义窗体2)'.length);
+  assert.equal(closedCall.isWindowTargetBareContext, false);
+  assert.equal(closedCall.isWindowTargetContext, false);
+
+  const placement = getBeginnerCompletionContext('打开窗口("主", "居', '打开窗口("主", "居'.length);
+  assert.equal(placement.isWindowPlacementContext, true);
+  assert.equal(placement.isWindowTargetBareContext, false);
+});

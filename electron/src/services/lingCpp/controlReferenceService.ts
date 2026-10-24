@@ -1,6 +1,7 @@
 import type { LingCppModuleContext, ModuleCommandBinding, ModuleCommandBindingParameter } from '../modules/types';
 import type { LingCefHeadlessResource, LingControl, LingDesignerResource, LingWindowModel, LingWindowProject } from '../windowDesigner/types';
 import { getWin32ControlDefinition } from '../windowDesigner/win32ControlRegistry';
+import { allowsControlReferenceLiteralZero } from './controlReferenceLiteralZero';
 import { normalizeIdentifier, parseLingCpp } from './parser';
 import { collectLingCppTextBlockLines, scanLingCppTextBlockRanges } from './textBlock';
 import type { LingCppDiagnostic } from './types';
@@ -48,6 +49,7 @@ export interface LingCppControlReference {
   status:
     | 'resolved'
     | 'runtime-reference'
+    | 'literal-zero'
     | 'missing'
     | 'ambiguous'
     | 'invalid-expression'
@@ -459,6 +461,22 @@ function resolveControlReference(
   const identifierMatch = rawText.match(/^[\p{L}_][\p{L}\p{N}_]*$/u);
   const name = (quotedMatch?.[1] || identifierMatch?.[0] || '').trim();
   const range = rangeFromOffsets(context.lineStarts, startOffset, endOffset);
+  // 特例表里的 controlRef 参数允许整数零字面量 0 表示窗口级目标（如 NE_显示加载遮罩 的目标控件）。
+  // 只有裸 0 放行："0"、0x0、变量与表达式继续走下面的 invalid-expression 阻断。
+  if (rawText === '0' && allowsControlReferenceLiteralZero(canonicalCommandName, parameter.name)) {
+    return {
+      commandName,
+      canonicalCommandName,
+      parameterIndex,
+      parameter,
+      rawText,
+      name: '',
+      quoted: false,
+      range,
+      candidates: [],
+      status: 'literal-zero'
+    };
+  }
   const runtimeVariable = identifierMatch
     ? getRuntimeControlVariablesFromMethods(context.methods, range.startLine, moduleContext)
       .find(variable => normalizeIdentifier(variable.name) === normalizeIdentifier(identifierMatch[0]))

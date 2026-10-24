@@ -55,8 +55,8 @@ export function getLingCppCompletionCatalog(contextKind: LingCppCompletionContex
     catalogItem('连续赋值', 'function', '连续赋值($1, $2)', '把同一个值一次写入多个变量或数组元素：第 1 个参数是值，其后都是赋值目标', ['BatchAssign', 'MassAssign', 'batch'], ['lxfz', '批量赋值'], '连续赋值(0, 人数, 轮询次数, 名单[1])', 'command', 30, true),
     catalogItem('结束', 'function', '结束()', '结束当前程序', ['Exit', 'Quit', 'CloseApp'], ['js', 'tc'], '结束()', 'command', 30),
     catalogItem('修改控件文字', 'snippet', '$1.文字 = "$2"', '修改按钮、标签或输入框显示文字', ['SetText', 'Text'], ['xgwz', 'wz'], '按钮1.文字 = "确定"', 'snippet', 50, true),
-    catalogItem('打开窗口', 'function', '打开窗口("$1")', '打开另一个窗口', ['OpenWindow', 'ShowWindow', '窗口_打开', '载入窗口', '载入新窗口'], ['dkck', 'ck', 'zrck'], '打开窗口("设置窗体")', 'command', 30),
-    catalogItem('打开窗口居中', 'snippet', '打开窗口("$1", "居中")', '居中打开另一个窗口', ['OpenWindowCenter', 'ShowWindowCenter'], ['dkckjz', 'jzdk'], '打开窗口("设置窗体", "居中")', 'command', 30, true)
+    catalogItem('打开窗口', 'function', '打开窗口($1)', '打开另一个窗口，目标写裸窗口名（窗口标题或类名），与控件引用书写一致', ['OpenWindow', 'ShowWindow', '窗口_打开', '载入窗口', '载入新窗口'], ['dkck', 'ck', 'zrck'], '打开窗口(设置窗体)', 'command', 30),
+    catalogItem('打开窗口居中', 'snippet', '打开窗口($1, "居中")', '居中打开另一个窗口，目标写裸窗口名（窗口标题或类名）', ['OpenWindowCenter', 'ShowWindowCenter'], ['dkckjz', 'jzdk'], '打开窗口(设置窗体, "居中")', 'command', 30, true)
   ];
 
   const classBody: LingCppCompletionCatalogItem[] = [

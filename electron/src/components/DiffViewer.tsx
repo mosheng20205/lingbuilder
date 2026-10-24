@@ -831,19 +831,19 @@ const BEGINNER_CODE_COMPLETIONS: BeginnerCodeCompletion[] = [
   {
     label: '打开窗口',
     detail: '打开另一个设计器窗口',
-    insertText: '打开窗口("窗口标题")',
+    insertText: '打开窗口(窗口标题)',
     aliases: ['dkck', 'ck', 'openwindow', 'showwindow', '窗口_打开', '载入窗口', '载入新窗口', 'zairu', 'zrck', '打开窗口'],
     kind: '命令',
-    cursorOffset: '打开窗口("'.length,
+    cursorOffset: '打开窗口('.length,
     selectLength: '窗口标题'.length
   },
   {
     label: '打开窗口居中',
     detail: '居中打开另一个设计器窗口',
-    insertText: '打开窗口("窗口标题", "居中")',
+    insertText: '打开窗口(窗口标题, "居中")',
     aliases: ['dkckjz', 'jzdk', 'centerwindow', '居中打开', '打开窗口居中'],
     kind: '命令',
-    cursorOffset: '打开窗口("'.length,
+    cursorOffset: '打开窗口('.length,
     selectLength: '窗口标题'.length
   },
   {
@@ -3037,7 +3037,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     { label: '返回', text: '返回' },
     { label: '信息框', text: '信息框("提示内容", 64, "提示")' },
     { label: '调试输出', text: '调试输出("调试信息")' },
-    { label: '打开窗口', text: '打开窗口("窗口标题")' },
+    { label: '打开窗口', text: '打开窗口(窗口标题)' },
     ...moduleQuickSnippets
   ] : [
     { label: '.子程序', text: '\n.子程序 _按钮1_被单击\n    信息框 (“请输入提示内容”, 64, “提示”)\n' },
@@ -6028,7 +6028,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       }
       const token = context.token;
       // # 触发：只出常量清单，且 # 已在源码中，上屏剥掉前缀避免 ##。
-      const sourceItems = context.isWindowTargetContext
+      const sourceItems = context.isWindowTargetContext || context.isWindowTargetBareContext
         ? windowTargetCompletionItems
         : context.isWindowPlacementContext
           ? BEGINNER_WINDOW_PLACEMENT_COMPLETIONS
@@ -6037,7 +6037,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               .filter(item => item.insertText.startsWith('#'))
               .map(item => ({ ...item, insertText: item.insertText.slice(1) }))
             : getBeginnerCodeCompletionItems(target);
-      const items = filterBeginnerCodeCompletions(token, includeAll || context.isWindowTargetContext || context.isWindowPlacementContext || context.isConstantReference, sourceItems);
+      const items = filterBeginnerCodeCompletions(token, includeAll || context.isWindowTargetContext || context.isWindowTargetBareContext || context.isWindowPlacementContext || context.isConstantReference, sourceItems);
       if (items.length === 0) {
         setBeginnerCompletionState(current => current?.targetKey === targetKey ? null : current);
         return;
@@ -9369,6 +9369,12 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       moduleContext,
       activeFile?.path
     ).filter(reference => reference.status === 'resolved').map(reference => reference.name));
+    // 设计器窗口引用（类名+标题，与运行期 窗口_打开 按名匹配的口径一致）：
+    // 打开窗口族里写的裸窗口名按控件引用同色显示，不再是无色的普通标识符。
+    const beginnerWindowReferenceNames = new Set((designerProject?.windows || []).flatMap(window => [
+      (window.className || '').trim(),
+      (window.title || '').trim()
+    ]).filter(Boolean));
     const beginnerNativeVariables = extractLingCppNativeVariableNames(normalizedSourceCode);
     const beginnerLocalNames = new Set([
       ...structuredReadingRows.filter(row => row.group === 'local').map(row => row.name),
@@ -9463,6 +9469,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         ].filter(Boolean)),
         knownProcedures: beginnerKnownProcedures,
         controlReferences: beginnerControlReferenceNames,
+        windowReferences: beginnerWindowReferenceNames,
         nativeVariables: beginnerNativeVariables
       });
       return (
@@ -11828,7 +11835,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           <div className={`my-1 border-t ${canvasBorder}`} />
           {renderContextMenuButton('插入调试输出', () => appendBeginnerSnippet(contextTarget, '调试输出("")'), <Code className="h-3.5 w-3.5" />, false, !contextTarget)}
           {renderContextMenuButton('插入信息框', () => appendBeginnerSnippet(contextTarget, '信息框("提示内容", 64, "提示")'), <Lightbulb className="h-3.5 w-3.5" />, false, !contextTarget)}
-          {renderContextMenuButton('插入打开窗口', () => appendBeginnerSnippet(contextTarget, '打开窗口("窗口标题")'), <ExternalLink className="h-3.5 w-3.5" />, false, !contextTarget)}
+          {renderContextMenuButton('插入打开窗口', () => appendBeginnerSnippet(contextTarget, '打开窗口(窗口标题)'), <ExternalLink className="h-3.5 w-3.5" />, false, !contextTarget)}
           {renderContextMenuButton('插入如果结构', () => appendBeginnerSnippet(contextTarget, BEGINNER_IF_SNIPPET), <ListTree className="h-3.5 w-3.5" />, false, !contextTarget)}
           {renderContextMenuButton('插入如果真结构', () => appendBeginnerSnippet(contextTarget, BEGINNER_IF_TRUE_SNIPPET), <ListTree className="h-3.5 w-3.5" />, false, !contextTarget)}
           {renderContextMenuButton('插入选择结构', () => appendBeginnerSnippet(contextTarget, BEGINNER_SELECT_SNIPPET), <ListTree className="h-3.5 w-3.5" />, false, !contextTarget)}

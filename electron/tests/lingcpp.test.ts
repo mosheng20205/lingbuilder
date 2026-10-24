@@ -3,7 +3,7 @@ import './functionLibraries.test';
 import './projectDataTypes.test';
 import './projectDataTypesUi.test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import {
@@ -43,6 +43,7 @@ import {
   getLingCppStructuredReadingRows,
   getLingCppStructureView,
   getLingCppSymbols,
+  getLingCppWindowTargetReferences,
   getReadableEventName,
   lingCppLanguageService
 } from '../src/services/lingCpp/languageService';
@@ -99,7 +100,7 @@ import { buildProjectDllDefLines, createProjectDllCommandContext, createProjectD
 import { importNativeCppToLingBuilder } from '../src/services/windowDesigner/nativeCppImportService';
 import { LingClockResource, LingWindowProject } from '../src/services/windowDesigner/types';
 import { getWin32RuntimeControlContracts, WIN32_CONTROL_DEFINITIONS } from '../src/services/windowDesigner/win32ControlRegistry';
-import { InstalledModule } from '../src/services/modules/types';
+import { InstalledModule, LingBuilderModuleManifest } from '../src/services/modules/types';
 import { BUILTIN_MODULES } from '../src/services/modules/builtinModules';
 import { adaptProblemForBeginner } from '../src/services/lingCpp/beginnerService';
 import { EPL_TOKEN_COLORS_DARK, EPL_TOKEN_COLORS_LIGHT, tokenizeEplStatement } from '../src/services/eplTokenizer';
@@ -1084,6 +1085,33 @@ test('beginner action preview treats only explicit 结束() as exiting the progr
   assert.equal(getCodeExplanation('结束()', 1).title, '结束');
 });
 
+test('beginner action blocks parse bare and quoted open-window targets and rewrite as bare names', () => {
+  const source = [
+    '类 测试窗口 : 公开 窗体',
+    '公开:',
+    '    事件 _按钮1_被单击()',
+    '        打开窗口(自定义窗体2)',
+    '        打开窗口("主页窗口")',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const blocks = getActionBlocksForEvent(source, '_按钮1_被单击');
+  const openWindowBlocks = blocks.filter(block => block.kind === 'open-window');
+
+  assert.deepEqual(openWindowBlocks.map(block => block.params.window), ['自定义窗体2', '主页窗口']);
+
+  const proposal = createWorkspaceEditFromActionBlock({
+    filePath: 'src/MainWindow.lcpp',
+    sourceCode: source,
+    handlerName: '_按钮1_被单击'
+  }, {
+    ...openWindowBlocks[0]!,
+    params: { window: '设置窗体' }
+  });
+  assert.ok(proposal.changes[0].newText.includes('打开窗口(设置窗体)'));
+  assert.equal(proposal.changes[0].newText.includes('打开窗口("设置窗体")'), false);
+});
+
 test('beginner templates provide source and designer model together', () => {
   const templates = getBeginnerTemplates();
   const login = templates.find(template => template.id === 'login');
@@ -1870,6 +1898,134 @@ test('controlRef uses bare designer symbols for diagnostics, completion, hover, 
   assert.equal(getLingCppControlReferences(nativeCpp, project, moduleContext, 'src/MainWindow.lcpp').length, 2);
 });
 
+// NE_显示加载遮罩 的目标控件在模块文档里允许传 0 表示「整个窗口」的全屏遮罩（引擎 EU_ShowLoading
+// 的 target_element_id 按 0 走窗口级），controlRef 门禁必须放行这个字面量，其余写法照旧阻断。
+function createLoadingMaskControlRefFixture(): {
+  project: LingWindowProject;
+  moduleContext: { enabledModules: InstalledModule[]; availableModules: InstalledModule[] };
+  head: string;
+} {
+  const win32Basic: InstalledModule = {
+    manifest: BUILTIN_MODULES.find(item => item.id === 'lingbuilder.win32.basic')!,
+    installPath: 'builtin://lingbuilder.win32.basic',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const loadingMaskModule: InstalledModule = {
+    manifest: {
+      schemaVersion: 2,
+      id: 'lingbuilder.new_emoji.ui',
+      name: 'new_emoji 原生界面库',
+      version: '1.0.0',
+      category: '界面',
+      description: '测试模块',
+      targets: [
+        { id: 'windows-msvc-win32', platform: 'windows', arch: 'win32', toolchain: 'msvc', includeDirs: ['include'], libs: ['lib/Win32/new_emoji.lib'] },
+        { id: 'windows-msvc-x64', platform: 'windows', arch: 'x64', toolchain: 'msvc', includeDirs: ['include'], libs: ['lib/x64/new_emoji.lib'] }
+      ],
+      contributes: {
+        commands: [{
+          name: 'NE_显示加载遮罩',
+          signature: 'NE_显示加载遮罩(窗口句柄, 目标控件, 文本, 全屏, 锁输入, 背景色, 圈颜色, 文本颜色, 样式)',
+          description: '显示 new_emoji 加载遮罩，返回加载编号。',
+          returnType: '整数型'
+        }]
+      },
+      bindings: {
+        commands: [{
+          command: 'NE_显示加载遮罩',
+          runtimeName: 'NE_显示加载遮罩',
+          returnType: 'int',
+          encoding: 'wide',
+          parameters: [
+            { name: '窗口句柄', type: 'handle', description: 'new_emoji 窗口句柄。' },
+            { name: '目标控件', type: 'controlRef', controlKinds: ['visual'], scope: 'currentWindow', runtimeRepresentation: 'wideName', description: '承载遮罩的控件，当前窗口传 0。' },
+            { name: '文本', type: 'wideString', description: '加载提示文本。' },
+            { name: '全屏', type: 'bool', description: '是否全屏遮罩。' },
+            { name: '锁输入', type: 'bool', description: '是否锁定输入。' },
+            { name: '背景色', type: 'int', description: '背景色。' },
+            { name: '圈颜色', type: 'int', description: '圈颜色。' },
+            { name: '文本颜色', type: 'int', description: '文本颜色。' },
+            { name: '样式', type: 'int', description: '加载圈样式编号。' }
+          ]
+        }]
+      }
+    },
+    installPath: 'C:/modules/lingbuilder.new_emoji.ui',
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const project: LingWindowProject = {
+    ...sampleProject,
+    windows: [{
+      ...sampleProject.windows[0],
+      controls: [
+        ...sampleProject.windows[0].controls,
+        { id: 'status-label', type: 'Label', name: '状态文本', content: '', x: 10, y: 10, width: 200, height: 28, fontSize: 13, background: '#202020', foreground: '#ffffff', isEnabled: true, visibility: 'Visible', events: {} }
+      ]
+    }]
+  };
+  return {
+    project,
+    moduleContext: { enabledModules: [win32Basic, loadingMaskModule], availableModules: [win32Basic, loadingMaskModule] },
+    head: '类 游戏主窗体 : 公开 窗体\n事件 创建完毕()\n'
+  };
+}
+
+test('controlRef 特例表放行 NE_显示加载遮罩 目标控件的整数零字面量', () => {
+  const { project, moduleContext, head } = createLoadingMaskControlRefFixture();
+  const allowedSource = `${head}    局部 整数型 加载编号 = NE_显示加载遮罩(当前窗口, 0, "正在导出安装包…", 真, 真, 0, 0, 0, 0)\n结束\n结束类`;
+  assert.deepEqual(getLingCppControlReferenceDiagnostics(allowedSource, project, moduleContext, 'src/MainWindow.lcpp'), []);
+  assert.equal(getLingCppControlReferences(allowedSource, project, moduleContext, 'src/MainWindow.lcpp')[0]?.status, 'literal-zero');
+
+  // 生成器把特例参数的字面量 0 原样透传给 NE_显示加载遮罩 助手，不得当成控件名。
+  const generated = generateLingCppNativeWin32Project(project, {
+    lingCppSourceCode: allowedSource,
+    lingCppSourceFilePath: 'src/MainWindow.lcpp',
+    enabledModules: moduleContext.enabledModules
+  });
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.match(mainCpp, /NE_显示加载遮罩\(g_newEmojiWindow, 0,/u);
+  assert.doesNotMatch(mainCpp, /NE_显示加载遮罩\(g_newEmojiWindow, L"0"/u);
+
+  // 真实清单存在时校验特例表仍与模块文档一致（清单参数改名会让特例表静默失效）。
+  const realManifestPath = resolve(import.meta.dirname, '../../.lingbuilder/modules/lingbuilder.new_emoji.ui/lingbuilder.module.json');
+  if (existsSync(realManifestPath)) {
+    const realManifest = JSON.parse(readFileSync(realManifestPath, 'utf8')) as LingBuilderModuleManifest;
+    const targetParameter = realManifest.bindings?.commands
+      .find(item => item.command === 'NE_显示加载遮罩')
+      ?.parameters?.find(item => item.name === '目标控件');
+    assert.equal(targetParameter?.type, 'controlRef');
+    assert.match(targetParameter?.description || '', /传 0/u);
+  }
+});
+
+test('controlRef 特例表不弱化其他检查：带引号 0、非特例参数传 0、不存在控件名照旧阻断', () => {
+  const { project, moduleContext, head } = createLoadingMaskControlRefFixture();
+
+  const quotedZero = getLingCppControlReferenceDiagnostics(
+    `${head}    局部 整数型 加载编号 = NE_显示加载遮罩(当前窗口, "0", "正在导出安装包…", 真, 真, 0, 0, 0, 0)\n结束\n结束类`,
+    project, moduleContext, 'src/MainWindow.lcpp'
+  );
+  assert.ok(quotedZero.some(item => item.id.startsWith('lingcpp-control-reference-quoted')));
+
+  const otherParameterZero = getLingCppControlReferenceDiagnostics(
+    `${head}    控件_设置文本(0, "完成")\n结束\n结束类`,
+    project, moduleContext, 'src/MainWindow.lcpp'
+  );
+  assert.ok(otherParameterZero.some(item => item.message.includes('需要直接填写控件名')));
+
+  const unknownName = getLingCppControlReferenceDiagnostics(
+    `${head}    控件_设置文本("不存在控件", "完成")\n结束\n结束类`,
+    project, moduleContext, 'src/MainWindow.lcpp'
+  );
+  assert.ok(unknownName.some(item => item.id.startsWith('lingcpp-control-reference-missing')));
+});
+
+
 test('beginner presentation assigns a dedicated control-reference token color kind', () => {
   const tokens = classifyLingCppPresentationCode('控件_设置文本(操作结果, "完成")', {
     isNativeCpp: false,
@@ -1879,6 +2035,27 @@ test('beginner presentation assigns a dedicated control-reference token color ki
     controlReferences: new Set(['操作结果'])
   });
   assert.equal(tokens.find(token => token.text === '操作结果')?.kind, 'control-reference');
+});
+
+test('beginner presentation colors designer window references like control references', () => {
+  const tokens = classifyLingCppPresentationCode('打开窗口(自定义窗体2)', {
+    isNativeCpp: false,
+    moduleCommands: new Set(),
+    knownMembers: new Set(),
+    knownProcedures: new Set(),
+    windowReferences: new Set(['自定义窗体2', '主页窗口'])
+  });
+  assert.equal(tokens.find(token => token.text === '打开窗口')?.kind, 'command');
+  assert.equal(tokens.find(token => token.text === '自定义窗体2')?.kind, 'control-reference');
+  // 不在窗口引用表里的标识符保持普通颜色，不给假着色。
+  const unknownTokens = classifyLingCppPresentationCode('打开窗口(不存在的窗口)', {
+    isNativeCpp: false,
+    moduleCommands: new Set(),
+    knownMembers: new Set(),
+    knownProcedures: new Set(),
+    windowReferences: new Set(['自定义窗体2', '主页窗口'])
+  });
+  assert.equal(unknownTokens.find(token => token.text === '不存在的窗口')?.kind, 'identifier');
 });
 
 test('beginner presentation colors local variables independently from members and strings', () => {
@@ -2221,6 +2398,66 @@ test('LingCpp bilingual completions suggest designer windows inside open-window 
 
   assert.ok(completions.some(item => item.label === '太空冒险' && item.insertText === '太空冒险'));
   assert.equal(completions.some(item => item.label === '信息框'), false);
+});
+
+test('LingCpp bilingual completions suggest designer windows for bare open-window targets', () => {
+  const source = `包 太空冒险
+使用 Win32窗口
+
+类 游戏主窗体 : 公开 窗体
+公开:
+    事件 _按钮1_被单击()
+        打开窗口(太
+结束类`;
+  const completions = getLingCppBilingualCompletions({
+    source,
+    line: 7,
+    column: '        打开窗口(太'.length + 1,
+    triggerText: '太'
+  }, sampleProject);
+
+  assert.ok(completions.some(item => item.label === '太空冒险' && item.insertText === '太空冒险'));
+  assert.equal(completions.some(item => item.label === '信息框'), false);
+});
+
+test('打开窗口裸窗口名引用按设计器窗口解析出语义着色区间', () => {
+  const project: LingWindowProject = {
+    id: 'window-ref-project',
+    name: '窗口引用项目',
+    windows: [
+      {
+        id: 'main-window', fileName: 'MainWindow.xml', className: '主窗口', title: '登录窗口',
+        width: 640, height: 480, background: '#202028', description: '', controls: []
+      },
+      {
+        id: 'window-2', fileName: 'Window2.xml', className: '自定义窗体2', title: '主页窗口',
+        width: 640, height: 480, background: '#202028', description: '', controls: []
+      }
+    ]
+  };
+  const source = [
+    '类 主窗口',
+    '    事件 创建完毕()',
+    '        打开窗口(自定义窗体2)',
+    '        打开窗口(主页窗口)',
+    '        打开窗口("自定义窗体2")',
+    '        // 打开窗口(自定义窗体2)',
+    '        调试输出("打开窗口(自定义窗体2)")',
+    '        打开窗口(不存在的窗口)',
+    '    结束',
+    '结束类'
+  ].join('\n');
+
+  const references = getLingCppWindowTargetReferences(source, project);
+  assert.equal(references.length, 2);
+  assert.deepEqual(
+    references.map(reference => [reference.startLine, reference.name, reference.windowId]),
+    [[3, '自定义窗体2', 'window-2'], [4, '主页窗口', 'window-2']]
+  );
+  assert.deepEqual(
+    references.map(reference => [reference.startColumn, reference.endColumn]),
+    [[14, 20], [14, 18]]
+  );
 });
 
 test('LingCpp designer bindings produce bound and missing-source hints', () => {
