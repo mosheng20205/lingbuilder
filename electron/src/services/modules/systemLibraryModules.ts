@@ -342,6 +342,7 @@ const windowUtils = createStandardModule({
     command('窗口_取标题', [{ name: '窗口句柄', type: 'handle', description: '要读取标题的窗口句柄；标题为空或读取失败返回空文本。'}], 'wideString', '读取窗口标题。'),
     command('窗口_设置标题', [{ name: '窗口句柄', type: 'handle', description: hwndArg}, { name: '标题', type: 'wideString', description: '新的标题文本，直接替换原标题；空文本清空标题栏文字。'}], 'bool', '设置窗口标题。'),
     command('窗口_显示', [{ name: '窗口句柄', type: 'handle', description: '目标窗口句柄；句柄无效时返回假，合法句柄即使显示编号不认识也会返回真。'}, { name: '显示方式', type: 'int', description: 'Win32 SW_* 显示编号，例如 0 隐藏、1 正常显示、2 最小化、3 最大化；运行时不校验取值范围。'}], 'bool', '按 Win32 SW_* 编号显示、隐藏、最小化或最大化窗口。'),
+    command('窗口_关闭', [{ name: '窗口句柄', type: 'handle', description: '要关闭的窗口句柄；通常来自 窗口_按标题查找 或 窗口_取自身句柄，句柄无效时返回假。'}], 'bool', '按句柄关闭任意顶层窗口（与点标题栏 × 等价的标准关闭流程，不是硬销毁）。'),
     command('窗口_移动', [{ name: '窗口句柄', type: 'handle', description: hwndArg}, { name: '横坐标', type: 'int', description: '窗口左上角的屏幕横坐标，按物理像素计。'}, { name: '纵坐标', type: 'int', description: '窗口左上角的屏幕纵坐标，按物理像素计。'}, { name: '宽度', type: 'int', description: '窗口新的外框宽度；小于 1 时按 1 处理。'}, { name: '高度', type: 'int', description: '窗口新的外框高度；小于 1 时按 1 处理。'}], 'bool', '移动窗口并设置尺寸。'),
     command('窗口_置前台', [{ name: '窗口句柄', type: 'handle', description: '要提到前台的窗口句柄；系统前台锁定策略可能拒绝，此时返回假。'}], 'bool', '请求将窗口切换到前台。'),
     command('窗口_是否最大化', [{ name: '窗口句柄', type: 'handle', description: '要判断的窗口句柄；只有当前处于最大化状态才返回真。'}], 'bool', '判断窗口当前是否处于最大化（IsZoomed）状态。', '窗口_是否最大化(窗口句柄)'),

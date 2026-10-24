@@ -1524,6 +1524,14 @@ bool 窗口_句柄是否有效(long long handle) { return IsWindow(reinterpret_c
 const wchar_t* 窗口_取标题(long long handle) { HWND window = reinterpret_cast<HWND>(handle); const int size = GetWindowTextLengthW(window); if (size <= 0) return LB_ReturnText(L""); std::vector<wchar_t> buffer(static_cast<size_t>(size) + 1); return GetWindowTextW(window, buffer.data(), static_cast<int>(buffer.size())) ? LB_ReturnText(buffer.data()) : LB_ReturnText(L""); }
 bool 窗口_设置标题(long long handle, const wchar_t* title) { return SetWindowTextW(reinterpret_cast<HWND>(handle), title) == TRUE; }
 bool 窗口_显示(long long handle, int command) { HWND window = reinterpret_cast<HWND>(handle); if (!IsWindow(window)) return false; ShowWindow(window, command); return true; }
+// 按句柄关闭任意顶层窗口：标准 WM_CLOSE 流程（与点标题栏 × 等价），不是 DestroyWindow 硬销毁——
+// 目标若是本项目生成的窗口会正常走 关闭中/取消/已关闭 事件链，最后一个窗口关闭才退出程序。
+bool 窗口_关闭(long long handle) {
+    HWND window = reinterpret_cast<HWND>(handle);
+    if (!IsWindow(window)) return false;
+    PostMessageW(window, WM_CLOSE, 0, 0);
+    return true;
+}
 bool 窗口_移动(long long handle, int x, int y, int width, int height) { return MoveWindow(reinterpret_cast<HWND>(handle), x, y, (std::max)(1, width), (std::max)(1, height), TRUE) == TRUE; }
 bool 窗口_置前台(long long handle) { return SetForegroundWindow(reinterpret_cast<HWND>(handle)) == TRUE; }
 bool 窗口_是否最大化(long long handle) { HWND window = reinterpret_cast<HWND>(handle); return IsWindow(window) && IsZoomed(window); }
