@@ -7,11 +7,13 @@
         如果结束
         控件_设置文本(状态栏, "USB 直传版就绪：插上手机自动接入（免调试·免 Wi-Fi），画面可点可拖")
         调试输出("AOA 多机投屏群控 v3 就绪（USB 设备池版，无 Wi-Fi）")
-        // MirrorDesk WebUI：页面走 file://（exe 同目录 mirrordesk.html），状态经 WebView2 消息桥
-        // 推送。此前 http.server 方案里 WebView 轮询与 UI 线程动态路由交互会把界面拖死，勿回头。
-        // 页面定位以 exe 目录为基（2026-10-22 实锤）：帧文件按 exe 目录落盘，而 CWD 随启动方
-        // 变化（AI Bridge 拉起时 CWD≠bin），路径_转绝对路径 按 CWD 解析会把页面定位到源码根。
-        // 缺失再回退源码根。bin 会被每次构建清空，回退源码根是常态；帧图经 帧基址 绝对地址不受影响。
+        // MirrorDesk WebUI：页面走 file://（mirrordesk.html），状态经 WebView2 消息桥推送。
+        // 此前 http.server 方案里 WebView 轮询与 UI 线程动态路由交互会把界面拖死，勿回头。
+        // 页面解析全便携（2026-10-23 实锤：硬编码本机源码根绝对路径，分享包在别的机器
+        // 上回退到不存在的 T:\ 路径 → ERR_FILE_NOT_FOUND 白屏）：① exe 同目录 ② CWD
+        // ③ 从 exe 目录向上最多 6 级找 src\aoa-viewer\mirrordesk.html——标准构建布局
+        // .lingbuilder-build\<项目>\x64\Debug\bin 上溯 4 级即工作区根，F5/导出/分享包全通用。
+        // 帧基址固定 exe 目录（帧文件按它绝对落盘，页面从源码根回退加载也不受影响）。
         页面绝对路径 = ""
         @ {
         @     wchar_t Exe缓冲[MAX_PATH] = {};
@@ -19,13 +21,27 @@
         @     std::wstring Exe路径 = Exe缓冲;
         @     size_t 斜杠位置 = Exe路径.find_last_of(L"\\/");
         @     std::wstring Exe目录 = (斜杠位置 == std::wstring::npos) ? std::wstring(L".") : Exe路径.substr(0, 斜杠位置);
-        @     页面绝对路径 = Exe目录 + L"\\mirrordesk.html";
         @     帧基址 = Exe目录;
         @     std::replace(帧基址.begin(), 帧基址.end(), L'\\', L'/');
+        @     页面绝对路径 = Exe目录 + L"\\mirrordesk.html";
+        @     if (GetFileAttributesW(页面绝对路径.c_str()) == INVALID_FILE_ATTRIBUTES) {
+        @         wchar_t Cwd缓冲[MAX_PATH] = {};
+        @         if (GetCurrentDirectoryW(MAX_PATH, Cwd缓冲) > 0) {
+        @             std::wstring Cwd页面 = std::wstring(Cwd缓冲) + L"\\mirrordesk.html";
+        @             if (GetFileAttributesW(Cwd页面.c_str()) != INVALID_FILE_ATTRIBUTES) 页面绝对路径 = Cwd页面;
+        @         }
+        @     }
+        @     if (GetFileAttributesW(页面绝对路径.c_str()) == INVALID_FILE_ATTRIBUTES) {
+        @         std::wstring 目录 = Exe目录;
+        @         for (int 上溯 = 0; 上溯 < 6; ++上溯) {
+        @             std::wstring 候选 = 目录 + L"\\src\\aoa-viewer\\mirrordesk.html";
+        @             if (GetFileAttributesW(候选.c_str()) != INVALID_FILE_ATTRIBUTES) { 页面绝对路径 = 候选; break; }
+        @             size_t 末斜杠 = 目录.find_last_of(L"\\/");
+        @             if (末斜杠 == std::wstring::npos || 末斜杠 == 0) break;
+        @             目录 = 目录.substr(0, 末斜杠);
+        @         }
+        @     }
         @ }
-        如果 (文件_是否存在(页面绝对路径) = 假)
-          页面绝对路径 = "T:\\electron\\lingbuilder\\src\\aoa-viewer\\mirrordesk.html"
-        如果结束
         文件_追加文本("viewer.log", "页面 " + 页面绝对路径 + " |")
         调试输出("MirrorDesk 页面：" + 页面绝对路径)
         延迟调用(500, &打开网页)
