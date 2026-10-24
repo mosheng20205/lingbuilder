@@ -55,6 +55,21 @@ double OpenCV结果_取置信度(long long result, int index) { return LB_OCV_Re
 const wchar_t* OpenCV结果_取JSON(long long result) { return LB_OpenCvReadResultText(result, LB_OCV_ResultGetJson); }
 bool OpenCV结果_保存标注图(long long result, const wchar_t* path, int quality) { return LB_OCV_ResultSaveAnnotated(result, path, quality) != 0; }
 bool OpenCV结果_释放(long long result) { return LB_OCV_ReleaseResult(result) != 0; }
+
+// ============================ 视频帧（1.2.0） ============================
+long long OpenCV_打开视频(const wchar_t* path) { return LB_OCV_VideoOpen(path); }
+long long OpenCV_打开摄像头(int index) { return LB_OCV_CameraOpen(index); }
+int OpenCV_取视频帧数(long long video) { return LB_OCV_VideoFrameCount(video); }
+double OpenCV_取视频帧率(long long video) { return LB_OCV_VideoFps(video); }
+int OpenCV_取视频宽度(long long video) { return LB_OCV_VideoWidth(video); }
+int OpenCV_取视频高度(long long video) { return LB_OCV_VideoHeight(video); }
+double OpenCV_取视频位置(long long video) { return LB_OCV_VideoPosition(video); }
+bool OpenCV_跳转到帧(long long video, double frame) { return LB_OCV_VideoSeek(video, frame) != 0; }
+long long OpenCV_读下一帧(long long video) { return LB_OCV_VideoReadFrame(video); }
+bool OpenCV_关闭视频(long long video) { return LB_OCV_VideoClose(video) != 0; }
+long long OpenCV_创建视频写出(const wchar_t* path, double fps, int width, int height, const wchar_t* codec) { return LB_OCV_VideoWriterOpen(path, fps, width, height, codec); }
+bool OpenCV_写出帧(long long writer, long long image) { return LB_OCV_VideoWriterWrite(writer, image) != 0; }
+bool OpenCV_关闭写出(long long writer) { return LB_OCV_VideoWriterClose(writer) != 0; }
 #endif
 `;
 

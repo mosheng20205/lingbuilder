@@ -1,0 +1,23 @@
+LIBRARY LingBuilderPdf
+EXPORTS
+    LBPdf_Version
+    LBPdf_Available
+    LBPdf_LastError
+    LBPdf_Open
+    LBPdf_OpenBytes
+    LBPdf_Close
+    LBPdf_ReleaseAll
+    LBPdf_GetPageCount
+    LBPdf_GetPageWidth
+    LBPdf_GetPageHeight
+    LBPdf_GetPageText
+    LBPdf_GetAllText
+    LBPdf_HasTextLayer
+    LBPdf_RenderPagePng
+    LBPdf_GetImageCount
+    LBPdf_ExtractImage
+    LBPdf_SplitPages
+    LBPdf_MergeDocuments
+    LBPdf_ToWordTextStream
+    LBPdf_ExternalToPdf
+    LBPdf_GetOfficeEngine

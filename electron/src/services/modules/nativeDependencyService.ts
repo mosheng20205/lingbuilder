@@ -15,6 +15,8 @@ import { HTTP_CLIENT_MODULE } from './httpClientModule';
 import { SQLITE_MODULE_ID, SQLITE_BUNDLED_RUNTIME_SHA256 } from './sqliteModule';
 import { MYSQL_MODULE_ID, MYSQL_BUNDLED_RUNTIME_SHA256 } from './mysqlModule';
 import { EXCEL_MODULE_ID, EXCEL_BUNDLED_RUNTIME_SHA256 } from './excelModule';
+import { WORD_MODULE_ID, WORD_BUNDLED_RUNTIME_SHA256 } from './wordModule';
+import { PDF_MODULE_ID, PDF_SDK_MODULE_ID, PDFIUM_VERSION, PDF_BRIDGE_VERSION } from './pdfModule';
 import { SUNNYNET_MODULE_ID } from './sunnyNetModule';
 import {
   getSdkDependencyResource,
@@ -135,6 +137,12 @@ export async function materializeModuleNativeDependencies(
 
   if (enabledIds.has(EXCEL_MODULE_ID)) {
     await materializeExcelRuntime(layout, plan);
+  }
+  if (enabledIds.has(WORD_MODULE_ID)) {
+    await materializeWordRuntime(layout, plan);
+  }
+  if (enabledIds.has(PDF_MODULE_ID)) {
+    await materializePdfSdk(layout, plan);
   }
 
   if (enabledIds.has(SUNNYNET_MODULE_ID)) {
@@ -365,6 +373,8 @@ export async function exportModuleNativeDependencies(
   if (enabledModules.some(module => module.manifest.id === EXCEL_MODULE_ID)) {
     const plan: ModuleNativeDependencyPlan = { includeDirs: [], sourceFiles: [], libFiles: [], runtimeFiles: [], diagnostics, blockingDiagnostics: [], requiresMsvc: false };
     await materializeExcelRuntimeForExport(exportDir, plan);
+    await materializeWordRuntimeForExport(exportDir, plan);
+    await materializePdfSdkForExport(exportDir, plan);
     diagnostics.push(...plan.blockingDiagnostics);
   }
   if (enabledModules.some(module => CRYPTO_SDK_MODULE_IDS.includes(module.manifest.id as typeof CRYPTO_SDK_MODULE_IDS[number]))) {
@@ -908,6 +918,198 @@ async function materializeExcelRuntimeForExport(exportDir: string, plan: ModuleN
       );
     } catch (error) {
       addBlockingDiagnostic(plan, `复制 Excel 随附运行桥（${architecture}）失败：${errorMessage(error)}`);
+    }
+  }
+}
+
+async function findBundledWordRoot(): Promise<string | null> {
+  const candidates = unique([
+    process.env.LINGBUILDER_WORD_RUNTIME_ROOT || '',
+    process.resourcesPath ? path.join(process.resourcesPath, 'third_party', 'word') : '',
+    path.resolve(process.cwd(), 'third_party', 'word'),
+    path.resolve(process.cwd(), 'electron', 'third_party', 'word')
+  ].filter(Boolean));
+  for (const candidate of candidates) {
+    try {
+      await Promise.all([
+        fs.access(path.join(candidate, 'x64', 'LingBuilderWord.dll')),
+        fs.access(path.join(candidate, 'x86', 'LingBuilderWord.dll')),
+        fs.access(path.join(candidate, 'NOTICE.md'))
+      ]);
+      return candidate;
+    } catch {
+      // 尝试下一个由开发环境、打包资源或显式配置提供的位置。
+    }
+  }
+  return null;
+}
+
+async function verifyBundledWordRuntime(
+  source: string,
+  architecture: 'x86' | 'x64',
+  plan: ModuleNativeDependencyPlan
+): Promise<boolean> {
+  try {
+    const digest = await sha256File(source);
+    const expected = WORD_BUNDLED_RUNTIME_SHA256[architecture];
+    if (digest.toLowerCase() !== expected) {
+      addBlockingDiagnostic(plan, `LingBuilder 随附的 LingBuilderWord.dll（${architecture}）SHA-256 不匹配：期望 ${expected}，实际 ${digest}。`);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    addBlockingDiagnostic(plan, `校验随附 LingBuilderWord.dll 失败：${errorMessage(error)}`);
+    return false;
+  }
+}
+
+/** F5 构建 / AI Bridge build.run：按当前目标架构把随附 LingBuilderWord.dll 复制到模块镜像与 exe 同目录。 */
+async function materializeWordRuntime(
+  layout: ModuleNativeDependencyLayout,
+  plan: ModuleNativeDependencyPlan
+): Promise<void> {
+  if (process.platform !== 'win32') {
+    plan.diagnostics.push('Word 文档模块当前仅提供 Windows 随附运行桥 LingBuilderWord.dll。');
+    return;
+  }
+  const bundledRoot = await findBundledWordRoot();
+  if (!bundledRoot) {
+    plan.diagnostics.push('未找到 LingBuilder 随附的 LingBuilderWord.dll；Word 命令运行时需要该运行桥位于 exe 同目录。');
+    return;
+  }
+  const architecture = layout.preferredTargetId === 'windows-msvc-win32' ? 'x86' : 'x64';
+  const source = path.join(bundledRoot, architecture, 'LingBuilderWord.dll');
+  if (!await verifyBundledWordRuntime(source, architecture, plan)) return;
+  const moduleRoots = unique([
+    path.join(layout.buildDir, 'modules', WORD_MODULE_ID),
+    path.join(layout.exportDir, 'modules', WORD_MODULE_ID)
+  ]);
+  try {
+    const runtimeLayout = path.join(architecture, 'LingBuilderWord.dll');
+    for (const root of moduleRoots) {
+      await copyFileAtomicallyIfDifferent(source, path.join(root, runtimeLayout));
+    }
+    const output = path.join(layout.binDir, 'LingBuilderWord.dll');
+    await copyFileAtomicallyIfDifferent(source, output);
+    plan.runtimeFiles.push(output);
+  } catch (error) {
+    addBlockingDiagnostic(plan, `复制 Word 随附运行桥失败：${errorMessage(error)}`);
+  }
+}
+
+interface PdfSdkManifest {
+  schemaVersion?: number;
+  pdfiumVersion?: string;
+  bridgeVersion?: string;
+  architecture?: string;
+  files?: Array<{ path?: string; size?: number; sha256?: string }>;
+}
+
+async function findPdfSdkRoot(layout: ModuleNativeDependencyLayout): Promise<string | null> {
+  const workspaceRoot = inferWorkspaceRootFromBuildDir(layout.buildDir);
+  const packagedRoot = process.resourcesPath
+    ? path.join(process.resourcesPath, 'default-workspace', '.lingbuilder', 'modules', PDF_SDK_MODULE_ID, 'sdk')
+    : '';
+  const candidates = unique([
+    process.env.LINGBUILDER_PDF_SDK_ROOT || '',
+    path.join(workspaceRoot, '.lingbuilder', 'modules', PDF_SDK_MODULE_ID, 'sdk'),
+    packagedRoot,
+    path.resolve('.lingbuilder', 'modules', PDF_SDK_MODULE_ID, 'sdk')
+  ].filter(Boolean));
+  for (const candidate of candidates) {
+    if (await pathExists(path.join(candidate, 'runtime-manifest.json')) &&
+        await pathExists(path.join(candidate, 'bin', 'x64', 'pdfium.dll'))) return candidate;
+  }
+  return null;
+}
+
+/** F5 构建 / AI Bridge build.run：把 lingbuilder.pdf.sdk 的 pdfium.dll 与 LingBuilderPdf.dll 复制到 exe 同目录。 */
+async function materializePdfSdk(
+  layout: ModuleNativeDependencyLayout,
+  plan: ModuleNativeDependencyPlan
+): Promise<void> {
+  plan.requiresMsvc = true;
+  if (process.platform !== 'win32') {
+    addBlockingDiagnostic(plan, 'PDF 模块当前只支持 Windows MSVC x64。');
+    return;
+  }
+  if (layout.preferredTargetId && layout.preferredTargetId !== 'windows-msvc-x64') {
+    addBlockingDiagnostic(plan, 'PDF 模块仅支持 Windows MSVC x64，请把构建目标切换为 x64。');
+    return;
+  }
+  const sdkRoot = await findPdfSdkRoot(layout);
+  if (!sdkRoot) {
+    addBlockingDiagnostic(plan, 'PDF 模块缺少 lingbuilder.pdf.sdk（PDFium 158 x64 运行时）。请在模块管理中安装 lingbuilder.pdf.sdk 后重试。');
+    return;
+  }
+  let manifest: PdfSdkManifest;
+  try {
+    manifest = JSON.parse(await fs.readFile(path.join(sdkRoot, 'runtime-manifest.json'), 'utf8')) as PdfSdkManifest;
+  } catch (error) {
+    addBlockingDiagnostic(plan, `PDF SDK 清单读取失败：${errorMessage(error)}`);
+    return;
+  }
+  if (manifest.schemaVersion !== 1 || manifest.pdfiumVersion !== PDFIUM_VERSION || manifest.bridgeVersion !== PDF_BRIDGE_VERSION
+      || manifest.architecture !== 'x64' || !Array.isArray(manifest.files) || manifest.files.length === 0) {
+    addBlockingDiagnostic(plan, 'PDF SDK 清单格式、版本或架构不符合要求。');
+    return;
+  }
+  for (const entry of manifest.files) {
+    const relative = normalizeRelativePath(entry.path || '');
+    const normalized = { path: relative, size: Number.isSafeInteger(entry.size) ? entry.size as number : -1, sha256: entry.sha256 || '' };
+    if (!validateModuleRelativePath(relative) || !await fileMatchesManifest(path.join(sdkRoot, relative), normalized)) {
+      addBlockingDiagnostic(plan, `PDF SDK 文件缺失或哈希不一致：${relative}`);
+      return;
+    }
+  }
+  const moduleRoot = path.join('modules', PDF_SDK_MODULE_ID);
+  try {
+    for (const root of unique([
+      path.join(layout.buildDir, moduleRoot, 'bin', 'x64'),
+      path.join(layout.sourceDir, moduleRoot, 'bin', 'x64'),
+      path.join(layout.exportDir, moduleRoot, 'bin', 'x64')
+    ])) await fs.mkdir(root, { recursive: true });
+    for (const runtimeName of ['pdfium.dll', 'LingBuilderPdf.dll']) {
+      const source = path.join(sdkRoot, 'bin', 'x64', runtimeName);
+      const runtimeTarget = path.join(layout.binDir, runtimeName);
+      await copyFileAtomicallyIfDifferent(source, runtimeTarget);
+      plan.runtimeFiles.push(runtimeTarget);
+      for (const base of unique([layout.buildDir, layout.sourceDir, layout.exportDir])) {
+        await copyFileAtomicallyIfDifferent(source, path.join(base, moduleRoot, 'bin', 'x64', runtimeName));
+      }
+    }
+  } catch (error) {
+    addBlockingDiagnostic(plan, `准备 PDF SDK 失败：${errorMessage(error)}`);
+  }
+}
+
+/** Visual Studio 工程导出：物化 pdfium.dll 与 LingBuilderPdf.dll 到模块镜像，供 vcxproj 平铺复制到 exe 同目录。 */
+async function materializePdfSdkForExport(exportDir: string, plan: ModuleNativeDependencyPlan): Promise<void> {
+  const layout: ModuleNativeDependencyLayout = {
+    buildDir: exportDir, sourceDir: exportDir, exportDir, binDir: path.join(exportDir, 'bin'),
+    preferredTargetId: 'windows-msvc-x64'
+  };
+  await materializePdfSdk(layout, plan);
+}
+
+/** Visual Studio 工程导出：同时物化两个架构到模块镜像，供 vcxproj 的 Win32/x64 配置按 targets[].runtimeFiles 平铺复制到 exe 同目录。 */
+async function materializeWordRuntimeForExport(exportDir: string, plan: ModuleNativeDependencyPlan): Promise<void> {
+  if (process.platform !== 'win32') return;
+  const bundledRoot = await findBundledWordRoot();
+  if (!bundledRoot) {
+    plan.diagnostics.push('未找到 LingBuilder 随附的 LingBuilderWord.dll；导出工程将缺少随附 Word 运行桥。');
+    return;
+  }
+  for (const architecture of ['x86', 'x64'] as const) {
+    const source = path.join(bundledRoot, architecture, 'LingBuilderWord.dll');
+    if (!await verifyBundledWordRuntime(source, architecture, plan)) continue;
+    try {
+      await copyFileAtomicallyIfDifferent(
+        source,
+        path.join(exportDir, 'modules', WORD_MODULE_ID, architecture, 'LingBuilderWord.dll')
+      );
+    } catch (error) {
+      addBlockingDiagnostic(plan, `复制 Word 随附运行桥（${architecture}）失败：${errorMessage(error)}`);
     }
   }
 }
@@ -1526,10 +1728,10 @@ async function materializeOpenCvSdk(
     addBlockingDiagnostic(plan, `OpenCV SDK 清单读取失败：${errorMessage(error)}`);
     return;
   }
-  if (manifest.schemaVersion !== 1 || manifest.opencvVersion !== OPENCV_VERSION || manifest.bridgeVersion !== '1.1.0'
+  if (manifest.schemaVersion !== 1 || manifest.opencvVersion !== OPENCV_VERSION || manifest.bridgeVersion !== '1.2.0'
       || manifest.bridgeAbiVersion !== 1 || manifest.architecture !== 'x64' || (manifest.toolset !== 'msvc-v143' && manifest.toolset !== 'msvc-v145')
       || manifest.runtimeLibrary !== 'MD' || !Array.isArray(manifest.files) || manifest.files.length === 0) {
-    addBlockingDiagnostic(plan, 'OpenCV SDK 清单格式、版本、架构或 CRT 不符合要求（需要 Bridge 1.1.0，旧包缺少 加载图像字节集 导出）。');
+    addBlockingDiagnostic(plan, 'OpenCV SDK 清单格式、版本、架构或 CRT 不符合要求（需要 Bridge 1.2.0，旧包缺少视频帧导出）。');
     return;
   }
   for (const entry of manifest.files) {
@@ -1549,7 +1751,8 @@ async function materializeOpenCvSdk(
     'bin/x64/LingBuilderOpenCvBridge.dll',
     'bin/x64/opencv_core4140.dll',
     'bin/x64/opencv_imgproc4140.dll',
-    'bin/x64/opencv_imgcodecs4140.dll'
+    'bin/x64/opencv_imgcodecs4140.dll',
+    'bin/x64/opencv_videoio4140.dll'
   ];
   const manifestPaths = new Set(manifest.files.map(entry => normalizeRelativePath(entry.path || '')));
   for (const relative of required) {
@@ -1566,7 +1769,7 @@ async function materializeOpenCvSdk(
       path.join(layout.exportDir, moduleRoot)
     ])) await copyDirectoryRecursive(sdkRoot, root);
     await fs.mkdir(layout.binDir, { recursive: true });
-    for (const runtimeName of ['LingBuilderOpenCvBridge.dll', 'opencv_core4140.dll', 'opencv_imgproc4140.dll', 'opencv_imgcodecs4140.dll']) {
+    for (const runtimeName of ['LingBuilderOpenCvBridge.dll', 'opencv_core4140.dll', 'opencv_imgproc4140.dll', 'opencv_imgcodecs4140.dll', 'opencv_videoio4140.dll']) {
       const runtimeTarget = path.join(layout.binDir, runtimeName);
       await copyFileAtomicallyIfDifferent(path.join(sdkRoot, 'bin', 'x64', runtimeName), runtimeTarget);
       plan.runtimeFiles.push(runtimeTarget);

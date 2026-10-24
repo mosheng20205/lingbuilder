@@ -581,12 +581,22 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       // 无新增 controlRef）；截图 1.1.0 +3 命令 +7 参数（主屏/区域/窗口到字节集）；
       // opencv 1.1.0 +1 命令 +2 参数（OpenCV_加载图像字节集）
       //（实算摘要 6e8f3592/33df8d17）。
-      modules: 104,
-      commands: 4320,
-      parameters: 7643,
+      // 基线 2026-10-23 再写回（窗口_关闭自身批次）：win32.basic +1 命令（窗口_关闭自身，
+      // 0 参数，bool 返回，无 controlRef；标准 WM_CLOSE 关闭流程，Closing 事件可拦截，
+      // 最后一个窗口关闭才退出进程）（实算摘要 50acb9be/33df8d17）。
+      // 基线 2026-10-23 三写回（按句柄关窗批次）：win32.window-utils +1 命令 +1 参数
+      //（窗口_关闭，handle 参数，标准 WM_CLOSE 关闭流程，配 窗口_按标题查找 关任意窗口，
+      // 无 controlRef）。
+      // 基线 2026-10-24 写回（四缺口模块批次）：新增 lingbuilder.data.word（28 命令 84 参数）、
+      // lingbuilder.data.pdf（22 命令 41 参数）、lingbuilder.barcode（25 命令 60 参数），
+      // excel 1.1.0 +1 命令 +1 参数（Excel_导出PDF），opencv 1.2.0 +13 命令 +15 参数（视频帧族），
+      // 均无新增 controlRef（实算摘要 e559d86f/c6ace184）。
+      modules: 107,
+      commands: 4409,
+      parameters: 7779,
       controlReferences: 1499,
-      commandDigest: '6e8f3592',
-      parameterDigest: '33df8d17'
+      commandDigest: 'e559d86f',
+      parameterDigest: 'c6ace184'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -731,7 +741,7 @@ test('模块源目录中的 controlRef 补全、示例和代码片段全部保�
   // 2026-10-06 写回 68→69：新增 proAccessStateFile.ts（Pro 会员授权状态落盘，无 controlRef 字面量；全量字面量扫描 0 违规）。
   // 2026-10-17 写回 69→70：新增消息推送模块 notifyModule.ts（全部文本/数值/布尔参数，无 controlRef 字面量；全量字面量扫描 0 违规）。
   // 2026-10-20 写回 70→71：新增微信OCR识别模块 ocrModules.ts（18 命令全部为文本/数值/布尔/句柄参数，无 controlRef 字面量；全量字面量扫描 0 违规）。
-  assert.equal(sourceFiles.length, 71, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
+  assert.equal(sourceFiles.length, 74, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围（2026-10-24 +wordModule/pdfModule/barcodeModule）');
   assert.deepEqual(violations, []);
 
   const unsafe = 'const command = { insertText: \'控件_设置文本("操作结果", "$2")\' };';
@@ -1125,12 +1135,23 @@ test('工作区已安装模块全部通过 controlRef 清单和示例门禁', as
       // 多处匹配/等待族/区域参数 +9、截图 1.1.0 字节集出口 +3、opencv 1.1.0
       // 加载图像字节集 +1，见内置夹具注释）；磁盘侧无独立变化
       //（实算摘要 2f3f468d/c2dde7b8）。
-      modules: 116,
-      commands: 8448,
-      parameters: 20002,
-      controlReferences: 5280,
-      commandDigest: '2f3f468d',
-      parameterDigest: 'c2dde7b8'
+      // 基线 2026-10-23 再写回（窗口_关闭自身批次）：内置 +1 命令（win32.basic
+      // 窗口_关闭自身，0 参数 bool 返回，无 controlRef，见内置夹具注释）；磁盘侧无独立变化
+      //（实算摘要 0d9b80ed/c2dde7b8）。
+      // 基线 2026-10-23 三写（NE 无限滚动追加批次）：磁盘侧 +1 命令 +2 参数 +1 controlRef
+      //（new_emoji 数据桥新命令 NE无限滚动_追加列表项，controlRef+wideString；
+      // 内置侧无变化，见上一用例），按本机实算写回（实算摘要 30b527e3/98d1899b）。
+      // 基线 2026-10-23 四写（按句柄关窗批次）：内置 +1 命令 +1 参数（win32.window-utils
+      // 窗口_关闭，handle 参数，标准 WM_CLOSE 关闭流程，配 窗口_按标题查找 关任意窗口，
+      // 无 controlRef，见内置夹具注释）；磁盘侧无独立变化（实算摘要 8b3eab04/96912655）。
+      // 基线 2026-10-24 写回（四缺口模块批次）：内置部分 107/4409/7779（见上一用例），
+      // 磁盘新增 lingbuilder.pdf.sdk（0 命令资产模块）并入 opencv.sdk bridge.3 更新。
+      modules: 120,
+      commands: 8538,
+      parameters: 20140,
+      controlReferences: 5281,
+      commandDigest: 'c2a0ca66',
+      parameterDigest: 'cdbf73a6'
   }, '内置、官方和当前工作区第三方模块的每个方法与参数都必须进入全量审计');
   // OpenCV 以内置清单为准：本机未装 SDK 时磁盘上的同名清单是只有骨架的占位包（0 命令、无 targets）。
   const manifest = BUILTIN_MODULES.find(module => module.id === OPENCV_MODULE_ID) || auditedManifests.get('lingbuilder.opencv.sdk');
@@ -2065,7 +2086,7 @@ test('截图 1.1.0 与 opencv 1.1.0 字节集出口：免落盘直连识图/Open
   }
   const opencvManifest = BUILTIN_MODULES.find(module => module.id === OPENCV_MODULE_ID);
   assert.ok(opencvManifest);
-  assert.equal(opencvManifest.version, '1.1.0');
+  assert.equal(opencvManifest.version, '1.2.0');
   assert.ok((opencvManifest.contributes?.commands || []).some(command => command.name === 'OpenCV_加载图像字节集'));
   assert.ok(OPENCV_COMMAND_NAMES.includes('OpenCV_加载图像字节集'));
 
@@ -2427,12 +2448,12 @@ test('MySQL 1.0 提供密码连接、参数化查询、事务和完整错误闭�
   assert.match(mainCpp, /MySQL_绑定文本\(写入, 1, L"中文张三"\)/u);
 });
 
-test('Excel 表格模块 1.0 提供创建/打开双模式、单元格级读写与格式能力', async () => {
+test('Excel 表格模块 1.1 提供创建/打开双模式、单元格级读写、格式与导出PDF能力', async () => {
   const manifest = DATA_MEDIA_MODULES.find(module => module.id === 'lingbuilder.data.excel')!;
   const commandNames = manifest.contributes?.commands?.map(command => command.name) || [];
   const bindingNames = manifest.bindings?.commands?.map(binding => binding.command) || [];
-  assert.equal(manifest.version, '1.0.0');
-  assert.equal(commandNames.length, 45);
+  assert.equal(manifest.version, '1.1.0');
+  assert.equal(commandNames.length, 46);
   assert.deepEqual(bindingNames, commandNames);
   assert.deepEqual(manifest.contributes?.types?.map(type => [type.name, type.cppType]), [['Excel工作簿', 'long long']]);
   assert.equal(validateModuleManifest(manifest).diagnostics.length, 0);
@@ -2446,7 +2467,7 @@ test('Excel 表格模块 1.0 提供创建/打开双模式、单元格级读写�
     'Excel_插入行', 'Excel_删除行', 'Excel_插入列', 'Excel_删除列',
     'Excel_日期转序列', 'Excel_序列转日期', 'Excel_取错误', 'Excel_取版本', 'Excel_是否可用'
   ]) {
-    assert.ok(commandNames.includes(required), `Excel 1.0 缺少 ${required}`);
+    assert.ok(commandNames.includes(required), `Excel 1.1 缺少 ${required}`);
   }
   assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'Excel_创建工作簿')?.returnType, 'Excel工作簿');
   assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'Excel_打开工作簿')?.returnType, 'Excel工作簿');
@@ -2643,7 +2664,7 @@ test('模块封装清单覆盖实际内置模块注册表', async () => {
   assert.ok(checklist.includes(`${BUILTIN_MODULES.length} 个内置模块、${commandCount} 条中文命令`));
   assert.match(checklist, /51 个模块、336 条命令/u);
   assert.match(checklist, /`lingbuilder\.std\.encoding` \| 编码转换模块 \| 32/u);
-  assert.match(checklist, /`lingbuilder\.win32\.basic` \| Win32 窗口基础模块 \| 244/u);
+  assert.match(checklist, /`lingbuilder\.win32\.basic` \| Win32 窗口基础模块 \| 245/u);
   assert.match(checklist, /`lingbuilder\.win32\.common-controls` \| Win32 高级控件模块 \| 561/u);
   for (const manifest of BUILTIN_MODULES) {
     assert.ok(checklist.includes(`\`${manifest.id}\``), `封装清单缺少 ${manifest.id}`);
@@ -7864,7 +7885,8 @@ test('OpenCV SDK materializer validates hashes and materializes x64 Bridge asset
     ['bin/x64/LingBuilderOpenCvBridge.dll', Buffer.from('bridge-dll')],
     ['bin/x64/opencv_core4140.dll', Buffer.from('core-dll')],
     ['bin/x64/opencv_imgproc4140.dll', Buffer.from('imgproc-dll')],
-    ['bin/x64/opencv_imgcodecs4140.dll', Buffer.from('imgcodecs-dll')]
+    ['bin/x64/opencv_imgcodecs4140.dll', Buffer.from('imgcodecs-dll')],
+    ['bin/x64/opencv_videoio4140.dll', Buffer.from('videoio-dll')]
   ]);
   const files = [];
   for (const [relative, content] of fixtureFiles) {
@@ -7876,7 +7898,7 @@ test('OpenCV SDK materializer validates hashes and materializes x64 Bridge asset
   await fs.writeFile(path.join(sdk, 'runtime-manifest.json'), JSON.stringify({
     schemaVersion: 1,
     opencvVersion: '4.14.0',
-    bridgeVersion: '1.1.0',
+    bridgeVersion: '1.2.0',
     bridgeAbiVersion: 1,
     architecture: 'x64',
     toolset: 'msvc-v143',
@@ -7897,7 +7919,7 @@ test('OpenCV SDK materializer validates hashes and materializes x64 Bridge asset
     assert.equal(plan.requiresDynamicCrt, true);
     assert.ok(plan.includeDirs.some(item => item.endsWith(path.join(OPENCV_SDK_MODULE_ID, 'include'))));
     assert.ok(plan.libFiles.some(item => item.endsWith('LingBuilderOpenCvBridge.lib')));
-    for (const name of ['LingBuilderOpenCvBridge.dll', 'opencv_core4140.dll', 'opencv_imgproc4140.dll', 'opencv_imgcodecs4140.dll']) {
+    for (const name of ['LingBuilderOpenCvBridge.dll', 'opencv_core4140.dll', 'opencv_imgproc4140.dll', 'opencv_imgcodecs4140.dll', 'opencv_videoio4140.dll']) {
       assert.ok(await exists(path.join(layout.binDir, name)), `缺少运行时 ${name}`);
     }
     await fs.writeFile(path.join(sdk, 'bin', 'x64', 'opencv_core4140.dll'), 'broken');
@@ -8368,6 +8390,7 @@ test('new_emoji 数据桥接命令以 controlRef/宽字符声明并生成宽字�
     ['NE菜单_设置项目快捷键', [['控件', 'controlRef', 'lingbuilder.new_emoji.ui/Menu'], ['项目索引', 'int'], ['快捷键', 'wideString']]],
     ['NE菜单_设置项目元数据', [['控件', 'controlRef', 'lingbuilder.new_emoji.ui/Menu'], ['图标列表', 'wideString'], ['分组列表', 'wideString'], ['链接列表', 'wideString'], ['目标列表', 'wideString'], ['命令列表', 'wideString']]],
     ['NE徽标_设置文本', [['控件', 'controlRef', 'lingbuilder.new_emoji.ui/Badge'], ['文本', 'wideString']]],
+    ['NE无限滚动_追加列表项', [['控件', 'controlRef', 'lingbuilder.new_emoji.ui/InfiniteScroll'], ['追加项', 'wideString']]],
     ['NE标签页_设置激活索引', [['控件', 'controlRef', 'lingbuilder.new_emoji.ui/Tabs'], ['索引', 'int']]],
     ['NE标签页_取激活索引', [['控件', 'controlRef', 'lingbuilder.new_emoji.ui/Tabs']]],
     ['NE标签页_取激活标题', [['控件', 'controlRef', 'lingbuilder.new_emoji.ui/Tabs']]],
@@ -8419,6 +8442,8 @@ test('new_emoji 数据桥接命令以 controlRef/宽字符声明并生成宽字�
     properties: { ...contribution.defaultProps }, events: {}
   });
   const tabsContribution = manifest.contributes.designerControls.find((control: any) => control.type === 'Tabs');
+  const infiniteScrollContribution = manifest.contributes.designerControls.find((control: any) => control.type === 'InfiniteScroll');
+  const emptyContribution = manifest.contributes.designerControls.find((control: any) => control.type === 'Empty');
   assert.ok(tabsContribution, '缺少 Tabs 控件贡献');
   assert.deepEqual(
     tabsContribution.events.filter((event: { name: string }) => ['ItemClosed', 'ItemAdded', 'ItemsReordered'].includes(event.name)).map((event: { name: string; label: string }) => [event.name, event.label]),
@@ -8436,6 +8461,8 @@ test('new_emoji 数据桥接命令以 controlRef/宽字符声明并生成宽字�
         buildControl(richListContribution, 'rich-list', '富列表1'),
         buildControl(menuContribution, 'menu', '菜单1'),
         buildControl(badgeContribution, 'badge', '徽标1'),
+        buildControl(infiniteScrollContribution, 'infinite-scroll', '无限滚动1'),
+        buildControl(emptyContribution, 'empty', '空状态1'),
         {
           ...buildControl(tabsContribution, 'tabs', '标签页1'),
           events: { ItemAdded: '_标签页1_新增标签页', ItemsReordered: '_标签页1_拖拽重排' }
@@ -8463,6 +8490,9 @@ test('new_emoji 数据桥接命令以 controlRef/宽字符声明并生成宽字�
       '        NE菜单_设置项目快捷键(菜单1, 1, "Ctrl+O")',
       '        NE菜单_设置项目元数据(菜单1, "", "", "", "", "命令文本")',
       '        NE徽标_设置文本(徽标1, "new")',
+      '        NE无限滚动_追加列表项(无限滚动1, "追加文本")',
+      '        NE空状态_设置动作回调(当前窗口, 空状态1, &空状态动作已点)',
+      '        NE无限滚动_设置加载回调(当前窗口, 无限滚动1, &无限滚动加载更多)',
       '        NE标签页_设置激活索引(标签页1, 1)',
       '        NE标签页_添加项目(标签页1, "新标签页")',
       '        NE标签页_取激活标题(标签页1)',
@@ -8473,6 +8503,7 @@ test('new_emoji 数据桥接命令以 controlRef/宽字符声明并生成宽字�
       '        NE_显示消息框(当前窗口, "提示", "正文", "确定", &消息框已关闭)',
       '        NE_显示确认框(当前窗口, "删除", "正文", "删除", "取消", &确认框已关闭)',
       '        NE_显示扩展消息框(当前窗口, "反馈", "正文", "提交", "取消", 4, 真, 真, 假, 真, &扩展消息框已关闭)',
+      '        NE_显示提问框(当前窗口, "新建分组", "给新分组起个名字：", "例如：工作资料", "未命名分组", "", "", "创建", "取消", 0, 真, 假, 假, &提问框已关闭)',
       '    结束',
       '    事件 富列表虚拟数据(整数型 行号)',
       '        NE富列表_设置虚拟行数据("条目文本")',
@@ -8486,13 +8517,22 @@ test('new_emoji 数据桥接命令以 controlRef/宽字符声明并生成宽字�
       '    事件 扩展消息框已关闭(整数型 结果编号, 整数型 动作, 文本型 输入文本)',
       '        调试输出(动作, 输入文本)',
       '    结束',
+      '    事件 提问框已关闭(整数型 结果编号, 整数型 动作, 文本型 输入文本)',
+      '        调试输出(动作, 输入文本)',
+      '    结束',
       '    事件 _标签页1_新增标签页(整数型 新项目索引)',
       '        调试输出(新项目索引)',
       '    结束',
-      '    事件 _标签页1_拖拽重排(整数型 原索引, 整数型 新索引, 整数型 项目总数)',
-      '        调试输出(原索引, 新索引, 项目总数)',
-      '    结束',
-      '结束类'
+    '    事件 _标签页1_拖拽重排(整数型 原索引, 整数型 新索引, 整数型 项目总数)',
+    '        调试输出(原索引, 新索引, 项目总数)',
+    '    结束',
+    '    事件 空状态动作已点(整数型 控件编号)',
+    '        调试输出(控件编号)',
+    '    结束',
+    '    事件 无限滚动加载更多(整数型 控件编号, 整数型 已有条数, 整数型 滚动位置, 整数型 最大滚动)',
+    '        调试输出(已有条数)',
+    '    结束',
+    '结束类'
     ].join('\n')
   });
   assert.equal(generated.blockingDiagnostics.length, 0);
@@ -8504,6 +8544,14 @@ test('new_emoji 数据桥接命令以 controlRef/宽字符声明并生成宽字�
   assert.match(cpp, /NE富列表_设置倒计时\(L"富列表1", L"item1", L"\.countdown", 1790000000000, L"HH:mm:ss", false\);/u);
   assert.match(cpp, /NE徽标_设置文本\(L"徽标1", L"new"\);/u);
   assert.match(cpp, /static void NE徽标_设置文本\(const wchar_t\* controlName, const std::wstring& text\)[\s\S]{0,240}EU_SetBadgeValue\(g_newEmojiWindow, element->id,/u);
+  assert.match(cpp, /NE无限滚动_追加列表项\(L"无限滚动1", L"追加文本"\);/u);
+  assert.match(cpp, /static bool NE无限滚动_追加列表项\(const wchar_t\* controlName, const std::wstring& itemsText\)[\s\S]{0,240}EU_AppendInfiniteScrollItems\(g_newEmojiWindow, element->id,/u);
+  assert.match(cpp, /NE空状态_设置动作回调\(g_newEmojiWindow, LingCppControlStableId\(L"空状态1"\), L"空状态动作已点"\);/u);
+  assert.match(cpp, /static bool NE空状态_设置动作回调\(HWND hwnd, int elementId, const wchar_t\* handlerName\)[\s\S]{0,200}EU_SetEmptyActionCallback\(hwnd, elementId, handler\);/u);
+  assert.match(cpp, /static void __stdcall LB_NE_EmptyActionCb_\d+\(int lb_element_id\) \{\s+int 控件编号 = lb_element_id;/u);
+  assert.match(cpp, /NE无限滚动_设置加载回调\(g_newEmojiWindow, LingCppControlStableId\(L"无限滚动1"\), L"无限滚动加载更多"\);/u);
+  assert.match(cpp, /static bool NE无限滚动_设置加载回调\(HWND hwnd, int elementId, const wchar_t\* handlerName\)[\s\S]{0,200}EU_SetInfiniteScrollLoadCallback\(hwnd, elementId, handler\);/u);
+  assert.match(cpp, /static void __stdcall LB_NE_InfiniteScrollLoadCb_\d+\(int lb_element_id, int lb_value, int lb_range_start, int lb_range_end\) \{\s+int 控件编号 = lb_element_id;\s+int 已有条数 = lb_value;/u);
   assert.match(cpp, /NE菜单_设置项目\(L"菜单1", L"项目文本"\);/u);
   assert.match(cpp, /static void NE菜单_设置项目\(const wchar_t\* controlName, const std::wstring& itemsText\)[\s\S]{0,240}EU_SetMenuItems\(g_newEmojiWindow, element->id,/u);
   assert.match(cpp, /NE_设置窗口图标\(g_newEmojiWindow, L"图标路径"\);/u);
@@ -8512,12 +8560,27 @@ test('new_emoji 数据桥接命令以 controlRef/宽字符声明并生成宽字�
   assert.match(cpp, /NE_显示确认框\(g_newEmojiWindow, L"删除", L"正文", L"删除", L"取消", L"确认框已关闭"\);/u);
   assert.match(cpp, /static int NE_显示确认框\(HWND hwnd, const std::wstring& title,[\s\S]{0,200}const wchar_t\* handlerName\)/u);
   assert.match(cpp, /EU_ShowConfirmBox\(hwnd,/u);
-  assert.match(cpp, /LB_NE_FindMsgBoxResultHandler\(handlerName\)\);/u);
+  assert.match(cpp, /LB_NE_FindConfirmBoxResultHandler\(handlerName\)\);/u);
   // 消息框回调按 &处理器名 派发：每处理器一个静态跳板 + wcscmp 查找表。
-  assert.match(cpp, /static void __stdcall LB_NE_MsgBoxResultCb_\d+\(int lb_messagebox_id, int lb_result\) \{\s+int 结果编号 = lb_messagebox_id;\s+int 结果值 = lb_result;/u);
+  // 原生动作码 1 确认 / 0 取消 / -1 关闭 在高层按模块清单映射（单确认框关闭=2；
+  // 确认框/扩展消息框/提问框取消=2、关闭=3），生成器不再把 -1/0 直接透给 .lcpp 处理器。
+  assert.match(cpp, /static void __stdcall LB_NE_MessageBoxResultCb_\d+\(int lb_messagebox_id, int lb_result\) \{\s+int 结果编号 = lb_messagebox_id;\s+int 结果值 = LB_NE_MapMessageBoxResult\(lb_result\);/u);
+  assert.match(cpp, /static void __stdcall LB_NE_ConfirmBoxResultCb_\d+\(int lb_messagebox_id, int lb_result\) \{\s+int 结果编号 = lb_messagebox_id;\s+int 结果值 = LB_NE_MapConfirmBoxResult\(lb_result\);/u);
+  assert.match(cpp, /static int LB_NE_MapMessageBoxResult\(int action\) \{\s+if \(action <= 0\) return 2;\s+return action;/u);
+  assert.match(cpp, /static int LB_NE_MapConfirmBoxResult\(int action\) \{\s+if \(action == 0\) return 2;\s+if \(action < 0\) return 3;\s+return action;/u);
+  assert.match(cpp, /static int LB_NE_MapMessageBoxExAction\(int action\) \{\s+if \(action == 0\) return 2;\s+if \(action < 0\) return 3;\s+return action;/u);
   assert.match(cpp, /std::wcscmp\(handlerName, L"确认框已关闭"\)/u);
   assert.match(cpp, /std::wcscmp\(handlerName, L"消息框已关闭"\)/u);
-  assert.match(cpp, /static void __stdcall LB_NE_MsgBoxExCb_\d+\(int lb_messagebox_id, int lb_action, const unsigned char\* lb_value_utf8, int lb_value_utf8_length\) \{\s+int 结果编号 = lb_messagebox_id;\s+int 动作 = lb_action;\s+std::wstring 输入文本 = LB_NE_FromUtf8\(lb_value_utf8, lb_value_utf8_length\);/u);
+  assert.match(cpp, /static void __stdcall LB_NE_MsgBoxExCb_\d+\(int lb_messagebox_id, int lb_action, const unsigned char\* lb_value_utf8, int lb_value_utf8_length\) \{\s+int 结果编号 = lb_messagebox_id;\s+int 动作 = LB_NE_MapMessageBoxExAction\(lb_action\);\s+std::wstring 输入文本 = LB_NE_FromUtf8\(lb_value_utf8, lb_value_utf8_length\);/u);
+  // 提问框与扩展消息框共用 MessageBoxExCallback 原生 ABI，但高层提问框必须独立收进
+  // PromptBox 跳板/查找表（历史缺陷：只收集 NE_显示扩展消息框，导致提问框回调永远为 null）。
+  assert.match(cpp, /NE_显示提问框\(g_newEmojiWindow, L"新建分组",[\s\S]{0,260}L"提问框已关闭"\);/u);
+  assert.match(cpp, /static void __stdcall LB_NE_PromptBoxCb_\d+\(int lb_messagebox_id, int lb_action, const unsigned char\* lb_value_utf8, int lb_value_utf8_length\) \{\s+int 结果编号 = lb_messagebox_id;\s+int 动作 = LB_NE_MapMessageBoxExAction\(lb_action\);\s+std::wstring 输入文本 = LB_NE_FromUtf8\(lb_value_utf8, lb_value_utf8_length\);/u);
+  assert.match(cpp, /static LB_NE_MsgBoxResultFn LB_NE_FindMessageBoxResultHandler\(const wchar_t\* handlerName\) \{\s+if \(!handlerName \|\| !\*handlerName\) return nullptr;\s+if \(std::wcscmp\(handlerName, L"消息框已关闭"\) == 0\) return LB_NE_MessageBoxResultCb_1;/u);
+  assert.match(cpp, /static LB_NE_MsgBoxResultFn LB_NE_FindConfirmBoxResultHandler\(const wchar_t\* handlerName\) \{\s+if \(!handlerName \|\| !\*handlerName\) return nullptr;\s+if \(std::wcscmp\(handlerName, L"确认框已关闭"\) == 0\) return LB_NE_ConfirmBoxResultCb_1;/u);
+  assert.match(cpp, /static LB_NE_MsgBoxExFn LB_NE_FindPromptBoxHandler\(const wchar_t\* handlerName\) \{\s+if \(!handlerName \|\| !\*handlerName\) return nullptr;\s+if \(std::wcscmp\(handlerName, L"提问框已关闭"\) == 0\) return LB_NE_PromptBoxCb_1;/u);
+  assert.match(cpp, /static LB_NE_MsgBoxExFn LB_NE_FindMsgBoxExHandler\(const wchar_t\* handlerName\) \{\s+if \(!handlerName \|\| !\*handlerName\) return nullptr;\s+if \(std::wcscmp\(handlerName, L"扩展消息框已关闭"\) == 0\) return LB_NE_MsgBoxExCb_1;/u);
+  assert.match(cpp, /LB_NE_FindPromptBoxHandler\(handlerName\)\);/u);
   // 富列表虚拟数据源：绑定命令注册运行时事件，跳板按两阶段缓冲区协议回填数据槽。
   assert.match(cpp, /NE富列表_绑定虚拟数据源\(LingCppControlStableId\(L"富列表1"\), L"富列表虚拟数据"\);/u);
   assert.match(cpp, /EU_SetRichListVirtualItemProvider\(g_newEmojiWindow, elementId, LB_NE_RuntimeEvent_/u);

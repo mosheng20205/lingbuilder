@@ -18,6 +18,9 @@ import { FBRO_SUBMODULES } from './fbroModules';
 import { CEF3_SUBMODULES } from './cef3Modules';
 import { OPENCV_MODULE } from './opencvModules';
 import { QRCODE_MODULE } from './qrcodeModules';
+import { WORD_MODULE } from './wordModule';
+import { BARCODE_MODULE } from './barcodeModule';
+import { PDF_MODULE } from './pdfModule';
 import { OCR_MODULE } from './ocrModules';
 import { EMBEDDED_RESOURCE_MODULE } from './resourceEmbedModule';
 import { THREADING_MODULE } from './threadingModule';
@@ -561,6 +564,9 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
   ...DATA_MEDIA_MODULES,
   OPENCV_MODULE,
   QRCODE_MODULE,
+  WORD_MODULE,
+  PDF_MODULE,
+  BARCODE_MODULE,
   OCR_MODULE,
   EMBEDDED_RESOURCE_MODULE,
   ...PLATFORM_ADVANCED_MODULES,
@@ -672,7 +678,8 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: '窗口_取拖入文件', signature: '窗口_取拖入文件(索引)', description: '按从 0 开始的索引返回最近拖入的 Unicode 路径，越界返回空文本。', insertText: '窗口_取拖入文件(0)', returnType: '文本型' },
         { name: '窗口_取自身句柄', signature: '窗口_取自身句柄()', description: '返回当前窗口自己的 HWND（长整数），窗口尚未创建时返回 0；用于给 窗口_设置标题、窗口_移动 等以 HWND 为首参的窗口操作命令提供句柄，纯 Win32 项目取自身句柄只有这一条入口。', insertText: '窗口_取自身句柄()', returnType: '长整数型' },
         { name: '窗口_取自身标题', signature: '窗口_取自身标题()', description: '返回当前窗口标题栏文本，窗口尚未创建时返回空文本。', insertText: '窗口_取自身标题()', returnType: '文本型' },
-        { name: '窗口_设置自身标题', signature: '窗口_设置自身标题(标题)', description: '直接修改当前窗口标题栏文本，无需先取句柄；传空文本清空标题，成功返回真。', insertText: '窗口_设置自身标题("$1")', returnType: '逻辑型' }
+        { name: '窗口_设置自身标题', signature: '窗口_设置自身标题(标题)', description: '直接修改当前窗口标题栏文本，无需先取句柄；传空文本清空标题，成功返回真。', insertText: '窗口_设置自身标题("$1")', returnType: '逻辑型' },
+        { name: '窗口_关闭自身', signature: '窗口_关闭自身()', description: '关闭当前窗口自己（与点标题栏 × 等价的标准关闭流程）：先派发窗口「关闭中」事件（处理器里用 窗口_取消关闭 可拦截），随后销毁窗口并派发「已关闭」事件。最后一个窗口关闭时程序退出；登录界面先 打开窗口(主页窗口) 再调用本命令即可切换主窗口，隐藏登录窗口用 窗口_显示(窗口_取自身句柄(), 0)。', insertText: '窗口_关闭自身()', returnType: '逻辑型' }
       ],
       types: [
         { name: '窗口', description: 'Win32 窗口基类。', cppType: 'LingWindowBase' },
@@ -807,7 +814,8 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { command: '窗口_取拖入文件', runtimeName: '窗口_取拖入文件', parameters: [{ name: '索引', type: 'int' }], returnType: 'wideString', encoding: 'wide' },
         { command: '窗口_取自身句柄', runtimeName: '窗口_取自身句柄', parameters: [], returnType: 'longLong' },
         { command: '窗口_取自身标题', runtimeName: '窗口_取自身标题', parameters: [], returnType: 'wideString', encoding: 'wide' },
-        { command: '窗口_设置自身标题', runtimeName: '窗口_设置自身标题', parameters: [{ name: '标题', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
+        { command: '窗口_设置自身标题', runtimeName: '窗口_设置自身标题', parameters: [{ name: '标题', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
+        { command: '窗口_关闭自身', runtimeName: '窗口_关闭自身', parameters: [], returnType: 'bool' }
       ]
     }
   },

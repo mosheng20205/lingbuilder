@@ -187,6 +187,11 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.match(String(client.getInstructions() || ''), /手写 y=536 的控件必被裁掉/u, 'instructions 必须保留 560/532/536 实例锚点');
     assert.match(String(client.getInstructions() || ''), /不会自动停靠窗口底部/u, 'instructions 必须钉住 StatusBar 不自动停靠、贴底要自己算 y 的红线');
     assert.match(String(client.getInstructions() || ''), /lingbuilder\.project\.importImage/u, 'instructions 必须给出项目图片资源导入工具口径（2026-10-15）');
+  assert.match(String(client.getInstructions() || ''), /Word_从JSON生成报告/u, 'instructions 必须给出 Word 报告生成主入口（2026-10-24 批次1）');
+  assert.match(String(client.getInstructions() || ''), /PDF_转Word文本流/u, 'instructions 必须给出 PDF 转口径与文本流定位（2026-10-24 批次2）');
+  assert.match(String(client.getInstructions() || ''), /PDF_外部文档转PDF/u, 'instructions 必须给出 Office/WPS 外部转换链（2026-10-24 批次2）');
+  assert.match(String(client.getInstructions() || ''), /OpenCV_读下一帧/u, 'instructions 必须给出视频帧直连图像链口径（2026-10-24 批次3）');
+  assert.match(String(client.getInstructions() || ''), /lingbuilder\.barcode/u, 'instructions 必须给出一维条码模块口径（2026-10-24 批次4）');
     assert.match(String(client.getInstructions() || ''), /重名自动追加 -2 后缀/u, 'instructions 必须写明图片重名的去冲突后缀行为');
     assert.match(String(client.getInstructions() || ''), /EdgeView_创建无头实例/u, 'instructions 必须告知 EdgeView 隐窗伪无头形态与截图边界');
     assert.match(String(client.getInstructions() || ''), /CDP_启动浏览器/u, 'instructions 必须告知 CDP 真无头形态与回收/错误读取口径');

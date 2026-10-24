@@ -51,14 +51,14 @@ export const EXCEL_BUNDLED_RUNTIME_SHA256 = {
 const excelStandardModule = createStandardModule({
   id: EXCEL_MODULE_ID,
   name: 'Excel 表格模块',
-  version: '1.0.0',
+  version: '1.1.0',
   category: '数据库',
-  description: '读写 .xlsx 工作簿：多工作表、按单元格坐标读写、公式、日期、追加行、常用格式和插入删除行列，无需安装 Microsoft Excel。创建模式支持全部格式能力，打开模式可保真修改既有报表数值。',
+  description: '读写 .xlsx 工作簿：多工作表、按单元格坐标读写、公式、日期、追加行、常用格式、插入删除行列与导出 PDF，无需安装 Microsoft Excel。创建模式支持全部格式能力，打开模式可保真修改既有报表数值。',
   tags: ['数据', 'Excel', '表格', 'xlsx', '工作簿', '报表'],
   types: [
     { name: 'Excel工作簿', description: '进程内不复用的受管 .xlsx 工作簿 ID；不暴露内部文档指针。', cppType: 'long long' }
   ],
-  docs: [{ title: 'Excel 表格模块 1.0 使用说明', path: 'docs/modules/excel/README.md' }],
+  docs: [{ title: 'Excel 表格模块 1.1 使用说明', path: 'docs/modules/excel/README.md' }],
   snippets: [
     {
       label: 'Excel 导出数据报表',
@@ -184,6 +184,9 @@ const excelStandardModule = createStandardModule({
     excelCommand('Excel_序列转日期', [
       { name: '序列值', type: 'double', description: 'Excel 日期序列值，0～2958465。' }
     ], 'wideString', '把 Excel 序列值换算为 "YYYY-MM-DD[ HH:MM:SS]" 文本；超出范围返回空文本。'),
+
+    // ---------- 转换 ----------
+    excelCommand('Excel_导出PDF', [workbook(), { name: '输出路径', type: 'wideString', description: '生成的 .pdf 写出路径；目录必须已存在。' }], 'bool', '把当前工作表已用区域导出为 PDF 表格：列宽按内容自适应，首行加粗，跨页自动重复表头；中文走 CID 字体方案（Chrome/Edge/WPS 可直接显示）。区域上限 60 列 × 20000 行。', { category: '转换', example: 'Excel_导出PDF(报表, "输出/月度报表.pdf")' }),
 
     // ---------- 诊断 ----------
     excelCommand('Excel_取错误', [], 'wideString', '返回当前线程最近一次 Excel 模块错误的中文说明。', { category: '诊断' }),

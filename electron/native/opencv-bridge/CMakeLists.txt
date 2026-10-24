@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(LingBuilderOpenCvBridge LANGUAGES CXX)
 
-find_package(OpenCV 4.14.0 REQUIRED COMPONENTS core imgproc imgcodecs)
+find_package(OpenCV 4.14.0 REQUIRED COMPONENTS core imgproc imgcodecs videoio)
 
 add_library(LingBuilderOpenCvBridge SHARED
   LingBuilderOpenCvBridge.cpp

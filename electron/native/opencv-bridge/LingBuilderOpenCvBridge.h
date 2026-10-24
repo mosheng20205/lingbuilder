@@ -60,7 +60,23 @@ LB_OCV_API int LB_OCV_CALL LB_OCV_ResultGetJson(LB_OCV_HANDLE result, wchar_t* b
 LB_OCV_API int LB_OCV_CALL LB_OCV_ResultSaveAnnotated(LB_OCV_HANDLE result, const wchar_t* path, int quality);
 LB_OCV_API int LB_OCV_CALL LB_OCV_ReleaseResult(LB_OCV_HANDLE result);
 
+
+
+// ============================ 视频帧（1.2.0） ============================
+LB_OCV_API LB_OCV_HANDLE LB_OCV_CALL LB_OCV_VideoOpen(const wchar_t* path);
+LB_OCV_API LB_OCV_HANDLE LB_OCV_CALL LB_OCV_CameraOpen(int index);
+LB_OCV_API int LB_OCV_CALL LB_OCV_VideoFrameCount(LB_OCV_HANDLE video);
+LB_OCV_API double LB_OCV_CALL LB_OCV_VideoFps(LB_OCV_HANDLE video);
+LB_OCV_API int LB_OCV_CALL LB_OCV_VideoWidth(LB_OCV_HANDLE video);
+LB_OCV_API int LB_OCV_CALL LB_OCV_VideoHeight(LB_OCV_HANDLE video);
+LB_OCV_API double LB_OCV_CALL LB_OCV_VideoPosition(LB_OCV_HANDLE video);
+LB_OCV_API int LB_OCV_CALL LB_OCV_VideoSeek(LB_OCV_HANDLE video, double frame);
+LB_OCV_API LB_OCV_HANDLE LB_OCV_CALL LB_OCV_VideoReadFrame(LB_OCV_HANDLE video);
+LB_OCV_API int LB_OCV_CALL LB_OCV_VideoClose(LB_OCV_HANDLE video);
+LB_OCV_API LB_OCV_HANDLE LB_OCV_CALL LB_OCV_VideoWriterOpen(const wchar_t* path, double fps, int width, int height, const wchar_t* codec);
+LB_OCV_API int LB_OCV_CALL LB_OCV_VideoWriterWrite(LB_OCV_HANDLE writer, LB_OCV_HANDLE image);
+LB_OCV_API int LB_OCV_CALL LB_OCV_VideoWriterClose(LB_OCV_HANDLE writer);
+
 #ifdef __cplusplus
 }
 #endif
-

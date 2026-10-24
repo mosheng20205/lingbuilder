@@ -1,4 +1,32 @@
 export const EXCEL_RUNTIME = String.raw`
+namespace LBExcelExportPdf {
+// Excel_导出PDF 的本地实现：经既有 LBExcel_* 导出读当前工作表已用区域，用 lbpdf:: 排版写出。
+// 列宽按内容长度加权（每列至少 36pt），首行加粗、跨页自动重复表头。
+static int excelColOf(const wchar_t* addr) {
+    int col = 0;
+    for (const wchar_t* p = addr; *p; p++) {
+        if (*p >= L'A' && *p <= L'Z') col = col * 26 + int(*p - L'A' + 1);
+        else if (*p >= L'a' && *p <= L'z') col = col * 26 + int(*p - L'a' + 1);
+        else break;
+    }
+    return col;
+}
+static int excelRowOf(const wchar_t* addr) {
+    int row = 0;
+    bool started = false;
+    for (const wchar_t* p = addr; *p; p++) {
+        if (*p >= L'0' && *p <= L'9') { row = row * 10 + int(*p - L'0'); started = true; }
+        else if (started) break;
+    }
+    return row;
+}
+static std::wstring excelAddrOf(int col, int row) {
+    std::wstring letters;
+    while (col > 0) { int m = (col - 1) % 26; letters.insert(letters.begin(), wchar_t(L'A' + m)); col = (col - 1) / 26; }
+    return letters + std::to_wstring(row);
+}
+} // namespace LBExcelExportPdf
+
 namespace LingBuilderExcelBridge {
 using FnStr = const char* (*)();
 using FnStrFromHandle = const char* (*)(long long);
@@ -135,4 +163,58 @@ bool Excel_插入列(long long 工作簿, int 列号, int 数量) { if (!LB_Exce
 bool Excel_删除列(long long 工作簿, int 列号, int 数量) { if (!LB_ExcelEnsure()) return false; return LB_ExcelOk(fDeleteCols(LB_ExcelHandle(工作簿), 列号, 数量)); }
 double Excel_日期转序列(const wchar_t* 日期时间) { if (!LB_ExcelEnsure()) return -1; g_lbExcelError.clear(); double result = fDateToSerial(LB_WideToUtf8(日期时间).c_str()); if (result < 0) LB_ExcelPullError(); return result; }
 const wchar_t* Excel_序列转日期(double 序列值) { if (!LB_ExcelEnsure()) return LB_ReturnText(L""); g_lbExcelError.clear(); const char* value = fSerialToDate(序列值); std::wstring wide = LB_Utf8ToWide(value ? value : ""); LB_ExcelPullError(); return LB_ReturnText(std::move(wide)); }
+bool Excel_导出PDF(long long 工作簿, const wchar_t* 输出路径) {
+    if (!LB_ExcelEnsure()) return false;
+    g_lbExcelError.clear();
+    if (LB_ExcelHandle(工作簿) == 0) return false;
+    using namespace LBExcelExportPdf;
+    const char* rangeC = fUsedRange(工作簿);
+    std::string range(rangeC ? rangeC : "");
+    LB_ExcelPullError();
+    if (range.empty()) { g_lbExcelError = L"当前工作表为空，没有可导出的内容。"; return false; }
+    std::wstring rangeW = LB_Utf8ToWide(range);
+    size_t colon = rangeW.find(L':');
+    std::wstring beginAddr = colon == std::wstring::npos ? rangeW : rangeW.substr(0, colon);
+    std::wstring endAddr = colon == std::wstring::npos ? rangeW : rangeW.substr(colon + 1);
+    int colBegin = excelColOf(beginAddr.c_str()), rowBegin = excelRowOf(beginAddr.c_str());
+    int colEnd = excelColOf(endAddr.c_str()), rowEnd = excelRowOf(endAddr.c_str());
+    if (colBegin < 1 || rowBegin < 1 || colEnd < colBegin || rowEnd < rowBegin) { g_lbExcelError = L"已用区域解析失败：" + rangeW; return false; }
+    if (colEnd - colBegin + 1 > 60 || rowEnd - rowBegin + 1 > 20000) { g_lbExcelError = L"导出区域过大（上限 60 列 × 20000 行）。"; return false; }
+    std::vector<std::vector<std::wstring>> rows;
+    for (int r = rowBegin; r <= rowEnd; r++) {
+        std::vector<std::wstring> row;
+        for (int c = colBegin; c <= colEnd; c++) {
+            std::wstring addr = excelAddrOf(c, r);
+            const char* value = fReadText(工作簿, LB_WideToUtf8(addr.c_str()).c_str());
+            row.push_back(LB_Utf8ToWide(value ? value : ""));
+        }
+        rows.push_back(std::move(row));
+    }
+    LB_ExcelPullError();
+    double pageW = 595, pageH = 842, margin = 42;
+    lbpdf::PdfWriter pdf;
+    pdf.begin(pageW, pageH, margin);
+    lbpdf::Layout layout;
+    layout.begin(&pdf, pageW - margin * 2, 10);
+    size_t cols = size_t(colEnd - colBegin + 1);
+    std::vector<double> weights(cols, 1.0);
+    for (size_t c = 0; c < cols; c++) {
+        double maxLen = 2;
+        for (const auto& row : rows) if (c < row.size()) maxLen = double(row[c].size()) > maxLen ? double(row[c].size()) : maxLen;
+        weights[c] = maxLen;
+    }
+    double total = 0;
+    for (double w : weights) total += w;
+    std::vector<double> colWidths(cols);
+    for (size_t c = 0; c < cols; c++) colWidths[c] = (pageW - margin * 2) * (weights[c] / total < 36.0 / (pageW - margin * 2) ? 36.0 / (pageW - margin * 2) : weights[c] / total);
+    layout.table(rows, colWidths, true, true);
+    std::vector<unsigned char> bytes;
+    std::string pdfError;
+    if (!pdf.serialize(bytes, &pdfError)) { g_lbExcelError = L"PDF 生成失败：" + LB_Utf8ToWide(pdfError); return false; }
+    std::ofstream out(LB_Wide(输出路径), std::ios::binary);
+    if (!out) { g_lbExcelError = L"无法写出 PDF 文件（检查目录是否存在）：" + LB_Wide(输出路径); return false; }
+    out.write(reinterpret_cast<const char*>(bytes.data()), std::streamsize(bytes.size()));
+    out.close();
+    return out.good();
+}
 `;

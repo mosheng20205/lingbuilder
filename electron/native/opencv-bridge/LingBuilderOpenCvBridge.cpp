@@ -4,6 +4,7 @@
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
+#include <opencv2/videoio.hpp>
 
 #include <algorithm>
 #include <atomic>
@@ -28,6 +29,8 @@ constexpr int kMaximumCandidates = 100;
 constexpr int64_t kMaximumEncodedBytes = 512LL * 1024LL * 1024LL;
 constexpr uint64_t kImageKind = 1;
 constexpr uint64_t kResultKind = 2;
+constexpr uint64_t kVideoKind = 3;
+constexpr uint64_t kWriterKind = 4;
 
 thread_local std::wstring g_last_error;
 std::mutex g_registry_mutex;
@@ -48,6 +51,8 @@ struct AnalysisResult {
 };
 
 std::unordered_map<LB_OCV_HANDLE, std::shared_ptr<AnalysisResult>> g_results;
+std::unordered_map<LB_OCV_HANDLE, std::shared_ptr<cv::VideoCapture>> g_videos;
+std::unordered_map<LB_OCV_HANDLE, std::shared_ptr<cv::VideoWriter>> g_writers;
 
 struct GapConfig {
   std::string mode = "auto";
@@ -187,6 +192,50 @@ std::shared_ptr<cv::Mat> GetImage(LB_OCV_HANDLE handle) {
   const auto found = g_images.find(handle);
   if (found == g_images.end()) { SetError(L"OpenCV 图像句柄不存在或已经释放。"); return {}; }
   return found->second;
+}
+
+LB_OCV_HANDLE AddVideo(std::shared_ptr<cv::VideoCapture> video) {
+  std::lock_guard<std::mutex> lock(g_registry_mutex);
+  if (g_images.size() + g_results.size() + g_videos.size() + g_writers.size() >= kMaximumObjects) { SetError(L"OpenCV 受管对象数量达到上限（256）。"); return 0; }
+  const uint64_t sequence = static_cast<uint64_t>(g_next_handle++);
+  const LB_OCV_HANDLE handle = NewHandle(kVideoKind);
+  g_videos[handle] = std::move(video);
+  return handle;
+}
+
+LB_OCV_HANDLE AddWriter(std::shared_ptr<cv::VideoWriter> writer) {
+  std::lock_guard<std::mutex> lock(g_registry_mutex);
+  if (g_images.size() + g_results.size() + g_videos.size() + g_writers.size() >= kMaximumObjects) { SetError(L"OpenCV 受管对象数量达到上限（256）。"); return 0; }
+  const uint64_t sequence = static_cast<uint64_t>(g_next_handle++);
+  const LB_OCV_HANDLE handle = NewHandle(kWriterKind);
+  g_writers[handle] = std::move(writer);
+  return handle;
+}
+
+std::shared_ptr<cv::VideoCapture> GetVideo(LB_OCV_HANDLE handle) {
+  if (handle == 0) { SetError(L"视频句柄为 0。"); return nullptr; }
+  std::lock_guard<std::mutex> lock(g_registry_mutex);
+  const auto found = g_videos.find(handle);
+  if (found == g_videos.end() || !found->second) { SetError(L"视频句柄不存在、类型不符或已释放。"); return nullptr; }
+  return found->second;
+}
+
+std::shared_ptr<cv::VideoWriter> GetWriter(LB_OCV_HANDLE handle) {
+  if (handle == 0) { SetError(L"视频写出句柄为 0。"); return nullptr; }
+  std::lock_guard<std::mutex> lock(g_registry_mutex);
+  const auto found = g_writers.find(handle);
+  if (found == g_writers.end() || !found->second) { SetError(L"视频写出句柄不存在、类型不符或已释放。"); return nullptr; }
+  return found->second;
+}
+
+// cv::VideoCapture/VideoWriter 只接受窄路径；中文 Windows 下系统代码页（GBK）可表示绝大多数本地名称。
+std::string WideToSystem(const std::wstring& value) {
+  if (value.empty()) return {};
+  const int length = WideCharToMultiByte(CP_ACP, 0, value.data(), static_cast<int>(value.size()), nullptr, 0, nullptr, nullptr);
+  if (length <= 0) return {};
+  std::string output(static_cast<size_t>(length), 0);
+  WideCharToMultiByte(CP_ACP, 0, value.data(), static_cast<int>(value.size()), &output[0], length, nullptr, nullptr);
+  return output;
 }
 
 std::shared_ptr<AnalysisResult> GetResult(LB_OCV_HANDLE handle) {
@@ -529,7 +578,7 @@ LB_OCV_HANDLE LB_OCV_CALL LB_OCV_LoadImageBytes(const unsigned char* data, int s
 int LB_OCV_CALL LB_OCV_SaveImage(LB_OCV_HANDLE image, const wchar_t* path, int quality) { return Guard([&]() { auto value = GetImage(image); return value && SaveMat(*value, path, quality) ? 1 : 0; }, 0); }
 LB_OCV_HANDLE LB_OCV_CALL LB_OCV_CloneImage(LB_OCV_HANDLE image) { return Guard([&]() -> LB_OCV_HANDLE { auto value = GetImage(image); return value ? AddImage(value->clone()) : 0; }, static_cast<LB_OCV_HANDLE>(0)); }
 int LB_OCV_CALL LB_OCV_ReleaseImage(LB_OCV_HANDLE image) { return Guard([&]() { std::lock_guard<std::mutex> lock(g_registry_mutex); return g_images.erase(image) == 1 ? 1 : (SetError(L"OpenCV 图像句柄不存在或已经释放。"), 0); }, 0); }
-void LB_OCV_CALL LB_OCV_ReleaseAll(void) { ClearError(); std::lock_guard<std::mutex> lock(g_registry_mutex); g_images.clear(); g_results.clear(); }
+void LB_OCV_CALL LB_OCV_ReleaseAll(void) { ClearError(); std::lock_guard<std::mutex> lock(g_registry_mutex); g_images.clear(); g_results.clear(); g_videos.clear(); g_writers.clear(); }
 int LB_OCV_CALL LB_OCV_GetWidth(LB_OCV_HANDLE image) { return Guard([&]() { auto value = GetImage(image); return value ? value->cols : 0; }, 0); }
 int LB_OCV_CALL LB_OCV_GetHeight(LB_OCV_HANDLE image) { return Guard([&]() { auto value = GetImage(image); return value ? value->rows : 0; }, 0); }
 int LB_OCV_CALL LB_OCV_GetChannels(LB_OCV_HANDLE image) { return Guard([&]() { auto value = GetImage(image); return value ? value->channels() : 0; }, 0); }
@@ -619,5 +668,70 @@ double LB_OCV_CALL LB_OCV_ResultGetScore(LB_OCV_HANDLE result, int index) { retu
 int LB_OCV_CALL LB_OCV_ResultGetJson(LB_OCV_HANDLE result, wchar_t* buffer, int capacity) { return Guard([&]() { auto value = GetResult(result); return value ? CopyText(ResultJson(*value), buffer, capacity) : 0; }, 0); }
 int LB_OCV_CALL LB_OCV_ResultSaveAnnotated(LB_OCV_HANDLE result, const wchar_t* path, int quality) { return Guard([&]() { auto value = GetResult(result); return value && SaveMat(value->annotated_base, path, quality) ? 1 : 0; }, 0); }
 int LB_OCV_CALL LB_OCV_ReleaseResult(LB_OCV_HANDLE result) { return Guard([&]() { std::lock_guard<std::mutex> lock(g_registry_mutex); return g_results.erase(result) == 1 ? 1 : (SetError(L"OpenCV 结果句柄不存在或已经释放。"), 0); }, 0); }
+
+
+// ============================ 视频帧（1.2.0 新增，只加不改既有导出） ============================
+
+LB_OCV_HANDLE LB_OCV_CALL LB_OCV_VideoOpen(const wchar_t* path) {
+  return Guard([&]() -> LB_OCV_HANDLE {
+    if (!path || !*path) { SetError(L"视频路径为空。"); return 0; }
+    auto video = std::make_shared<cv::VideoCapture>(WideToSystem(path));
+    if (!video->isOpened()) { SetError(L"无法打开视频文件（格式不受支持或文件损坏；当前后端为 Windows Media Foundation）。"); return 0; }
+    return AddVideo(std::move(video));
+  }, static_cast<LB_OCV_HANDLE>(0));
+}
+
+LB_OCV_HANDLE LB_OCV_CALL LB_OCV_CameraOpen(int index) {
+  return Guard([&]() -> LB_OCV_HANDLE {
+    auto video = std::make_shared<cv::VideoCapture>(index);
+    if (!video->isOpened()) { SetError(L"无法打开摄像头（索引无效或设备被占用）。"); return 0; }
+    return AddVideo(std::move(video));
+  }, static_cast<LB_OCV_HANDLE>(0));
+}
+
+int LB_OCV_CALL LB_OCV_VideoFrameCount(LB_OCV_HANDLE video) { return Guard([&]() { auto value = GetVideo(video); return value ? static_cast<int>(value->get(cv::CAP_PROP_FRAME_COUNT)) : 0; }, 0); }
+double LB_OCV_CALL LB_OCV_VideoFps(LB_OCV_HANDLE video) { return Guard([&]() { auto value = GetVideo(video); return value ? value->get(cv::CAP_PROP_FPS) : 0.0; }, 0.0); }
+int LB_OCV_CALL LB_OCV_VideoWidth(LB_OCV_HANDLE video) { return Guard([&]() { auto value = GetVideo(video); return value ? static_cast<int>(value->get(cv::CAP_PROP_FRAME_WIDTH)) : 0; }, 0); }
+int LB_OCV_CALL LB_OCV_VideoHeight(LB_OCV_HANDLE video) { return Guard([&]() { auto value = GetVideo(video); return value ? static_cast<int>(value->get(cv::CAP_PROP_FRAME_HEIGHT)) : 0; }, 0); }
+double LB_OCV_CALL LB_OCV_VideoPosition(LB_OCV_HANDLE video) { return Guard([&]() { auto value = GetVideo(video); return value ? value->get(cv::CAP_PROP_POS_FRAMES) : -1.0; }, -1.0); }
+int LB_OCV_CALL LB_OCV_VideoSeek(LB_OCV_HANDLE video, double frame) { return Guard([&]() { auto value = GetVideo(video); if (!value) return 0; if (frame < 0) { SetError(L"跳转帧号不能为负数。"); return 0; } return value->set(cv::CAP_PROP_POS_FRAMES, frame) ? 1 : 0; }, 0); }
+
+LB_OCV_HANDLE LB_OCV_CALL LB_OCV_VideoReadFrame(LB_OCV_HANDLE video) {
+  return Guard([&]() -> LB_OCV_HANDLE {
+    auto value = GetVideo(video); if (!value) return 0;
+    cv::Mat frame;
+    if (!value->read(frame) || frame.empty()) { SetError(L"已到视频末尾或读取失败。"); return 0; }
+    return AddImage(frame.clone());
+  }, static_cast<LB_OCV_HANDLE>(0));
+}
+
+int LB_OCV_CALL LB_OCV_VideoClose(LB_OCV_HANDLE video) { return Guard([&]() { std::lock_guard<std::mutex> lock(g_registry_mutex); return g_videos.erase(video) == 1 ? 1 : (SetError(L"视频句柄不存在或已释放。"), 0); }, 0); }
+
+LB_OCV_HANDLE LB_OCV_CALL LB_OCV_VideoWriterOpen(const wchar_t* path, double fps, int width, int height, const wchar_t* codec) {
+  return Guard([&]() -> LB_OCV_HANDLE {
+    if (!path || !*path) { SetError(L"视频输出路径为空。"); return 0; }
+    if (fps <= 0 || width <= 0 || height <= 0 || static_cast<int64_t>(width) * height > kMaximumPixels) { SetError(L"写出帧率或尺寸无效。"); return 0; }
+    const std::wstring selected = codec ? codec : L"mp4v";
+    int fourcc = cv::VideoWriter::fourcc('m', 'p', '4', 'v');
+    if (selected == L"MJPG" || selected == L"mjpg") fourcc = cv::VideoWriter::fourcc('M', 'J', 'P', 'G');
+    else if (selected == L"XVID" || selected == L"xvid") fourcc = cv::VideoWriter::fourcc('X', 'V', 'I', 'D');
+    else if (selected != L"mp4v" && selected != L"MP4V") { SetError(L"编码器只允许：mp4v、MJPG、XVID。"); return 0; }
+    auto writer = std::make_shared<cv::VideoWriter>(WideToSystem(path), fourcc, fps, cv::Size(width, height));
+    if (!writer->isOpened()) { SetError(L"无法创建视频写出（编码器不受支持或路径不可写；可尝试 MJPG 配 .avi）。"); return 0; }
+    return AddWriter(std::move(writer));
+  }, static_cast<LB_OCV_HANDLE>(0));
+}
+
+int LB_OCV_CALL LB_OCV_VideoWriterWrite(LB_OCV_HANDLE writer, LB_OCV_HANDLE image) {
+  return Guard([&]() {
+    auto target = GetWriter(writer); auto frame = GetImage(image);
+    if (!target || !frame) return 0;
+    if (frame->empty()) { SetError(L"图像句柄无效。"); return 0; }
+    target->write(*frame);
+    return 1;
+  }, 0);
+}
+
+int LB_OCV_CALL LB_OCV_VideoWriterClose(LB_OCV_HANDLE writer) { return Guard([&]() { std::lock_guard<std::mutex> lock(g_registry_mutex); return g_writers.erase(writer) == 1 ? 1 : (SetError(L"视频写出句柄不存在或已释放。"), 0); }, 0); }
 
 } // extern "C"

@@ -1,4 +1,4 @@
-# Excel 表格模块 1.0 使用说明
+# Excel 表格模块 1.1 使用说明
 
 Excel 表格模块（`lingbuilder.data.excel`）让中文程序直接读写 `.xlsx` 工作簿：多工作表、按单元格坐标读写、公式、日期、整行追加、常用格式和插入删除行列。运行时随附 `LingBuilderExcel.dll`，**无需安装 Microsoft Excel 或 WPS**。
 
@@ -47,7 +47,7 @@ Excel 表格模块（`lingbuilder.data.excel`）让中文程序直接读写 `.xl
 
 ## 命令与返回值
 
-45 条命令分九族：
+46 条命令分十族（1.1 新增转换族：`Excel_导出PDF` 把当前工作表已用区域导出为 PDF 表格，列宽按内容自适应、首行加粗、跨页重复表头，中文走 CID 字体方案，Chrome/Edge/WPS 可直接显示）：
 
 - 工作簿生命周期（5）：`Excel_创建工作簿` `Excel_打开工作簿` `Excel_保存` `Excel_另存为` `Excel_关闭`
 - 工作表（6）：`Excel_取工作表数量` `Excel_取工作表名(工作簿, 序号)` `Excel_取当前工作表` `Excel_置当前工作表` `Excel_添加工作表` `Excel_删除工作表`

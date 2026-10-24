@@ -45,6 +45,8 @@ const candidateIndexArg = '候选项索引，从 0 起，必须小于 OpenCV结�
 const savePathArg = '输出文件路径，支持中文；保存格式由扩展名决定，支持 png、jpg、jpeg 和 webp。';
 const maximumResultsArg = '最多返回的候选数量，1 到 100；超范围或小于 1 时返回失败并记录中文错误。';
 const minimumScoreArg = '保留候选的最低匹配分数，0 到 1；超出该范围返回失败并记录中文错误。';
+const videoHandleArg = 'OpenCV_打开视频 或 OpenCV_打开摄像头 返回的受管视频句柄。';
+const writerHandleArg = 'OpenCV_创建视频写出 返回的受管写出句柄。';
 
 const p = (name: string, type: ModuleBindingValueType, description: string) => ({ name, type, description });
 
@@ -59,6 +61,21 @@ const COMMANDS: OpenCvCommandSpec[] = [
   { name: 'OpenCV_取宽度', parameters: [p('图像', 'handle', imageArg)], returnType: 'int', description: '返回图像像素宽度。' },
   { name: 'OpenCV_取高度', parameters: [p('图像', 'handle', imageArg)], returnType: 'int', description: '返回图像像素高度。' },
   { name: 'OpenCV_取通道数', parameters: [p('图像', 'handle', imageArg)], returnType: 'int', description: '返回图像通道数。' },
+  // ============================ 视频帧（1.2.0） ============================
+  { name: 'OpenCV_打开视频', parameters: [p('路径', 'wideString', '本地视频文件路径（mp4/avi/mov 等 Windows Media Foundation 可解容器）。')], returnType: 'handle', description: '打开视频文件返回受管视频句柄；后端为 Windows Media Foundation（Win8+ 内置，无额外 DLL）。失败返回 0 并记录中文错误。', returnDescription: '成功返回受管视频句柄（视频与摄像头共用），失败返回 0。', example: '局部 视频句柄 视频 = OpenCV_打开视频("素材/演示.mp4")' },
+  { name: 'OpenCV_打开摄像头', parameters: [p('索引', 'int', '摄像头序号，从 0 起；多摄像头按系统枚举顺序。')], returnType: 'handle', description: '打开本机摄像头返回受管视频句柄；索引无效或设备被占用时返回 0。', returnDescription: '成功返回受管视频句柄，失败返回 0。', example: '局部 视频句柄 摄像头 = OpenCV_打开摄像头(0)' },
+  { name: 'OpenCV_取视频帧数', parameters: [p('视频', 'handle', videoHandleArg)], returnType: 'int', description: '返回视频总帧数；直播流等不可seek来源可能返回 0。' },
+  { name: 'OpenCV_取视频帧率', parameters: [p('视频', 'handle', videoHandleArg)], returnType: 'double', description: '返回视频帧率（帧/秒）。' },
+  { name: 'OpenCV_取视频宽度', parameters: [p('视频', 'handle', videoHandleArg)], returnType: 'int', description: '返回视频画面像素宽度。' },
+  { name: 'OpenCV_取视频高度', parameters: [p('视频', 'handle', videoHandleArg)], returnType: 'int', description: '返回视频画面像素高度。' },
+  { name: 'OpenCV_取视频位置', parameters: [p('视频', 'handle', videoHandleArg)], returnType: 'double', description: '返回当前读取位置（帧序号，从 0 起）。' },
+  { name: 'OpenCV_跳转到帧', parameters: [p('视频', 'handle', videoHandleArg), p('帧索引', 'double', '目标帧序号，从 0 起，不能为负。')], returnType: 'bool', description: '把读取位置跳到指定帧；之后 OpenCV_读下一帧 从该帧继续。' },
+  { name: 'OpenCV_读下一帧', parameters: [p('视频', 'handle', videoHandleArg)], returnType: 'handle', description: '读取下一帧并返回 OpenCV图像句柄——直接流入 灰度化/模板匹配/查找轮廓/分析缺口/识图/OCR 既有命令链。到末尾返回 0，原因读 OpenCV_取错误（「已到视频末尾」为正常结束信号）。帧为内部缓冲的深拷贝，用完以 OpenCV_释放图像 释放。', returnDescription: '成功返回 OpenCV图像句柄，末尾或失败返回 0。', example: '局部 OpenCV图像句柄 帧 = OpenCV_读下一帧(视频)' },
+  { name: 'OpenCV_关闭视频', parameters: [p('视频', 'handle', videoHandleArg)], returnType: 'bool', description: '关闭并释放视频/摄像头句柄。' },
+  { name: 'OpenCV_创建视频写出', parameters: [p('路径', 'wideString', '输出视频路径；MJPG 建议配 .avi，mp4v 配 .mp4。'), p('帧率', 'double', '每秒帧数，必须大于 0。'), p('宽度', 'int', '画面像素宽。'), p('高度', 'int', '画面像素高。'), p('编码器', 'wideString', 'mp4v、MJPG 或 XVID。')], returnType: 'handle', description: '创建视频写出对象；全部写入帧必须与创建尺寸一致。', returnDescription: '成功返回受管写出句柄，失败返回 0（可尝试 MJPG 配 .avi）。', example: '局部 写出句柄 写出 = OpenCV_创建视频写出("输出/结果.mp4", 25, 640, 480, "mp4v")' },
+  { name: 'OpenCV_写出帧', parameters: [p('写出', 'handle', writerHandleArg), p('图像', 'handle', imageArg)], returnType: 'bool', description: '把 OpenCV图像句柄 的当前内容写入视频；尺寸必须与创建时一致。' },
+  { name: 'OpenCV_关闭写出', parameters: [p('写出', 'handle', writerHandleArg)], returnType: 'bool', description: '收尾并释放视频写出句柄；未关闭的文件不可播放。' },
+
   { name: 'OpenCV_取错误', returnType: 'wideString', description: '读取当前线程最近一次 OpenCV 操作的中文错误。' },
   { name: 'OpenCV_灰度化', parameters: [p('图像', 'handle', imageArg)], returnType: 'handle', description: '转换为灰度图并返回新句柄。' },
   { name: 'OpenCV_缩放', parameters: [p('图像', 'handle', imageArg), p('宽度', 'int', '缩放后的目标宽度，像素；必须大于 0 且与高度的乘积不超过 100MP。'), p('高度', 'int', '缩放后的目标高度，像素；必须大于 0 且与宽度的乘积不超过 100MP。')], returnType: 'handle', description: '使用高质量插值缩放图像并返回新句柄。' },
@@ -121,9 +138,9 @@ export const OPENCV_MODULE: LingBuilderModuleManifest = {
   schemaVersion: 2,
   id: OPENCV_MODULE_ID,
   name: 'OpenCV 图像处理模块',
-  version: '1.1.0',
+  version: '1.2.0',
   category: '图像',
-  description: '基于 OpenCV 4.14.0 的 x64 本地图像处理、模板匹配、轮廓分析和单/双缺口候选分析模块，支持文件与内存字节集双入口。',
+  description: '基于 OpenCV 4.14.0 的 x64 本地图像处理、模板匹配、轮廓分析、单/双缺口候选分析与视频帧读取写出模块，支持文件与内存字节集双入口；读出的帧直接流入既有图像命令链。',
   author: 'LingBuilder',
   license: 'Apache-2.0',
   tags: ['OpenCV', '图像处理', '模板匹配', '轮廓', '缺口分析', 'x64'],

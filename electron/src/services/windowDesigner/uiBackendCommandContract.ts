@@ -102,7 +102,11 @@ export const NEW_EMOJI_WIN32_BASIC_COMMANDS = new Set([
   '窗口_取拖入文件',
   '窗口_取自身句柄',
   '窗口_取自身标题',
-  '窗口_设置自身标题'
+  '窗口_设置自身标题',
+  '窗口_关闭自身',
+  // 一次性延迟回调：new_emoji 模板用 message-only 宿主窗口承载 WM_TIMER，
+  // 处理器由生成器侧 trampoline 绑定（处理器名不进入模块清单与审计摘要）。
+  '延迟调用'
 ]);
 
 export const NEW_EMOJI_WIN32_MENU_COMMANDS = new Set([

@@ -4,6 +4,9 @@ import { OPENCV_RUNTIME } from './opencvRuntime';
 import { SQLITE_RUNTIME } from './sqliteRuntime';
 import { MYSQL_RUNTIME } from './mysqlRuntime';
 import { EXCEL_RUNTIME } from './excelRuntime';
+import { PDF_WRITER_RUNTIME } from './pdfWriterRuntime';
+import { WORD_RUNTIME } from './wordRuntime';
+import { PDF_RUNTIME } from './pdfRuntime';
 import { TABULAR_SNAPSHOT_COMMANDS } from './tabularSourceRuntime';
 
 const CSV_RUNTIME = TABULAR_SNAPSHOT_COMMANDS + String.raw`
@@ -369,7 +372,9 @@ const RUNTIMES: Record<string, string> = {
   'lingbuilder.database.odbc': ODBC_RUNTIME,
   'lingbuilder.database.sqlite': SQLITE_RUNTIME,
   'lingbuilder.database.mysql': MYSQL_RUNTIME,
-  'lingbuilder.data.excel': EXCEL_RUNTIME,
+  'lingbuilder.data.excel': PDF_WRITER_RUNTIME + EXCEL_RUNTIME,
+  'lingbuilder.data.word': WORD_RUNTIME,
+  'lingbuilder.data.pdf': PDF_RUNTIME,
   'lingbuilder.image.core': IMAGE_CORE_RUNTIME,
   'lingbuilder.image.capture': CAPTURE_RUNTIME,
   'lingbuilder.image.bitmap': BITMAP_RUNTIME,

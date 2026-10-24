@@ -6,7 +6,7 @@ const { promisify } = require('node:util');
 
 const execFileAsync = promisify(execFile);
 const OPENCV_VERSION = '4.14.0';
-const BRIDGE_VERSION = '1.1.0';
+const BRIDGE_VERSION = '1.2.0';
 const BRIDGE_ABI_VERSION = 1;
 const MODULE_ID = 'lingbuilder.opencv.sdk';
 const SOURCE_URL = `https://codeload.github.com/opencv/opencv/zip/refs/tags/${OPENCV_VERSION}`;
@@ -60,14 +60,14 @@ async function main() {
     '-G', toolchain.generatorLabel, '-A', 'x64', '-T', toolchain.toolset,
     `-DCMAKE_INSTALL_PREFIX=${opencvInstall.replace(/\\/g, '/')}`,
     '-DBUILD_SHARED_LIBS=ON',
-    '-DBUILD_LIST=core,imgproc,imgcodecs',
+    '-DBUILD_LIST=core,imgproc,imgcodecs,videoio',
     '-DCPU_BASELINE=SSE2', '-DCPU_DISPATCH=',
     '-DBUILD_opencv_world=OFF',
     '-DBUILD_WITH_STATIC_CRT=OFF',
     '-DBUILD_TESTS=OFF', '-DBUILD_PERF_TESTS=OFF', '-DBUILD_EXAMPLES=OFF', '-DBUILD_opencv_apps=OFF',
     '-DBUILD_JAVA=OFF', '-DBUILD_opencv_java=OFF', '-DBUILD_opencv_python2=OFF', '-DBUILD_opencv_python3=OFF',
     '-DWITH_CUDA=OFF', '-DWITH_OPENCL=OFF', '-DWITH_IPP=OFF', '-DWITH_TBB=OFF',
-    '-DWITH_FFMPEG=OFF', '-DWITH_GSTREAMER=OFF', '-DWITH_MSMF=OFF', '-DWITH_DSHOW=OFF',
+    '-DWITH_FFMPEG=OFF', '-DWITH_GSTREAMER=OFF', '-DWITH_MSMF=ON', '-DWITH_DSHOW=OFF',
     '-DWITH_OPENEXR=OFF', '-DWITH_1394=OFF', '-DWITH_QUIRC=OFF'
   ], workRoot, 20 * 60 * 1000);
   await run(cmake, ['--build', opencvBuild, '--config', 'Release', '--target', 'INSTALL', '--', '/m'], workRoot, 40 * 60 * 1000);
@@ -92,7 +92,7 @@ async function main() {
   await copyFile(bridgeLib, path.join(sdkRoot, 'lib', 'x64', 'LingBuilderOpenCvBridge.lib'));
   await copyFile(bridgeDll, path.join(sdkRoot, 'bin', 'x64', 'LingBuilderOpenCvBridge.dll'));
 
-  const requiredDlls = ['opencv_core4140.dll', 'opencv_imgproc4140.dll', 'opencv_imgcodecs4140.dll'];
+  const requiredDlls = ['opencv_core4140.dll', 'opencv_imgproc4140.dll', 'opencv_imgcodecs4140.dll', 'opencv_videoio4140.dll'];
   for (const name of requiredDlls) {
     const source = await findFileRecursive(opencvInstall, name);
     if (!source) throw new Error(`OpenCV 安装结果缺少 ${name}。`);
@@ -123,7 +123,7 @@ async function main() {
   await fs.mkdir(path.dirname(outputPackage), { recursive: true });
   await compressArchive(stageRoot, outputPackage);
   if (options.install) await installAtomically(stageRoot, path.join(repoRoot, '.lingbuilder', 'modules', MODULE_ID));
-  console.log(JSON.stringify({ ok: true, moduleId: MODULE_ID, version: `${OPENCV_VERSION}+bridge.2`, outputPackage, installed: options.install }, null, 2));
+  console.log(JSON.stringify({ ok: true, moduleId: MODULE_ID, version: `${OPENCV_VERSION}+bridge.3`, outputPackage, installed: options.install }, null, 2));
 }
 
 function parseArgs(args) {
@@ -143,7 +143,7 @@ function moduleManifest() {
     schemaVersion: 2,
     id: MODULE_ID,
     name: 'LingBuilder OpenCV SDK',
-    version: `${OPENCV_VERSION}+bridge.2`,
+    version: `${OPENCV_VERSION}+bridge.3`,
     category: '图像',
     description: 'OpenCV 4.14.0 x64 /MD 最小运行时与 LingBuilder 稳定 C ABI Bridge，只作为 lingbuilder.opencv 的受管资产模块。',
     author: 'LingBuilder',

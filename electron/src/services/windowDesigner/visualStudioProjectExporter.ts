@@ -230,7 +230,12 @@ function getModuleRuntimeFiles(enabledModules: InstalledModule[], targetId = 'wi
     `modules/${OPENCV_SDK_MODULE_ID}/bin/x64/LingBuilderOpenCvBridge.dll`,
     `modules/${OPENCV_SDK_MODULE_ID}/bin/x64/opencv_core4140.dll`,
     `modules/${OPENCV_SDK_MODULE_ID}/bin/x64/opencv_imgproc4140.dll`,
-    `modules/${OPENCV_SDK_MODULE_ID}/bin/x64/opencv_imgcodecs4140.dll`
+    `modules/${OPENCV_SDK_MODULE_ID}/bin/x64/opencv_imgcodecs4140.dll`,
+    `modules/${OPENCV_SDK_MODULE_ID}/bin/x64/opencv_videoio4140.dll`
+  ] : []),
+  ...(usesPdfSdk(enabledModules) && architecture === 'x64' ? [
+    `modules/lingbuilder.pdf.sdk/bin/x64/pdfium.dll`,
+    `modules/lingbuilder.pdf.sdk/bin/x64/LingBuilderPdf.dll`
   ] : [])
   ]);
 }
@@ -241,6 +246,10 @@ function usesCryptoSdk(enabledModules: InstalledModule[]): boolean {
 
 function usesOpenCvSdk(enabledModules: InstalledModule[]): boolean {
   return enabledModules.some(module => module.manifest.id === OPENCV_MODULE_ID);
+}
+
+function usesPdfSdk(enabledModules: InstalledModule[]): boolean {
+  return enabledModules.some(module => module.manifest.id === 'lingbuilder.data.pdf');
 }
 
 function usesProtobufSdk(enabledModules: InstalledModule[]): boolean {
