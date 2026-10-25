@@ -225,3 +225,7 @@ COMPONENT_CARDS_PLAN.md
 # 根级一次性探针源码与 scripts/tmp 批量基线脚本（不入库）
 /inc_probe.cpp
 /electron/scripts/tmp/
+/electron/.zcode-tmp/
+
+# 验证码缺口探针的生成样本（标注/调优/模板回写产物，5MB+；输入样本仍入库）
+/src/captcha-gap-probe/samples/out/
