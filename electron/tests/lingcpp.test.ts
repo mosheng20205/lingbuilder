@@ -2874,6 +2874,109 @@ test('控制台项目使用时钟组件必须生成前阻断并给出中文诊�
   assert.ok(generated.blockingDiagnostics.some(message => message.includes('「时钟」组件只能在窗口程序中计时')), '控制台 + 时钟必须阻断');
 });
 
+test('Win32 生成时钟 periodHandler 指向普通子程序时只产出一份定义且周期事件可达', () => {
+  const basic = BUILTIN_MODULES.find(module => module.id === 'lingbuilder.win32.basic')!;
+  const modules: InstalledModule[] = [{
+    manifest: basic, installPath: 'builtin://lingbuilder.win32.basic', isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: []
+  }];
+  // douyin-engine 实测形态：设计器 Clock 的 periodHandler 指向源码里以「空」声明的普通子程序，
+  // 生成器曾按「绑定实现 + 普通方法」各产出一份同签名成员函数，MSVC 报 C2535。
+  const source = `类 MainWindow
+    事件 _MainWindow_创建完毕()
+        调试输出("启动")
+    结束
+    空 界面时钟滴答()
+        调试输出("滴答")
+    结束
+结束类`;
+  const project: LingWindowProject = {
+    id: 'clock-user-method-project',
+    name: '时钟普通子程序',
+    windows: [{
+      id: 'main-window', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口',
+      width: 640, height: 480, background: '#111111', description: '', controls: []
+    }],
+    resources: [{
+      id: 'clock-1', type: 'Clock', name: '界面时钟', ownerWindowId: 'main-window',
+      periodMilliseconds: 1000, startEnabled: true, periodHandler: '界面时钟滴答'
+    }]
+  };
+
+  const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: modules });
+  assert.deepEqual(generated.blockingDiagnostics, []);
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'main.cpp' ? acc + file.content : acc, '');
+  const definitions = mainCpp.match(/void 界面时钟滴答\(\)/gu) || [];
+  assert.equal(definitions.length, 1, `periodHandler 指向的普通子程序必须恰好产出一份定义，实际 ${definitions.length} 份`);
+  assert.match(mainCpp, /if \(TextEquals\(resourceId, L"clock-1"\) && TextEquals\(eventName, L"Elapsed"\)\) \{ 界面时钟滴答\(\); return; \}/u);
+});
+
+test('时钟 periodHandler 指向未声明处理器必须生成前阻断并给出中文诊断', () => {
+  const basic = BUILTIN_MODULES.find(module => module.id === 'lingbuilder.win32.basic')!;
+  const modules: InstalledModule[] = [{
+    manifest: basic, installPath: 'builtin://lingbuilder.win32.basic', isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: []
+  }];
+  const source = `类 MainWindow
+    事件 _MainWindow_创建完毕()
+        调试输出("启动")
+    结束
+结束类`;
+  const project: LingWindowProject = {
+    id: 'clock-missing-handler-project',
+    name: '时钟缺失处理器',
+    windows: [{
+      id: 'main-window', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口',
+      width: 640, height: 480, background: '#111111', description: '', controls: []
+    }],
+    resources: [{
+      id: 'clock-1', type: 'Clock', name: '界面时钟', ownerWindowId: 'main-window',
+      periodMilliseconds: 1000, startEnabled: true, periodHandler: '界面时钟滴答'
+    }]
+  };
+
+  const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: modules });
+  const diagnostic = generated.blockingDiagnostics.find(message => message.includes('界面时钟滴答'));
+  assert.ok(diagnostic, '绑定未声明处理器必须给出阻断诊断');
+  assert.match(diagnostic!, /周期到期/u, '阻断诊断必须点名时钟周期到期事件');
+  assert.match(diagnostic!, /事件 界面时钟滴答\(\)/u, '阻断诊断必须给出声明写法');
+});
+
+test('控件事件绑定到普通子程序同样只产出一份定义', () => {
+  const basic = BUILTIN_MODULES.find(module => module.id === 'lingbuilder.win32.basic')!;
+  const modules: InstalledModule[] = [{
+    manifest: basic, installPath: 'builtin://lingbuilder.win32.basic', isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: []
+  }];
+  // 双产出是通用机制问题：任何设计器绑定（控件事件、菜单项等）指向普通子程序都会触发，
+  // 时钟只是首个实测案例；这里钉住控件事件路径不再回归。
+  const source = `类 MainWindow
+    事件 _MainWindow_创建完毕()
+        调试输出("启动")
+    结束
+    空 保存数据()
+        调试输出("保存")
+    结束
+结束类`;
+  const project: LingWindowProject = {
+    id: 'control-user-method-project',
+    name: '控件普通子程序',
+    windows: [{
+      id: 'main-window', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口',
+      width: 640, height: 480, background: '#111111', description: '', controls: [{
+        id: 'button-1', type: 'Button', name: '保存按钮', content: '保存',
+        width: 120, height: 36, x: 48, y: 72, fontSize: 14, background: '#2D6CDF', foreground: '#FFFFFF',
+        isEnabled: true, visibility: 'Visible', properties: {}, events: { Click: '保存数据' }
+      }]
+    }],
+    resources: []
+  };
+
+  const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: modules });
+  assert.deepEqual(generated.blockingDiagnostics, []);
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'main.cpp' ? acc + file.content : acc, '');
+  const definitions = mainCpp.match(/void 保存数据\(\)/gu) || [];
+  assert.equal(definitions.length, 1, `绑定控件事件的普通子程序必须恰好产出一份定义，实际 ${definitions.length} 份`);
+  assert.match(mainCpp, /if \(handler == L"保存数据"\) \{ 保存数据\(\); return; \}/u);
+});
+
 test('LingCpp designer bindings recognize non-visual menu item events by stable item id', () => {
   const source = `类 MainWindow
     事件 _上下文菜单1_打开被选择()

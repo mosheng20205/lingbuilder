@@ -81,6 +81,8 @@ import BeginnerFindBar, { type BeginnerFindScope } from './beginner/BeginnerFind
 import { collectBeginnerFindMatches, collectBeginnerFindFileResults, type BeginnerFindMatch, type BeginnerFindFileInput } from '../services/lingCpp/beginnerFind';
 import { LINGCPP_FIND_RESULTS_EVENT, type FindResultsData } from '../services/lingCpp/beginnerFindEvents';
 import { buildLingCppLanguageContext, getLingCppDesignerControlCompletions, getLingCppReadableBlocks, getLingCppStructuredRows, getLingCppStructureView } from '../services/lingCpp/languageService';
+import { getLingCppControlReferenceCompletion } from '../services/lingCpp/controlReferenceService';
+import { createBeginnerControlReferenceCompletions } from '../services/lingCpp/beginnerControlRefCompletion';
 import { LingCppAccessModifier, LingCppAstEdit, LingCppLocalVariable, LingCppMethod, LingCppNativeSourceMapEntry, LingCppParameter, LingCppReadableBlock, LingCppReadingMode, LingCppStructuredReadingRow, LingCppStructureNode } from '../services/lingCpp/types';
 import { getBeginnerCommandTokenAtCursor, getBeginnerCompletionContext, getBeginnerCompletionToken, shouldShowBeginnerCompletion } from '../services/lingCpp/beginnerCompletionContext';
 import { createBeginnerLibraryFunctionCompletions, getBeginnerDefaultArgument } from '../services/lingCpp/beginnerLibraryCompletion';
@@ -6022,6 +6024,46 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       const context = getBeginnerCompletionContext(input.value, input.selectionStart);
       const targetKey = codeTargetKey(target);
       const segmentId = segmentContext?.segment.id || 'all';
+      // controlRef 参数位置专用补全（与 Monaco 消费同一份 getLingCppControlReferenceCompletion 契约）：
+      // 光标落在控件引用实参内时只出当前作用域内兼容的设计器控件/非可视组件/资源（裸名上屏），
+      // 覆盖 目录收录不到的设计器资源——如 时钟_启动( 的「时钟」非可视组件。
+      const cursorOffset = Math.max(0, Math.min(input.selectionStart, input.value.length));
+      const beforeCursor = input.value.slice(0, cursorOffset);
+      const lastLineStart = beforeCursor.lastIndexOf('\n') + 1;
+      const controlRefCompletion = designerProject
+        ? getLingCppControlReferenceCompletion(
+            input.value,
+            beforeCursor.split('\n').length,
+            cursorOffset - lastLineStart + 1,
+            designerProject,
+            moduleContext,
+            activeFile?.path
+          )
+        : undefined;
+      if (controlRefCompletion) {
+        const items = filterBeginnerCodeCompletions(
+          context.token,
+          includeAll || context.token.length === 0,
+          createBeginnerControlReferenceCompletions(controlRefCompletion).map(withBeginnerCompletionSearchValues)
+        );
+        if (items.length === 0) {
+          setBeginnerCompletionState(current => current?.targetKey === targetKey ? null : current);
+          return;
+        }
+        setBeginnerCompletionState({
+          targetKey,
+          segmentId,
+          token: context.token,
+          cursor: cursorOffset,
+          items,
+          selectedIndex: 0,
+          position: getBeginnerCompletionPanelPosition(input, context.token, items.length),
+          target,
+          segmentContext,
+          viewKey: input.dataset.textModelViewKey || ''
+        });
+        return;
+      }
       if (!shouldShowBeginnerCompletion(context, includeAll)) {
         setBeginnerCompletionState(current => current?.targetKey === targetKey ? null : current);
         return;
