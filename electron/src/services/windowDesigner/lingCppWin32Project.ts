@@ -63,6 +63,7 @@ import { generateDataMediaRuntime } from './dataMediaRuntime';
 import { generateQrCodeRuntime } from './qrCodeRuntime';
 import { generateBarcodeRuntime } from './barcodeRuntime';
 import { generateWxOcrRuntime } from './wxOcrRuntime';
+import { generateOpRuntime } from './opRuntime';
 import { generateSharedTableRuntime } from './tabularSourceRuntime';
 import { generateComWindowMethods, generateComWndProcCase, generatePlatformAdvancedRuntime } from './platformAdvancedRuntime';
 import { MEMORY_DLL_MODULE_ID, MEMORY_DLL_REQUIRED_MODULE_HINT } from './memoryDllRuntime';
@@ -477,6 +478,14 @@ export function generateLingCppNativeWin32Project(
   const clockResourceDiagnostics = outputKind !== 'application' && clockResources.length > 0
     ? [`「时钟」组件只能在窗口程序中计时：当前项目输出类型不创建设计器窗口，${clockResources.map(resource => `「${resource.name}」`).join('、')}永远不会触发；请把项目输出类型改回窗口程序，或改用 延迟调用(毫秒, &处理器) 与多线程模块命令。`]
     : [];
+  // new_emoji 后端主生成器不产出 ClockSpec/WM_TIMER 时钟链路：时钟资源放进去只会静默不计时，
+  // 与控制台输出同款静默失效，必须生成前点名。
+  const newEmojiClockDiagnostics = usesNewEmojiDesigner && clockResources.length > 0
+    ? [`「时钟」组件目前只支持普通 Win32 后端：当前窗口使用 new_emoji 后端，${clockResources.map(resource => `「${resource.name}」`).join('、')}不会计时；请把窗口设计后端切回普通 Win32，或改用 延迟调用(毫秒, &处理器) 自续链。`]
+    : [];
+  // 设计器绑定的处理器必须在源码里有同名方法：生成器对缺失处理器只会产出「调试输出空转发」
+  // 桩，用户以为事件已生效实际什么都没做；绑定但缺失必须生成前给出明确中文阻断。
+  const designerBoundHandlerDiagnostics = collectDesignerBoundHandlerBlockingDiagnostics(effectiveProject, aggregate.program);
   if (fbroHeadlessRequested && fbroVisibleControlNames.length > 0 && outputKind !== 'console-application') {
     fbroHeadlessConflictDiagnostics.push(`FBro 无头模式与可见 FBroBrowser 控件进程级互斥：无头开关生效后本进程所有进程内浏览器都不再渲染窗口内容。项目同时声明了无头模式并存在可见控件 ${fbroVisibleControlNames.join('、')}；请删除 FBro_启用无头模式() 调用与「FBro无头浏览器」组件，或把需要界面的浏览器改为独立进程模式并移除无头声明。`);
   }
@@ -673,7 +682,7 @@ export function generateLingCppNativeWin32Project(
       ...clockResourceDiagnostics,
       ...untranslatableExpressionDiagnostics
     ],
-    blockingDiagnostics: [...aggregate.blockingDiagnostics, ...backendModuleDiagnostics, ...backendCommandDiagnostics, ...backendGeneratorDiagnostics, ...moduleConflictDiagnostics, ...fbroCefCompatibilityDiagnostics, ...fbroHeadlessConflictDiagnostics, ...fbroStartupSwitchProblems, ...customIconDiagnostics, ...newEmojiControlReferenceDiagnostics, ...(dynamicLibraryEntry?.blockingDiagnostics ?? []), ...dynamicLibraryMismatchDiagnostics, ...projectDllBackendDiagnostics, ...consoleOnlyCommandDiagnostics, ...(consoleStartup?.blockingDiagnostics ?? []), ...embeddedSiteModelDiagnostics, ...embeddedSiteRequiresBrowserDiagnostics, ...embeddedSiteFbroProcessDiagnostics, ...embeddedSiteNewEmojiDiagnostics, ...projectDllMemoryDiagnostics, ...projectDllSystemAliasDiagnostics, ...embeddedResourceDiagnostics, ...embeddedResourceBlockingDiagnostics, ...cefHeadlessResourceDiagnostics, ...clockResourceDiagnostics, ...untranslatableExpressionDiagnostics],
+    blockingDiagnostics: [...aggregate.blockingDiagnostics, ...backendModuleDiagnostics, ...backendCommandDiagnostics, ...backendGeneratorDiagnostics, ...moduleConflictDiagnostics, ...fbroCefCompatibilityDiagnostics, ...fbroHeadlessConflictDiagnostics, ...fbroStartupSwitchProblems, ...customIconDiagnostics, ...newEmojiControlReferenceDiagnostics, ...(dynamicLibraryEntry?.blockingDiagnostics ?? []), ...dynamicLibraryMismatchDiagnostics, ...projectDllBackendDiagnostics, ...consoleOnlyCommandDiagnostics, ...(consoleStartup?.blockingDiagnostics ?? []), ...embeddedSiteModelDiagnostics, ...embeddedSiteRequiresBrowserDiagnostics, ...embeddedSiteFbroProcessDiagnostics, ...embeddedSiteNewEmojiDiagnostics, ...projectDllMemoryDiagnostics, ...projectDllSystemAliasDiagnostics, ...embeddedResourceDiagnostics, ...embeddedResourceBlockingDiagnostics, ...cefHeadlessResourceDiagnostics, ...clockResourceDiagnostics, ...newEmojiClockDiagnostics, ...designerBoundHandlerDiagnostics, ...untranslatableExpressionDiagnostics],
     sourceMap,
     files: [
       {
@@ -2747,6 +2756,7 @@ function generateNewEmojiMainCpp(
     generateQrCodeRuntime(enabledModules),
     generateBarcodeRuntime(enabledModules),
     generateWxOcrRuntime(enabledModules),
+    generateOpRuntime(enabledModules),
     generatePlatformAdvancedRuntime(enabledModules),
     generateEmbeddedResourceRuntime(enabledModules, getEmbeddedResourceSpecsOrEmpty(project), project.id),
     protobufRuntime,
@@ -11072,23 +11082,33 @@ function generateDynamicLibraryEntrySection(
     return LingBuilder_Dll文本返回缓冲.c_str();`
       : `    LingBuilder_EnsureRuntimeInitialized();
     ${cppReturnType === 'void' ? `${call};` : `return ${call};`}`;
-    // ASCII 导出名走 exports.def 无装饰导出（易语言等 stdcall 宿主按干净名声明）；
+    // ASCII 导出名走 exports.def 无装饰导出（易语言等宿主按干净名 GetProcAddress）；
     // 非 ASCII 导出名保留 dllexport 自动导出兜底（x86 装饰名 _名@N），避免导出静默消失。
+    // 包装约定必须是 __cdecl：导出表是无装饰名，调用方 dllimport 声明（materialize 头文件与
+    // 项目 DLL 命令调用方）均按 cdecl 生成——__stdcall 会让 x86 导入符号带 @N 装饰，
+    // 与无装饰导出名在加载期对不上（2026-10-24 第 18 集实修：LNK2019 __imp__名@N）。
     const exportAttribute = isAsciiExportName(toCppIdentifier(item.method.name)) ? '' : '__declspec(dllexport) ';
-    return `extern "C" ${exportAttribute}${wrapperReturnType} __stdcall ${toCppIdentifier(item.method.name)}(${cppParameters}) {
+    return `extern "C" ${exportAttribute}${wrapperReturnType} __cdecl ${toCppIdentifier(item.method.name)}(${cppParameters}) {
 ${body}
 }`;
   }).join('\n\n');
   const asciiExportNames = exported
     .map(item => toCppIdentifier(item.method.name))
     .filter(isAsciiExportName);
+  // x86 的 stdcall 包装按“裸名 + @参数字节数”双条目导出：裸名供易语言/GetProcAddress 按干净名
+  // 声明；装饰名供 LingBuilder 项目 DLL 命令调用方的原生导入库（装饰符号 __imp__名@N）在
+  // 加载期按名解析。x64 只有一种调用约定，单条目裸名即可。参数字节数：双精度小数型/长整数型
+  // 占 8，其余标量与指针占 4。
   const definitionFile = asciiExportNames.length > 0 ? {
     relativePath: 'exports.def',
     // def 全文件必须纯 ASCII：链接器按 ANSI（GBK）逐字节读 def，注释里的中文 UTF-8 字节会把
     // 行边界吃进双字节“字符”，EXPORTS 条目随之被按 LNK4017 逐条作废（真机实测）；条目本就只收 ASCII。
+    // 导出条目一律无装饰裸名：包装是 __cdecl（与调用方 dllimport __cdecl 声明、项目 DLL 命令
+    // 导入库的裸符号三层一致）；__stdcall 包装在 x86 会产生 @N 装饰导入符号，与裸名导出表
+    // 加载期对不上（2026-10-24 第 18 集实修：LNK2019 __imp__名@N）。
     content: [
       '; LingBuilder dynamic-library export table (generated; passed to the linker via /DEF; do not edit).',
-      '; Undecorated stdcall exports: on x86 the linker resolves bare names to _name@parambytes symbols.',
+      '; Exports are undecorated cdecl wrappers; callers link via the bare names below.',
       'EXPORTS',
       ...asciiExportNames.map(name => `    ${name}`)
     ].join('\n') + '\n'
@@ -11430,6 +11450,7 @@ function generateMainCpp(
     generateQrCodeRuntime(enabledModules),
     generateBarcodeRuntime(enabledModules),
     generateWxOcrRuntime(enabledModules),
+    generateOpRuntime(enabledModules),
     generatePlatformAdvancedRuntime(enabledModules),
     generateEmbeddedResourceRuntime(enabledModules, getEmbeddedResourceSpecsOrEmpty(project), project.id),
     protobufRuntime,
@@ -29442,6 +29463,7 @@ private:
         DWORD exStyle = 0;
         const wchar_t* className = L"STATIC";
         const wchar_t* text = control.text;
+        std::wstring initialTextBuffer;
         HWND parentHwnd = hwnd_;
         int parentContentOffsetX = 0;
         int parentContentOffsetY = 0;
@@ -29475,7 +29497,15 @@ private:
         } else if (IsType(control, L"TextBox")) {
             className = L"EDIT";
             style |= WS_TABSTOP;
-            if (control.flags & CF_MULTILINE) style |= ES_MULTILINE | ES_WANTRETURN;
+            if (control.flags & CF_MULTILINE) {
+                style |= ES_MULTILINE | ES_WANTRETURN;
+                if (text && wcschr(text, L'\\n') && !wcschr(text, L'\\r')) {
+                    // 多行 EDIT 只认 CRLF：设计器默认内容与文本块只产出 LF，创建期统一补 CR，
+                    // 否则整段文本挤成一行（与 控件_设置文本 的归一口径一致）。
+                    initialTextBuffer = ToCrlfNewlines(text);
+                    text = initialTextBuffer.c_str();
+                }
+            }
             if (TextEquals(control.option2, L"horizontal") || TextEquals(control.option2, L"both")) style |= ES_AUTOHSCROLL | WS_HSCROLL;
             if (TextEquals(control.option2, L"vertical") || TextEquals(control.option2, L"both")) style |= ES_AUTOVSCROLL | WS_VSCROLL;
             if (!(control.flags & CF_MULTILINE)) style |= ES_AUTOHSCROLL;
@@ -29627,7 +29657,13 @@ private:
         } else if (IsType(control, L"RichEdit")) {
             className = MSFTEDIT_CLASS;
             style |= WS_BORDER;
-            if (control.flags & CF_MULTILINE) style |= ES_MULTILINE | ES_WANTRETURN;
+            if (control.flags & CF_MULTILINE) {
+                style |= ES_MULTILINE | ES_WANTRETURN;
+                if (text && wcschr(text, L'\\n') && !wcschr(text, L'\\r')) {
+                    initialTextBuffer = ToCrlfNewlines(text);
+                    text = initialTextBuffer.c_str();
+                }
+            }
             if (TextEquals(control.option1, L"horizontal") || TextEquals(control.option1, L"both")) style |= ES_AUTOHSCROLL | WS_HSCROLL;
             if (TextEquals(control.option1, L"vertical") || TextEquals(control.option1, L"both")) style |= ES_AUTOVSCROLL | WS_VSCROLL;
             if (control.flags & CF_READ_ONLY) style |= ES_READONLY;
@@ -32331,7 +32367,13 @@ function generateWindowClass(window: LingWindowModel, windowIndex: number, progr
     .join('\n');
   const eventMethods = methodHandlers
     .map(handler => generateHandlerMethod(handler, findLingCppMethod(program, handler), enabledModules, program.dataTypes));
-  const userMethods = (sourceClass?.methods || []).filter(method => method.kind === 'method');
+  // 绑定处理器与普通子程序同名时只允许产出一份定义：上方事件路径已按处理器名产出实现，
+  // 普通子程序路径必须跳过同名方法，否则类内出现两份同签名成员函数（MSVC C2535，
+  // 2026-10-24 douyin-engine 时钟 periodHandler 实测）。比较按 C++ 标识符归一后进行：
+  // 处理器名经「类名_方法」容错命中时产出的是处理器名包装（与原方法名不同），不在此列。
+  const handlerDefinitionNames = new Set(methodHandlers.map(handler => toCppIdentifier(handler)));
+  const userMethods = (sourceClass?.methods || []).filter(method => method.kind === 'method'
+    && !handlerDefinitionNames.has(toCppIdentifier(method.name)));
   const aria2ProgressHandlers = getAria2ProgressHandlerNames(sourceClass);
   const aria2ProgressDispatchCases = aria2ProgressHandlers
     .map(handler => {
@@ -32559,9 +32601,17 @@ function generateHandlerMethod(handler: string, method: LingCppMethod | undefine
   const body = method
     ? [generateLocalDeclarations(method, enabledModules, dataTypes), translateMethodStatements(method, enabledModules, dataTypes)].filter(Boolean).join('\n')
     : `        调试输出(L"未找到 ${escapeWideString(handler)} 的中文 C++ 事件实现。");`;
+  // 事件声明的返回类型恒为 空（解析器强制），按 void 产出即与声明一致；命中普通子程序
+  // （空/整数型 等声明，可能同时被其他子程序调用取返回值）时必须保留声明的返回值类型与
+  // 静态标记，否则同名方法经由本路径产出会静默丢弃返回值语义；非 void 补兜底返回。
+  const isUserMethod = Boolean(method && method.kind === 'method');
+  const returnType = isUserMethod && method ? toCppType(method.returnType, 'return', enabledModules, dataTypes) : 'void';
+  const staticPrefix = isUserMethod && method?.isStatic ? 'static ' : '';
+  const fallbackReturn = isUserMethod ? defaultReturnStatement(returnType, dataTypes) : '';
   const parameters = method ? formatCppEventParameters(method.parameters, enabledModules, dataTypes) : '';
-  return `    void ${toCppIdentifier(handler)}(${parameters}) {
-${body || '        // 空事件处理器。'}
+  const bodyWithFallback = [body, fallbackReturn ? `        ${fallbackReturn}` : ''].filter(Boolean).join('\n');
+  return `    ${staticPrefix}${returnType} ${toCppIdentifier(handler)}(${parameters}) {
+${bodyWithFallback || '        // 空事件处理器。'}
     }`;
 }
 
@@ -34272,6 +34322,58 @@ function clampInteger(value: unknown, fallback: number, minimum: number, maximum
   const parsed = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(parsed)) return fallback;
   return Math.min(maximum, Math.max(minimum, Math.round(parsed)));
+}
+
+interface DesignerBoundHandlerReference {
+  window: LingWindowModel;
+  /** 面向用户的绑定来源描述，如「时钟「界面时钟」的「周期到期」事件」。 */
+  description: string;
+  handler: string;
+}
+
+// 只收资源类处理器（时钟/文件对话框/菜单项/属性页）：它们是声明式组件配置，绑定悬空即
+// 终态错误，必须生成前阻断。控件/窗口事件绑定不在此列——事件面板存在「先绑定后写实现」
+// 的过渡态，且已有常规命名自动接线、编辑器 missing-source 提示与运行时空转发桩兜底，
+// 贸然全量阻断会把过渡态项目全部拦下（2026-10-24 判定）。
+function collectDesignerBoundHandlerReferences(project: LingWindowProject): DesignerBoundHandlerReference[] {
+  const references: DesignerBoundHandlerReference[] = [];
+  const push = (window: LingWindowModel | undefined, handler: string | undefined | null, description: string) => {
+    const trimmed = typeof handler === 'string' ? handler.trim() : '';
+    if (window && trimmed) references.push({ window, handler: trimmed, description });
+  };
+  (project.resources || []).forEach(resource => {
+    if (resource.type === 'PropertySheet') {
+      // 属性页是项目级资源（无 ownerWindowId），产出时会进入每个窗口的派发表，归属取首窗口。
+      push(project.windows[0], resource.appliedHandler, `属性页「${resource.name}」的「应用」事件`);
+      return;
+    }
+    const ownerWindow = 'ownerWindowId' in resource
+      ? project.windows.find(window => window.id === resource.ownerWindowId) || project.windows[0]
+      : project.windows[0];
+    if (resource.type === 'FileDialog') {
+      push(ownerWindow, resource.filesSelectedHandler, `文件对话框「${resource.name}」的「文件已选择」事件`);
+      push(ownerWindow, resource.filesDroppedHandler, `文件对话框「${resource.name}」的「文件已拖放」事件`);
+      push(ownerWindow, resource.cancelledHandler, `文件对话框「${resource.name}」的「取消」事件`);
+    } else if (resource.type === 'Clock') {
+      push(ownerWindow, resource.periodHandler, `时钟「${resource.name}」的「周期到期」事件`);
+    } else if (resource.type === 'ContextMenu' || resource.type === 'PopupMenu') {
+      resource.items.forEach(item => push(ownerWindow, item.selectedHandler, `菜单「${resource.name}」的菜单项「${item.label}」`));
+    }
+  });
+  return references;
+}
+
+function collectDesignerBoundHandlerBlockingDiagnostics(project: LingWindowProject, program: LingCppProgram): string[] {
+  const diagnostics: string[] = [];
+  const seen = new Set<string>();
+  collectDesignerBoundHandlerReferences(project).forEach(({ window, handler, description }) => {
+    const key = `${window.id}|${handler}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    if (findLingCppMethod(program, handler)) return;
+    diagnostics.push(`设计器已绑定${description}的处理器「${handler}」，但中文源码里没有同名方法；请在窗口类中声明 事件 ${handler}() 或 空 ${handler}()，或解除该绑定，否则事件触发只会落到空实现。`);
+  });
+  return diagnostics;
 }
 
 function getWindowHandlers(window: LingWindowModel): string[] {

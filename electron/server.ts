@@ -2447,6 +2447,11 @@ app.post("/api/window-designer/build-run", async (req, res) => {
       proCommandAuthorization: readProAccessStateFile()
     });
     assertNoBlockingLingCppDiagnostics(generatedProject.blockingDiagnostics);
+    // 动态库模式：exports.def 必须以 ModuleDefinitionFile 进 vcxproj，否则 /DEF 不进链接、
+    // def 导出面（ASCII 公开子程序）静默消失（2026-10-24 实修；与原生预览/导出链同口径）。
+    const hasDllDefinitionFile = generatedProject.files.some(file => file.relativePath === "exports.def");
+    const dllDefinitionFile = hasDllDefinitionFile ? path.join("src", "exports.def") : undefined;
+    const dllDefinitionFileForExport = hasDllDefinitionFile ? "exports.def" : undefined;
     const repoRoot = getRepoWorkspaceRoot();
     const buildPaths = await resolveServerProjectBuildPaths(projectId, buildConfiguration);
     const buildDir = buildPaths.buildDir;
@@ -2573,6 +2578,7 @@ app.post("/api/window-designer/build-run", async (req, res) => {
       requiredCppStandard: moduleNativePlan.requiredCppStandard,
       requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt,
       projectKind: routeOutputKind,
+      definitionFile: dllDefinitionFile,
       fbroRuntimeFromBuildBin: true,
       requireAdministrator: routeRequireAdministrator
     });
@@ -2585,6 +2591,7 @@ app.post("/api/window-designer/build-run", async (req, res) => {
       requiredCppStandard: moduleNativePlan.requiredCppStandard,
       requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt,
       projectKind: routeOutputKind,
+      definitionFile: dllDefinitionFileForExport,
       requireAdministrator: routeRequireAdministrator
     });
 
@@ -3113,6 +3120,11 @@ async function runControlledWindowDesignerBuild(options: {
     proCommandAuthorization: readProAccessStateFile()
   });
   assertNoBlockingLingCppDiagnostics(generatedProject.blockingDiagnostics);
+  // 动态库模式：exports.def 必须以 ModuleDefinitionFile 进 vcxproj，否则 /DEF 不进链接、
+  // def 导出面（ASCII 公开子程序）静默消失（2026-10-24 实修）。
+  const dllDefinitionFile = generatedProject.files.some(file => file.relativePath === "exports.def")
+    ? path.join("src", "exports.def")
+    : undefined;
   const repoRoot = getRepoWorkspaceRoot();
   const buildPaths = await resolveServerProjectBuildPaths(projectId, buildConfiguration);
   const buildDir = buildPaths.buildDir;
@@ -3239,6 +3251,7 @@ async function runControlledWindowDesignerBuild(options: {
     requiredCppStandard: moduleNativePlan.requiredCppStandard,
     requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt,
     projectKind: consoleMode ? "console-application" : outputType === "dll" ? "dynamic-library" : "application",
+    definitionFile: dllDefinitionFile,
     fbroRuntimeFromBuildBin: true,
     requireAdministrator
   });
@@ -4560,6 +4573,10 @@ async function compileWin32Preview(
         ...(buildConfiguration.mode === "Debug"
           ? ["/link", "/DEBUG", "/INCREMENTAL:NO", "/MANIFEST:EMBED"]
           : ["/link", "/OPT:REF", "/OPT:ICF"]),
+        // 动态库导出表：/DEF 必须在 /link 区段内（与 compileMsvcPreviewWithModules 同口径）。
+        ...(buildDynamicLibrary && compiler.kind === "msvc"
+          ? await resolveDllDefinitionFileArgs(sourcePath)
+          : []),
         ...(requireAdministrator && compiler.kind === "msvc"
           ? ["/MANIFEST:EMBED", ...REQUIRE_ADMINISTRATOR_LINK_ARGS]
           : [])
@@ -4640,6 +4657,17 @@ async function compileWin32Preview(
   }
 }
 
+
+async function resolveDllDefinitionFileArgs(sourcePath: string): Promise<string[]> {
+  const definitionCandidate = path.join(path.dirname(sourcePath), 'exports.def');
+  try {
+    await fs.access(definitionCandidate);
+    return [`/DEF:${definitionCandidate}`];
+  } catch {
+    return [];
+  }
+}
+
 async function compileMsvcPreviewWithModules(
   compiler: CompilerInfo,
   sourcePath: string,
@@ -4659,6 +4687,10 @@ async function compileMsvcPreviewWithModules(
   buildDynamicLibrary = false,
   requireAdministrator = false
 ): Promise<{ ok: boolean; logs: string[] }> {
+  // 动态库导出表：生成器随源码写出 exports.def（无装饰 stdcall 导出名），链接时经 /DEF 传给链接器。
+  // 与 aiBridgeService 的 compileMsvcPreviewWithModules 同口径（2026-10-24 实修：F5 生成动态库漏 /DEF
+  // 导致 def 导出面静默消失，只剩 dllexport 兜底的函数）。
+  const dllDefinitionFileArgs = buildDynamicLibrary ? await resolveDllDefinitionFileArgs(sourcePath) : [];
   const sources = [sourcePath, ...moduleSources];
   const objectFiles = sources.map((source, index) => path.join(objDir, `${index === 0 ? "main" : `module_${index}`}.obj`));
   const msvcBuildFlags = getBuildCompilerFlags(buildConfiguration, "msvc")
@@ -4684,6 +4716,7 @@ async function compileMsvcPreviewWithModules(
   const linkArgs = [
     "/nologo",
     ...(buildDynamicLibrary ? ["/DLL"] : []),
+    ...dllDefinitionFileArgs,
     ...objectFiles,
     "/Fe:" + exePath,
     ...linkLibraries,

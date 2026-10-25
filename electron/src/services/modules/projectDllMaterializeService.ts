@@ -263,7 +263,7 @@ export async function materializeProjectDllDeclarationModules(options: ProjectDl
     await fs.mkdir(moduleRoot, { recursive: true });
     const defPath = path.join(moduleRoot, `${library.name}.def`);
     const libPath = path.join(moduleRoot, `${library.name}.lib`);
-    const defLines = buildProjectDllDefLines(library.name, path.basename(archFile.relativePath), actualExports, declared);
+    const defLines = buildProjectDllDefLines(library.name, path.basename(archFile.relativePath), actualExports, declared, options.machine !== 'X64');
     // lib.exe 的 .def 按 UTF-8（带 BOM）解析中文导出名与别名；无 BOM 会退回系统代码页导致名字错位。
     const defContent = '﻿' + defLines.join('\r\n') + '\r\n';
     await fs.writeFile(defPath, defContent, 'utf8');

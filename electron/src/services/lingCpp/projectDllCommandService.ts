@@ -906,14 +906,21 @@ function generateProjectDllStructAccessorHeader(dllLibraries: LingCppDllLibrary[
   return lines.join('\n');
 }
 /** 枚举声明库要求的导出名（供 .def 生成与导出存在性校验）；exportName 为实际导出名。 */
-export function collectProjectDllDeclaredExports(dllLibraries: LingCppDllLibrary[], libraryName: string, arch: 'Win32' | 'x64'): { dllRelativePath?: string; exports: Array<{ commandName: string; exportName: string }> } {
+export function collectProjectDllDeclaredExports(dllLibraries: LingCppDllLibrary[], libraryName: string, arch: 'Win32' | 'x64'): { dllRelativePath?: string; exports: Array<{ commandName: string; exportName: string; callingConvention?: string; parameterCount: number; paramBytes: number }> } {
   const library = dllLibraries.find(item => item.name === libraryName);
   if (!library) return { exports: [] };
   return {
     dllRelativePath: library.archFiles.find(file => file.arch === arch)?.relativePath,
     exports: library.commands.map(command => ({
       commandName: command.name,
-      exportName: command.exportName || command.name
+      exportName: command.exportName || command.name,
+      callingConvention: command.callingConvention,
+      parameterCount: command.parameters.length,
+      // x86 stdcall 导出装饰的 @N：每个栈参数占 4 字节，双精度小数型/长整数型占 8。
+      paramBytes: command.parameters.reduce((total, parameter) => {
+        const size = parameter.type === '小数型' || parameter.type === '长整数型' ? 8 : 4;
+        return total + size;
+      }, 0)
     }))
   };
 }
@@ -923,10 +930,19 @@ export function collectProjectDllDeclaredExports(dllLibraries: LingCppDllLibrary
  * 调用点（binding.runtimeName）与 dllimport 头文件声明都用「有别名时 = 导出名」的真实导出名，
  * 导入库只需承载真实符号；再生成「中文名 = 导出名」重命名符号会让英文别名命令 LNK2019。
  */
-export function buildProjectDllDefLines(libraryName: string, dllBaseName: string, actualExports: string[], declaredCommands: Array<{ commandName: string; exportName: string }>): string[] {
+export function buildProjectDllDefLines(libraryName: string, dllBaseName: string, actualExports: string[], declaredCommands: Array<{ commandName: string; exportName: string; callingConvention?: string; parameterCount?: number; paramBytes?: number }>, x86DecorateStdcall = false): string[] {
+  void libraryName;
   void declaredCommands;
   const lines = [`LIBRARY ${dllBaseName.replace(/\.dll$/iu, '')}`, 'EXPORTS'];
   actualExports.forEach(name => {
+    // x86 导入库的 stdcall 符号带 @参数字节数 装饰（每个栈上参数占 4 字节）。导入库若仍用
+    // 无装饰名，调用方按 stdcall 声明会 LNK2019 __imp__名@N（2026-10-24 第 18 集实修）。
+    const declared = declaredCommands.find(item => item.exportName === name);
+    if (x86DecorateStdcall && declared?.callingConvention === 'stdcall') {
+      // lib.exe /machine:X86 会自动补首下划线，def 条目只写 @参数字节数 装饰。
+      lines.push(`    ${name}@${declared.paramBytes ?? 4 * (declared.parameterCount ?? 0)}`);
+      return;
+    }
     lines.push(`    ${name}`);
   });
   return lines;

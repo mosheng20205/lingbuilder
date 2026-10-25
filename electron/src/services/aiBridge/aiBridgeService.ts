@@ -732,10 +732,7 @@ export class AiBridgeService {
     const availableModules = await this.moduleService.scanInstalledModules(projectId);
     const found = availableModules.find(module => module.manifest.id.toLowerCase() === moduleId.toLowerCase());
     if (!found) {
-      const candidates = availableModules
-        .map(module => module.manifest.id)
-        .filter(id => id.toLowerCase().includes(moduleId.toLowerCase()))
-        .slice(0, 8);
+      const candidates = collectSimilarModuleIds(availableModules, moduleId);
       throw new Error(`未找到模块「${moduleId}」。${candidates.length ? `相近模块：${candidates.join('、')}。` : '请先用 lingbuilder.modules.list 查看可用模块。'}`);
     }
     const manifest = found.manifest;
@@ -3007,6 +3004,42 @@ export class AiBridgeService {
       // Never replace the original security or operation error with an audit-log failure.
     }
   }
+}
+
+/**
+ * 「未找到模块」提示的相近候选：除 ID 子串外，再按 ID/名称/标签分词互含匹配——
+ * 外部 AI 常按俗称查询（如 usbhid），模块 ID 里没有该子串，但名称/标签里的
+ * HID/USB 等词能命中，至少把正确 ID 提示出来。ID 子串命中（score 3）排在分词命中（score 1）前。
+ */
+function collectSimilarModuleIds(availableModules: Array<{ manifest: { id: string; name: string; tags?: string[] } }>, moduleId: string): string[] {
+  const query = moduleId.trim().toLowerCase();
+  if (!query) return [];
+  // 分词：按非字母数字/中日韩字符切分；过滤 vendor 前缀 lingbuilder，避免所有模块全部命中。
+  const tokenize = (value: string): string[] =>
+    value.toLowerCase().split(/[^a-z0-9一-鿿]+/u).filter(token => token.length >= 2 && token !== 'lingbuilder');
+  const queryTokens = tokenize(moduleId);
+  const scored: Array<{ id: string; score: number }> = [];
+  for (const module of availableModules) {
+    const manifest = module.manifest;
+    let score = 0;
+    if (manifest.id.toLowerCase().includes(query)) {
+      score = 3;
+    } else if (queryTokens.length > 0) {
+      const moduleTokens = [
+        ...tokenize(manifest.id),
+        ...tokenize(manifest.name || ''),
+        ...(manifest.tags || []).flatMap(tag => tokenize(tag))
+      ];
+      const matched = queryTokens.some(queryToken =>
+        moduleTokens.some(token => token.includes(queryToken) || queryToken.includes(token)));
+      if (matched) score = 1;
+    }
+    if (score > 0) scored.push({ id: manifest.id, score });
+  }
+  return scored
+    .sort((left, right) => right.score - left.score || left.id.localeCompare(right.id))
+    .slice(0, 8)
+    .map(item => item.id);
 }
 
 /** 从命令 signature 与 binding 提取逐参数中文说明；供 lingbuilder.module.info 返回。 */

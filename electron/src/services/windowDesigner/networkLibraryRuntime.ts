@@ -524,11 +524,19 @@ static long long LB_NotifyNowMilliseconds() {
     return static_cast<long long>((value.QuadPart - 116444736000000000LL) / 10000);
 }
 
-// 三平台同一签名算法：HMAC-SHA256（密钥=SEC，内容=时间戳+"\n"+SEC）→ Base64；
-// 钉钉时间戳毫秒且结果要 URL 编码，飞书时间戳秒且结果原样进请求体。
+// 钉钉签名算法：HMAC-SHA256（密钥=SEC，内容=毫秒时间戳+"\n"+SEC）→ Base64 → URL 编码拼地址。
 static std::string LB_NotifySignBase64(const std::wstring& secret, long long timestamp) {
     const std::string key = LB_WideToUtf8(secret.c_str());
     const std::string mac = LB_NotifyHmacSha256(key, std::to_string(timestamp) + "\n" + key);
+    return mac.empty() ? std::string() : LB_NotifyBase64(reinterpret_cast<const unsigned char*>(mac.data()), mac.size());
+}
+
+// 飞书签名算法（官方 gen_sign 口径，与钉钉不同）：以「秒时间戳+"\n"+密钥」整串当 HMAC 密钥、
+// 消息为空 → HMAC-SHA256 → Base64；结果原样写进请求体 timestamp/sign 字段。
+static std::string LB_NotifyFeishuSignBase64(const std::wstring& secret, long long seconds) {
+    const std::string key = LB_WideToUtf8(secret.c_str());
+    const std::string stringToSign = std::to_string(seconds) + "\n" + key;
+    const std::string mac = LB_NotifyHmacSha256(stringToSign, std::string());
     return mac.empty() ? std::string() : LB_NotifyBase64(reinterpret_cast<const unsigned char*>(mac.data()), mac.size());
 }
 
@@ -556,7 +564,7 @@ static bool LB_NotifyApplyDingTalkSign(std::wstring& url, const std::wstring& se
 static std::wstring LB_NotifyFeishuSignFields(const std::wstring& secret) {
     if (secret.empty()) return L"";
     const long long seconds = LB_NotifyNowMilliseconds() / 1000;
-    const std::string sign = LB_NotifySignBase64(secret, seconds);
+    const std::string sign = LB_NotifyFeishuSignBase64(secret, seconds);
     if (sign.empty()) { LB_NotifyFail(L"飞书加签失败：本机 BCrypt 计算 HMAC-SHA256 失败。"); return L""; }
     return L"\"timestamp\":\"" + std::to_wstring(seconds) + L"\",\"sign\":\"" + std::wstring(sign.begin(), sign.end()) + L"\"";
 }
@@ -1051,7 +1059,7 @@ bool 推送_发飞书文本(const wchar_t* 地址, const wchar_t* 内容, const 
     return LB_NotifySendFeishu(url, signFields, payload, L"飞书");
 }
 
-bool 推送_发飞书富文本(const wchar_t* 地址, const wchar_t* 多行文本, const wchar_t* 加签密钥) {
+bool 推送_发飞书富文本(const wchar_t* 地址, const wchar_t* 多行文本, const wchar_t* 加签密钥 = L"") {
     LB_NotifyClearState();
     const std::wstring url = LB_Wide(地址);
     const std::wstring text = LB_Wide(多行文本);

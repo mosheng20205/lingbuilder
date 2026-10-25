@@ -167,11 +167,12 @@ const commands: StandardCommandSpec[] = [
     '推送_发飞书文本(地址, "部署完成", "", 假, "")'),
   command('推送_发飞书富文本', [
     { name: '地址', type: 'wideString', description: webhookUrlArg },
-    { name: '多行文本', type: 'wideString', description: '每行一个段落的纯文本（原文即可）；空行自动忽略。需要超链接/图片/@ 元素的复杂富文本改用 推送_发JSON 直发 post 结构。' }
+    { name: '多行文本', type: 'wideString', description: '每行一个段落的纯文本（原文即可）；空行自动忽略。需要超链接/图片/@ 元素的复杂富文本改用 推送_发JSON 直发 post 结构。' },
+    { name: '加签密钥', type: 'wideString', description: feishuSecretArg }
   ], 'bool',
-    '发飞书自定义机器人富文本（post）消息，本命令封装「每行一个文本段落」的最常用形态：一行变一个 text 元素，段落转义由运行时完成。链接、图片、@ 提醒等嵌套元素走 推送_发JSON。',
-    '推送_发飞书富文本("${1:https://open.feishu.cn/open-apis/bot/v2/hook/xxx}", "${2:第一段\\n第二段}")',
-    '推送_发飞书富文本(地址, "构建完成\\n工程：" + 工程名)')
+    '发飞书自定义机器人富文本（post）消息，本命令封装「每行一个文本段落」的最常用形态：一行变一个 text 元素，段落转义由运行时完成；机器人开启签名校验时第 3 参传密钥（秒时间戳与 sign 由运行时写进请求体），空文本表示未开启。链接、图片、@ 提醒等嵌套元素走 推送_发JSON。',
+    '推送_发飞书富文本("${1:https://open.feishu.cn/open-apis/bot/v2/hook/xxx}", "${2:第一段\\n第二段}", "${3:}")',
+    '推送_发飞书富文本(地址, "构建完成\\n工程：" + 工程名, 密钥)')
 ];
 
 export const NOTIFY_MODULE: LingBuilderModuleManifest = {
@@ -200,7 +201,7 @@ export const NOTIFY_MODULE: LingBuilderModuleManifest = {
       },
       {
         label: '飞书段落',
-        insertText: '推送_发飞书富文本("${1:https://open.feishu.cn/open-apis/bot/v2/hook/xxx}", "${2:第一段\\n第二段}")\n调试输出(推送_取响应文本())',
+        insertText: '推送_发飞书富文本("${1:https://open.feishu.cn/open-apis/bot/v2/hook/xxx}", "${2:第一段\\n第二段}", "${3:}")\n调试输出(推送_取响应文本())',
         description: '飞书自定义机器人富文本：一行一个段落；@ 人用 推送_发飞书文本 的 open_id 列表。'
       }
     ],
