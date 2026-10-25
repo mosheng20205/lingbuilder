@@ -2,9 +2,14 @@
 使用 Win32窗口基础模块
 使用 滑块缺口识别模块
 使用 日期时间模块
+使用 文件目录模块
 
 类 MainWindow : 公开 窗口
+    文本型 样本目录 = ""
+
     事件 _MainWindow_创建完毕()
+        解析样本目录()
+        目录_创建(样本目录 + "out")
         控件_添加项目(样本列表, "1 极验gt3 峡谷")
         控件_添加项目(样本列表, "2 极验gt4 抽象插画")
         控件_添加项目(样本列表, "3 腾讯防水墙 海边屋")
@@ -32,10 +37,27 @@
         一键全测()
     结束
 
+    事件 _选择对话框_文件已选择()
+        处理自定义图片()
+    结束
+
+    事件 _选择对话框_文件被拖入()
+        处理自定义图片()
+    结束
+
+    空 解析样本目录()
+        局部 文本型 开发目录 = "T:/electron/lingbuilder/src/captcha-gap-probe/samples/"
+        样本目录 = 滑块缺口_取模块目录() + "samples/"
+        如果 (文件_是否存在(样本目录 + "geetest3_bg.jpg") == 假)
+            样本目录 = 开发目录
+        如果结束
+        目录_创建(样本目录 + "out")
+    结束
+
     空 一键全测()
         局部 文本型 背景路径 = ""
+        局部 文本型 文件名 = ""
         局部 文本型 结果 = ""
-        局部 长整数型 结果句柄占位 = 0
         局部 长整数型 计时起 = 0
         局部 长整数型 单张耗时 = 0
         局部 长整数型 累计耗时 = 0
@@ -45,46 +67,48 @@
         局部 整数型 累计有效 = 0
         局部 整数型 累计命中 = 0
         局部 整数型 k = 0
-        结果 = 滑块缺口_识别("T:/electron/lingbuilder/src/captcha-gap-probe/samples/geetest3_bg.jpg")
         计次循环首 (9, k)
             真值 = -1
             取最大 = 假
-            背景路径 = ""
+            文件名 = ""
             选择 (k)
                 分支 (1)
-                    背景路径 = "T:/electron/lingbuilder/src/captcha-gap-probe/samples/geetest3_bg.jpg"
+                    文件名 = "geetest3_bg.jpg"
                     真值 = 116
                 分支 (2)
-                    背景路径 = "T:/electron/lingbuilder/src/captcha-gap-probe/samples/geetest4_bg.png"
+                    文件名 = "geetest4_bg.png"
                     真值 = 139
                 分支 (3)
-                    背景路径 = "T:/electron/lingbuilder/src/captcha-gap-probe/samples/tencent1_bg.jpg"
+                    文件名 = "tencent1_bg.jpg"
                     真值 = 511
+                    取最大 = 真
                 分支 (4)
-                    背景路径 = "T:/electron/lingbuilder/src/captcha-gap-probe/samples/tencent3_bg.jpg"
+                    文件名 = "tencent3_bg.jpg"
                     真值 = 496
+                    取最大 = 真
                 分支 (5)
-                    背景路径 = "T:/electron/lingbuilder/src/captcha-gap-probe/samples/yidun1_bg.jpg"
+                    文件名 = "yidun1_bg.jpg"
                     真值 = 141
                     取最大 = 真
                 分支 (6)
-                    背景路径 = "T:/electron/lingbuilder/src/captcha-gap-probe/samples/yidun2_bg.jpg"
+                    文件名 = "yidun2_bg.jpg"
                     真值 = 238
                     取最大 = 真
                 分支 (7)
-                    背景路径 = "T:/electron/lingbuilder/src/captcha-gap-probe/samples/dingxiang1_bg.png"
+                    文件名 = "dingxiang1_bg.png"
                     真值 = 268
                     取最大 = 真
                 分支 (8)
-                    背景路径 = "T:/electron/lingbuilder/src/captcha-gap-probe/samples/dingxiang2_bg.png"
+                    文件名 = "dingxiang2_bg.png"
                     真值 = 268
                     取最大 = 真
                 分支 (9)
-                    背景路径 = "T:/electron/lingbuilder/src/captcha-gap-probe/samples/douyin1_bg.png"
+                    文件名 = "douyin1_bg.png"
                     真值 = 272
                     取最大 = 真
             选择结束
-            如果 (背景路径 != "")
+            如果 (文件名 != "")
+                背景路径 = 样本目录 + 文件名
                 计时起 = 时间_单调毫秒()
                 结果 = 滑块缺口_识别(背景路径)
                 单张耗时 = 时间_单调毫秒() - 计时起
@@ -106,6 +130,7 @@
 
     空 分析并显示(整数型 序号)
         局部 文本型 标题 = ""
+        局部 文本型 文件名 = ""
         局部 文本型 背景路径 = ""
         局部 文本型 标注路径 = ""
         局部 文本型 真值 = ""
@@ -120,62 +145,53 @@
         选择 (序号)
             分支 (0)
                 标题 = "极验 gt3 峡谷"
-                背景路径 = "T:/electron/lingbuilder/src/captcha-gap-probe/samples/geetest3_bg.jpg"
-                标注路径 = "T:/electron/lingbuilder/src/captcha-gap-probe/samples/out/onnx_geetest3.png"
+                文件名 = "geetest3_bg.jpg"
                 真值 = "像素差分真值 x=116"
                 真值x = 116
             分支 (1)
                 标题 = "极验 gt4 抽象插画"
-                背景路径 = "T:/electron/lingbuilder/src/captcha-gap-probe/samples/geetest4_bg.png"
-                标注路径 = "T:/electron/lingbuilder/src/captcha-gap-probe/samples/out/onnx_geetest4.png"
+                文件名 = "geetest4_bg.png"
                 真值 = "双引擎交叉真值 x=139"
                 真值x = 139
             分支 (2)
                 标题 = "腾讯防水墙 海边屋"
-                背景路径 = "T:/electron/lingbuilder/src/captcha-gap-probe/samples/tencent1_bg.jpg"
-                标注路径 = "T:/electron/lingbuilder/src/captcha-gap-probe/samples/out/onnx_tencent1.png"
+                文件名 = "tencent1_bg.jpg"
                 真值 = "双引擎交叉真值 x=511"
                 真值x = 511
             分支 (3)
                 标题 = "腾讯防水墙 红石谷"
-                背景路径 = "T:/electron/lingbuilder/src/captcha-gap-probe/samples/tencent3_bg.jpg"
-                标注路径 = "T:/electron/lingbuilder/src/captcha-gap-probe/samples/out/onnx_tencent3.png"
+                文件名 = "tencent3_bg.jpg"
                 真值 = "双引擎交叉真值 x=496"
                 真值x = 496
             分支 (4)
                 标题 = "易盾 山河（双框）"
-                背景路径 = "T:/electron/lingbuilder/src/captcha-gap-probe/samples/yidun1_bg.jpg"
-                标注路径 = "T:/electron/lingbuilder/src/captcha-gap-probe/samples/out/onnx_yidun1.png"
+                文件名 = "yidun1_bg.jpg"
                 真值 = "缺口=右框 x=141（左框是滑块起点）"
                 真值x = 141
                 双框 = 真
                 取最大 = 真
             分支 (5)
                 标题 = "易盾 单车（双框）"
-                背景路径 = "T:/electron/lingbuilder/src/captcha-gap-probe/samples/yidun2_bg.jpg"
-                标注路径 = "T:/electron/lingbuilder/src/captcha-gap-probe/samples/out/onnx_yidun2.png"
+                文件名 = "yidun2_bg.jpg"
                 真值 = "极淡缺口 x≈238"
                 真值x = 238
                 双框 = 真
                 取最大 = 真
             分支 (6)
                 标题 = "顶象 机器人"
-                背景路径 = "T:/electron/lingbuilder/src/captcha-gap-probe/samples/dingxiang1_bg.png"
-                标注路径 = "T:/electron/lingbuilder/src/captcha-gap-probe/samples/out/onnx_dingxiang1.png"
+                文件名 = "dingxiang1_bg.png"
                 真值 = "红框真值区 x≈268"
                 真值x = 268
                 取最大 = 真
             分支 (7)
                 标题 = "顶象 盾牌"
-                背景路径 = "T:/electron/lingbuilder/src/captcha-gap-probe/samples/dingxiang2_bg.png"
-                标注路径 = "T:/electron/lingbuilder/src/captcha-gap-probe/samples/out/onnx_dingxiang2.png"
+                文件名 = "dingxiang2_bg.png"
                 真值 = "文件名真值 x=268"
                 真值x = 268
                 取最大 = 真
             分支 (8)
                 标题 = "抖音PC 商城滑块（双框）"
-                背景路径 = "T:/electron/lingbuilder/src/captcha-gap-probe/samples/douyin1_bg.png"
-                标注路径 = "T:/electron/lingbuilder/src/captcha-gap-probe/samples/out/onnx_douyin1.png"
+                文件名 = "douyin1_bg.png"
                 真值 = "目测真值 x≈272（左框是滑块起点）"
                 真值x = 272
                 双框 = 真
@@ -184,6 +200,8 @@
                 控件_设置文本(状态标签, "未知样本序号")
                 返回
         选择结束
+        背景路径 = 样本目录 + 文件名
+        标注路径 = 样本目录 + "out/onnx_" + 文件名 + ".png"
         控件_清空项目(结果列表)
         控件_添加项目(结果列表, "样本：" + 标题)
         控件_添加项目(结果列表, "版本：" + 滑块缺口_取版本())
@@ -226,17 +244,6 @@
         控件_设置文本(状态标签, 标题 + "：耗时 " + 到文本(耗时) + " ms，标注图已保存 samples/out/")
         调试输出("分析完成", 标题, 耗时)
     结束
-    事件 _上传按钮_被单击()
-        文件对话框_打开(选择对话框)
-    结束
-
-    事件 _选择对话框_文件已选择()
-        处理自定义图片()
-    结束
-
-    事件 _选择对话框_文件被拖入()
-        处理自定义图片()
-    结束
 
     空 处理自定义图片()
         局部 整数型 数量 = 0
@@ -248,9 +255,8 @@
         局部 长整数型 耗时 = 0
         局部 整数型 首框x = -1
         局部 整数型 最大x = -1
-        调试输出("处理自定义图片入口", 数量)
         数量 = 文件对话框_取文件数量(选择对话框)
-        调试输出("取文件数量", 数量)
+        调试输出("处理自定义图片入口", 数量)
         如果 (数量 <= 0)
             控件_设置文本(状态标签, "未取到文件路径")
             返回
@@ -259,7 +265,7 @@
         计次循环首 (数量, k)
             自定义路径 = 文件对话框_取文件(选择对话框, k - 1)
             如果 (自定义路径 != "")
-                标注路径 = "T:/electron/lingbuilder/src/captcha-gap-probe/samples/out/onnx_custom_" + 到文本(k) + ".png"
+                标注路径 = 样本目录 + "out/onnx_custom_" + 到文本(k) + ".png"
                 控件_添加项目(结果列表, "文件：" + 自定义路径)
                 计时起 = 时间_单调毫秒()
                 结果 = 滑块缺口_识别(自定义路径)

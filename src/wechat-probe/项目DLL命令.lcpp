@@ -1,0 +1,13 @@
+包 项目DLL命令
+
+// 本文件用于把项目自带的 DLL 导出函数声明为中文命令（无需封装 .lbmod 模块）。
+// 用法：
+//   DLL命令库 AdvancedMathDll
+//     Win32 = "dll/Win32/AdvancedMathDll.dll"
+//     x64 = "dll/x64/AdvancedMathDll.dll"
+//     整数型 加法计算(整数型 被加数, 整数型 加数)
+//   结束DLL命令库
+// 命令名即 DLL 导出函数名；DLL 文件按相对路径放在项目内，构建时自动复制到 exe 旁。
+// 需要「内存加载、不向磁盘释放 DLL」时，在库内加一行 `加载方式 = 内存`：
+//   DLL 会以资源内嵌进 EXE 并在首次调用时手工映射到内存，exe 旁不再出现该 DLL，
+//   代价是必须为项目启用「内存加载DLL模块」（lingbuilder.advanced.memorydll）。

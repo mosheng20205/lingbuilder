@@ -229,3 +229,6 @@ COMPONENT_CARDS_PLAN.md
 
 # 验证码缺口探针的生成样本（标注/调优/模板回写产物，5MB+；输入样本仍入库）
 /src/captcha-gap-probe/samples/out/
+
+# 本机探针的位图输出（微信未读探针 22MB 截图，源码入库、产物不留）
+/src/wechat-probe/out/
