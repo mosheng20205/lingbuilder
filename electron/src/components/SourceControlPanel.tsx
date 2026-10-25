@@ -202,8 +202,8 @@ export default function SourceControlPanel({
     }, { success: `已同步 ${upstream}` });
   };
   const untrackManagedFiles = () => openDialog({
-    title: '从 Git 索引移除 IDE 管理文件',
-    description: `下列 ${managedTrackedPaths.length} 个文件位于 IDE 管理目录（.lingbuilder / .lingbuilder-build），已被 Git 跟踪并会继续被提交推送。从索引移除后：本地文件保留不动；提交并推送后，仓库和其他设备上将不再包含这些文件。`,
+    title: '从 Git 索引移除 IDE 运行时文件',
+    description: `下列 ${managedTrackedPaths.length} 个文件是 IDE 运行时数据（.lingbuilder / .lingbuilder-build 下的日志、模块安装、构建缓存与产物），已被 Git 跟踪并会继续被提交推送。从索引移除后：本地文件保留不动；提交并推送后，仓库和其他设备上将不再包含这些文件。窗口设计器模型、解决方案与项目模块清单不在此列，会继续纳入版本库。`,
     submitLabel: '从索引移除',
     danger: true,
     fields: [],
@@ -507,8 +507,8 @@ export default function SourceControlPanel({
             <button type="button" disabled={busy} onClick={loadRemote} className="ml-auto shrink-0 rounded px-1 py-0.5 text-amber-500 underline decoration-dotted underline-offset-2 hover:bg-black/10" title="打开远程同步视图，添加或修改远程仓库推送地址">未设置推送地址，点击配置 →</button>
           </>)}
         </div>
-        {managedTrackedPaths.length > 0 && <button type="button" disabled={busy} onClick={untrackManagedFiles} className="mb-2 w-full rounded bg-amber-500/10 p-2 text-left text-amber-500 hover:bg-amber-500/20" title="把 IDE 管理目录中已被 Git 跟踪的文件移出索引（本地文件保留）">
-          IDE 管理目录中有 {managedTrackedPaths.length} 个文件已被 Git 跟踪，会继续被提交推送。点击从索引移除（保留本地文件）→
+        {managedTrackedPaths.length > 0 && <button type="button" disabled={busy} onClick={untrackManagedFiles} className="mb-2 w-full rounded bg-amber-500/10 p-2 text-left text-amber-500 hover:bg-amber-500/20" title="把 IDE 运行时文件中已被 Git 跟踪的文件移出索引（本地文件保留）">
+          IDE 运行时文件中有 {managedTrackedPaths.length} 个已被 Git 跟踪，会继续被提交推送。点击从索引移除（保留本地文件）→
         </button>}
         <label htmlFor="git-commit-message" className="mb-1 block font-semibold">提交说明</label>
         <textarea id="git-commit-message" value={message} onChange={event => setMessage(event.target.value)} placeholder="输入提交说明（必填）" rows={3} maxLength={4000} className={`mb-1 w-full resize-y rounded border border-inherit px-2 py-1.5 text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#007ACC] ${isDarkMode ? 'bg-black/20' : 'bg-white'}`} />

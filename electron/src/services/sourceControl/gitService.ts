@@ -19,10 +19,31 @@ export interface PullRequestProvider { create(input: { repository: string; head:
 type Runner = (args: string[], options?: { timeout?: number }) => Promise<{ stdout: string; stderr: string }>;
 
 const MAX_DIFF_BYTES = 2 * 1024 * 1024;
-// IDE 管理目录（运行数据、模块安装、构建产物）不入库：status 读取时确保它们出现在工作区根 .gitignore。
-const IDE_MANAGED_IGNORE_ENTRIES: readonly string[] = ['/.lingbuilder/', '/.lingbuilder-build/'];
-const IDE_MANAGED_IGNORE_MARKER = '# LingBuilder IDE 管理目录（IDE 自动维护：运行数据与构建产物不入库）';
-// 忽略规则对已被跟踪的文件无效：status 同时回报 IDE 管理目录中已被跟踪的文件清单（上限与 validatePaths 的 500 对齐），供面板一键从索引移除。
+// IDE 管理目录同时存放两类内容：运行数据/构建产物（日志、模块安装、构建输出）与工程数据（解决方案、设计器模型、项目模块清单、构建配置）。
+// 只能忽略前者：整目录忽略会让窗口布局和解决方案结构永远进不了版本库，换机或协作时项目打开就是空窗口。
+export const IDE_MANAGED_IGNORE_MARKER = '# LingBuilder IDE 管理目录（IDE 自动维护：运行数据与构建产物不入库；工程数据仍纳入版本库）';
+const LEGACY_IDE_MANAGED_IGNORE_MARKER = '# LingBuilder IDE 管理目录（IDE 自动维护：运行数据与构建产物不入库）';
+export const IDE_MANAGED_IGNORE_ENTRIES: readonly string[] = [
+  '/.lingbuilder/*',
+  '!/.lingbuilder/solution.json',
+  '!/.lingbuilder/window-designer.json',
+  '!/.lingbuilder/project-modules.json',
+  '!/.lingbuilder/build-configuration.json',
+  '!/.lingbuilder/projects/',
+  '/.lingbuilder/projects/*/*',
+  '!/.lingbuilder/projects/*/window-designer.json',
+  '!/.lingbuilder/projects/*/project-modules.json',
+  '/.lingbuilder-build/'
+];
+// 旧版整目录规则（含等价写法）：父目录被排除后无法再 include，必须清掉，否则放行规则全部失效。
+const LEGACY_IDE_BROAD_IGNORE_LINES = new Set(['/.lingbuilder/', '/.lingbuilder', '.lingbuilder/', '.lingbuilder']);
+const MANAGED_IGNORE_RECOGNIZED_LINES = new Set([...IDE_MANAGED_IGNORE_ENTRIES, ...LEGACY_IDE_BROAD_IGNORE_LINES]);
+// 工程数据：即使被跟踪也不该劝用户移出索引，否则等于把窗口布局和项目结构移出版本库。
+const IDE_PROJECT_DATA_PATTERNS: readonly RegExp[] = [
+  /^\.lingbuilder\/(?:solution|window-designer|project-modules|build-configuration)\.json$/u,
+  /^\.lingbuilder\/projects\/[^/]+\/(?:window-designer|project-modules)\.json$/u
+];
+// 忽略规则对已被跟踪的文件无效：status 同时回报 IDE 管理目录中「仍属运行数据」的已跟踪文件清单（上限与 validatePaths 的 500 对齐），供面板一键从索引移除。
 const MAX_MANAGED_TRACKED_FILES = 500;
 
 export function translateGitError(raw: string): string | undefined {
@@ -336,11 +357,11 @@ export class GitService {
   private async managedTrackedFiles(scope: { repoRelativeWorkspace: string }): Promise<string[]> {
     try {
       const prefix = scope.repoRelativeWorkspace ? `${scope.repoRelativeWorkspace}/` : '';
-      const args = ['ls-files', '-z', '--', ...IDE_MANAGED_IGNORE_ENTRIES.map(entry => `${prefix}${entry.slice(1).replace(/\/$/u, '')}`)];
+      const args = ['ls-files', '-z', '--', `${prefix}.lingbuilder`, `${prefix}.lingbuilder-build`];
       const output = await this.run(args);
       return output.stdout.split('\0').filter(Boolean).map(normalizeGitPath)
         .map(repoPath => toWorkspaceRelativeGitPath(repoPath, scope.repoRelativeWorkspace))
-        .filter((value): value is string => value !== undefined)
+        .filter((value): value is string => Boolean(value) && !isIdeManagedProjectData(value))
         .slice(0, MAX_MANAGED_TRACKED_FILES);
     } catch { return []; }
   }
@@ -354,11 +375,9 @@ export class GitService {
     try {
       const gitignorePath = path.join(workspace, '.gitignore');
       const existing = await fs.readFile(gitignorePath, 'utf8').catch((error: { code?: string }) => { if (error?.code === 'ENOENT') return ''; throw error; });
-      const lines = new Set(existing.split(/\r?\n/u).map(line => line.trim()));
-      const missing = IDE_MANAGED_IGNORE_ENTRIES.filter(entry => !(lines.has(entry) || lines.has(entry.slice(1)) || lines.has(entry.replace(/\/$/u, '')) || lines.has(entry.slice(1).replace(/\/$/u, ''))));
-      if (!missing.length) return;
-      const separator = existing && !existing.endsWith('\n') ? '\n' : '';
-      await fs.appendFile(gitignorePath, `${separator}${IDE_MANAGED_IGNORE_MARKER}\n${missing.join('\n')}\n`, 'utf8');
+      const updated = mergeIdeManagedIgnoreBlock(existing);
+      if (updated === undefined) return;
+      await fs.writeFile(gitignorePath, updated, 'utf8');
     } catch { /* .gitignore 不可读写或工作区异常时静默跳过，不能影响 Git 状态读取。 */ }
   }
   private async repositoryRoot(): Promise<string> {
@@ -384,6 +403,28 @@ function parseBranchHeader(value: string): Omit<GitStatus, 'isRepository' | 'fil
 function normalizeGitPath(value: string): string { return value.replace(/\\/gu, '/'); }
 function normalizeWorkspaceRelativePath(value: string): string { const result = normalizeGitPath(value?.trim() || '').replace(/^\.\//u, ''); if (!result || result.startsWith('/') || result.split('/').includes('..') || result.includes('\0')) throw new Error('Git 文件路径无效。'); return result; }
 function toWorkspaceRelativeGitPath(repoPath: string, repoRelativeWorkspace: string): string | undefined { if (!repoRelativeWorkspace) return repoPath; const prefix = `${repoRelativeWorkspace}/`; return repoPath === repoRelativeWorkspace ? '' : repoPath.startsWith(prefix) ? repoPath.slice(prefix.length) : undefined; }
+function isIdeManagedProjectData(workspacePath: string): boolean { return IDE_PROJECT_DATA_PATTERNS.some(pattern => pattern.test(workspacePath)); }
+// 生成/迁移 IDE 管理忽略块：旧版整目录规则就地换成白名单块，其余用户内容原样保留。返回 undefined 表示已是最新，不重写文件。
+function mergeIdeManagedIgnoreBlock(content: string): string | undefined {
+  const eol = content.includes('\r\n') ? '\r\n' : '\n';
+  const lines = content === '' ? [] : content.replace(/\r?\n$/u, '').split(/\r?\n/u);
+  const block = [IDE_MANAGED_IGNORE_MARKER, ...IDE_MANAGED_IGNORE_ENTRIES];
+  const markerIndex = lines.findIndex(line => { const trimmed = line.trim(); return trimmed === IDE_MANAGED_IGNORE_MARKER || trimmed === LEGACY_IDE_MANAGED_IGNORE_MARKER; });
+  if (markerIndex < 0) return `${[...stripLegacyBroadIgnoreLines(lines), ...block].join(eol)}${eol}`;
+  let blockEnd = markerIndex + 1;
+  while (blockEnd < lines.length && MANAGED_IGNORE_RECOGNIZED_LINES.has(lines[blockEnd].trim())) blockEnd++;
+  const before = stripLegacyBroadIgnoreLines(lines.slice(0, markerIndex));
+  const after = stripLegacyBroadIgnoreLines(lines.slice(blockEnd));
+  const current = lines.slice(markerIndex + 1, blockEnd).map(line => line.trim());
+  const unchanged = lines[markerIndex].trim() === IDE_MANAGED_IGNORE_MARKER
+    && sameIgnoreEntries(current, IDE_MANAGED_IGNORE_ENTRIES)
+    && before.length === markerIndex
+    && after.length === lines.length - blockEnd;
+  if (unchanged) return undefined;
+  return `${[...before, ...block, ...after].join(eol)}${eol}`;
+}
+function stripLegacyBroadIgnoreLines(lines: string[]): string[] { return lines.filter(line => !LEGACY_IDE_BROAD_IGNORE_LINES.has(line.trim())); }
+function sameIgnoreEntries(current: readonly string[], expected: readonly string[]): boolean { return current.length === expected.length && current.every((entry, index) => entry === expected[index]); }
 function validateBranchName(value: string): string { const result = value?.trim(); const forbidden = /[\s~^:?*\[\\\0]/u.test(result || ''); if (!result || result.length > 200 || result.startsWith('-') || forbidden || result.includes('..') || result.includes('@{') || result.includes('/.') || result.includes('.lock/') || result.endsWith('.lock') || result.endsWith('/') || result.endsWith('.')) throw new Error('分支名称无效。'); return result; }
 function validateTagName(value: string): string { const result = value?.trim(); const forbidden = /[\s~^:?*\[\\\0]/u.test(result || ''); if (!result || result.length > 200 || result.startsWith('-') || result.startsWith('.') || forbidden || result.includes('..') || result.includes('@{') || result.includes('/.') || result.includes('.lock/') || result.includes('//') || result.endsWith('.lock') || result.endsWith('/') || result.endsWith('.')) throw new Error('标签名称无效。'); return result; }
 function validateStashIndex(value: number): number { if (!Number.isInteger(value) || value < 0 || value > 999) throw new Error('贮藏索引无效。'); return value; }
