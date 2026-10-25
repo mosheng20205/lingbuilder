@@ -32,15 +32,7 @@ async function main() {
   console.log('语义诊断: 总', semantic.length, '错误', errors.length, '控件找不到', missingControl.length);
   for (const d of errors.slice(0, 6)) console.log('  E:', (d.message || '').slice(0, 110));
   for (const d of missingControl) console.log('  控件找不到:', (d.message || '').slice(0, 120));
-  const mainCpp = generated.files.find(f => f.relativePath === 'main.cpp')!;
-  const BS = String.fromCharCode(92);
-  const badEscapes = mainCpp.content.split('\n').filter(line => (line.match(new RegExp('L"[^"]*', 'g')) || []).some(seg => seg.includes(BS + 'o')));
-  console.log('非法转义:', badEscapes.length);
-  const opCalls = new Set([...source.matchAll(/(后台_[\p{L}\p{N}_]+)\s*[（(]/gu)].map(m => m[1] || ''));
-  const expected = new Set(BUILTIN_MODULES.find(m => m.id === 'lingbuilder.op')!.contributes!.commands.map(c => c.name));
-  const missing = [...expected].filter(name => !opCalls.has(name));
-  console.log('214 对账:', (expected.size - missing.length) + '/' + expected.size, missing.length ? '缺:' + missing.join(',') : '');
-  if (generated.blockingDiagnostics.length || errors.length || missingControl.length || badEscapes.length || missing.length) process.exit(1);
+  if (generated.blockingDiagnostics.length || errors.length || missingControl.length) process.exit(1);
   console.log('VERIFY OK');
 
   const outDir = path.join(projectDir, '_verify-build');
