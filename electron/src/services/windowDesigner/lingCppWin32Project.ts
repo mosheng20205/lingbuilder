@@ -29439,14 +29439,13 @@ private:
                 || message == BM_SETCHECK
                 || ((message == WM_KEYDOWN || message == WM_KEYUP) && wParam == VK_SPACE)
             ) {
-                // BUTTON 的点击判定依赖自己的捕获状态机：转发 WM_LBUTTONUP 前抢先 ReleaseCapture
-                // 会同步产生 WM_CAPTURECHANGED，按钮过程把"捕获被抢"当成点击取消并清除按压状态，
-                // 之后转发的 WM_LBUTTONUP 不再产生 BN_CLICKED——按钮事件就永远不触发。
-                // 因此 BUTTON 先转发（由按钮过程发出 BN_CLICKED）再清理残余捕获；
-                // 非按钮控件的拖动手势仍保持"先释放再转发"的既有顺序。
-                if (message == WM_LBUTTONUP && !buttonControl && GetCapture() == hwnd) ReleaseCapture();
+                // 原生控件的按压状态机都靠自己的 WM_LBUTTONUP 收尾并 KillTimer：转发前抢先
+                // ReleaseCapture 会先送出 WM_CAPTURECHANGED，控件把这次按压当成「捕获被抢」而
+                // 取消，之后才到达的 WM_LBUTTONUP 不再收尾。月历左右箭头的自动重复定时器因此
+                // 永不停止——用户停手后月份仍继续自动跳动（2026-10-25 用户反馈复现）；
+                // BUTTON 同理会丢掉 BN_CLICKED。所以所有控件统一「先转发、再清理我方捕获」。
                 LRESULT result = DefSubclassProc(hwnd, message, wParam, lParam);
-                if (message == WM_LBUTTONUP && buttonControl && GetCapture() == hwnd) ReleaseCapture();
+                if (message == WM_LBUTTONUP && GetCapture() == hwnd) ReleaseCapture();
                 if (message == WM_LBUTTONUP) self->DispatchLingEvent(*control, L"MouseUp");
                 if (ownerDraw) InvalidateRect(hwnd, nullptr, FALSE);
                 return result;
