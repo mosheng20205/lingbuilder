@@ -1,0 +1,41 @@
+包 缺口onnx探针
+使用 Win32窗口基础模块
+使用 滑块缺口识别模块
+使用 文件目录模块
+
+类 程序
+公开
+  整数型 启动()
+    局部 文本型 报告路径 = "T:/electron/lingbuilder/.zcode-tmp/captcha-samples/onnx-report.txt"
+    局部 文件号 报告
+    报告 = 文件_打开(报告路径, 4, 1)
+    局部 文本型 结果 = ""
+    结果 = 滑块缺口_取版本()
+    文件_写文本行(报告, "版本：" + 结果)
+    调试输出(结果)
+    结果 = 滑块缺口_识别("T:/electron/lingbuilder/src/captcha-gap-probe/samples/geetest3_bg.jpg")
+    文件_写文本行(报告, "geetest3: " + 结果)
+    结果 = 滑块缺口_识别("T:/electron/lingbuilder/src/captcha-gap-probe/samples/geetest4_bg.png")
+    文件_写文本行(报告, "geetest4: " + 结果)
+    结果 = 滑块缺口_识别("T:/electron/lingbuilder/src/captcha-gap-probe/samples/tencent1_bg.jpg")
+    文件_写文本行(报告, "tencent1: " + 结果)
+    结果 = 滑块缺口_识别("T:/electron/lingbuilder/src/captcha-gap-probe/samples/tencent3_bg.jpg")
+    文件_写文本行(报告, "tencent3: " + 结果)
+    结果 = 滑块缺口_识别("T:/electron/lingbuilder/src/captcha-gap-probe/samples/yidun1_bg.jpg")
+    文件_写文本行(报告, "yidun1: " + 结果)
+    结果 = 滑块缺口_识别("T:/electron/lingbuilder/src/captcha-gap-probe/samples/yidun2_bg.jpg")
+    文件_写文本行(报告, "yidun2: " + 结果)
+    结果 = 滑块缺口_识别带阈值("T:/electron/lingbuilder/src/captcha-gap-probe/samples/yidun2_bg.jpg", 0.1, 0.7)
+    文件_写文本行(报告, "yidun2低阈值: " + 结果)
+    结果 = 滑块缺口_识别("T:/electron/lingbuilder/src/captcha-gap-probe/samples/dingxiang1_bg.png")
+    文件_写文本行(报告, "dingxiang1: " + 结果)
+    结果 = 滑块缺口_识别("T:/electron/lingbuilder/src/captcha-gap-probe/samples/dingxiang2_bg.png")
+    文件_写文本行(报告, "dingxiang2: " + 结果)
+    结果 = 滑块缺口_识别("T:/electron/lingbuilder/src/captcha-gap-probe/samples/不存在.png")
+    文件_写文本行(报告, "不存在图片: [" + 结果 + "] 错误：" + 滑块缺口_取错误())
+    文件_写文本行(报告, "DONE")
+    文件_关闭(报告)
+    调试输出("DONE")
+    返回 (0)
+  结束
+结束类
