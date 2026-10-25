@@ -1,0 +1,16 @@
+包 MyMath
+
+类 DllApi
+公开
+  整数型 获取接口版本()
+    返回 (1)
+  结束
+
+  整数型 WeightedSum(整数型 leftValue, 整数型 rightValue, 整数型 weight)
+    返回 (leftValue * weight + rightValue * (100 - weight))
+  结束
+
+  小数型 CircleArea(小数型 radius)
+    返回 (3.14159265 * radius * radius)
+  结束
+结束类

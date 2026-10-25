@@ -1,0 +1,5 @@
+LIBRARY "dll"
+EXPORTS
+  LingBuilder_GetApiVersion
+  WeightedSum
+  CircleArea

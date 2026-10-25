@@ -47,19 +47,18 @@ title: 图文教程
 
 更多集数制作中，见[系列总览](/guide/tutorials/jinjie)。
 
-## 高阶实战系列（真实场景实战专题）
+## 高阶实战系列（真实场景实战专题，31 集全系列）
 
-不限单一模块、按真实场景选题的开放式实战合集。首个专题＝**消息推送**（企业微信群机器人，01~05 已上线）：五集连完，你的程序就能往群里发文本、排版消息、截图报警、可点击卡片和任意文件。每集提供一键导入的 .lcpppkg 源码包。
+不限单一模块、按真实场景选题的开放式实战合集，**31 集已全部上线**：消息推送（企业微信/钉钉/飞书，01~15）、DLL 调用与封装（16~19）、模块封装（20~25）、文档处理与识别（26~31）。每集提供一键导入的 .lcpppkg 源码包。
 
-| 集 | 教程 | 你将学会 | 状态 |
-| --- | --- | --- | --- |
-| 01 | [消息推送入门：发出你的第一条企微推送](/guide/tutorials/gaojie-01-wecom-text) | 申请群机器人、推送_发企业微信文本 四参数、errcode=93000 真实排障、取错误/取响应文本两件套 | 已上线 |
-| 02 | [文本与 Markdown 排版：把通知写成「人话」](/guide/tutorials/gaojie-02-wecom-markdown) | 推送_发企业微信Markdown、三引号文本块写排版、@手机号正确用法、2048/4096 字节上限本地预检 | 已上线 |
-| 03 | [图片推送：做出错自动截图报警器](/guide/tutorials/gaojie-03-wecom-image) | 截图_窗口到PNG、窗口_取自身句柄、推送_发企业微信图片（Base64/MD5 自动组包）、报警三段式 | 已上线 |
-| 04 | [图文推送：news 卡片让消息「可点击」](/guide/tutorials/gaojie-04-wecom-news) | 推送_发企业微信图文、标题|描述|跳转链接|图片URL 行格式、url 必填本地预检、1~8 条卡片 | 已上线 |
-| 05 | [文件上传与发送：media_id 的获取、时效与复用](/guide/tutorials/gaojie-05-wecom-file) | 推送_上传企业微信文件、media_id 三天有效与复用、项目全局变量、推送_发企业微信文件、假编号 errcode 40007 | 已上线 |
+| 专题 | 集数 | 入口 |
+| --- | --- | --- |
+| 消息推送 | 01~15 | [企微篇](/guide/tutorials/gaojie-01-wecom-text) · [钉钉篇](/guide/tutorials/gaojie-06-dingtalk) · [飞书篇](/guide/tutorials/gaojie-11-feishu) · [整合篇](/guide/tutorials/gaojie-13-json-push) |
+| DLL | 16~19 | [系统 DLL](/guide/tutorials/gaojie-16-system-dll) · [第三方 DLL](/guide/tutorials/gaojie-17-thirdparty-dll) · [封装 DLL](/guide/tutorials/gaojie-18-own-dll) · [内存加载](/guide/tutorials/gaojie-19-memory-dll) |
+| 模块封装 | 20~25 | [全景](/guide/tutorials/gaojie-20-module-overview) · [命令面](/guide/tutorials/gaojie-21-command-surface) · [功能库](/guide/tutorials/gaojie-22-function-library) · [C++ 运行时](/guide/tutorials/gaojie-23-cpp-runtime) · [文档例程](/guide/tutorials/gaojie-24-docs-examples) · [生态分发](/guide/tutorials/gaojie-25-ecosystem) |
+| 文档与识别 | 26~31 | [Word 生成](/guide/tutorials/gaojie-26-word-intro) · [Word 批量](/guide/tutorials/gaojie-27-word-batch) · [PDF 拆分合并](/guide/tutorials/gaojie-28-pdf-split-merge) · [条码](/guide/tutorials/gaojie-29-barcode) · [Excel 归档](/guide/tutorials/gaojie-30-excel-archive) · [视频帧](/guide/tutorials/gaojie-31-video-frames) |
 
-更多集数制作中，见[系列总览](/guide/tutorials/gaojie)。
+逐集目录见[系列总览](/guide/tutorials/gaojie)。
 
 ## Edge 浏览器合集（把 Edge 装进你的软件）
 
