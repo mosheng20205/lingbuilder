@@ -187,11 +187,19 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.match(String(client.getInstructions() || ''), /手写 y=536 的控件必被裁掉/u, 'instructions 必须保留 560/532/536 实例锚点');
     assert.match(String(client.getInstructions() || ''), /不会自动停靠窗口底部/u, 'instructions 必须钉住 StatusBar 不自动停靠、贴底要自己算 y 的红线');
     assert.match(String(client.getInstructions() || ''), /lingbuilder\.project\.importImage/u, 'instructions 必须给出项目图片资源导入工具口径（2026-10-15）');
+    assert.match(String(client.getInstructions() || ''), /时钟「周期到期」处理器必须在源码类里声明同名方法/u, 'instructions 必须写明时钟 periodHandler 与源码同名方法成对出现（2026-10-24 单份定义契约）');
+    assert.match(String(client.getInstructions() || ''), /new_emoji 后端不支持时钟组件/u, 'instructions 必须写明 NE 后端时钟生成前阻断（2026-10-24）');
   assert.match(String(client.getInstructions() || ''), /Word_从JSON生成报告/u, 'instructions 必须给出 Word 报告生成主入口（2026-10-24 批次1）');
   assert.match(String(client.getInstructions() || ''), /PDF_转Word文本流/u, 'instructions 必须给出 PDF 转口径与文本流定位（2026-10-24 批次2）');
   assert.match(String(client.getInstructions() || ''), /PDF_外部文档转PDF/u, 'instructions 必须给出 Office/WPS 外部转换链（2026-10-24 批次2）');
   assert.match(String(client.getInstructions() || ''), /OpenCV_读下一帧/u, 'instructions 必须给出视频帧直连图像链口径（2026-10-24 批次3）');
   assert.match(String(client.getInstructions() || ''), /lingbuilder\.barcode/u, 'instructions 必须给出一维条码模块口径（2026-10-24 批次4）');
+  assert.match(String(client.getInstructions() || ''), /lingbuilder\.op/u, 'instructions 必须给出 OP 后台图色模块选型（2026-10-24 批次5）');
+  assert.match(String(client.getInstructions() || ''), /后台_绑定窗口/u, 'instructions 必须给出后台绑定标准链路');
+  assert.match(String(client.getInstructions() || ''), /颜色一律 RRGGBB/u, 'instructions 必须钉住 RRGGBB 颜色红线（大漠迁移）');
+  assert.match(String(client.getInstructions() || ''), /右下边界是开区间/u, 'instructions 必须钉住截图开区间红线');
+  assert.match(String(client.getInstructions() || ''), /后台_找图全部/u, 'instructions 必须给出多模板命中区分口径');
+  assert.match(String(client.getInstructions() || ''), /兼容大漠 dm\.txt 字库/u, 'instructions 必须给出字库兼容与 OCR 选型边界');
     assert.match(String(client.getInstructions() || ''), /重名自动追加 -2 后缀/u, 'instructions 必须写明图片重名的去冲突后缀行为');
     assert.match(String(client.getInstructions() || ''), /EdgeView_创建无头实例/u, 'instructions 必须告知 EdgeView 隐窗伪无头形态与截图边界');
     assert.match(String(client.getInstructions() || ''), /CDP_启动浏览器/u, 'instructions 必须告知 CDP 真无头形态与回收/错误读取口径');
@@ -2497,6 +2505,43 @@ test('AI Bridge modules.list returns slim summaries and module.info returns full
     await assert.rejects(
       service.getModuleInfo({ moduleId: 'lingbuilder.not.exists' }),
       /未找到模块/u
+    );
+  } finally {
+    await service.shutdown();
+  }
+});
+
+test('AI Bridge module.info 未找到提示按名称/标签分词模糊匹配给出相近模块', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  try {
+    await installTestModule(workspaceRoot, {
+      schemaVersion: 2,
+      id: 'lingbuilder.aoahid',
+      name: 'AOA HID 安卓真机触控模块',
+      version: '1.1.2',
+      category: '系统',
+      description: '通过 USB AOA 2.0 配件协议注入安卓虚拟触控。',
+      tags: ['安卓', '触控', 'AOA', 'HID', 'USB']
+    });
+    // 俗称查询（usbhid）在模块 ID 上零子串命中，但名称/标签分词 HID、USB 命中，必须提示出正确 ID。
+    await assert.rejects(
+      service.getModuleInfo({ moduleId: 'lingbuilder.usbhid' }),
+      (error: Error) => {
+        assert.match(error.message, /未找到模块「lingbuilder\.usbhid」/u);
+        assert.match(error.message, /相近模块：lingbuilder\.aoahid/u);
+        return true;
+      }
+    );
+    // 中文俗称同样命中：查「触控」应提示 aoahid。
+    await assert.rejects(
+      service.getModuleInfo({ moduleId: '触控' }),
+      /相近模块：lingbuilder\.aoahid/u
+    );
+    // vendor 前缀不参与分词，无意义查询不得把任意模块当相近结果。
+    await assert.rejects(
+      service.getModuleInfo({ moduleId: 'lingbuilder.zzzqqq.www' }),
+      /请先用 lingbuilder\.modules\.list/u
     );
   } finally {
     await service.shutdown();

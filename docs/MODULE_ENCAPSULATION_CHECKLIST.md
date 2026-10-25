@@ -2,7 +2,7 @@
 
 更新时间：2026-10-19
 
-本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **107 个内置模块、4409 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
+本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **108 个内置模块、4623 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
 
 - `schemaVersion: 2`。
 - `contributes.commands` 与 `bindings.commands` 一一对应。
@@ -124,6 +124,7 @@ MySQL 数据库模块 1.0 通过原生客户端/服务器协议直连 MySQL/Mari
 | 已封装（OpenCV 4.14.0 x64 + videoio） | `lingbuilder.opencv` | OpenCV 图像处理与单/双缺口候选与视频帧模块 | 47 |
 | 已封装（2026-10-01，纯本地 C++ 运行时注入） | `lingbuilder.qrcode` | 二维码模块（生成+识别+闭环自检） | 31 |
 | 已封装（2026-10-20，借用本机微信 4.x OCR 组件，仅 x64） | `lingbuilder.ocr` | 微信OCR识别模块（路径+字节集双入口，行级文本/坐标/置信度，JSON 含字符级坐标） | 19 |
+| 已封装（2026-10-24，随包内置上游 WallBreaker2/op 0.4.8.3 MIT 运行库） | `lingbuilder.op` | OP 后台图色模块（后台绑定 GDI/DXGI/WGC/D3D9-12/OpenGL + 后台键鼠 + 找图找色 + OpenCV + 大漠兼容点阵字库识字 + 内存读写 + YOLO/A星，详见 `electron/docs/modules/op/README.md`） | 214 |
 | 已封装 | `lingbuilder.media.audio` | 基础音频模块 | 7 |
 | 已封装 | `lingbuilder.net.pop3` | 邮件接收模块 | 18 |
 | 已封装 | `lingbuilder.net.imap` | IMAP邮件接收模块 | 15 |
@@ -208,3 +209,18 @@ OpenCV 模块保留基础 GDI+ 图像模块并作为新增高级能力。公开�
 - [ ] C++ Bridge 接收宽名称、稳定 ID 或原生句柄的差异由 binding/后端契约适配，不反向污染 `.lcpp` 语法。
 - [ ] 模块清单通过第三方门禁，SDK 迁移配置不会把“控件名/组件名/资源名”声明为文本型。
 - [ ] 运行 `npm run module:control-ref-audit`，确认全部方法和参数进入摘要；运行 `npm run module:control-ref-migrate` 后再以只读方式复核 0 个可安全迁移引用。
+
+## 收费模块发布同步清单（2026-10-24 立为常设规则；六处不同步＝下一次版本漂移）
+
+以 `lingbuilder.aoahid` 为首发实例（2026-10-24 实锤三层漂移：生产 artifact 1.0.0 / 本地 .lbmod 1.1.0 / 安装目录 1.1.2，生产从无 1.1.0 制品）。**模块有任何源码/清单/文档更新，必须逐项勾完本清单才算收口**；其他已上架生产的 `.lbmod` 收费模块同构适用。
+
+- [ ] ① 核心库真源 `electron/native/<模块工程>/`（如 `electron/native/aoa-hid/src`）：源码改动先落这里（aoa-viewer/直驱验收链消费它），再向下游同步。
+- [ ] ② 仓库根安装目录 `.lingbuilder/modules/<模块ID>/`：IDE F5 与本工作区构建真源。
+- [ ] ③ 开发副本 `electron/.lingbuilder/modules/<模块ID>/`：electron 工作区 IDE 副本。
+- [ ] ④ 封装源 `.lingbuilder/module-build/<模块ID>/`：**MCP validate/pack 路径门禁只收此目录**；打包前必须 `diff -rq module-build/<ID> modules/<ID>` 为空，否则 pack 静默打出旧代码。
+- [ ] ⑤ 成品包：validate 零诊断 → `module.pack` → `installPreview` → `install`（不启用到项目）本地闭环走通，拆包抽查版本号与关键修复标记。
+- [ ] ⑥ 生产 artifact：`.deploy/publish-<模块>.py` 重传——`VERSION` 常量与 `PAYLOAD.artifact.fileName` **两处**随版本推进同步改（runner 会校验包内 manifest 版本与 payload 一致）；凭据走 `LB_DEPLOY_PW` 环境变量，不写入任何 git 跟踪文件；服务器容器 `docker exec` 一律 `-u root`（写 `/var/lib/lingbuilder/artifacts` 非 root 必 EACCES）。
+- [ ] 三层核验：本地包 sha256 ＝ DB `ModuleArtifact.sha256` ＝ 服务器磁盘文件 sha256；服务器核验脚本须为 ESM（`import`）并 `docker cp` 进容器 `/app/cloud/api/` 后 `node` 执行（api 目录 type:module，`require` 报 ReferenceError；放 `/tmp` 解析不到 `@prisma/client`）。
+- [ ] 版本策略：修复必须 bump 版本号；`latestForUser` 取 enabled + createdAt 最新 → 客户端即刻拿到新版；旧版本制品 enabled 保留回退，不禁用。
+- [ ] 分发链路认知：已购用户云端下载链路**只随重传更新**；唯一自动收口的是 IDE 安装包随包播种（打包时从仓库根 `../.lingbuilder/modules` 带入）。只 pack 不重传＝已购用户永远拿旧版。
+- [ ] 每次收口追加当天 `更新记录/YYYY-MM-DD.md` 章节并同步项目记忆（含发布脚本坑）。

@@ -22,6 +22,7 @@ import { WORD_MODULE } from './wordModule';
 import { BARCODE_MODULE } from './barcodeModule';
 import { PDF_MODULE } from './pdfModule';
 import { OCR_MODULE } from './ocrModules';
+import { OP_MODULE } from './opModules';
 import { EMBEDDED_RESOURCE_MODULE } from './resourceEmbedModule';
 import { THREADING_MODULE } from './threadingModule';
 import { CRON_MODULE } from './cronModule';
@@ -568,6 +569,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
   PDF_MODULE,
   BARCODE_MODULE,
   OCR_MODULE,
+  OP_MODULE,
   EMBEDDED_RESOURCE_MODULE,
   ...PLATFORM_ADVANCED_MODULES,
   {

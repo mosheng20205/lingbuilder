@@ -15,6 +15,7 @@ import { HTTP_CLIENT_MODULE } from './httpClientModule';
 import { SQLITE_MODULE_ID, SQLITE_BUNDLED_RUNTIME_SHA256 } from './sqliteModule';
 import { MYSQL_MODULE_ID, MYSQL_BUNDLED_RUNTIME_SHA256 } from './mysqlModule';
 import { EXCEL_MODULE_ID, EXCEL_BUNDLED_RUNTIME_SHA256 } from './excelModule';
+import { OP_MODULE_ID, OP_BUNDLED_RUNTIME_SHA256 } from './opModules';
 import { WORD_MODULE_ID, WORD_BUNDLED_RUNTIME_SHA256 } from './wordModule';
 import { PDF_MODULE_ID, PDF_SDK_MODULE_ID, PDFIUM_VERSION, PDF_BRIDGE_VERSION } from './pdfModule';
 import { SUNNYNET_MODULE_ID } from './sunnyNetModule';
@@ -137,6 +138,10 @@ export async function materializeModuleNativeDependencies(
 
   if (enabledIds.has(EXCEL_MODULE_ID)) {
     await materializeExcelRuntime(layout, plan);
+  }
+
+  if (enabledIds.has(OP_MODULE_ID)) {
+    await materializeOpRuntime(layout, plan);
   }
   if (enabledIds.has(WORD_MODULE_ID)) {
     await materializeWordRuntime(layout, plan);
@@ -375,6 +380,11 @@ export async function exportModuleNativeDependencies(
     await materializeExcelRuntimeForExport(exportDir, plan);
     await materializeWordRuntimeForExport(exportDir, plan);
     await materializePdfSdkForExport(exportDir, plan);
+    diagnostics.push(...plan.blockingDiagnostics);
+  }
+  if (enabledModules.some(module => module.manifest.id === OP_MODULE_ID)) {
+    const plan: ModuleNativeDependencyPlan = { includeDirs: [], sourceFiles: [], libFiles: [], runtimeFiles: [], diagnostics, blockingDiagnostics: [], requiresMsvc: false };
+    await materializeOpRuntimeForExport(exportDir, plan);
     diagnostics.push(...plan.blockingDiagnostics);
   }
   if (enabledModules.some(module => CRYPTO_SDK_MODULE_IDS.includes(module.manifest.id as typeof CRYPTO_SDK_MODULE_IDS[number]))) {
@@ -867,6 +877,106 @@ async function verifyBundledExcelRuntime(
 }
 
 /** F5 构建 / AI Bridge build.run：按当前目标架构把随附 LingBuilderExcel.dll 复制到模块镜像与 exe 同目录。 */
+async function findBundledOpRoot(): Promise<string | null> {
+  const candidates = unique([
+    process.env.LINGBUILDER_OP_RUNTIME_ROOT || '',
+    process.resourcesPath ? path.join(process.resourcesPath, 'third_party', 'op') : '',
+    path.resolve(process.cwd(), 'third_party', 'op'),
+    path.resolve(process.cwd(), 'electron', 'third_party', 'op')
+  ].filter(Boolean));
+  for (const candidate of candidates) {
+    try {
+      await Promise.all([
+        fs.access(path.join(candidate, 'x64', 'op_c_api_x64.dll')),
+        fs.access(path.join(candidate, 'x86', 'op_c_api_x86.dll')),
+        fs.access(path.join(candidate, 'NOTICE.md'))
+      ]);
+      return candidate;
+    } catch {
+      // 尝试下一个由开发环境、打包资源或显式配置提供的位置。
+    }
+  }
+  return null;
+}
+
+async function verifyBundledOpRuntime(
+  source: string,
+  architecture: 'x86' | 'x64',
+  plan: ModuleNativeDependencyPlan
+): Promise<boolean> {
+  try {
+    const digest = await sha256File(source);
+    const expected = OP_BUNDLED_RUNTIME_SHA256[architecture];
+    if (digest.toLowerCase() !== expected) {
+      addBlockingDiagnostic(plan, `LingBuilder 随附的 op 运行库（${architecture}）SHA-256 不匹配：期望 ${expected}，实际 ${digest}。`);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    addBlockingDiagnostic(plan, `校验随附 op 运行库失败：${errorMessage(error)}`);
+    return false;
+  }
+}
+
+/** F5 构建 / AI Bridge build.run：按当前目标架构把随包 op C API 运行库复制到模块镜像与 exe 同目录。 */
+async function materializeOpRuntime(
+  layout: ModuleNativeDependencyLayout,
+  plan: ModuleNativeDependencyPlan
+): Promise<void> {
+  if (process.platform !== 'win32') {
+    plan.diagnostics.push('OP 后台图色模块当前仅提供 Windows 随包运行库。');
+    return;
+  }
+  const bundledRoot = await findBundledOpRoot();
+  if (!bundledRoot) {
+    plan.diagnostics.push('未找到 LingBuilder 随附的 op 运行库（op_c_api_x86/x64.dll）；后台图色命令需要该运行库位于 exe 同目录。');
+    return;
+  }
+  const architecture = layout.preferredTargetId === 'windows-msvc-win32' ? 'x86' : 'x64';
+  const dllName = architecture === 'x86' ? 'op_c_api_x86.dll' : 'op_c_api_x64.dll';
+  const source = path.join(bundledRoot, architecture, dllName);
+  if (!await verifyBundledOpRuntime(source, architecture, plan)) return;
+  const moduleRoots = unique([
+    path.join(layout.buildDir, 'modules', OP_MODULE_ID),
+    path.join(layout.exportDir, 'modules', OP_MODULE_ID)
+  ]);
+  try {
+    const runtimeLayout = path.join(architecture, dllName);
+    for (const root of moduleRoots) {
+      await copyFileAtomicallyIfDifferent(source, path.join(root, runtimeLayout));
+    }
+    const output = path.join(layout.binDir, dllName);
+    await copyFileAtomicallyIfDifferent(source, output);
+    plan.runtimeFiles.push(output);
+  } catch (error) {
+    addBlockingDiagnostic(plan, `复制 OP 随包运行库失败：${errorMessage(error)}`);
+  }
+}
+
+/** Visual Studio 工程导出：同时物化两个架构到模块镜像，供 vcxproj 的 Win32/x64 配置按 targets[].runtimeFiles 平铺复制到 exe 同目录。 */
+async function materializeOpRuntimeForExport(exportDir: string, plan: ModuleNativeDependencyPlan): Promise<void> {
+  if (process.platform !== 'win32') return;
+  const bundledRoot = await findBundledOpRoot();
+  if (!bundledRoot) {
+    plan.diagnostics.push('未找到 LingBuilder 随附的 op 运行库；导出工程将缺少随包后台图色运行库。');
+    return;
+  }
+  for (const architecture of ['x86', 'x64'] as const) {
+    const dllName = architecture === 'x86' ? 'op_c_api_x86.dll' : 'op_c_api_x64.dll';
+    const source = path.join(bundledRoot, architecture, dllName);
+    if (!await verifyBundledOpRuntime(source, architecture, plan)) continue;
+    try {
+      await copyFileAtomicallyIfDifferent(
+        source,
+        path.join(exportDir, 'modules', OP_MODULE_ID, architecture, dllName)
+      );
+    } catch (error) {
+      addBlockingDiagnostic(plan, `复制 OP 随包运行库（${architecture}）失败：${errorMessage(error)}`);
+    }
+  }
+}
+
+
 async function materializeExcelRuntime(
   layout: ModuleNativeDependencyLayout,
   plan: ModuleNativeDependencyPlan

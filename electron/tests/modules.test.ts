@@ -11,6 +11,7 @@ import { getLingCppCompletions, getLingCppSemanticDiagnostics } from '../src/ser
 import { buildChineseCompletionSearchAliases } from '../src/services/lingCpp/completionSearchAliases';
 import { areLingCppTypesCompatible, inferLingCppExpressionType } from '../src/services/lingCpp/expressionTypeService';
 import { BUILTIN_MODULES } from '../src/services/modules/builtinModules';
+import { OP_MODULE, OP_MODULE_ID, OP_UPSTREAM_VERSION, OP_BUNDLED_RUNTIME_SHA256 } from '../src/services/modules/opModules';
 import { ARIA2_COMMAND_SPECS, ARIA2_MODULE, ARIA2_MODULE_ID } from '../src/services/modules/aria2Module';
 import { CEF3_BROWSER_EVENTS } from '../src/services/modules/cef3BrowserEvents';
 import { CEF3_SAFE_API_CATALOG } from '../src/services/modules/cef3SafeApiCatalog.generated';
@@ -590,13 +591,21 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       // 基线 2026-10-24 写回（四缺口模块批次）：新增 lingbuilder.data.word（28 命令 84 参数）、
       // lingbuilder.data.pdf（22 命令 41 参数）、lingbuilder.barcode（25 命令 60 参数），
       // excel 1.1.0 +1 命令 +1 参数（Excel_导出PDF），opencv 1.2.0 +13 命令 +15 参数（视频帧族），
-      // 均无新增 controlRef（实算摘要 e559d86f/c6ace184）。
-      modules: 107,
-      commands: 4409,
-      parameters: 7779,
+      // 均无新增 controlRef。
+      // 基线 2026-10-24 再写回（OP 后台图色模块批次）：新增 lingbuilder.op 1.0.0
+      //（214 命令 +818 参数：后台绑定/窗口/键鼠/图色/OpenCV/字库识字/内存/YOLO/算法，
+      // 213 条与上游 WallBreaker2/op 0.4.8.3 C API 一一对应 + 模块级 后台_取错误；
+      // OP句柄 为 long long，全部文本/数值/布尔/字节集/byRef 出参，无新增 controlRef）
+      //（实算摘要 4968745c/13e05ed0）。
+      // 基线 2026-10-24 三写回（飞书富文本加签密钥批次）：notify 推送_发飞书富文本
+      // +1 参数（加签密钥，wideString；运行时签名本就带密钥且默认 L""，binding 补齐对齐，
+      // 无新增 controlRef）（实算摘要 2faf202c/647dfe24）。
+      modules: 108,
+      commands: 4623,
+      parameters: 8599,
       controlReferences: 1499,
-      commandDigest: 'e559d86f',
-      parameterDigest: 'c6ace184'
+      commandDigest: '2faf202c',
+      parameterDigest: '647dfe24'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -741,7 +750,8 @@ test('模块源目录中的 controlRef 补全、示例和代码片段全部保�
   // 2026-10-06 写回 68→69：新增 proAccessStateFile.ts（Pro 会员授权状态落盘，无 controlRef 字面量；全量字面量扫描 0 违规）。
   // 2026-10-17 写回 69→70：新增消息推送模块 notifyModule.ts（全部文本/数值/布尔参数，无 controlRef 字面量；全量字面量扫描 0 违规）。
   // 2026-10-20 写回 70→71：新增微信OCR识别模块 ocrModules.ts（18 命令全部为文本/数值/布尔/句柄参数，无 controlRef 字面量；全量字面量扫描 0 违规）。
-  assert.equal(sourceFiles.length, 74, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围（2026-10-24 +wordModule/pdfModule/barcodeModule）');
+  // 2026-10-24 写回 74→77：新增 OP 后台图色模块 opModules.ts/opModuleCommands.ts/opModuleCommands2.ts（214 命令全部为文本/数值/布尔/字节集/byRef 出参，无 controlRef 字面量；全量字面量扫描 0 违规）。
+  assert.equal(sourceFiles.length, 77, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围（2026-10-24 +opModules×3）');
   assert.deepEqual(violations, []);
 
   const unsafe = 'const command = { insertText: \'控件_设置文本("操作结果", "$2")\' };';
@@ -1146,12 +1156,18 @@ test('工作区已安装模块全部通过 controlRef 清单和示例门禁', as
       // 无 controlRef，见内置夹具注释）；磁盘侧无独立变化（实算摘要 8b3eab04/96912655）。
       // 基线 2026-10-24 写回（四缺口模块批次）：内置部分 107/4409/7779（见上一用例），
       // 磁盘新增 lingbuilder.pdf.sdk（0 命令资产模块）并入 opencv.sdk bridge.3 更新。
-      modules: 120,
-      commands: 8538,
-      parameters: 20140,
+      // 基线 2026-10-24 再写回（OP 后台图色模块批次）：内置部分 108/4623/8597（见上一用例，
+      // 新增 lingbuilder.op 214 命令 +818 参数，无新增 controlRef）；磁盘侧无独立变化
+      //（实算摘要 4ef681ab/ab38ad8e）。
+      // 基线 2026-10-24 三写回（飞书富文本加签密钥批次）：内置 notify 富文本 +1 参数
+      //（见内置夹具注释）；磁盘侧 +1 模块 +5 命令 +7 参数来自并行会话在途清单，
+      // 按本机实算写回（实算摘要 a8d672d7/87168cfc）。
+      modules: 122,
+      commands: 8757,
+      parameters: 20965,
       controlReferences: 5281,
-      commandDigest: 'c2a0ca66',
-      parameterDigest: 'cdbf73a6'
+      commandDigest: 'a8d672d7',
+      parameterDigest: '87168cfc'
   }, '内置、官方和当前工作区第三方模块的每个方法与参数都必须进入全量审计');
   // OpenCV 以内置清单为准：本机未装 SDK 时磁盘上的同名清单是只有骨架的占位包（0 命令、无 targets）。
   const manifest = BUILTIN_MODULES.find(module => module.id === OPENCV_MODULE_ID) || auditedManifests.get('lingbuilder.opencv.sdk');
@@ -1179,6 +1195,73 @@ test('OpenCV 模块生成稳定 C ABI 包装且不暴露 cv::Mat', () => {
   assert.match(cpp, /LB_OCV_AnalyzeGap/u);
   assert.match(cpp, /OpenCV_分析缺口/u);
   assert.doesNotMatch(cpp, /cv::Mat/u);
+});
+
+test('OP 后台图色 1.0：214 命令一一对应上游 C API、byRef 出参、随包运行库双架构与生成 C++ 互操作层', () => {
+  const manifest = BUILTIN_MODULES.find(module => module.id === OP_MODULE_ID);
+  assert.ok(manifest);
+  assert.equal(manifest.version, '1.0.0');
+  assert.deepEqual(validateModuleManifest(manifest).diagnostics, [], 'OP 清单必须通过门禁');
+  const commands = manifest.contributes?.commands?.map(item => item.name) || [];
+  const bindings = manifest.bindings?.commands || [];
+  assert.equal(commands.length, 214);
+  assert.equal(bindings.length, 214);
+  assert.deepEqual(bindings.map(item => item.command), commands, '命令与 binding 必须逐项对应');
+  assert.deepEqual(bindings.map(item => item.runtimeName), commands, '运行时函数名必须等于命令名');
+  // 上游 0.4.8.3 全量导出，唯一不暴露：OpSetOcrEngine（通用 OCR 由 lingbuilder.ocr 承担）。
+  assert.ok(!commands.includes('OpSetOcrEngine') && !commands.includes('后台_置OCR引擎'));
+  // 关键命令与别名（大漠英文名）抽查。
+  const byName = new Map(bindings.map(item => [item.command, item]));
+  const bindBinding = byName.get('后台_绑定窗口');
+  assert.ok(bindBinding);
+  assert.deepEqual(bindBinding.parameters?.map(item => item.type), ['OP句柄', 'longLong', 'wideString', 'wideString', 'wideString', 'int']);
+  const findPicBinding = byName.get('后台_找图');
+  assert.ok(findPicBinding);
+  assert.equal(findPicBinding.returnType, 'bool');
+  assert.equal(findPicBinding.parameters?.filter(item => item.byRef).length, 2, '找图必须有横/纵两个 byRef 出参');
+  assert.equal(byName.get('后台_加载内存图片')?.parameters?.[2].type, 'bytes');
+  assert.equal(byName.get('后台_读内存整数')?.parameters?.[4].type, 'longLong');
+  assert.equal(byName.get('后台_读内存整数')?.parameters?.[4].byRef, true);
+  const contributions = manifest.contributes?.commands || [];
+  const aliasOf = (name: string) => contributions.find(item => item.name === name)?.aliases || [];
+  assert.deepEqual(aliasOf('后台_绑定窗口'), ['OpBindWindow']);
+  assert.deepEqual(aliasOf('后台_找图'), ['OpFindPic']);
+  assert.deepEqual(aliasOf('后台_创建'), ['OpCreate']);
+  // 双架构随包运行库 + SHA-256 基线物化。
+  assert.deepEqual(manifest.targets?.map(target => target.id), ['windows-msvc-win32', 'windows-msvc-x64']);
+  assert.deepEqual(manifest.targets?.map(target => target.runtimeFiles), [['x86/op_c_api_x86.dll'], ['x64/op_c_api_x64.dll']]);
+  assert.equal(OP_BUNDLED_RUNTIME_SHA256.x64.length, 64);
+  assert.equal(OP_UPSTREAM_VERSION, '0.4.8.3');
+  // 生成 C++：互操作层 + 调用点翻译（byRef 自动取地址）。
+  const opModule: InstalledModule = { manifest, installPath: 'builtin://lingbuilder.op', isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] };
+  const source = [
+    '类 MainWindow',
+    '    事件 _MainWindow_创建完毕()',
+    '        局部 OP句柄 句柄 = 后台_创建()',
+    '        局部 整数型 按钮横 = 0',
+    '        局部 整数型 按钮纵 = 0',
+    '        如果(后台_找图(句柄, 0, 0, 399, 299, "btn.bmp", "", 0.9, 0, 按钮横, 按钮纵))',
+    '            后台_移动到(句柄, 按钮横 + 5, 按钮纵 + 5)',
+    '            后台_左键单击(句柄)',
+    '        结束',
+    '        调试输出(后台_取错误())',
+    '        后台_销毁(句柄)',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const generated = generateLingCppNativeWin32Project(sampleProject, { lingCppSourceCode: source, enabledModules: [opModule] });
+  const cpp = generated.files.map(file => file.content).join('\n');
+  [
+    'typedef int (__stdcall *fn_OpBindWindow)',
+    'p_OpFindPic = nullptr',
+    'op_c_api_x64.dll',
+    'inline bool 后台_找图(long long 句柄, int 左上横坐标',
+    '后台_找图(句柄, 0, 0, 399, 299, L"btn.bmp", L"", 0.9, 0, &(按钮横), &(按钮纵))'
+  ].forEach(marker => assert.ok(cpp.includes(marker), `生成 C++ 缺少 ${marker}`));
+  // 未启用 OP 时不得内联运行时（防无关项目体积回归）。
+  const plainGenerated = generateLingCppNativeWin32Project(sampleProject, { lingCppSourceCode: '类 MainWindow\n    事件 _MainWindow_创建完毕()\n        调试输出("hi")\n    结束\n结束类', enabledModules: [] });
+  const plainCpp = plainGenerated.files.map(file => file.content).join('\n');
+  assert.ok(!plainCpp.includes('fn_OpBindWindow'), '未启用 OP 不得内联互操作层');
 });
 
 test('archive 1.1.0 字节集压缩解压五命令进入清单、绑定、拼音检索与生成 C++（随包 miniz 内联）', () => {
