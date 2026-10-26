@@ -1,3 +1,11 @@
-# LingBuilder IDE 管理目录（IDE 自动维护：运行数据与构建产物不入库）
-/.lingbuilder/
+# LingBuilder IDE 管理目录（IDE 自动维护：运行数据与构建产物不入库；工程数据仍纳入版本库）
+/.lingbuilder/*
+!/.lingbuilder/solution.json
+!/.lingbuilder/window-designer.json
+!/.lingbuilder/project-modules.json
+!/.lingbuilder/build-configuration.json
+!/.lingbuilder/projects/
+/.lingbuilder/projects/*/*
+!/.lingbuilder/projects/*/window-designer.json
+!/.lingbuilder/projects/*/project-modules.json
 /.lingbuilder-build/
