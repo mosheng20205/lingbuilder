@@ -18566,7 +18566,7 @@ ${generateFbroVipIndividualRuntime(false)}
             cefBrowsers_.erase(old);
         }
         HWND host = CreateWindowExW(WS_EX_CONTROLPARENT, L"STATIC", L"", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
-            left, top, width, height, hwnd_, nullptr, g_instance, nullptr);
+            ScaleForDpi(left, dpi_), ScaleForDpi(top, dpi_), ScaleForDpi(width, dpi_), ScaleForDpi(height, dpi_), hwnd_, nullptr, g_instance, nullptr);
         if (!host) { 调试输出(L"CEF3 创建区域失败：无法创建浏览器承载组件。"); return 0; }
         auto instance = std::make_unique<CefBrowserInstance>();
         instance->controlId = runtimeId; instance->host = host;
@@ -23628,6 +23628,12 @@ ${generateFbroVipIndividualRuntime(false)}
             item.second->popupBrowsers.clear();
             if (item.second->browser) item.second->browser->GetHost()->CloseBrowser(true);
 #endif
+            // 运行期实例（CEF3_创建区域）自建的承载窗口必须一并销毁，否则句柄已关而
+            // 区域画面残留成僵尸；设计器控件实例的 host 是控件自身 HWND，绝不能动。
+            if (item.second->controlId >= CEF3_运行时弹窗编号偏移 && item.second->host && IsWindow(item.second->host)) {
+                DestroyWindow(item.second->host);
+                item.second->host = nullptr;
+            }
         }
         cefBrowsers_.clear();
 #endif
