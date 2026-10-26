@@ -1712,6 +1712,14 @@ std::vector<unsigned char> 文件_读入字节集(long long id, int length) {
     return out;
 }
 
+// 文件_取长度 返回 long long，整文件读入是最高频用法；长整长度重载在模板层钳制到 int 上限，
+// 免去用户侧「读整个文件」必须手工到整数/强转，也消除 C4244 告警。
+std::vector<unsigned char> 文件_读入字节集(long long id, long long length) {
+    if (length > 2147483647LL) length = 2147483647LL;
+    if (length < 0) length = 0;
+    return 文件_读入字节集(id, static_cast<int>(length));
+}
+
 bool 文件_写出字节集(long long id, const std::vector<unsigned char>& bytes) {
     auto stream = LB_FindFile(id);
     if (!stream) return false;

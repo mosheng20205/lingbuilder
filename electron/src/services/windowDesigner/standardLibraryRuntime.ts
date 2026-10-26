@@ -117,10 +117,10 @@ const wchar_t* 文本_转小写(const wchar_t* text) {
     return LB_ReturnText(std::move(value));
 }
 
-long long 文本_倒找(const wchar_t* text, const wchar_t* target) {
+int 文本_倒找(const wchar_t* text, const wchar_t* target) {
     const std::wstring value = LB_Wide(text);
     const size_t position = value.rfind(LB_Wide(target));
-    return position == std::wstring::npos ? -1 : static_cast<long long>(position);
+    return position == std::wstring::npos ? -1 : static_cast<int>(position);
 }
 
 const wchar_t* 文本_替换子文本(const wchar_t* text, const wchar_t* search, const wchar_t* replacement, int start, int count) {
