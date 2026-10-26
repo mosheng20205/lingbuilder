@@ -835,18 +835,32 @@ ${printSettingsWrappers()}
         json += L"]"; return json;
     }
     std::wstring EdgeView框架_取信息JSON(const wchar_t* controlName, long long frameId) {
+        // 框架句柄 0 = 主文档（WebView2 的 FrameCreated 只对 iframe 触发，主框架没有受管句柄）。
+        if (frameId == 0) {
+            auto* mainInstance = EdgeView_查找控件(controlName); if (!mainInstance || !mainInstance->webView) return L"{}";
+            LPWSTR source = nullptr; mainInstance->webView->get_Source(&source);
+            return EdgeView_事件数据({{L"handle", EdgeView_数值(0)}, {L"frameId", EdgeView_数值(0)}, {L"name", L"主文档"}, {L"destroyed", EdgeView_布尔值(FALSE)}, {L"source", EdgeView_接管字符串(source)}});
+        }
         auto frame = EdgeView对象_取接口<ICoreWebView2Frame>(controlName, frameId, L"Frame"); if (!frame) return L"{}";
         LPWSTR name = nullptr; BOOL destroyed = FALSE; UINT32 nativeId = 0; frame->get_Name(&name); frame->IsDestroyed(&destroyed); Microsoft::WRL::ComPtr<ICoreWebView2Frame5> frame5; if (SUCCEEDED(frame.As(&frame5)) && frame5) frame5->get_FrameId(&nativeId);
         return EdgeView_事件数据({{L"handle", EdgeView_数值(frameId)}, {L"frameId", EdgeView_数值(nativeId)}, {L"name", EdgeView_接管字符串(name)}, {L"destroyed", EdgeView_布尔值(destroyed)}});
     }
     long long EdgeView框架_执行脚本异步(const wchar_t* controlName, long long frameId, const wchar_t* script, const wchar_t* handler) {
-        auto* instance = EdgeView_查找控件(controlName); auto task = EdgeView任务_新建(instance, handler); auto frame = EdgeView对象_取接口<ICoreWebView2Frame2>(controlName, frameId, L"Frame");
-        if (!task) return 0; if (!frame) { EdgeView任务_完成(task, E_INVALIDARG, L""); return task->id; }
+        auto* instance = EdgeView_查找控件(controlName); auto task = EdgeView任务_新建(instance, handler);
+        if (!task) return 0;
+        // 框架句柄 0 = 主文档：直通 WebView2 自身 ExecuteScript，22 条填表命令借此操作主页面。
+        if (frameId == 0) {
+            if (!instance || !instance->webView) { EdgeView任务_完成(task, E_INVALIDARG, L""); return task->id; }
+            HRESULT startedMain = instance->webView->ExecuteScript(script ? script : L"", Microsoft::WRL::Callback<ICoreWebView2ExecuteScriptCompletedHandler>([this, task](HRESULT error, LPCWSTR result) -> HRESULT { EdgeView任务_完成(task, error, result); return S_OK; }).Get());
+            if (FAILED(startedMain)) EdgeView任务_完成(task, startedMain, L""); return task->id;
+        }
+        auto frame = EdgeView对象_取接口<ICoreWebView2Frame2>(controlName, frameId, L"Frame");
+        if (!frame) { EdgeView任务_完成(task, E_INVALIDARG, L""); return task->id; }
         HRESULT started = frame->ExecuteScript(script ? script : L"", Microsoft::WRL::Callback<ICoreWebView2ExecuteScriptCompletedHandler>([this, task](HRESULT error, LPCWSTR result) -> HRESULT { EdgeView任务_完成(task, error, result); return S_OK; }).Get());
         if (FAILED(started)) EdgeView任务_完成(task, started, L""); return task->id;
     }
-    int EdgeView框架_发送字符串消息(const wchar_t* controlName, long long frameId, const wchar_t* message) { auto frame = EdgeView对象_取接口<ICoreWebView2Frame2>(controlName, frameId, L"Frame"); return frame && message && SUCCEEDED(frame->PostWebMessageAsString(message)) ? 1 : 0; }
-    int EdgeView框架_发送JSON消息(const wchar_t* controlName, long long frameId, const wchar_t* json) { auto frame = EdgeView对象_取接口<ICoreWebView2Frame2>(controlName, frameId, L"Frame"); return frame && json && SUCCEEDED(frame->PostWebMessageAsJson(json)) ? 1 : 0; }
+    int EdgeView框架_发送字符串消息(const wchar_t* controlName, long long frameId, const wchar_t* message) { if (frameId == 0) { auto* mainInstance = EdgeView_查找控件(controlName); return mainInstance && mainInstance->webView && message && SUCCEEDED(mainInstance->webView->PostWebMessageAsString(message)) ? 1 : 0; } auto frame = EdgeView对象_取接口<ICoreWebView2Frame2>(controlName, frameId, L"Frame"); return frame && message && SUCCEEDED(frame->PostWebMessageAsString(message)) ? 1 : 0; }
+    int EdgeView框架_发送JSON消息(const wchar_t* controlName, long long frameId, const wchar_t* json) { if (frameId == 0) { auto* mainInstance = EdgeView_查找控件(controlName); return mainInstance && mainInstance->webView && json && SUCCEEDED(mainInstance->webView->PostWebMessageAsJson(json)) ? 1 : 0; } auto frame = EdgeView对象_取接口<ICoreWebView2Frame2>(controlName, frameId, L"Frame"); return frame && json && SUCCEEDED(frame->PostWebMessageAsJson(json)) ? 1 : 0; }
     int EdgeView框架_发送共享缓冲(const wchar_t* controlName, long long frameId, long long bufferId, int access, const wchar_t* json) { auto frame = EdgeView对象_取接口<ICoreWebView2Frame4>(controlName, frameId, L"Frame"); auto buffer = EdgeView对象_取接口<ICoreWebView2SharedBuffer>(controlName, bufferId, L"SharedBuffer"); return frame && buffer && SUCCEEDED(frame->PostSharedBufferToScript(buffer.Get(), static_cast<COREWEBVIEW2_SHARED_BUFFER_ACCESS>(access), json && json[0] ? json : L"{}")) ? 1 : 0; }
 
     Microsoft::WRL::ComPtr<ICoreWebView2Profile9> EdgeView工作线程_取Profile9(const wchar_t* controlName) {
