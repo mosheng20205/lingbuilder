@@ -553,6 +553,77 @@ test('普通空窗口不会尝试初始化未使用的 CEF3 运行时', () => {
   assert.match(createFunction, /IsType\(control, L"CefBrowser"\)/u);
 });
 
+test('CEF3浏览器「禁用 GPU 加速」属性在 CEF 初始化前追加开关', () => {
+  const module: InstalledModule = {
+    manifest: BUILTIN_MODULES.find(item => item.id === 'lingbuilder.cef3.browser')!,
+    installPath: 'builtin://lingbuilder.cef3.browser',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'cef3-disable-gpu-property',
+    name: 'CEF3 禁用 GPU 属性测试',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 640, height: 480,
+      background: '#202028', description: '', controls: [{
+        id: 'browser_main', type: 'CefBrowser', name: '浏览器1', content: '', x: 0, y: 0,
+        width: 480, height: 320, background: '#fff', foreground: '#000',
+        fontSize: 14, isEnabled: true, visibility: 'Visible',
+        properties: { url: 'about:blank', disableGpu: true },
+        events: {}
+      }]
+    }]
+  };
+  const cpp = generateLingCppNativeWin32Project(project, {
+    lingCppSourceCode: '类 主窗口\n结束类\n',
+    enabledModules: [module]
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
+  assert.match(cpp, /DecodeControlRecords\(control\.data2, 6\)/u);
+  assert.match(cpp, /records\[0\]\[5\] == L"1"/u);
+  assert.match(cpp, /LB_CEF3_SetCommandLineSwitch\(L"", L"disable-gpu", L""\)/u);
+  assert.match(cpp, /LB_CEF3_SetCommandLineSwitch\(L"", L"disable-gpu-compositing", L""\)/u);
+  assert.ok(
+    cpp.indexOf('LB_CEF3_SetCommandLineSwitch(L"", L"disable-gpu", L"")') < cpp.indexOf('const int bridgeResult = LB_CEF3_Initialize'),
+    'GPU 开关必须在 LB_CEF3_Initialize 之前追加'
+  );
+});
+
+test('CEF3浏览器未勾选禁用 GPU 时保持默认行为（按 6→5→4 槽回退解码）', () => {
+  const module: InstalledModule = {
+    manifest: BUILTIN_MODULES.find(item => item.id === 'lingbuilder.cef3.browser')!,
+    installPath: 'builtin://lingbuilder.cef3.browser',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'cef3-gpu-default-off',
+    name: 'CEF3 GPU 默认关闭测试',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 640, height: 480,
+      background: '#202028', description: '', controls: [{
+        id: 'browser_main', type: 'CefBrowser', name: '浏览器1', content: '', x: 0, y: 0,
+        width: 480, height: 320, background: '#fff', foreground: '#000',
+        fontSize: 14, isEnabled: true, visibility: 'Visible',
+        properties: { url: 'about:blank' },
+        events: {}
+      }]
+    }]
+  };
+  const cpp = generateLingCppNativeWin32Project(project, {
+    lingCppSourceCode: '类 主窗口\n结束类\n',
+    enabledModules: [module]
+  }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
+  assert.match(cpp, /DecodeControlRecords\(control\.data2, 6\)/u);
+  assert.match(cpp, /if \(records\.empty\(\)\) records = DecodeControlRecords\(control\.data2, 5\);/u);
+  assert.match(cpp, /if \(records\[0\]\.size\(\) > 5 && records\[0\]\[5\] == L"1"\) disableGpu = true;/u);
+});
+
 test('普通 Win32 运行窗口只执行一次标准显示且不切换置顶或延迟抢焦点', () => {
   const project: LingWindowProject = {
     schemaVersion: 2,

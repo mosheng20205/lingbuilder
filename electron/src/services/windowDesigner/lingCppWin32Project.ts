@@ -18087,13 +18087,16 @@ ${generateFbroVipIndividualRuntime(false)}
         CreateDirectoryW(cefRootCachePath_.c_str(), nullptr);
         std::wstring globalUserAgent;
         std::wstring jsQueryFunctions;
+        bool disableGpu = false;
         for (int i = 0; i < spec_.controlCount; ++i) {
             const ControlSpec& control = spec_.controls[i];
             if (!IsType(control, L"CefBrowser") || !control.data2 || !control.data2[0]) continue;
-            auto records = DecodeControlRecords(control.data2, 5);
+            auto records = DecodeControlRecords(control.data2, 6);
+            if (records.empty()) records = DecodeControlRecords(control.data2, 5);
             if (records.empty()) records = DecodeControlRecords(control.data2, 4);
             if (records.empty()) continue;
             if (globalUserAgent.empty() && records[0].size() > 1 && !records[0][1].empty()) globalUserAgent = records[0][1];
+            if (records[0].size() > 5 && records[0][5] == L"1") disableGpu = true;
             if (records[0].size() > 4 && !records[0][4].empty()) {
                 if (!jsQueryFunctions.empty()) jsQueryFunctions += L";";
                 jsQueryFunctions += records[0][4];
@@ -18142,6 +18145,12 @@ ${generateFbroVipIndividualRuntime(false)}
         bridgeConfig.locales_path = localesDir.c_str();
         bridgeConfig.subprocess_path = modulePath;
         bridgeConfig.user_agent = globalUserAgent.c_str();
+        if (disableGpu) {
+            // 「禁用 GPU 加速」属性：CEF 初始化前追加开关（规则在 OnBeforeCommandLineProcessing
+            // 统一消费），规避部分显卡驱动下 GPU 进程反复崩溃拖垮渲染进程的问题。
+            LB_CEF3_SetCommandLineSwitch(L"", L"disable-gpu", L"");
+            LB_CEF3_SetCommandLineSwitch(L"", L"disable-gpu-compositing", L"");
+        }
         const int bridgeResult = LB_CEF3_Initialize(&bridgeConfig);
         cefInitialized_ = bridgeResult == LB_CEF3_OK;
         if (!cefInitialized_) 调试输出(L"CEF3 Bridge初始化失败：请检查ABI、CEF 150运行时和资源目录。");
@@ -34543,7 +34552,9 @@ function serializeControlData(control: LingControl, controlIds: Map<string, numb
     const jsQueryFunctions = typeof properties.jsQueryFunctions === 'string'
       ? properties.jsQueryFunctions.trim()
       : '';
-    return [url, encodeControlFields([cacheDir, userAgent, proxyMode, proxyServer, jsQueryFunctions])];
+    // 第 6 槽：禁用 GPU 加速（'1'/'0'）。旧项目数据只有 5 槽，运行时解码按 6→5→4 逐级回退。
+    const disableGpu = properties.disableGpu === true ? '1' : '0';
+    return [url, encodeControlFields([cacheDir, userAgent, proxyMode, proxyServer, jsQueryFunctions, disableGpu])];
   }
   if (control.type === 'DataGrid') {
     const model = normalizeDataGridModel({
