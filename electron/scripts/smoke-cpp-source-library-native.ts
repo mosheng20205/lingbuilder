@@ -258,7 +258,7 @@ async function main() {
     '        如果结束',
     '        // 类句柄流程必须「先声明（不带初始化）后按序赋值」：带初始化的局部声明会被提升到子程序最前，',
     '        // 取当前值 的初始化器会抢在 累加 之前求值（本 smoke 首跑实抓 exit=9，与 CEF3 句柄流同一陷阱）。',
-    '        局部 长整数型 对象 = 0',
+    '        局部 计数器 对象 = 0',
     '        局部 整数型 当前值 = 0',
     '        对象 = 计数器_创建(40)',
     '        计数器_累加(对象, 2)',
@@ -353,6 +353,7 @@ async function main() {
     if (!mainCpp.includes('return this->达标判定(p0);')) throw new Error('main.cpp 回调 lambda 未转发返回值（v3 回传缺失）。');
     if (!mainCpp.includes('LB_CppSrcTakeError()')) throw new Error('main.cpp 未调用取错误命令（v3 异常捕获缺失）。');
     if (!mainCpp.includes('三数相加(1, 2, 3)')) throw new Error('main.cpp 未发射命名空间命令调用（v4 缺失）。');
+    if (!mainCpp.includes('long long 对象 = 0;')) throw new Error('main.cpp 未把类类型局部声明翻译为 long long（v5 缺失）。');
   }
   if (materialized.sourceFiles.length !== 4) throw new Error(`源码库物化应登记 4 个编译源码（mymath/textlib/工具库共用 textlib），实际 ${materialized.sourceFiles.length}`);
   for (const file of generated.files) {

@@ -207,6 +207,7 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
   assert.match(String(client.getInstructions() || ''), /异常 = 捕获/u, 'instructions 必须给出异常捕获模式与取错误命令（v3）');
   assert.match(String(client.getInstructions() || ''), /命名空间 = xxx/u, 'instructions 必须给出源码库命名空间语法（v4）');
   assert.match(String(client.getInstructions() || ''), /类块不支持命名空间/u, 'instructions 必须钉住命名空间的类边界（v4）');
+  assert.match(String(client.getInstructions() || ''), /局部 计数器 对象 = 0/u, 'instructions 必须给出类类型化局部变量语法（v5）');
   assert.match(String(client.getInstructions() || ''), /颜色一律 RRGGBB/u, 'instructions 必须钉住 RRGGBB 颜色红线（大漠迁移）');
   assert.match(String(client.getInstructions() || ''), /右下边界是开区间/u, 'instructions 必须钉住截图开区间红线');
   assert.match(String(client.getInstructions() || ''), /后台_找图全部/u, 'instructions 必须给出多模板命中区分口径');

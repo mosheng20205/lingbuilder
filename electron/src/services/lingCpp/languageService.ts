@@ -3060,13 +3060,18 @@ function getBlockDiagnostics(source: string): LingCppDiagnostic[] {
 /** 模块公开类型按 cppType 归入基础类别：句柄/整数类允许 0 哨兵初始化与整数互比。 */
 function buildModuleTypeCategories(moduleContext?: LingCppModuleContext): LingCppModuleTypeCategories {
   const categories = new Map<string, string>();
+
+
   for (const module of moduleContext?.enabledModules || []) {
     for (const type of module.manifest.contributes?.types || []) {
       const cpp = (type.cppType || '').toLowerCase();
+      // 容器 cppType（std::vector<...>）不参与标量类别：字节集等名称按 lingCppTypeCategory
+      // 的名称规则归类（字节集→bytes），否则 unsigned 会把 字节集 误分成 integer。
+      if (cpp.includes('vector')) continue;
       let category: string | undefined;
-      if (/(?:long long|long|int|unsigned)/.test(cpp)) category = 'integer';
-      else if (/(?:double|float)/.test(cpp)) category = 'decimal';
-      else if (/bool/.test(cpp)) category = 'bool';
+      if (/(?:long long|long|int|unsigned)/.test(cpp)) category = 'integer';
+      else if (/(?:double|float)/.test(cpp)) category = 'decimal';
+      else if (/bool/.test(cpp)) category = 'bool';
       else if (/wstring|wchar_t\*/.test(cpp)) category = 'text';
       if (category && !categories.has(normalizeIdentifier(type.name))) {
         categories.set(normalizeIdentifier(type.name), category);

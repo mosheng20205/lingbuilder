@@ -14,6 +14,9 @@ import {
   serializeProjectCppSourceLibraries
 } from '../src/services/lingCpp/projectCppSourceLibraryService';
 import { parseLingCpp } from '../src/services/lingCpp/parser';
+import { generateLingCppNativeWin32Project } from '../src/services/windowDesigner/lingCppWin32Project';
+import { BUILTIN_MODULES } from '../src/services/modules/builtinModules';
+import type { InstalledModule } from '../src/services/modules/types';
 
 const SAMPLE_SOURCE = [
   '包 项目C++源码库',
@@ -524,4 +527,44 @@ test('v4 声明头：namespace 块前置声明 + 中文命令名全局转发函�
   ].join('\n');
   const warnings = getProjectCppSourceLibraryDiagnostics(classNamespaceSource).filter(item => item.level === 'warning');
   assert.ok(warnings.some(item => item.message.includes('暂不支持命名空间')));
+});
+
+// ===== v5：类类型化局部变量 =====
+
+test('v5 虚拟模块把类名登记为不透明句柄类型（cppType=long long），生成器按 long long 翻译局部声明', () => {
+  const module = createProjectCppSourceDeclarationModule(parseLingCpp(V2_SOURCE).program.cppLibraries, 'proj-v5');
+  assert.ok(module);
+  const contributedType = module.manifest.contributes.types?.find(item => item.name === '计数器');
+  assert.ok(contributedType);
+  assert.equal(contributedType.cppType, 'long long');
+  // 生成器链路：类类型局部声明翻译为 long long（句柄），赋 0 初始化合法
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.win32.basic');
+  const enabledModules: InstalledModule[] = [{ manifest: manifest!, installPath: 'builtin://lingbuilder.win32.basic', isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] }];
+  const project = {
+    schemaVersion: 2,
+    id: 'cpp-source-v5',
+    name: '类类型化局部变量',
+    windows: [{ id: 'main', fileName: 'MainWindow.xml', className: 'MainWindow', title: 'v5', width: 320, height: 200, background: '#202028', description: '', controls: [] }]
+  } as never;
+  const typedLocalSource = [
+    '类 MainWindow',
+    '    事件 _MainWindow_创建完毕()',
+    '        局部 计数器 对象 = 0',
+    '        对象 = 计数器_创建(40)',
+    '        计数器_销毁(对象)',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const declaration = V2_SOURCE;
+  const generated = generateLingCppNativeWin32Project(project, {
+    enabledModules,
+    lingCppSourceCode: typedLocalSource,
+    lingCppSourceFilePath: 'src/MainWindow.lcpp',
+    lingCppSources: [
+      { filePath: 'src/MainWindow.lcpp', sourceCode: typedLocalSource },
+      { filePath: 'src/项目C++源码库.lcpp', sourceCode: declaration }
+    ]
+  });
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.ok(mainCpp.includes('long long 对象 = 0;'), 'main.cpp 未把类类型局部声明翻译为 long long 句柄');
 });

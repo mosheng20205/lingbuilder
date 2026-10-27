@@ -476,6 +476,13 @@ export function createProjectCppSourceDeclarationModule(cppLibraries: LingCppCpp
     author: 'LingBuilder',
     tags: ['项目声明', 'C++源码'],
     contributes: {
+      // 类名登记为不透明句柄类型（v5）：`局部 计数器 对象 = 0` 直接可用——语言服务未知
+      // 类型诊断与赋值/实参相容按 cppType=long long 归入基础类别，生成器 toCppType 同映射。
+      types: libraries.flatMap(library => library.classes.map(classItem => ({
+        name: classItem.name,
+        description: `类 ${classItem.name}（${classItem.cppName}）的句柄类型；由 ${classItem.name}_创建/${classItem.name}_销毁 管理生命周期。`,
+        cppType: 'long long'
+      }))),
       commands: [
         ...libraries.flatMap(library => library.commands
           .filter(command => command.isPublic !== false)
