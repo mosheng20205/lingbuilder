@@ -3,6 +3,7 @@
 使用 滑块缺口识别模块
 使用 日期时间模块
 使用 文件目录模块
+使用 内嵌资源模块
 
 类 MainWindow : 公开 窗口
     文本型 样本目录 = ""
@@ -46,10 +47,23 @@
     结束
 
     空 解析样本目录()
-        局部 文本型 开发目录 = "T:/electron/lingbuilder/src/captcha-gap-probe/samples/"
         样本目录 = 滑块缺口_取模块目录() + "samples/"
+        目录_创建(样本目录)
+        // 内嵌资源优先：九张样图随 EXE 分发，缺失时从资源释放到 exe 旁
         如果 (文件_是否存在(样本目录 + "geetest3_bg.jpg") == 假)
-            样本目录 = 开发目录
+            资源_保存到文件("samples/geetest3_bg.jpg", 样本目录 + "geetest3_bg.jpg")
+            资源_保存到文件("samples/geetest4_bg.png", 样本目录 + "geetest4_bg.png")
+            资源_保存到文件("samples/tencent1_bg.jpg", 样本目录 + "tencent1_bg.jpg")
+            资源_保存到文件("samples/tencent3_bg.jpg", 样本目录 + "tencent3_bg.jpg")
+            资源_保存到文件("samples/yidun1_bg.jpg", 样本目录 + "yidun1_bg.jpg")
+            资源_保存到文件("samples/yidun2_bg.jpg", 样本目录 + "yidun2_bg.jpg")
+            资源_保存到文件("samples/dingxiang1_bg.png", 样本目录 + "dingxiang1_bg.png")
+            资源_保存到文件("samples/dingxiang2_bg.png", 样本目录 + "dingxiang2_bg.png")
+            资源_保存到文件("samples/douyin1_bg.png", 样本目录 + "douyin1_bg.png")
+        如果结束
+        // 开发机兜底：内嵌资源不可用时回退源码仓库样图目录
+        如果 (文件_是否存在(样本目录 + "geetest3_bg.jpg") == 假)
+            样本目录 = "T:/electron/lingbuilder/src/captcha-gap-probe/samples/"
         如果结束
         目录_创建(样本目录 + "out")
     结束
