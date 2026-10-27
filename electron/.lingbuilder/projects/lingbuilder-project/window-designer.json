@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 2,
+  "id": "lingbuilder-project",
+  "name": "库存管家",
+  "resources": [],
+  "windows": [
+    {
+      "id": "main-window",
+      "fileName": "MainWindow.xml",
+      "className": "MainWindow",
+      "title": "库存管家主窗口",
+      "width": 900,
+      "height": 560,
+      "background": "#1f2937",
+      "description": "库存管家 默认主窗口",
+      "designerBackend": "win32",
+      "events": {
+        "Loaded": "_MainWindow_创建完毕"
+      },
+      "controls": []
+    }
+  ]
+}

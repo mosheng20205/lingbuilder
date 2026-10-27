@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 2,
+  "id": "fbro-lang-probe",
+  "name": "FBro语言导航探针",
+  "resources": [],
+  "windows": [
+    {
+      "id": "main-window",
+      "fileName": "MainWindow.xml",
+      "className": "程序",
+      "title": "FBro语言导航探针 控制台",
+      "width": 900,
+      "height": 560,
+      "background": "#1f2937",
+      "description": "FBro语言导航探针 默认主窗口",
+      "designerBackend": "win32",
+      "controls": []
+    }
+  ]
+}

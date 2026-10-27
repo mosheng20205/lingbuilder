@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 2,
+  "id": "app-app",
+  "name": "APP自动化样板（打开App-识图-点击闭环）",
+  "resources": [],
+  "windows": [
+    {
+      "id": "main-window",
+      "fileName": "MainWindow.xml",
+      "className": "程序",
+      "title": "APP自动化样板（打开App-识图-点击闭环） 控制台",
+      "width": 900,
+      "height": 560,
+      "background": "#1f2937",
+      "description": "APP自动化样板（打开App-识图-点击闭环） 默认主窗口",
+      "designerBackend": "win32",
+      "controls": []
+    }
+  ]
+}

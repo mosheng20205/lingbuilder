@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "enabledModuleIds": [
+    "lingbuilder.win32.basic",
+    "lingbuilder.win32.common-controls",
+    "lingbuilder.input.keyboard",
+    "lingbuilder.fs.core",
+    "lingbuilder.std.text"
+  ],
+  "pinnedVersions": {}
+}

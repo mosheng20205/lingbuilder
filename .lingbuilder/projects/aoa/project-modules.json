@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "enabledModuleIds": [
+    "lingbuilder.win32.basic",
+    "lingbuilder.advanced.process-memory",
+    "lingbuilder.std.buffer",
+    "lingbuilder.system.monitor",
+    "lingbuilder.aoahid",
+    "lingbuilder.std.bytes"
+  ],
+  "pinnedVersions": {
+    "lingbuilder.win32.basic": "1.0.0",
+    "lingbuilder.advanced.process-memory": "1.2.0",
+    "lingbuilder.std.buffer": "1.0.0",
+    "lingbuilder.system.monitor": "1.3.0",
+    "lingbuilder.aoahid": "1.0.0",
+    "lingbuilder.std.bytes": "1.4.0"
+  }
+}

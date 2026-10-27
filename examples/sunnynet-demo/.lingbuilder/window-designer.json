@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 2,
+  "id": "sunnynet-demo",
+  "name": "网络中间件演示",
+  "resources": [],
+  "windows": [
+    {
+      "id": "main-window",
+      "fileName": "SunnyNetDemo.xml",
+      "className": "演示窗口",
+      "title": "网络中间件演示",
+      "width": 520,
+      "height": 320,
+      "background": "#1E1E24",
+      "description": "演示网络中间件模块：本地代理捕获 HTTP 请求并写入日志文件。",
+      "events": {
+        "Loaded": "_演示窗口_创建完毕"
+      },
+      "controls": [
+        {
+          "id": "hint-label",
+          "type": "Label",
+          "name": "说明标签",
+          "content": "启动后在 127.0.0.1:28888 开启抓包代理，事件写入 sunnynet-demo.log。",
+          "x": 16,
+          "y": 12,
+          "width": 480,
+          "height": 26,
+          "fontSize": 13,
+          "background": "transparent",
+          "foreground": "#4FC3F7",
+          "isEnabled": true,
+          "visibility": "Visible"
+        }
+      ],
+      "designerBackend": "win32"
+    }
+  ]
+}

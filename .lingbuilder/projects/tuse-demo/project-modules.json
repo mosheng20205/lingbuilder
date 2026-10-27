@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "enabledModuleIds": [
+    "lingbuilder.win32.basic",
+    "lingbuilder.advanced.process-memory",
+    "lingbuilder.std.buffer",
+    "lingbuilder.image.recognition",
+    "lingbuilder.image.core",
+    "lingbuilder.win32.common-controls"
+  ],
+  "pinnedVersions": {
+    "lingbuilder.win32.basic": "1.0.0",
+    "lingbuilder.advanced.process-memory": "1.2.0",
+    "lingbuilder.std.buffer": "1.0.0",
+    "lingbuilder.image.recognition": "1.1.0",
+    "lingbuilder.image.core": "1.0.0",
+    "lingbuilder.win32.common-controls": "1.0.0"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 2,
+  "id": "lingbuilder-solution",
+  "name": "未命名解决方案",
+  "startupProjectId": "lingbuilder-ui-project",
+  "startupProjectIds": [
+    "lingbuilder-ui-project"
+  ],
+  "folders": [],
+  "projects": [
+    {
+      "type": "visual-cpp",
+      "id": "lingbuilder-ui-project",
+      "name": "新建项目",
+      "sourceRoot": "src",
+      "configRoot": "config",
+      "designerPath": ".lingbuilder/window-designer.json",
+      "isDefault": true,
+      "references": []
+    }
+  ]
+}

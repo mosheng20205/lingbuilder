@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "enabledModuleIds": ["lingbuilder.win32.basic", "lingbuilder.fbro.browser", "lingbuilder.fbro.events"],
+  "pinnedVersions": {
+    "lingbuilder.win32.basic": "1.0.0",
+    "lingbuilder.fbro.browser": "2.4.0",
+    "lingbuilder.fbro.events": "2.4.0"
+  }
+}

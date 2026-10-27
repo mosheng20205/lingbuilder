@@ -1,0 +1,236 @@
+{
+  "controls": null,
+  "description": "滑块缺口验证台：各厂商滑块验证码样图 滑块缺口识别(ONNX) 对拍，支持上传/拖入自定义图片",
+  "height": 600,
+  "id": "captcha-gap-probe",
+  "name": "滑块缺口验证台",
+  "resources": [
+    {
+      "allowDrop": true,
+      "dropTargetId": "result-image",
+      "filesDroppedHandler": "_选择对话框_文件被拖入",
+      "filesSelectedHandler": "_选择对话框_文件已选择",
+      "filter": "图片文件|*.png;*.jpg;*.jpeg;*.bmp",
+      "id": "upload-dialog",
+      "multiple": true,
+      "name": "选择对话框",
+      "ownerWindowId": "main-window",
+      "title": "选择滑块图片",
+      "triggerControlId": "upload-button",
+      "type": "FileDialog"
+    }
+  ],
+  "schemaVersion": 2,
+  "windows": [
+    {
+      "background": "#1f2937",
+      "className": "MainWindow",
+      "controls": [
+        {
+          "content": "滑块缺口验证台 · 滑块缺口识别(ONNX) 各厂商真实样图对拍",
+          "fontSize": 14,
+          "fontBold": true,
+          "foreground": "#F8FAFC",
+          "height": 24,
+          "id": "title-label",
+          "isEnabled": true,
+          "name": "标题标签",
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left"
+          },
+          "type": "Label",
+          "visibility": "Visible",
+          "width": 660,
+          "x": 12,
+          "y": 10
+        },
+        {
+          "background": "#0B1120",
+          "content": "",
+          "events": {
+            "SelectionChanged": "_样本列表_选择项被改变"
+          },
+          "fontSize": 12,
+          "foreground": "#E2E8F0",
+          "height": 420,
+          "id": "sample-list",
+          "isEnabled": true,
+          "name": "样本列表",
+          "properties": {
+            "items": [],
+            "multiple": false,
+            "selectedIndex": 0,
+            "sorted": false
+          },
+          "type": "ListBox",
+          "visibility": "Visible",
+          "width": 190,
+          "x": 12,
+          "y": 40
+        },
+        {
+          "content": "",
+          "fontSize": 12,
+          "height": 260,
+          "id": "result-image",
+          "isEnabled": true,
+          "name": "结果图",
+          "properties": {
+            "imageSource": "",
+            "stretch": "uniform"
+          },
+          "type": "Image",
+          "visibility": "Visible",
+          "width": 460,
+          "x": 214,
+          "y": 40
+        },
+        {
+          "background": "#0B1120",
+          "content": "",
+          "events": {},
+          "fontSize": 12,
+          "fontFamily": "Consolas",
+          "foreground": "#E2E8F0",
+          "height": 150,
+          "id": "result-list",
+          "isEnabled": true,
+          "name": "结果列表",
+          "properties": {
+            "items": [],
+            "multiple": false,
+            "selectedIndex": 0,
+            "sorted": false
+          },
+          "type": "ListBox",
+          "visibility": "Visible",
+          "width": 460,
+          "x": 214,
+          "y": 310
+        },
+        {
+          "background": "#2563EB",
+          "content": "重新分析当前样本",
+          "events": {
+            "Click": "_重新分析按钮_被单击"
+          },
+          "fontSize": 13,
+          "foreground": "#FFFFFF",
+          "height": 36,
+          "id": "rerun-button",
+          "isEnabled": true,
+          "name": "重新分析按钮",
+          "properties": {},
+          "type": "Button",
+          "visibility": "Visible",
+          "width": 190,
+          "x": 12,
+          "y": 470
+        },
+        {
+          "background": "#059669",
+          "content": "一键测试全部（准确率/速度）",
+          "events": {
+            "Click": "_全量测试按钮_被单击"
+          },
+          "fontSize": 13,
+          "foreground": "#FFFFFF",
+          "height": 36,
+          "id": "runall-button",
+          "isEnabled": true,
+          "name": "全量测试按钮",
+          "properties": {},
+          "type": "Button",
+          "visibility": "Visible",
+          "width": 190,
+          "x": 12,
+          "y": 514
+        },
+        {
+          "background": "#7C3AED",
+          "content": "上传图片识别（也可拖入窗口）",
+          "events": {},
+          "fontSize": 13,
+          "foreground": "#FFFFFF",
+          "height": 32,
+          "id": "upload-button",
+          "isEnabled": true,
+          "name": "上传按钮",
+          "properties": {},
+          "type": "Button",
+          "visibility": "Visible",
+          "width": 460,
+          "x": 214,
+          "y": 506
+        },
+        {
+          "content": "就绪",
+          "fontSize": 12,
+          "foreground": "#7DD3FC",
+          "height": 24,
+          "id": "status-label",
+          "isEnabled": true,
+          "name": "状态标签",
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left"
+          },
+          "type": "Label",
+          "visibility": "Visible",
+          "width": 460,
+          "x": 214,
+          "y": 544
+        }
+      ],
+      "description": "滑块缺口验证台：各厂商滑块验证码样图 滑块缺口识别(ONNX) 对拍，支持上传/拖入自定义图片",
+      "designerBackend": "win32",
+      "events": {
+        "Loaded": "_MainWindow_创建完毕"
+      },
+      "fileName": "MainWindow.xml",
+      "height": 600,
+      "id": "main-window",
+      "title": "滑块缺口验证台",
+      "width": 700
+    }
+  ],
+  "embeddedResources": [
+    {
+      "name": "samples/douyin1_bg.png",
+      "file": "src/captcha-gap-probe/samples/douyin1_bg.png"
+    },
+    {
+      "name": "samples/dingxiang1_bg.png",
+      "file": "src/captcha-gap-probe/samples/dingxiang1_bg.png"
+    },
+    {
+      "name": "samples/dingxiang2_bg.png",
+      "file": "src/captcha-gap-probe/samples/dingxiang2_bg.png"
+    },
+    {
+      "name": "samples/geetest3_bg.jpg",
+      "file": "src/captcha-gap-probe/samples/geetest3_bg.jpg"
+    },
+    {
+      "name": "samples/geetest4_bg.png",
+      "file": "src/captcha-gap-probe/samples/geetest4_bg.png"
+    },
+    {
+      "name": "samples/tencent1_bg.jpg",
+      "file": "src/captcha-gap-probe/samples/tencent1_bg.jpg"
+    },
+    {
+      "name": "samples/tencent3_bg.jpg",
+      "file": "src/captcha-gap-probe/samples/tencent3_bg.jpg"
+    },
+    {
+      "name": "samples/yidun1_bg.jpg",
+      "file": "src/captcha-gap-probe/samples/yidun1_bg.jpg"
+    },
+    {
+      "name": "samples/yidun2_bg.jpg",
+      "file": "src/captcha-gap-probe/samples/yidun2_bg.jpg"
+    }
+  ]
+}

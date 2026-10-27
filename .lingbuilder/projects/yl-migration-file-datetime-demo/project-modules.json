@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "enabledModuleIds": [
+    "lingbuilder.win32.basic",
+    "lingbuilder.win32.common-controls",
+    "lingbuilder.fs.core",
+    "lingbuilder.std.text",
+    "lingbuilder.std.datetime",
+    "lingbuilder.std.math",
+    "lingbuilder.std.bytes",
+    "lingbuilder.std.array"
+  ],
+  "pinnedVersions": {}
+}

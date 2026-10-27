@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "enabledModuleIds": [
+    "lingbuilder.win32.basic",
+    "lingbuilder.process",
+    "lingbuilder.net.dns",
+    "lingbuilder.system.shell",
+    "lingbuilder.media.audio",
+    "lingbuilder.fs.core",
+    "lingbuilder.fs.path",
+    "lingbuilder.std.text",
+    "lingbuilder.std.array"
+  ],
+  "pinnedVersions": {}
+}

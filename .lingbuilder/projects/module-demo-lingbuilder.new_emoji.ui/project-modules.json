@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "enabledModuleIds": [
+    "lingbuilder.win32.basic",
+    "lingbuilder.new_emoji.ui"
+  ],
+  "pinnedVersions": {
+    "lingbuilder.win32.basic": "1.1.0",
+    "lingbuilder.new_emoji.ui": "2.0.0"
+  }
+}

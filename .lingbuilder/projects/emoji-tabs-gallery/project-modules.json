@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "enabledModuleIds": [
+    "lingbuilder.new_emoji.ui",
+    "lingbuilder.system.shell",
+    "lingbuilder.resource.embed"
+  ],
+  "pinnedVersions": {}
+}

@@ -78,7 +78,6 @@ electron-online-staging*/
 
 # ===== 开源仓库清理（本地状态/构建产物/生产部署信息，不应公开） =====
 # 本地 IDE / 开发工具状态
-.lingbuilder/
 .lingbuilder-smoke/
 .lingbuilder-dev-logs/
 .superpowers/
@@ -232,3 +231,25 @@ COMPONENT_CARDS_PLAN.md
 
 # 本机探针的位图输出（微信未读探针 22MB 截图，源码入库、产物不留）
 /src/wechat-probe/out/
+# LingBuilder IDE 管理目录（IDE 自动维护：运行数据与构建产物不入库；工程数据仍纳入版本库）
+/.lingbuilder/*
+!/.lingbuilder/solution.json
+!/.lingbuilder/window-designer.json
+!/.lingbuilder/project-modules.json
+!/.lingbuilder/build-configuration.json
+!/.lingbuilder/projects/
+/.lingbuilder/projects/*/*
+!/.lingbuilder/projects/*/window-designer.json
+!/.lingbuilder/projects/*/project-modules.json
+# 任意层级的 .lingbuilder（examples/src 下的示例与演示工程）同口径：
+# 只放行工程数据，modules/toolchains/cache/ai 等运行数据一律不入库。
+**/.lingbuilder/*
+!**/.lingbuilder/solution.json
+!**/.lingbuilder/window-designer.json
+!**/.lingbuilder/project-modules.json
+!**/.lingbuilder/build-configuration.json
+!**/.lingbuilder/projects/
+**/.lingbuilder/projects/*/*
+!**/.lingbuilder/projects/*/window-designer.json
+!**/.lingbuilder/projects/*/project-modules.json
+/.lingbuilder-build/

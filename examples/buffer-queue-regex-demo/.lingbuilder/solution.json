@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 2,
+  "id": "lingbuilder-solution",
+  "name": "标准库演示解决方案",
+  "startupProjectId": "buffer-queue-regex-demo",
+  "startupProjectIds": [
+    "buffer-queue-regex-demo"
+  ],
+  "folders": [],
+  "projects": [
+    {
+      "type": "visual-cpp",
+      "id": "buffer-queue-regex-demo",
+      "name": "缓冲区队列正则演示",
+      "sourceRoot": "src",
+      "configRoot": "config",
+      "designerPath": ".lingbuilder/window-designer.json",
+      "isDefault": true,
+      "references": []
+    }
+  ]
+}

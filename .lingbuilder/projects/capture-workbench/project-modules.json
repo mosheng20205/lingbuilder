@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "enabledModuleIds": [
+    "lingbuilder.sunnynet",
+    "lingbuilder.win32.basic",
+    "lingbuilder.new_emoji.ui",
+    "lingbuilder.std.text",
+    "lingbuilder.std.bytes",
+    "lingbuilder.std.encoding",
+    "lingbuilder.std.array",
+    "lingbuilder.data.json",
+    "lingbuilder.std.datetime",
+    "lingbuilder.fs.core",
+    "lingbuilder.net.http-client",
+    "lingbuilder.system.clipboard"
+  ],
+  "pinnedVersions": {
+    "lingbuilder.new_emoji.ui": "2.0.0"
+  }
+}

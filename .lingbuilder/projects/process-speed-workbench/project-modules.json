@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "enabledModuleIds": [
+    "lingbuilder.new_emoji.ui",
+    "lingbuilder.win32.basic",
+    "lingbuilder.win32.window-utils",
+    "lingbuilder.speedcontrol",
+    "lingbuilder.advanced.process-memory",
+    "lingbuilder.std.buffer"
+  ],
+  "pinnedVersions": {
+    "lingbuilder.new_emoji.ui": "2.0.0",
+    "lingbuilder.win32.basic": "1.0.0",
+    "lingbuilder.win32.window-utils": "1.0.0",
+    "lingbuilder.speedcontrol": "1.0.0",
+    "lingbuilder.advanced.process-memory": "1.2.0",
+    "lingbuilder.std.buffer": "1.0.0"
+  }
+}

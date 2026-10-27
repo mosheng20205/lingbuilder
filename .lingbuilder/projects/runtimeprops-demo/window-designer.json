@@ -1,0 +1,82 @@
+{
+  "id": "runtimeprops-demo",
+  "name": "runtimeprops-demo",
+  "resources": [],
+  "schemaVersion": 2,
+  "windows": [
+    {
+      "background": "#1f2937",
+      "className": "MainWindow",
+      "controls": [
+        {
+          "content": "",
+          "fontSize": 12,
+          "height": 30,
+          "id": "ctrl-password",
+          "name": "密码框",
+          "type": "TextBox",
+          "width": 200,
+          "x": 24,
+          "y": 24
+        },
+        {
+          "content": "",
+          "fontSize": 12,
+          "height": 30,
+          "id": "ctrl-search",
+          "name": "搜索框",
+          "type": "TextBox",
+          "width": 200,
+          "x": 24,
+          "y": 70
+        },
+        {
+          "content": "",
+          "fontSize": 12,
+          "height": 150,
+          "id": "ctrl-result",
+          "name": "结果框",
+          "properties": {
+            "multiline": true
+          },
+          "type": "TextBox",
+          "width": 380,
+          "x": 24,
+          "y": 116
+        },
+        {
+          "content": "50",
+          "fontSize": 12,
+          "height": 22,
+          "id": "ctrl-progress",
+          "name": "进度条1",
+          "type": "ProgressBar",
+          "width": 380,
+          "x": 24,
+          "y": 290
+        },
+        {
+          "content": "",
+          "fontSize": 12,
+          "height": 420,
+          "id": "ctrl-list",
+          "name": "列表框1",
+          "type": "ListBox",
+          "width": 420,
+          "x": 430,
+          "y": 24
+        }
+      ],
+      "designerBackend": "win32",
+      "description": "runtimeprops-demo 默认主窗口",
+      "events": {
+        "Loaded": "_MainWindow_创建完毕"
+      },
+      "fileName": "MainWindow.xml",
+      "height": 560,
+      "id": "main-window",
+      "title": "运行期属性验收",
+      "width": 900
+    }
+  ]
+}

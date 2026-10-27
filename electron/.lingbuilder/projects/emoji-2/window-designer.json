@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 2,
+  "id": "emoji-2",
+  "name": "emoji富文本框",
+  "resources": [],
+  "windows": [
+    {
+      "id": "main-window",
+      "fileName": "MainWindow.xml",
+      "className": "MainWindow",
+      "title": "emoji富文本框主窗口",
+      "width": 900,
+      "height": 560,
+      "background": "#1f2937",
+      "description": "emoji富文本框 默认主窗口",
+      "designerBackend": "new-emoji",
+      "controls": [
+        {
+          "id": "ne_rich_list_clean",
+          "type": "ListView",
+          "designerType": "lingbuilder.new_emoji.ui/RichList",
+          "name": "清理列表",
+          "content": "清理列表",
+          "x": 20,
+          "y": 20,
+          "width": 860,
+          "height": 520,
+          "fontSize": 12,
+          "fontFamily": "Microsoft YaHei UI",
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false,
+          "background": "transparent",
+          "foreground": "#F8FAFC",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "properties": {
+            "title": "清理列表",
+            "templateJson": [
+              "{\"template\":{\"rowHeight\":88,\"nodes\":[{\"id\":\"icon\",\"type\":\"text\",\"x\":14,\"y\":30,\"w\":36,\"h\":30,\"field\":\"icon\",\"size\":22},{\"id\":\"title\",\"type\":\"text\",\"x\":62,\"y\":20,\"w\":380,\"h\":26,\"field\":\"title\",\"size\":16,\"weight\":600,\"role\":\"primary\",\"ellipsis\":true},{\"id\":\"desc\",\"type\":\"text\",\"x\":62,\"y\":48,\"w\":480,\"h\":20,\"field\":\"desc\",\"size\":12,\"role\":\"secondary\",\"ellipsis\":true}]}}"
+            ],
+            "itemsJson": [
+              "{\"items\":[{\"key\":\"waves\",\"data\":{\"icon\":\"🌊\",\"title\":\"Waves清理\",\"desc\":\"清理您电脑上面所有 Waves 残留\"}},{\"key\":\"host-scan\",\"data\":{\"icon\":\"🧩\",\"title\":\"宿主扫描重置\",\"desc\":\"机架的扫描插件机制进行重置，保证所有插件都能被扫描到\"}},{\"key\":\"plugin-leftover\",\"data\":{\"icon\":\"🧹\",\"title\":\"插件残留清理\",\"desc\":\"清理电脑上所有插件\"}}]}"
+            ],
+            "selectedKeys": [],
+            "selectionMode": "0",
+            "bordered": true,
+            "zebra": false,
+            "compact": false,
+            "keyboardNavigation": true,
+            "showScrollbar": true,
+            "rowHeight": 88,
+            "paddingX": 10,
+            "paddingY": 6,
+            "scrollbarWidth": 12,
+            "align": "0",
+            "selectedColor": "",
+            "hoverColor": "",
+            "scrollY": 0,
+            "virtualItemCount": 0
+          },
+          "events": {
+            "ItemClicked": "_清理列表_项目点击",
+            "SelectionChanged": "_清理列表_选择变化"
+          }
+        }
+      ],
+      "titleBarBackground": "#2D2D30",
+      "titleBarForeground": "#CBD5E1",
+      "menuBackground": "#ffffff",
+      "menuForeground": "#000000",
+      "menuFontFamily": "Microsoft YaHei UI",
+      "menuFontSize": 11,
+      "menuFontBold": false,
+      "menuFontItalic": false,
+      "menuFontUnderline": false,
+      "cornerStyle": "rounded",
+      "iconStyle": "lingbuilder",
+      "borderStyle": "normal-resizable",
+      "borderlessDraggable": false,
+      "resizable": true,
+      "maximizable": true,
+      "windowFrame": {
+        "preset": "system",
+        "flags": 0,
+        "resizeBorder": {
+          "left": 6,
+          "top": 6,
+          "right": 6,
+          "bottom": 6
+        },
+        "cornerRadius": 10
+      }
+    }
+  ]
+}

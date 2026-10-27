@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 2,
+  "id": "mmkv",
+  "name": "MMKV读写对拍验证",
+  "resources": [],
+  "windows": [
+    {
+      "id": "main-window",
+      "fileName": "MainWindow.xml",
+      "className": "程序",
+      "title": "MMKV读写对拍验证 控制台",
+      "width": 900,
+      "height": 560,
+      "background": "#1f2937",
+      "description": "MMKV读写对拍验证 默认主窗口",
+      "designerBackend": "win32",
+      "controls": []
+    }
+  ]
+}

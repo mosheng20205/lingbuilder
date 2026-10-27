@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 2,
+  "id": "lingbuilder-2",
+  "name": "LingBuilder项目2",
+  "resources": [],
+  "windows": [
+    {
+      "id": "main-window",
+      "fileName": "MainWindow.xml",
+      "className": "MainWindow",
+      "title": "LingBuilder项目2主窗口",
+      "width": 900,
+      "height": 560,
+      "background": "#1f2937",
+      "description": "LingBuilder项目2 默认主窗口",
+      "designerBackend": "win32",
+      "events": {
+        "Loaded": "_MainWindow_创建完毕"
+      },
+      "controls": []
+    }
+  ]
+}

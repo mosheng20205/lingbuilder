@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "enabledModuleIds": [
+    "lingbuilder.win32.basic",
+    "lingbuilder.advanced.process-memory",
+    "lingbuilder.std.buffer",
+    "lingbuilder.captcha.gap",
+    "lingbuilder.fs.core"
+  ],
+  "pinnedVersions": {
+    "lingbuilder.win32.basic": "1.0.0",
+    "lingbuilder.advanced.process-memory": "1.2.0",
+    "lingbuilder.std.buffer": "1.0.0",
+    "lingbuilder.captcha.gap": "1.0.0",
+    "lingbuilder.fs.core": "1.0.0"
+  }
+}

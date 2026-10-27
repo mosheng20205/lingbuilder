@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "enabledModuleIds": [
+    "lingbuilder.win32.basic",
+    "lingbuilder.std.text",
+    "lingbuilder.std.array",
+    "lingbuilder.std.datetime",
+    "lingbuilder.std.map",
+    "lingbuilder.std.bigint",
+    "lingbuilder.std.pinyin",
+    "lingbuilder.std.lunar",
+    "lingbuilder.fs.core"
+  ],
+  "pinnedVersions": {}
+}

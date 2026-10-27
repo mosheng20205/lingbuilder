@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "enabledModuleIds": [
+    "lingbuilder.win32.basic",
+    "lingbuilder.fs.core",
+    "lingbuilder.sunnynet"
+  ],
+  "pinnedVersions": {}
+}

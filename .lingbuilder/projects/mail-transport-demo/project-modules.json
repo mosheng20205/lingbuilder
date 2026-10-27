@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "enabledModuleIds": [
+    "lingbuilder.win32.basic",
+    "lingbuilder.net.mail",
+    "lingbuilder.net.pop3",
+    "lingbuilder.net.imap",
+    "lingbuilder.fs.core",
+    "lingbuilder.std.text",
+    "lingbuilder.std.array",
+    "lingbuilder.config.ini",
+    "lingbuilder.fs.path"
+  ],
+  "pinnedVersions": {}
+}

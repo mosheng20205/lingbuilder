@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 2,
+  "id": "ocr",
+  "name": "OCR探针",
+  "resources": [],
+  "windows": [
+    {
+      "id": "main-window",
+      "fileName": "MainWindow.xml",
+      "className": "程序",
+      "title": "OCR探针 控制台",
+      "width": 900,
+      "height": 560,
+      "background": "#1f2937",
+      "description": "OCR探针 默认主窗口",
+      "designerBackend": "win32",
+      "controls": []
+    }
+  ]
+}

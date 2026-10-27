@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "enabledModuleIds": [
+    "lingbuilder.win32.basic",
+    "lingbuilder.advanced.process-memory",
+    "lingbuilder.std.buffer",
+    "lingbuilder.net.http-client",
+    "lingbuilder.net.aria2",
+    "lingbuilder.data.json",
+    "lingbuilder.config.registry",
+    "lingbuilder.system.shell",
+    "lingbuilder.std.text",
+    "lingbuilder.std.array",
+    "lingbuilder.fs.path",
+    "lingbuilder.resource.embed",
+    "lingbuilder.fs.core"
+  ],
+  "pinnedVersions": {
+    "lingbuilder.win32.basic": "1.0.0",
+    "lingbuilder.advanced.process-memory": "1.1.0",
+    "lingbuilder.std.buffer": "1.0.0",
+    "lingbuilder.net.http-client": "2.1.0",
+    "lingbuilder.net.aria2": "1.37.0",
+    "lingbuilder.data.json": "2.0.0",
+    "lingbuilder.config.registry": "1.0.0",
+    "lingbuilder.system.shell": "1.0.0",
+    "lingbuilder.std.text": "1.2.0",
+    "lingbuilder.std.array": "1.0.0",
+    "lingbuilder.fs.path": "1.0.0",
+    "lingbuilder.resource.embed": "1.0.0",
+    "lingbuilder.fs.core": "1.2.0"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 2,
+  "id": "lingbuilder-solution",
+  "name": "Aruile工具箱",
+  "startupProjectId": "aruile-toolsbox",
+  "startupProjectIds": [
+    "aruile-toolsbox"
+  ],
+  "folders": [],
+  "projects": [
+    {
+      "type": "visual-cpp",
+      "id": "aruile-toolsbox",
+      "name": "Aruile工具箱",
+      "sourceRoot": "src",
+      "configRoot": "config",
+      "designerPath": ".lingbuilder/window-designer.json",
+      "isDefault": true,
+      "references": [],
+      "buildProperties": {
+        "configuration": "Debug",
+        "architecture": "Win32",
+        "additionalArguments": [],
+        "executableName": "Aruile工具箱"
+      }
+    }
+  ]
+}

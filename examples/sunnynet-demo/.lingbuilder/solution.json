@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 2,
+  "id": "lingbuilder-solution",
+  "name": "网络中间件演示",
+  "startupProjectId": "sunnynet-demo",
+  "startupProjectIds": [
+    "sunnynet-demo"
+  ],
+  "folders": [],
+  "projects": [
+    {
+      "type": "visual-cpp",
+      "id": "sunnynet-demo",
+      "name": "网络中间件演示",
+      "sourceRoot": "src",
+      "configRoot": "config",
+      "designerPath": ".lingbuilder/window-designer.json",
+      "isDefault": true,
+      "references": []
+    }
+  ]
+}

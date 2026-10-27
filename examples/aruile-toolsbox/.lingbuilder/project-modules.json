@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "enabledModuleIds": [
+    "lingbuilder.win32.basic",
+    "lingbuilder.edgeview",
+    "lingbuilder.threading",
+    "lingbuilder.system.shell",
+    "lingbuilder.win32.window-utils",
+    "lingbuilder.data.json"
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 2,
+  "id": "cdp-client-showcase",
+  "name": "CDP 浏览器自动化工具",
+  "startupProjectId": "cdp-client-showcase",
+  "startupProjectIds": [
+    "cdp-client-showcase"
+  ],
+  "folders": [],
+  "projects": [
+    {
+      "type": "visual-cpp",
+      "id": "cdp-client-showcase",
+      "name": "CDP 浏览器自动化工具",
+      "sourceRoot": "src",
+      "configRoot": "config",
+      "designerPath": "designer/cdp-client-showcase.json",
+      "isDefault": true,
+      "references": [],
+      "buildProperties": {
+        "configuration": "Release",
+        "architecture": "x64",
+        "additionalArguments": [],
+        "executableName": "CDP浏览器自动化工具"
+      }
+    }
+  ]
+}

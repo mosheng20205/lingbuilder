@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 2,
+  "id": "lingbuilder-solution",
+  "name": "LingBuilder项目2",
+  "startupProjectId": "lingbuilder-project-5",
+  "startupProjectIds": [
+    "lingbuilder-project-5"
+  ],
+  "folders": [],
+  "projects": [
+    {
+      "type": "visual-cpp",
+      "id": "lingbuilder-ui-project",
+      "name": "GameClient",
+      "sourceRoot": "src",
+      "configRoot": "config",
+      "designerPath": ".lingbuilder/window-designer.json",
+      "isDefault": true,
+      "references": []
+    },
+    {
+      "type": "visual-cpp",
+      "id": "emoji",
+      "name": "emoji项目",
+      "sourceRoot": "src/emoji",
+      "configRoot": "config/emoji",
+      "designerPath": ".lingbuilder/projects/emoji/window-designer.json",
+      "references": []
+    },
+    {
+      "type": "visual-cpp",
+      "id": "emoji-2",
+      "name": "emoji富文本框",
+      "sourceRoot": "src/emoji-2",
+      "configRoot": "config/emoji-2",
+      "designerPath": ".lingbuilder/projects/emoji-2/window-designer.json",
+      "references": []
+    },
+    {
+      "type": "visual-cpp",
+      "id": "lingbuilder-2",
+      "name": "LingBuilder项目2",
+      "sourceRoot": "src/lingbuilder-2",
+      "configRoot": "config/lingbuilder-2",
+      "designerPath": ".lingbuilder/projects/lingbuilder-2/window-designer.json",
+      "references": []
+    },
+    {
+      "type": "visual-cpp",
+      "id": "lingbuilder-project",
+      "name": "库存管家",
+      "sourceRoot": "src/lingbuilder-project",
+      "configRoot": "config/lingbuilder-project",
+      "designerPath": ".lingbuilder/projects/lingbuilder-project/window-designer.json",
+      "references": []
+    },
+    {
+      "type": "visual-cpp",
+      "id": "lingbuilder-project-2",
+      "name": "第一行中文代码",
+      "sourceRoot": "src/lingbuilder-project-2",
+      "configRoot": "config/lingbuilder-project-2",
+      "designerPath": ".lingbuilder/projects/lingbuilder-project-2/window-designer.json",
+      "references": []
+    },
+    {
+      "type": "visual-cpp",
+      "id": "if",
+      "name": "如果if流程",
+      "sourceRoot": "src/if",
+      "configRoot": "config/if",
+      "designerPath": ".lingbuilder/projects/if/window-designer.json",
+      "references": []
+    },
+    {
+      "type": "visual-cpp",
+      "id": "lingbuilder-8",
+      "name": "LingBuilder项目8",
+      "sourceRoot": "src/lingbuilder-8",
+      "configRoot": "config/lingbuilder-8",
+      "designerPath": ".lingbuilder/projects/lingbuilder-8/window-designer.json",
+      "references": []
+    },
+    {
+      "type": "visual-cpp",
+      "id": "lingbuilder-project-3",
+      "name": "编辑框与文本型变量",
+      "sourceRoot": "src/lingbuilder-project-3",
+      "configRoot": "config/lingbuilder-project-3",
+      "designerPath": ".lingbuilder/projects/lingbuilder-project-3/window-designer.json",
+      "references": []
+    },
+    {
+      "type": "visual-cpp",
+      "id": "lingbuilder-project-4",
+      "name": "登录界面",
+      "sourceRoot": "src/lingbuilder-project-4",
+      "configRoot": "config/lingbuilder-project-4",
+      "designerPath": ".lingbuilder/projects/lingbuilder-project-4/window-designer.json",
+      "references": []
+    },
+    {
+      "type": "visual-cpp",
+      "id": "lingbuilder-project-5",
+      "name": "文本处理",
+      "sourceRoot": "src/lingbuilder-project-5",
+      "configRoot": "config/lingbuilder-project-5",
+      "designerPath": ".lingbuilder/projects/lingbuilder-project-5/window-designer.json",
+      "references": []
+    }
+  ]
+}

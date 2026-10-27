@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 2,
+  "id": "cef3-browser-simple-demo",
+  "name": "CEF3 浏览器简单示例",
+  "resources": [],
+  "windows": [
+    {
+      "id": "main-window",
+      "fileName": "CEF3浏览器简单窗体.xml",
+      "className": "CEF3浏览器简单窗体",
+      "title": "LingBuilder CEF3 浏览器示例",
+      "width": 960,
+      "height": 680,
+      "background": "#111827",
+      "description": "一个 CEF3 浏览器控件加载示例网页。",
+      "designerBackend": "win32",
+      "controls": [
+        {
+          "id": "browser-1",
+          "type": "CefBrowser",
+          "name": "浏览器1",
+          "content": "",
+          "x": 10,
+          "y": 10,
+          "width": 920,
+          "height": 620,
+          "background": "#FFFFFF",
+          "foreground": "#000000",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "properties": {
+            "url": "https://baidu.com",
+            "cacheDir": ".cef3/cache",
+            "enableJs": true,
+            "enableDevTools": true,
+            "loadImages": true,
+            "enableWebGL": true,
+            "muteAudio": true,
+            "proxyMode": "system"
+          },
+          "fontFamily": "Microsoft YaHei UI",
+          "fontSize": 12,
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false
+        }
+      ],
+      "titleBarBackground": "#2D2D30",
+      "titleBarForeground": "#CBD5E1",
+      "menuBackground": "#ffffff",
+      "menuForeground": "#000000",
+      "menuFontFamily": "Microsoft YaHei UI",
+      "menuFontSize": 11,
+      "menuFontBold": false,
+      "menuFontItalic": false,
+      "menuFontUnderline": false,
+      "cornerStyle": "rounded",
+      "iconStyle": "lingbuilder",
+      "borderStyle": "normal-resizable",
+      "borderlessDraggable": false,
+      "resizable": true,
+      "maximizable": true,
+      "windowFrame": {
+        "preset": "system",
+        "flags": 0,
+        "resizeBorder": {
+          "left": 6,
+          "top": 6,
+          "right": 6,
+          "bottom": 6
+        },
+        "cornerRadius": 10
+      }
+    }
+  ]
+}

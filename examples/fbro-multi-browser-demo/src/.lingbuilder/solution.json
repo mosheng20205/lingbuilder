@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "id": "fbro-multi-browser-demo",
+  "name": "FBro 多浏览器分组框示例",
+  "startupProjectId": "fbro-multi-browser-demo",
+  "startupProjectIds": ["fbro-multi-browser-demo"],
+  "folders": [],
+  "projects": [{
+    "type": "visual-cpp",
+    "id": "fbro-multi-browser-demo",
+    "name": "FBro 多浏览器分组框示例",
+    "sourceRoot": "src",
+    "configRoot": "config",
+    "designerPath": ".lingbuilder/window-designer.json",
+    "isDefault": true,
+    "references": []
+  }]
+}

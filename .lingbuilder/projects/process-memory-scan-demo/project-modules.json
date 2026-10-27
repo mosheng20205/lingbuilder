@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "enabledModuleIds": [
+    "lingbuilder.console",
+    "lingbuilder.fs.core",
+    "lingbuilder.std.bytes",
+    "lingbuilder.std.array",
+    "lingbuilder.std.text",
+    "lingbuilder.process",
+    "lingbuilder.system.info"
+  ],
+  "pinnedVersions": {}
+}

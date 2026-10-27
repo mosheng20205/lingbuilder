@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "enabledModuleIds": [
+    "lingbuilder.win32.basic",
+    "lingbuilder.win32.common-controls",
+    "lingbuilder.std.text",
+    "lingbuilder.std.regex",
+    "lingbuilder.std.buffer",
+    "lingbuilder.threading",
+    "lingbuilder.std.array",
+    "lingbuilder.std.bytes"
+  ],
+  "pinnedVersions": {
+    "lingbuilder.win32.basic": "1.0.0",
+    "lingbuilder.win32.common-controls": "1.0.0",
+    "lingbuilder.threading": "2.1.0",
+    "lingbuilder.std.text": "1.0.0",
+    "lingbuilder.std.regex": "1.0.0",
+    "lingbuilder.std.buffer": "1.0.0",
+    "lingbuilder.std.array": "1.0.0",
+    "lingbuilder.std.bytes": "1.0.0"
+  }
+}

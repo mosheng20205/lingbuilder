@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 2,
+  "id": "captcha-onnx-probe",
+  "name": "缺口onnx探针",
+  "resources": [],
+  "windows": [
+    {
+      "id": "main-window",
+      "fileName": "MainWindow.xml",
+      "className": "程序",
+      "title": "缺口onnx探针 控制台",
+      "width": 900,
+      "height": 560,
+      "background": "#1f2937",
+      "description": "缺口onnx探针 默认主窗口",
+      "designerBackend": "win32",
+      "controls": []
+    }
+  ]
+}

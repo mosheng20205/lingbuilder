@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 2,
+  "id": "if",
+  "name": "如果if流程",
+  "resources": [],
+  "windows": [
+    {
+      "id": "main-window",
+      "fileName": "MainWindow.xml",
+      "className": "MainWindow",
+      "title": "如果if流程主窗口",
+      "width": 781,
+      "height": 348,
+      "background": "#1f2937",
+      "description": "如果if流程 默认主窗口",
+      "designerBackend": "win32",
+      "events": {
+        "Loaded": "_MainWindow_创建完毕"
+      },
+      "controls": [
+        {
+          "id": "label_6931",
+          "type": "Label",
+          "name": "标签1",
+          "content": "新文本标签",
+          "width": 505,
+          "height": 55,
+          "x": 180,
+          "y": 85,
+          "fontSize": 21,
+          "fontFamily": "Microsoft YaHei UI",
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false,
+          "background": "transparent",
+          "foreground": "#FFFFFF",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left",
+            "imageSource": "",
+            "toolTip": "",
+            "toolTipDelay": 500
+          }
+        },
+        {
+          "id": "button_4118",
+          "type": "Button",
+          "name": "按钮1",
+          "content": "新按钮",
+          "width": 200,
+          "height": 55,
+          "x": 290,
+          "y": 195,
+          "fontSize": 17,
+          "fontFamily": "Microsoft YaHei UI",
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false,
+          "background": "#007ACC",
+          "foreground": "#FFFFFF",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "properties": {
+            "buttonStyle": "push",
+            "cornerRadius": 6,
+            "checked": false,
+            "toolTip": "",
+            "toolTipDelay": 500
+          },
+          "events": {
+            "Click": "_按钮1_被单击"
+          }
+        }
+      ],
+      "titleBarBackground": "#2D2D30",
+      "titleBarForeground": "#CBD5E1",
+      "menuBackground": "#ffffff",
+      "menuForeground": "#000000",
+      "menuFontFamily": "Microsoft YaHei UI",
+      "menuFontSize": 11,
+      "menuFontBold": false,
+      "menuFontItalic": false,
+      "menuFontUnderline": false,
+      "cornerStyle": "rounded",
+      "iconStyle": "lingbuilder",
+      "borderStyle": "normal-resizable",
+      "borderlessDraggable": false,
+      "resizable": true,
+      "maximizable": true,
+      "windowFrame": {
+        "preset": "system",
+        "flags": 0,
+        "resizeBorder": {
+          "left": 6,
+          "top": 6,
+          "right": 6,
+          "bottom": 6
+        },
+        "cornerRadius": 10
+      }
+    }
+  ]
+}

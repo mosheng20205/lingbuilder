@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 2,
+  "id": "cef3-window-probe",
+  "name": "窗口探针",
+  "resources": [],
+  "windows": [
+    {
+      "id": "main-window",
+      "fileName": "MainWindow.xml",
+      "className": "MainWindow",
+      "title": "窗口探针主窗口",
+      "width": 900,
+      "height": 560,
+      "background": "#1f2937",
+      "description": "窗口探针 默认主窗口",
+      "designerBackend": "win32",
+      "controls": []
+    }
+  ]
+}

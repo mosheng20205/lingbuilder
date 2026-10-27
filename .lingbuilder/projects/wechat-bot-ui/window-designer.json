@@ -1,0 +1,241 @@
+{
+  "controls": [
+    {
+      "content": "微信机器人控制台",
+      "events": {},
+      "fontBold": true,
+      "fontSize": 14,
+      "foreground": "#F8FAFC",
+      "height": 22,
+      "id": "标题",
+      "name": "标题",
+      "type": "Label",
+      "width": 240,
+      "x": 12,
+      "y": 10
+    },
+    {
+      "content": "已停止",
+      "events": {},
+      "fontSize": 12,
+      "foreground": "#93C5FD",
+      "height": 20,
+      "id": "状态标签",
+      "name": "状态标签",
+      "type": "Label",
+      "width": 240,
+      "x": 12,
+      "y": 40
+    },
+    {
+      "content": "启动挂机",
+      "events": {
+        "Click": "_启动挂机按钮_被单击"
+      },
+      "fontSize": 12,
+      "height": 32,
+      "id": "启动挂机按钮",
+      "name": "启动挂机按钮",
+      "type": "Button",
+      "width": 116,
+      "x": 12,
+      "y": 68
+    },
+    {
+      "content": "停止挂机",
+      "events": {
+        "Click": "_停止挂机按钮_被单击"
+      },
+      "fontSize": 12,
+      "height": 32,
+      "id": "停止挂机按钮",
+      "name": "停止挂机按钮",
+      "type": "Button",
+      "width": 116,
+      "x": 136,
+      "y": 68
+    },
+    {
+      "content": "自动回复私聊未读，群聊跳过；请保持微信窗口打开",
+      "events": {},
+      "fontSize": 11,
+      "foreground": "#9CA3AF",
+      "height": 32,
+      "id": "说明标签",
+      "name": "说明标签",
+      "type": "Label",
+      "width": 240,
+      "x": 12,
+      "y": 110
+    },
+    {
+      "content": "运行日志",
+      "events": {},
+      "fontSize": 12,
+      "foreground": "#9CA3AF",
+      "height": 18,
+      "id": "日志标题",
+      "name": "日志标题",
+      "type": "Label",
+      "width": 240,
+      "x": 12,
+      "y": 150
+    },
+    {
+      "events": {},
+      "fontSize": 12,
+      "height": 430,
+      "id": "日志列表",
+      "name": "日志列表",
+      "type": "ListBox",
+      "width": 240,
+      "x": 12,
+      "y": 172
+    }
+  ],
+  "background": "#111827",
+  "className": "MainWindow",
+  "description": "微信AI自动回复机器人控制面板",
+  "designerBackend": "win32",
+  "events": {
+    "Loaded": "_MainWindow_创建完毕"
+  },
+  "fileName": "MainWindow.xml",
+  "height": 640,
+  "id": "wechat-bot-ui",
+  "name": "微信机器人控制台",
+  "resources": [
+    {
+      "designerX": 0,
+      "designerY": 0,
+      "id": "clock-1",
+      "name": "轮询时钟",
+      "ownerWindowId": "main-window",
+      "periodHandler": "_轮询时钟_周期到期",
+      "periodMilliseconds": 1000,
+      "startEnabled": true,
+      "type": "Clock"
+    }
+  ],
+  "schemaVersion": 2,
+  "title": "微信机器人控制台",
+  "width": 264,
+  "windows": [
+    {
+      "id": "main-window",
+      "fileName": "MainWindow.xml",
+      "className": "MainWindow",
+      "title": "微信机器人控制台",
+      "width": 300,
+      "height": 640,
+      "background": "#1f2937",
+      "designerBackend": "win32",
+      "controls": [
+        {
+          "content": "微信机器人控制台",
+          "x": 12,
+          "y": 10,
+          "width": 276,
+          "height": 22,
+          "fontSize": 14,
+          "fontBold": true,
+          "foreground": "#F8FAFC",
+          "background": "transparent",
+          "id": "标题",
+          "type": "Label",
+          "name": "标题"
+        },
+        {
+          "content": "已停止",
+          "x": 12,
+          "y": 40,
+          "width": 276,
+          "height": 20,
+          "fontSize": 13,
+          "foreground": "#FBBF24",
+          "background": "transparent",
+          "id": "状态标签",
+          "type": "Label",
+          "name": "状态标签",
+          "fontBold": true
+        },
+        {
+          "content": "启动挂机",
+          "x": 12,
+          "y": 68,
+          "width": 125,
+          "height": 32,
+          "fontSize": 13,
+          "id": "启动挂机按钮",
+          "type": "Button",
+          "name": "启动挂机按钮",
+          "events": {
+            "Click": "_启动挂机按钮_被单击"
+          },
+          "background": "#DCFCE7",
+          "foreground": "#14532D",
+          "fontBold": true
+        },
+        {
+          "content": "停止挂机",
+          "x": 151,
+          "y": 68,
+          "width": 125,
+          "height": 32,
+          "fontSize": 13,
+          "id": "停止挂机按钮",
+          "type": "Button",
+          "name": "停止挂机按钮",
+          "events": {
+            "Click": "_停止挂机按钮_被单击"
+          },
+          "background": "#FEE2E2",
+          "foreground": "#7F1D1D",
+          "fontBold": true
+        },
+        {
+          "content": "自动回复私聊未读，群聊跳过；请保持微信窗口打开",
+          "x": 12,
+          "y": 110,
+          "width": 276,
+          "height": 32,
+          "fontSize": 11,
+          "foreground": "#9CA3AF",
+          "background": "transparent",
+          "id": "说明标签",
+          "type": "Label",
+          "name": "说明标签"
+        },
+        {
+          "content": "运行日志",
+          "x": 12,
+          "y": 150,
+          "width": 276,
+          "height": 18,
+          "fontSize": 12,
+          "foreground": "#9CA3AF",
+          "background": "transparent",
+          "id": "日志标题",
+          "type": "Label",
+          "name": "日志标题"
+        },
+        {
+          "content": "",
+          "x": 12,
+          "y": 172,
+          "width": 276,
+          "height": 425,
+          "fontSize": 12,
+          "id": "日志列表",
+          "type": "ListBox",
+          "name": "日志列表",
+          "background": "#0B1220",
+          "foreground": "#E5E7EB"
+        }
+      ],
+      "events": {
+        "Loaded": "_MainWindow_创建完毕"
+      }
+    }
+  ]
+}

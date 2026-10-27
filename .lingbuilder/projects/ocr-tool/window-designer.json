@@ -1,0 +1,179 @@
+{
+  "id": "ocr-tool",
+  "name": "灵码截屏识字",
+  "resources": [
+    {
+      "allowDrop": true,
+      "cancelledHandler": "_文件对话框1_已取消",
+      "dropTargetId": "result",
+      "filesDroppedHandler": "_文件对话框1_文件被拖入",
+      "filesSelectedHandler": "_文件对话框1_文件已选择",
+      "filter": "图片文件|*.png;*.jpg;*.jpeg;*.bmp;*.webp|所有文件|*.*",
+      "id": "filedialog-main",
+      "multiple": false,
+      "name": "文件对话框1",
+      "ownerWindowId": "main-window",
+      "title": "选择要识别的图片",
+      "triggerControlId": "",
+      "type": "FileDialog"
+    }
+  ],
+  "schemaVersion": 2,
+  "windows": [
+    {
+      "background": "#1f2937",
+      "className": "MainWindow",
+      "controls": [
+        {
+          "content": "截屏识别",
+          "events": {
+            "Click": "_截屏识别按钮_被单击"
+          },
+          "fontBold": false,
+          "fontFamily": "Microsoft YaHei UI",
+          "fontItalic": false,
+          "fontSize": 12,
+          "fontUnderline": false,
+          "height": 34,
+          "id": "snap-btn",
+          "isEnabled": true,
+          "name": "截屏识别按钮",
+          "properties": {},
+          "type": "Button",
+          "visibility": "Visible",
+          "width": 118,
+          "x": 16,
+          "y": 14,
+          "background": "#007ACC",
+          "foreground": "#FFFFFF"
+        },
+        {
+          "content": "选择图片识别",
+          "events": {
+            "Click": "_选择图片按钮_被单击"
+          },
+          "fontBold": false,
+          "fontFamily": "Microsoft YaHei UI",
+          "fontItalic": false,
+          "fontSize": 12,
+          "fontUnderline": false,
+          "height": 34,
+          "id": "pick-btn",
+          "isEnabled": true,
+          "name": "选择图片按钮",
+          "properties": {},
+          "type": "Button",
+          "visibility": "Visible",
+          "width": 134,
+          "x": 144,
+          "y": 14,
+          "background": "#007ACC",
+          "foreground": "#FFFFFF"
+        },
+        {
+          "content": "就绪",
+          "fontBold": false,
+          "fontFamily": "Microsoft YaHei UI",
+          "fontItalic": false,
+          "fontSize": 12,
+          "fontUnderline": false,
+          "height": 22,
+          "id": "status",
+          "name": "状态标签",
+          "properties": {},
+          "type": "Label",
+          "width": 868,
+          "x": 16,
+          "y": 54,
+          "background": "transparent",
+          "foreground": "#FFFFFF",
+          "isEnabled": true,
+          "visibility": "Visible"
+        },
+        {
+          "content": "",
+          "fontBold": false,
+          "fontFamily": "Microsoft YaHei UI",
+          "fontItalic": false,
+          "fontSize": 12,
+          "fontUnderline": false,
+          "height": 428,
+          "id": "result",
+          "name": "识别结果",
+          "properties": {
+            "multiline": true,
+            "readOnly": true,
+            "scrollBars": "vertical"
+          },
+          "type": "TextBox",
+          "width": 868,
+          "x": 16,
+          "y": 84,
+          "background": "#2D2D30",
+          "foreground": "#FFFFFF",
+          "isEnabled": true,
+          "visibility": "Visible"
+        },
+        {
+          "background": "#0369A1",
+          "content": "识别剪贴板",
+          "events": {
+            "Click": "_识别剪贴板按钮_被单击"
+          },
+          "fontBold": false,
+          "fontFamily": "Microsoft YaHei UI",
+          "fontItalic": false,
+          "fontSize": 12,
+          "fontUnderline": false,
+          "foreground": "#FFFFFF",
+          "height": 34,
+          "id": "clip-btn",
+          "isEnabled": true,
+          "name": "识别剪贴板按钮",
+          "properties": {},
+          "type": "Button",
+          "visibility": "Visible",
+          "width": 118,
+          "x": 288,
+          "y": 14
+        }
+      ],
+      "description": "灵码截屏识字 默认主窗口",
+      "designerBackend": "win32",
+      "events": {
+        "Loaded": "_MainWindow_创建完毕"
+      },
+      "fileName": "MainWindow.xml",
+      "height": 560,
+      "id": "main-window",
+      "title": "灵码截屏识字",
+      "width": 900,
+      "titleBarBackground": "#2D2D30",
+      "titleBarForeground": "#CBD5E1",
+      "menuBackground": "#ffffff",
+      "menuForeground": "#000000",
+      "menuFontFamily": "Microsoft YaHei UI",
+      "menuFontSize": 11,
+      "menuFontBold": false,
+      "menuFontItalic": false,
+      "menuFontUnderline": false,
+      "cornerStyle": "rounded",
+      "iconStyle": "lingbuilder",
+      "borderStyle": "normal-resizable",
+      "borderlessDraggable": false,
+      "resizable": true,
+      "maximizable": true,
+      "windowFrame": {
+        "preset": "system",
+        "flags": 0,
+        "resizeBorder": {
+          "left": 6,
+          "top": 6,
+          "right": 6,
+          "bottom": 6
+        },
+        "cornerRadius": 10
+      }
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "enabledModuleIds": [
+    "lingbuilder.win32.basic",
+    "lingbuilder.advanced.process-memory",
+    "lingbuilder.std.buffer",
+    "lingbuilder.aoahid",
+    "lingbuilder.image.recognition",
+    "lingbuilder.std.bytes",
+    "lingbuilder.data.json",
+    "lingbuilder.fs.core",
+    "lingbuilder.std.text",
+    "lingbuilder.std.encoding",
+    "lingbuilder.ocr"
+  ],
+  "pinnedVersions": {
+    "lingbuilder.win32.basic": "1.0.0",
+    "lingbuilder.advanced.process-memory": "1.2.0",
+    "lingbuilder.std.buffer": "1.0.0",
+    "lingbuilder.aoahid": "1.1.0",
+    "lingbuilder.image.recognition": "1.0.0",
+    "lingbuilder.std.bytes": "1.4.0",
+    "lingbuilder.data.json": "2.0.0",
+    "lingbuilder.fs.core": "1.3.0",
+    "lingbuilder.std.text": "1.4.0",
+    "lingbuilder.std.encoding": "1.0.0",
+    "lingbuilder.ocr": "1.0.0"
+  }
+}

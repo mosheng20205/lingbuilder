@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "enabledModuleIds": [
+    "lingbuilder.win32.basic",
+    "lingbuilder.advanced.process-memory",
+    "lingbuilder.std.buffer",
+    "lingbuilder.fbro.browser",
+    "lingbuilder.fbro.vip",
+    "lingbuilder.fs.core",
+    "lingbuilder.threading",
+    "lingbuilder.fbro.events"
+  ],
+  "pinnedVersions": {
+    "lingbuilder.win32.basic": "1.0.0",
+    "lingbuilder.advanced.process-memory": "1.2.0",
+    "lingbuilder.std.buffer": "1.0.0",
+    "lingbuilder.fbro.browser": "2.12.0",
+    "lingbuilder.fbro.vip": "2.3.0",
+    "lingbuilder.fs.core": "1.3.0",
+    "lingbuilder.threading": "2.1.0",
+    "lingbuilder.fbro.events": "2.1.0"
+  }
+}

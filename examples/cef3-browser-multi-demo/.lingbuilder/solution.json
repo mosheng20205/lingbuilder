@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 2,
+  "id": "cef3-browser-multi-demo",
+  "name": "CEF3 多浏览器示例",
+  "startupProjectId": "cef3-browser-multi-demo",
+  "startupProjectIds": ["cef3-browser-multi-demo"],
+  "folders": [],
+  "projects": [
+    {
+      "type": "visual-cpp",
+      "id": "cef3-browser-multi-demo",
+      "name": "CEF3 多浏览器示例",
+      "sourceRoot": "src",
+      "configRoot": "config",
+      "designerPath": ".lingbuilder/window-designer.json",
+      "isDefault": true,
+      "references": []
+    }
+  ]
+}
