@@ -404,6 +404,11 @@ export interface ModuleCommandBindingParameter {
    * 语言服务据此跳过模块数组命令「必须传已声明数组变量（就地出参）」的校验。
    */
   cppConstRefArray?: boolean;
+  /**
+   * 项目 C++ 源码库 v6.2：handler 参数的跨线程封送标记（`处理器 名(...) 界面线程`）。
+   * 生成器把回调 lambda 改发为 PostMessage 封送（载荷值拷贝快照，界面线程执行，fire-and-forget）。
+   */
+  handlerMarshalUiThread?: boolean;
   /** 可选参数只能出现在参数列表尾部。 */
   optional?: boolean;
   /** 可选参数省略时使用的确定性默认值；null 表示“未设置”。 */

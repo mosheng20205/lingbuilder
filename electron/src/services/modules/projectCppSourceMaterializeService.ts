@@ -59,12 +59,14 @@ export async function materializeProjectCppSourceLibraries(
 ): Promise<MaterializeProjectCppSourceLibrariesResult> {
   const { cppLibraries, sourceRootAbsolute, buildDir, sourceDir, exportDir } = options;
   const result: MaterializeProjectCppSourceLibrariesResult = { blocking: [], sourceFiles: [], notes: [] };
-  const libraries = cppLibraries.filter(library => library.commands.length > 0 || library.classes.length > 0);
+  const libraries = cppLibraries.filter(library => library.commands.length > 0 || library.classes.length > 0 || library.structs.length > 0);
   if (libraries.length === 0) return result;
   void options.binDir;
   void options.logs;
 
   const moduleRoots = [buildDir, sourceDir, exportDir].map(dir => path.join(dir, 'modules', PROJECT_CPP_SOURCE_MODULE_ID));
+  // 头文件库结构体（v6）：收集头文件文本，供「struct 定义是否真的写在头文件里」静态扫描。
+  const headerTextsByLibrary = new Map<string, string[]>();
 
   for (const library of libraries) {
     // 附加包含目录（v3）：整目录递归复制进 modules/<id>/sources/<目录>，源码内的相对
@@ -114,6 +116,11 @@ export async function materializeProjectCppSourceLibraries(
         result.blocking.push(`第 ${fileRef.line} 行：源码库「${library.name}」的文件 ${fileRef.relativePath} 不是 UTF-8 编码。请把文件另存为 UTF-8（中文注释尤其如此），LingBuilder 编译链按 /utf-8 处理。`);
         continue;
       }
+      if (/\.(h|hpp|hh|hxx)$/iu.test(fileRef.relativePath) && library.structs.length > 0) {
+        const texts = headerTextsByLibrary.get(library.name) || [];
+        texts.push(content.toString('utf8'));
+        headerTextsByLibrary.set(library.name, texts);
+      }
       if (/\.(cpp|cc|cxx|c)$/iu.test(fileRef.relativePath)) {
         const stripped = stripCppComments(content.toString('utf8'));
         for (const entryRe of FORBIDDEN_ENTRY_SYMBOL_RES) {
@@ -134,6 +141,21 @@ export async function materializeProjectCppSourceLibraries(
       }
       if (/\.(cpp|cc|cxx|c)$/iu.test(fileRef.relativePath)) {
         result.sourceFiles.push(path.join(moduleRoots[1], 'sources', fileRef.relativePath));
+      }
+    }
+  }
+
+  // 头文件库结构体定义静态扫描（v6）：字段行只是访问器契约，定义必须真的来自头文件。
+  // 只扫声明的那几个头文件文本（定义可能经其它头引入，所以是 notes 提示而非阻断）。
+  for (const library of libraries) {
+    if (library.structs.length === 0 || library.headerFiles.length === 0) continue;
+    const texts = headerTextsByLibrary.get(library.name) || [];
+    if (texts.length === 0) continue;
+    for (const structItem of library.structs) {
+      const definitionRe = new RegExp(`\\bstruct\\s+${structItem.cppName}\\s*[^;]{0,400}\\{`, 'u');
+      const found = texts.some(text => definitionRe.test(stripCppComments(text)));
+      if (!found) {
+        result.notes.push(`C++ 源码库「${library.name}」：结构体 ${structItem.name}（${structItem.cppName}）的 struct 定义未在声明的头文件文本中直接找到（若定义经其它头引入可忽略；编译报 ${structItem.cppName} 未定义时请把定义补进头文件）。`);
       }
     }
   }

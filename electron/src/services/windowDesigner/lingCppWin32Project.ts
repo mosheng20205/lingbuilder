@@ -3179,6 +3179,9 @@ function generateNewEmojiMainCpp(
       : [];
   });
   const modulePreamble = generateModuleCppPreamble(enabledModules);
+  // C++ 源码库「界面线程」回调封送（v6.2）：源码真实调用封送回调才发射运行时与窗口创建。
+  const cppSourceMarshalRuntime = programRequestsCppSourceUiThreadMarshal(program.source, enabledModules) ? CPP_SOURCE_MARSHAL_RUNTIME : '';
+  const cppSourceMarshalWindowStartup = cppSourceMarshalRuntime ? CPP_SOURCE_MARSHAL_WINDOW_STARTUP : '';
   // new_emoji 模块的声明已经由模块前导区按稳定模块路径提供；再次通过
   // 通用头文件名包含会让同一组无 include guard 的 ABI 类型出现两份路径。
   const newEmojiModuleProvidesHeaders = enabledModules.some(module => {
@@ -4465,6 +4468,8 @@ ${webSocketHandlerDeclarations}
 
 ${httpClientIntegration}
 
+${cppSourceMarshalRuntime}
+
 ${httpServerRuntime}
 
 ${httpServerDocsRuntime}
@@ -4530,6 +4535,7 @@ ${uiaCleanupLine}
     }
     // 延迟调用的 message-only 宿主窗口必须在界面线程创建，否则 WM_TIMER 无处派发。
     LB_NE_InitializeDelayedCallHost();
+${cppSourceMarshalWindowStartup}
 ${webSocketClientEventWindowSetup}
 ${cdpClientEventWindowSetup}
 ${httpClientEventWindowSetup}
@@ -4575,6 +4581,7 @@ ${sunnyNetCleanup}
 ${webSocketClientCleanup}
 ${cdpClientCleanup}
 ${webSocketCleanup}
+${cppSourceMarshalRuntime ? '    if (g_lbCppSrcMarshalWindow) { DestroyWindow(g_lbCppSrcMarshalWindow); g_lbCppSrcMarshalWindow = nullptr; }' : ''}
     LB_NE_ShutdownFbro();
 ${uiaCleanupLine}
     if (SUCCEEDED(comResult)) CoUninitialize();
@@ -11440,6 +11447,9 @@ function generateMainCpp(
     .map((window, index) => `    case ${index}: return new ${toCppIdentifier(window.className)}(g_windows[${index}]);`)
     .join('\n');
   const moduleCppPreamble = generateModuleCppPreamble(enabledModules);
+  // C++ 源码库「界面线程」回调封送（v6.2）：源码真实调用封送回调才发射运行时与窗口创建。
+  const cppSourceMarshalRuntime = programRequestsCppSourceUiThreadMarshal(program.source, enabledModules) ? CPP_SOURCE_MARSHAL_RUNTIME : '';
+  const cppSourceMarshalWindowStartup = cppSourceMarshalRuntime ? CPP_SOURCE_MARSHAL_WINDOW_STARTUP : '';
   const edgeViewModuleEnabled = enabledModules.some(module => module.manifest.id === 'lingbuilder.edgeview');
   const embeddedSiteRuntimeSection = edgeViewModuleEnabled ? generateEmbeddedSiteRuntimeMembers(selectedWindow) : '';
   const fbroModuleEnabled = enabledModules.some(module => module.manifest.id === 'lingbuilder.fbro.browser');
@@ -11848,6 +11858,7 @@ static HINSTANCE g_instance = nullptr;
 // 两者并存不产生二义。
 static const wchar_t* LingCppWideArg(const wchar_t* value) { return value ? value : L""; }
 static const wchar_t* LingCppWideArg(const std::wstring& value) { return value.c_str(); }
+${cppSourceMarshalRuntime}
 
 // 运行期颜色参数解析：仅接受 “#RRGGBB” / “RRGGBB” 六位十六进制（与设计器属性同构），空文本由调用方按“保持原值”处理。
 static bool ParseRuntimeColor(const wchar_t* text, COLORREF& color) {
@@ -31560,6 +31571,7 @@ ${fbroInProcessEnabled ? `    if (!LB_FBroInitializeInProcess(fbroRuntimeDirecto
         ICC_PAGESCROLLER_CLASS | ICC_LINK_CLASS;
     InitCommonControlsEx(&controls);
     LoadLibraryW(L"Msftedit.dll");
+${cppSourceMarshalWindowStartup}
     if (!RegisterLingBuilderDataGridClass(instance)) { if (SUCCEEDED(mediaFoundationResult)) MFShutdown(); if (gdiplusToken) Gdiplus::GdiplusShutdown(gdiplusToken); ${uiaCleanupLine} CoUninitialize(); return 0; }
 
     WNDCLASSEXW windowClass = {};
@@ -31598,6 +31610,7 @@ ${fbroInProcessEnabled ? '        LB_FBro_Shutdown();' : ''}
     }
     if (SUCCEEDED(mediaFoundationResult)) MFShutdown();
     if (gdiplusToken) Gdiplus::GdiplusShutdown(gdiplusToken);
+${cppSourceMarshalRuntime ? '    if (g_lbCppSrcMarshalWindow) { DestroyWindow(g_lbCppSrcMarshalWindow); g_lbCppSrcMarshalWindow = nullptr; }' : ''}
 #if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
     // 与控制台入口同一退出回收口径：仍存活的窗口实例先回收自身 CEF 资源
     // （实例在 WM_NCDESTROY 已随窗口销毁时 IsWindow/ userdata 双双落空，不参与回收）。
@@ -33663,6 +33676,66 @@ function parseManagedHandlerReference(value?: string): string | undefined {
 }
 
 /**
+ * C++ 源码库回调封送（v6.2「界面线程」处理器）共享运行时：message-only 窗口 + 堆闭包 PostMessage 投递。
+ * 工作线程触发回调时把「参数值拷贝快照 + 调用」打成堆上 std::function 闭包投递到界面线程执行
+ * （fire-and-forget）；同线程投递保序、跨线程不保序；处理器内不得阻塞，投递方不得等待结果。
+ * 两个后端（Win32/new_emoji）共用同一份文本：闭包自带 this 捕获，WndProc 无需知道任何用户类型。
+ */
+const CPP_SOURCE_MARSHAL_RUNTIME = `
+// ===== C++ 源码库回调封送（「界面线程」处理器）：工作线程投递、界面线程执行 =====
+static constexpr UINT WM_LINGBUILDER_CPPSRC_MARSHAL = WM_APP + 0x60;
+static HWND g_lbCppSrcMarshalWindow = nullptr;
+
+static LRESULT CALLBACK LB_CppSrcMarshalWindowProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
+    if (message == WM_LINGBUILDER_CPPSRC_MARSHAL) {
+        std::function<void()>* lbInvoke = reinterpret_cast<std::function<void()>*>(lparam);
+        if (lbInvoke) {
+            (*lbInvoke)();
+            delete lbInvoke;
+        }
+        return 0;
+    }
+    return DefWindowProcW(hwnd, message, wparam, lparam);
+}
+
+static void LB_CppSrcCreateMarshalWindow() {
+    if (g_lbCppSrcMarshalWindow && IsWindow(g_lbCppSrcMarshalWindow)) return;
+    const wchar_t* lbMarshalClassName = L"LingBuilder.CppSource.MarshalWindow";
+    WNDCLASSEXW windowClass = {};
+    windowClass.cbSize = sizeof(windowClass);
+    windowClass.hInstance = GetModuleHandleW(nullptr);
+    windowClass.lpfnWndProc = LB_CppSrcMarshalWindowProc;
+    windowClass.lpszClassName = lbMarshalClassName;
+    if (!RegisterClassExW(&windowClass) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) return;
+    g_lbCppSrcMarshalWindow = CreateWindowExW(0, lbMarshalClassName, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, windowClass.hInstance, nullptr);
+}
+
+static void LB_CppSrcPostToUiThread(std::function<void()>* lbInvoke) {
+    // 封送窗口必须已在界面线程创建；未就绪或投递失败时丢弃载荷（fire-and-forget，没有同步回执）。
+    if (!g_lbCppSrcMarshalWindow || !PostMessageW(g_lbCppSrcMarshalWindow, WM_LINGBUILDER_CPPSRC_MARSHAL, 0, reinterpret_cast<LPARAM>(lbInvoke))) {
+        delete lbInvoke;
+    }
+}
+`;
+
+/** 封送窗口的创建调用（wWinMain / NE 启动序列内联行）：必须在界面线程、任何工作线程触发回调之前执行。 */
+const CPP_SOURCE_MARSHAL_WINDOW_STARTUP = '    // C++ 源码库封送窗口：界面线程创建，供「界面线程」回调投递（失败时投递端丢弃载荷）。\n    LB_CppSrcCreateMarshalWindow();';
+
+/** 源码里是否真实调用了带「界面线程」封送处理器参数的源码库命令（未用不发射封送窗口运行时）。 */
+function programRequestsCppSourceUiThreadMarshal(programSource: string, enabledModules: InstalledModule[]): boolean {
+  if (!programSource) return false;
+  for (const module of enabledModules) {
+    for (const binding of module.manifest.bindings?.commands || []) {
+      if (!binding.parameters?.some(parameter => parameter.type === 'handler' && parameter.handlerMarshalUiThread === true)) continue;
+      const escaped = binding.command.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+      const callPattern = new RegExp(`(?:^|[^\\p{L}\\p{N}_])${escaped}\\s*[（(]`, 'u');
+      if (callPattern.test(programSource)) return true;
+    }
+  }
+  return false;
+}
+
+/**
  * 项目 C++ 源码库的实参翻译（cppCallback / cppClassMethod 共用）：
  * 处理器参数按 handlerSignature 展开为 std::function<void(...)> 兼容 lambda（回调返回固定为空，
  * lambda 体只做转发）——Win32 后端 `[this]` 捕获窗口类成员子程序，new_emoji 后端无捕获直接调用
@@ -33685,6 +33758,28 @@ function translateCppSourceCallArgument(
     const signatureTypes = parameter.handlerSignature?.parameterTypes || [];
     const cppParameters = signatureTypes.map((chineseType, index) => `${resolveCppSourceType(chineseType)?.cpp || 'int'} p${index}`);
     const argumentList = signatureTypes.map((_, index) => `p${index}`).join(', ');
+    // 「界面线程」封送（v6.2）：同步直调改为 PostMessage 投递——载荷是参数的值拷贝快照
+    //（const wchar_t* 复制进 std::wstring，其余类型按值捕获），界面线程封送窗口执行后 delete。
+    // 封送是 fire-and-forget：投递即返回，回调返回值不可得（声明期已阻断封送+非空返回）。
+    if (parameter.handlerMarshalUiThread === true) {
+      const captureList = signatureTypes.map((chineseType, index) =>
+        (resolveCppSourceType(chineseType)?.cpp || 'int') === 'const wchar_t*'
+          ? `lbP${index}(std::wstring(p${index}))`
+          : `lbP${index}(p${index})`);
+      const marshaledArguments = signatureTypes.map((chineseType, index) =>
+        (resolveCppSourceType(chineseType)?.cpp || 'int') === 'const wchar_t*'
+          ? `lbP${index}.c_str()`
+          : `lbP${index}`);
+      const isNeBackend = translationContext.windowSelfReference === 'none';
+      const outerCaptures = isNeBackend ? '' : 'this';
+      const innerCaptures = isNeBackend ? captureList.join(', ') : ['this', ...captureList].join(', ');
+      const invocation = isNeBackend
+        ? `${toCppIdentifier(handlerName)}(${marshaledArguments.join(', ')})`
+        : `this->${toCppIdentifier(handlerName)}(${marshaledArguments.join(', ')})`;
+      return `[${outerCaptures}](${cppParameters.join(', ')}) {`
+        + ` std::function<void()>* lbInvoke = new std::function<void()>([${innerCaptures}]() { ${invocation}; });`
+        + ` LB_CppSrcPostToUiThread(lbInvoke); }`;
+    }
     if (translationContext.windowSelfReference === 'none') {
       return `[](${cppParameters.join(', ')}) { return ${toCppIdentifier(handlerName)}(${argumentList}); }`;
     }

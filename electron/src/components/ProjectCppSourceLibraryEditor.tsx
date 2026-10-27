@@ -22,6 +22,7 @@ import {
   LingCppCppClass,
   LingCppCppClassMethod,
   LingCppCppSourceLibrary,
+  LingCppCppSourceStruct,
   LingCppParameter
 } from '../services/lingCpp/types';
 
@@ -37,6 +38,8 @@ interface ProjectCppSourceLibraryEditorProps {
 
 const RETURN_TYPES = ['整数型', '长整数型', '小数型', '单精度小数型', '逻辑型', '字节型', '文本型', '字节集', '指针整数', '整数型[]', '文本型[]', '小数型[]', '空'];
 const PARAMETER_TYPES = ['整数型', '长整数型', '小数型', '单精度小数型', '逻辑型', '字节型', '文本型', '字节集', '指针整数', '整数型[]', '长整数型[]', '小数型[]', '文本型[]', '处理器'];
+/** 结构体字段类型白名单（文本型字段即 std::wstring，无 DLL 定长约束）。 */
+const STRUCT_FIELD_TYPES = ['整数型', '长整数型', '小数型', '单精度小数型', '逻辑型', '字节型', '指针整数', '文本型'];
 
 /** 易语言定义表式统一网格：命令名 / 返回类型 / C++ 函数名 / 备注 / 行操作列。 */
 const GRID_COLUMNS = '168px 132px 148px minmax(180px, 1fr) 34px';
@@ -59,7 +62,8 @@ function createEmptyLibrary(): LingCppCppSourceLibrary {
     headerFiles: [],
     includeDirs: [],
     commands: [],
-    classes: []
+    classes: [],
+    structs: []
   };
 }
 
@@ -348,6 +352,55 @@ export default function ProjectCppSourceLibraryEditor(props: ProjectCppSourceLib
     });
   };
 
+  // ===== 结构体块操作（结构体名/C++类型名/字段，v6） =====
+  const updateStruct = (libraryIndex: number, structIndex: number, patch: Partial<Pick<LingCppCppSourceStruct, 'name' | 'cppName'>>) => {
+    applyModel(libraries.map((library, index) => index !== libraryIndex ? library : {
+      ...library,
+      structs: library.structs.map((structItem, i) => i === structIndex ? { ...structItem, ...patch } : structItem)
+    }));
+  };
+  const addStruct = () => {
+    const targetIndex = libraries.findIndex(matchesAnyCommand);
+    const libraryIndex = targetIndex >= 0 ? targetIndex : 0;
+    applyModel(libraries.map((library, index) => index !== libraryIndex ? library : {
+      ...library,
+      structs: [...library.structs, { name: `新结构体${library.structs.length + 1}`, cppName: '', line: 0, fields: [] }]
+    }));
+  };
+  const removeStruct = (libraryIndex: number, structIndex: number) => {
+    applyModel(libraries.map((library, index) => index !== libraryIndex ? library : {
+      ...library,
+      structs: library.structs.filter((_, i) => i !== structIndex)
+    }));
+  };
+  const updateStructField = (libraryIndex: number, structIndex: number, fieldIndex: number, patch: Partial<Pick<LingCppCppSourceStruct['fields'][number], 'name' | 'type' | 'note'>>) => {
+    applyModel(libraries.map((library, index) => index !== libraryIndex ? library : {
+      ...library,
+      structs: library.structs.map((structItem, i) => i !== structIndex ? structItem : {
+        ...structItem,
+        fields: structItem.fields.map((field, j) => j === fieldIndex ? { ...field, ...patch } : field)
+      })
+    }));
+  };
+  const addStructField = (libraryIndex: number, structIndex: number) => {
+    applyModel(libraries.map((library, index) => index !== libraryIndex ? library : {
+      ...library,
+      structs: library.structs.map((structItem, i) => i !== structIndex ? structItem : {
+        ...structItem,
+        fields: [...structItem.fields, { name: `字段${structItem.fields.length + 1}`, type: '整数型', line: 0 }]
+      })
+    }));
+  };
+  const removeStructField = (libraryIndex: number, structIndex: number, fieldIndex: number) => {
+    applyModel(libraries.map((library, index) => index !== libraryIndex ? library : {
+      ...library,
+      structs: library.structs.map((structItem, i) => i !== structIndex ? structItem : {
+        ...structItem,
+        fields: structItem.fields.filter((_, j) => j !== fieldIndex)
+      })
+    }));
+  };
+
   const addCommand = () => {
     const targetIndex = libraries.findIndex(library => matchesAnyCommand(library));
     const libraryIndex = targetIndex >= 0 ? targetIndex : 0;
@@ -414,9 +467,15 @@ export default function ProjectCppSourceLibraryEditor(props: ProjectCppSourceLib
   const importHeaderDeclarations = () => {
     const commands = parseCppHeaderDeclarations(headerText);
     if (commands.length === 0) {
-      setFeedback('没有从头文件解析出受支持的声明。仅支持 白名单类型 的全局函数；模板/类/复杂签名请手写声明。');
+      const hasStruct = /\bstruct\s+[A-Za-z_]\w*\s*(?:[[{:]|$)/u.test(headerText);
+      setFeedback(hasStruct
+        ? '没有解析出受支持的函数声明。检测到 struct 定义：结构体请点「添加结构体」手写声明块（结构体名 + = C++类型名 + 字段行），导入器只解析白名单类型的全局函数。'
+        : '没有从头文件解析出受支持的声明。仅支持 白名单类型 的全局函数；模板/类/复杂签名请手写声明。');
       return;
     }
+    const structHint = /\bstruct\s+[A-Za-z_]\w*\s*(?:[[{:]|$)/u.test(headerText)
+      ? '（检测到 struct 定义未自动导入：结构体请用「添加结构体」手写声明块）'
+      : '';
     const targetIndex = libraries.findIndex(matchesAnyCommand);
     const libraryIndex = targetIndex >= 0 ? targetIndex : 0;
     const existing = new Set(libraries[libraryIndex].commands.map(command => command.cppName || command.name));
@@ -425,7 +484,7 @@ export default function ProjectCppSourceLibraryEditor(props: ProjectCppSourceLib
       ...library,
       commands: [...library.commands, ...fresh]
     }));
-    setFeedback(`已从头文件导入 ${fresh.length} 条声明初稿（跳过 ${commands.length - fresh.length} 条重复/不支持项）；请逐条核对函数名与参数。`);
+    setFeedback(`已从头文件导入 ${fresh.length} 条声明初稿（跳过 ${commands.length - fresh.length} 条重复/不支持项）；请逐条核对函数名与参数。${structHint}`);
     setHeaderText('');
     setShowHeaderImport(false);
   };
@@ -685,6 +744,70 @@ export default function ProjectCppSourceLibraryEditor(props: ProjectCppSourceLib
           ))}
           <button className={miniButton} disabled={readOnly} onClick={addClass} title="类块：合成 类名_创建/销毁/方法 命令，句柄=长整数型">
             <Plus className="h-3 w-3" />添加类
+          </button>
+
+          {/* ===== 结构体块：结构体 中文 = CppStruct + 字段行（合成 结构名_创建/销毁/取X/置X 命令） ===== */}
+          {library.structs.map((structItem, structIndex) => (
+            <div key={`struct-${structIndex}`} className={`rounded border mt-3 p-2 ${isDarkMode ? 'border-[#3b3d46]' : 'border-slate-300'}`}>
+              <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                <span className={isDarkMode ? 'text-slate-400' : 'text-slate-500'}>结构体</span>
+                <input className={`${input} w-32`} style={{ color: commandNameColor }} value={structItem.name} readOnly={readOnly}
+                  onChange={event => updateStruct(libraryIndex, structIndex, { name: event.target.value })} />
+                <span className={isDarkMode ? 'text-slate-400' : 'text-slate-500'}>=</span>
+                <input className={`${input} w-40`} style={{ color: cppNameColor }} value={structItem.cppName} readOnly={readOnly} placeholder="Point"
+                  title="C++ 侧结构体名（英文标识符）；命令参数按 const Point& 传、返回按值返回并自动包裹为句柄"
+                  onChange={event => updateStruct(libraryIndex, structIndex, { cppName: event.target.value.trim() })} />
+                <span className={`text-[11px] ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                  合成 {structItem.name || '结构名'}_创建/销毁 与每字段 取/置 命令；句柄=长整数型
+                </span>
+                <button className={`${miniButton} ml-auto`} disabled={readOnly} title="删除此结构体"
+                  onClick={() => removeStruct(libraryIndex, structIndex)}>
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </div>
+              <div className={`grid border-t pt-1 ${line}`} style={paramGridStyle}>
+                <div className={thCell}>字段名</div>
+                <div className={`${thCell} border-l ${line}`}>类型</div>
+                <div className={`${thCell} border-l ${line}`} />
+                <div className={`${thCell} border-l ${line}`}>备注</div>
+                <div className={`${thCell} border-l ${line}`} />
+              </div>
+              {structItem.fields.map((field, fieldIndex) => (
+                <div key={fieldIndex} className={`grid border-t ${line}`} style={paramGridStyle}>
+                  <div className={tdCell}>
+                    <input className={cellInput} style={{ color: commandNameColor }} value={field.name} readOnly={readOnly}
+                      onChange={event => updateStructField(libraryIndex, structIndex, fieldIndex, { name: event.target.value })} />
+                  </div>
+                  <div className={`${tdCell} border-l ${line}`}>
+                    <select className={cellSelect} style={{ color: typeColor }} value={field.type} disabled={readOnly}
+                      title="文本型字段即 std::wstring（无需定长）；不支持数组/嵌套结构体/字节集字段"
+                      onChange={event => updateStructField(libraryIndex, structIndex, fieldIndex, { type: event.target.value })}>
+                      {STRUCT_FIELD_TYPES.map(item => <option key={item} value={item}>{item}</option>)}
+                    </select>
+                  </div>
+                  <div className={`${tdCell} border-l ${line}`} />
+                  <div className={`${tdCell} border-l ${line}`}>
+                    <input className={cellInput} style={{ color: noteColor }} value={field.note || ''} readOnly={readOnly} placeholder="选填"
+                      onChange={event => updateStructField(libraryIndex, structIndex, fieldIndex, { note: event.target.value || undefined })} />
+                  </div>
+                  <div className={`${tdCell} border-l ${line} justify-center`}>
+                    <button className={miniButton} disabled={readOnly} title="删除此字段"
+                      onClick={() => removeStructField(libraryIndex, structIndex, fieldIndex)}>
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+              <div className={`flex h-9 items-center justify-between border-t px-2 ${line}`}>
+                <button className={miniButton} disabled={readOnly}
+                  onClick={() => addStructField(libraryIndex, structIndex)}>
+                  <Plus className="h-3 w-3" />添加字段
+                </button>
+              </div>
+            </div>
+          ))}
+          <button className={miniButton} disabled={readOnly} onClick={addStruct} title="结构体块：合成 结构名_创建/销毁/取X/置X 命令，句柄=长整数型；命令参数/返回可引用结构体名">
+            <Plus className="h-3 w-3" />添加结构体
           </button>
 
           <div className={`grid border-t mt-3 pt-1 ${line}`} style={gridStyle}>

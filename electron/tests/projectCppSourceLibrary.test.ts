@@ -568,3 +568,356 @@ test('v5 虚拟模块把类名登记为不透明句柄类型（cppType=long long
   const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
   assert.ok(mainCpp.includes('long long 对象 = 0;'), 'main.cpp 未把类类型局部声明翻译为 long long 句柄');
 });
+
+// ===== v6：结构体映射 =====
+
+const V6_SOURCE = [
+  '包 项目C++源码库',
+  '',
+  'C++源码库 几何库',
+  '  源码 = cpp/geometry.cpp',
+  '  结构体 点 = Point',
+  '    小数型 x // 横坐标',
+  '    小数型 y',
+  '    文本型 名称',
+  '  结束结构体',
+  '  小数型 两点距离(点 a, 点 b) = distance',
+  '  点 取中点(点 a, 点 b) = midpoint',
+  '  文本型 描述(点 p) = describe',
+  '结束C++源码库'
+].join('\n');
+
+test('v6 解析结构体块（字段/备注/C++类型名）并序列化 100% 往返幂等', () => {
+  const parsed = parseLingCpp(V6_SOURCE);
+  assert.equal(parsed.diagnostics.length, 0);
+  const library = parsed.program.cppLibraries[0];
+  assert.equal(library.structs.length, 1);
+  const structItem = library.structs[0];
+  assert.equal(structItem.name, '点');
+  assert.equal(structItem.cppName, 'Point');
+  assert.deepEqual(structItem.fields.map(field => `${field.type} ${field.name}`), ['小数型 x', '小数型 y', '文本型 名称']);
+  assert.equal(structItem.fields[0].note, '横坐标');
+  const serialized = serializeProjectCppSourceLibraries('项目C++源码库', parsed.program.cppLibraries);
+  assert.ok(serialized.includes('结构体 点 = Point'), serialized);
+  assert.ok(serialized.includes('小数型 x // 横坐标'));
+  const second = parseLingCpp(serialized).program.cppLibraries;
+  const serializedAgain = serializeProjectCppSourceLibraries('项目C++源码库', second);
+  assert.equal(serializedAgain, serialized);
+  assert.equal(second[0].commands[1].returnType, '点');
+  assert.equal(second[0].commands[1].parameters[0].type, '点');
+});
+
+test('v6 诊断：字段类型白名单、结构体重名、非 ASCII 类型名、访问器命令名冲突', () => {
+  const badFieldsSource = [
+    '包 项目C++源码库',
+    'C++源码库 库一',
+    '  源码 = cpp/a.cpp',
+    '  结构体 点 = Point',
+    '    小数型 x',
+    '    字节集 数据',
+    '  结束结构体',
+    '  结构体 点 = Vec2',
+    '    整数型[8] 数据',
+    '  结束结构体',
+    '  结构体 坐标 = 坐标',
+    '    小数型 x',
+    '  结束结构体',
+    '结束C++源码库'
+  ].join('\n');
+  const messages = getProjectCppSourceLibraryDiagnostics(badFieldsSource).map(item => item.message);
+  assert.ok(messages.some(item => item.includes('字段「数据」类型「字节集」不支持')), messages.join('\n'));
+  assert.ok(messages.some(item => item.includes('与「库一」库中的结构体重名')), messages.join('\n'));
+  assert.ok(messages.some(item => item.includes('C++ 类型名「坐标」不是合法的英文标识符')), messages.join('\n'));
+  const nestedSource = [
+    '包 项目C++源码库',
+    'C++源码库 库一',
+    '  源码 = cpp/a.cpp',
+    '  结构体 点 = Point',
+    '    小数型 x',
+    '  结束结构体',
+    '  结构体 线段 = Segment',
+    '    点 起点',
+    '  结束结构体',
+    '结束C++源码库'
+  ].join('\n');
+  const nestedMessages = getProjectCppSourceLibraryDiagnostics(nestedSource).map(item => item.message);
+  assert.ok(nestedMessages.some(item => item.includes('字段「起点」类型「点」是结构体')), nestedMessages.join('\n'));
+  const accessorClashSource = [
+    '包 项目C++源码库',
+    'C++源码库 库一',
+    '  源码 = cpp/a.cpp',
+    '  结构体 点 = Point',
+    '    小数型 x',
+    '  结束结构体',
+    '  整数型 点_创建() = make_point',
+    '结束C++源码库'
+  ].join('\n');
+  const clashMessages = getProjectCppSourceLibraryDiagnostics(accessorClashSource).map(item => item.message);
+  assert.ok(clashMessages.some(item => item.includes('访问器命令 点_创建 与已声明的命令重名')), clashMessages.join('\n'));
+});
+
+test('v6 诊断：跨库结构体引用、类方法结构体、回调签名结构体、命名空间+结构体、结构体传址', () => {
+  const crossLibrarySource = [
+    '包 项目C++源码库',
+    'C++源码库 库一',
+    '  源码 = cpp/a.cpp',
+    '  结构体 点 = Point',
+    '    小数型 x',
+    '  结束结构体',
+    '结束C++源码库',
+    'C++源码库 库二',
+    '  源码 = cpp/b.cpp',
+    '  小数型 长度(点 p) = length',
+    '结束C++源码库'
+  ].join('\n');
+  const crossMessages = getProjectCppSourceLibraryDiagnostics(crossLibrarySource)
+    .map(item => `${item.message} ${item.suggestion}`);
+  assert.ok(crossMessages.some(item => item.includes('「点」是「库一」库的结构体') && item.includes('库内作用域')), crossMessages.join('\n'));
+  const classMethodSource = [
+    '包 项目C++源码库',
+    'C++源码库 库一',
+    '  源码 = cpp/a.cpp',
+    '  头文件 = cpp/a.h',
+    '  结构体 点 = Point',
+    '    小数型 x',
+    '  结束结构体',
+    '  类 计数器 = Counter',
+    '    方法 小数型 计算含点(点 p)',
+    '    方法 点 取原点()',
+    '  结束类',
+    '结束C++源码库'
+  ].join('\n');
+  const classMessages = getProjectCppSourceLibraryDiagnostics(classMethodSource)
+    .map(item => `${item.message} ${item.suggestion}`);
+  assert.ok(classMessages.some(item => item.includes('类方法暂不支持结构体参数')), classMessages.join('\n'));
+  assert.ok(classMessages.some(item => item.includes('方法 取原点 返回类型「点」是结构体')), classMessages.join('\n'));
+  const callbackSource = V6_SOURCE.replace(
+    '  文本型 描述(点 p) = describe',
+    '  空 执行(处理器 回调(点 状态)) = run');
+  const callbackMessages = getProjectCppSourceLibraryDiagnostics(callbackSource).map(item => item.message);
+  assert.ok(callbackMessages.some(item => item.includes('回调签名参数「状态」类型「点」是结构体')), callbackMessages.join('\n'));
+  const namespaceSource = V6_SOURCE.replace('  源码 = cpp/geometry.cpp', '  源码 = cpp/geometry.cpp\n  命名空间 = geo');
+  const namespaceMessages = getProjectCppSourceLibraryDiagnostics(namespaceSource).map(item => item.message);
+  assert.ok(namespaceMessages.some(item => item.includes('结构体 点 暂不支持命名空间')), namespaceMessages.join('\n'));
+  const byRefSource = V6_SOURCE.replace('小数型 两点距离(点 a, 点 b)', '小数型 两点距离(点 a 传址, 点 b)');
+  const byRefMessages = getProjectCppSourceLibraryDiagnostics(byRefSource).map(item => item.message);
+  assert.ok(byRefMessages.some(item => item.includes('结构体参数「a」不支持传址')), byRefMessages.join('\n'));
+});
+
+test('v6 虚拟模块：访问器命令与 binding（句柄=longLong）、命令 runtimeName 指向适配器、结构体名登记句柄类型', () => {
+  const module = createProjectCppSourceDeclarationModule(parseLingCpp(V6_SOURCE).program.cppLibraries, 'proj-v6');
+  assert.ok(module);
+  const commands = module.manifest.contributes.commands;
+  const accessorNames = ['点_创建', '点_销毁', '点_取x', '点_置x', '点_取y', '点_置y', '点_取名称', '点_置名称'];
+  accessorNames.forEach(name => assert.ok(commands.some(item => item.name === name), `缺少访问器命令 ${name}`));
+  assert.equal(commands.find(item => item.name === '点_取x')?.returnType, '小数型');
+  assert.equal(commands.find(item => item.name === '点_置x')?.returnType, '空');
+  assert.equal(commands.find(item => item.name === '点_取名称')?.returnType, '文本型');
+  const bindings = module.manifest.bindings.commands;
+  const distanceBinding = bindings.find(item => item.command === '两点距离');
+  assert.equal(distanceBinding?.runtimeName, '两点距离');
+  assert.equal(distanceBinding?.returnType, 'double');
+  assert.ok(distanceBinding?.parameters.every(parameter => parameter.type === 'longLong'));
+  const midpointBinding = bindings.find(item => item.command === '取中点');
+  assert.equal(midpointBinding?.runtimeName, '取中点');
+  assert.equal(midpointBinding?.returnType, 'longLong');
+  const createBinding = bindings.find(item => item.command === '点_创建');
+  assert.equal(createBinding?.runtimeName, '点_创建');
+  assert.ok(!JSON.stringify(createBinding).includes('invocation'), '访问器不应带 invocation');
+  const contributedType = module.manifest.contributes.types?.find(item => item.name === '点');
+  assert.ok(contributedType);
+  assert.equal(contributedType.cppType, 'long long');
+  const aliasSource = V6_SOURCE.replace('文本型 描述(点 p) = describe', '文本型 描述(点 p) = 点_取x');
+  const aliasModule = createProjectCppSourceDeclarationModule(parseLingCpp(aliasSource).program.cppLibraries, 'proj-v6b');
+  const describeCommand = aliasModule?.manifest.contributes.commands.find(item => item.name === '描述');
+  assert.equal(describeCommand?.aliases, undefined);
+});
+
+test('v6 声明头：结构体定义在期望签名之前、签名 const Point&/按值返回、访问器与适配器发射', () => {
+  const header = generateProjectCppSourceDeclarationHeader(parseLingCpp(V6_SOURCE).program.cppLibraries);
+  const structDefIndex = header.indexOf('struct Point {');
+  const declIndex = header.indexOf('double distance(const Point& p0, const Point& p1);');
+  assert.ok(structDefIndex >= 0, '缺结构体定义');
+  assert.ok(declIndex > structDefIndex, '期望签名必须在结构体定义之后');
+  assert.ok(header.includes('Point midpoint(const Point& p0, const Point& p1);'), header);
+  assert.ok(header.includes('std::wstring 名称;'), '文本型字段应为 std::wstring');
+  assert.ok(header.includes('#include <string>'), '文本型字段需要 <string>');
+  assert.ok(header.includes('inline long long 点_创建() { return reinterpret_cast<long long>(new Point()); }'));
+  assert.ok(header.includes('inline void 点_销毁(long long lbHandle) { if (lbHandle) delete reinterpret_cast<Point*>(lbHandle); }'));
+  assert.ok(header.includes('inline double 点_取x(long long lbHandle) { return lbHandle ? reinterpret_cast<Point*>(lbHandle)->x : 0.0; }'));
+  assert.ok(header.includes('inline const wchar_t* 点_取名称(long long lbHandle) { return lbHandle ? reinterpret_cast<Point*>(lbHandle)->名称.c_str() : L""; }'));
+  assert.ok(header.includes('inline void 点_置名称(long long lbHandle, const wchar_t* lbValue)'));
+  assert.ok(header.includes('inline double 两点距离(long long p0, long long p1) { return distance(*reinterpret_cast<Point*>(p0), *reinterpret_cast<Point*>(p1)); }'));
+  assert.ok(header.includes('inline long long 取中点(long long p0, long long p1) { return reinterpret_cast<long long>(new Point(midpoint(*reinterpret_cast<Point*>(p0), *reinterpret_cast<Point*>(p1)))); }'));
+  const headeredSource = V6_SOURCE.replace('  源码 = cpp/geometry.cpp', '  源码 = cpp/geometry.cpp\n  头文件 = cpp/geometry.h');
+  const headeredHeader = generateProjectCppSourceDeclarationHeader(parseLingCpp(headeredSource).program.cppLibraries);
+  assert.ok(!headeredHeader.includes('struct Point {'), '头文件库不应发结构体定义');
+  assert.ok(headeredHeader.includes('结构体 点 → Point（定义来自上方头文件'), headeredHeader);
+  const captureSource = V6_SOURCE.replace('  源码 = cpp/geometry.cpp', '  源码 = cpp/geometry.cpp\n  异常 = 捕获');
+  const captureHeader = generateProjectCppSourceDeclarationHeader(parseLingCpp(captureSource).program.cppLibraries);
+  assert.ok(captureHeader.includes('inline long long LB_CppSrcWrap_1_midpoint(long long p0, long long p1) {'), captureHeader);
+  assert.ok(captureHeader.includes('try { return reinterpret_cast<long long>(new Point(midpoint(*reinterpret_cast<Point*>(p0), *reinterpret_cast<Point*>(p1)))); }'));
+  assert.ok(!captureHeader.includes('inline long long 取中点('), '捕获库不应另发适配器');
+});
+
+test('v6 生成器：结构体命令调用发射适配器调用，结构体名局部声明翻译为 long long', () => {
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.win32.basic');
+  const enabledModules: InstalledModule[] = [{ manifest: manifest!, installPath: 'builtin://lingbuilder.win32.basic', isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] }];
+  const project = {
+    schemaVersion: 2,
+    id: 'cpp-source-v6',
+    name: '结构体映射',
+    windows: [{ id: 'main', fileName: 'MainWindow.xml', className: 'MainWindow', title: 'v6', width: 320, height: 200, background: '#202028', description: '', controls: [] }]
+  } as never;
+  const windowSource = [
+    '类 MainWindow',
+    '    事件 _MainWindow_创建完毕()',
+    '        局部 点 a = 0',
+    '        局部 点 b = 0',
+    '        局部 小数型 距离 = 0',
+    '        局部 点 中点 = 0',
+    '        a = 点_创建()',
+    '        b = 点_创建()',
+    '        点_置x(a, 3)',
+    '        点_置y(a, 4)',
+    '        距离 = 两点距离(a, b)',
+    '        中点 = 取中点(a, b)',
+    '        调试输出(点_取名称(中点))',
+    '        点_销毁(中点)',
+    '        点_销毁(b)',
+    '        点_销毁(a)',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const generated = generateLingCppNativeWin32Project(project, {
+    enabledModules,
+    lingCppSourceCode: windowSource,
+    lingCppSourceFilePath: 'src/MainWindow.lcpp',
+    lingCppSources: [
+      { filePath: 'src/MainWindow.lcpp', sourceCode: windowSource },
+      { filePath: 'src/项目C++源码库.lcpp', sourceCode: V6_SOURCE }
+    ]
+  });
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.ok(mainCpp.includes('long long a = 0;'), '结构体类型局部声明应翻译为 long long 句柄');
+  assert.ok(mainCpp.includes('点_创建()'));
+  assert.ok(mainCpp.includes('点_置x(a, 3)'));
+  assert.ok(mainCpp.includes('两点距离(a, b)'));
+  assert.ok(mainCpp.includes('取中点(a, b)'));
+  assert.ok(mainCpp.includes('点_取名称(中点)'));
+  assert.ok(mainCpp.includes('点_销毁(中点)'));
+});
+
+test('v6 .h 导入器跳过 struct 定义（提示手写声明块）', () => {
+  const headerText = [
+    'struct Point { double x; double y; };',
+    'int add(int a, int b);'
+  ].join('\n');
+  const commands = parseCppHeaderDeclarations(headerText);
+  assert.equal(commands.length, 1);
+  assert.equal(commands[0].cppName, 'add');
+});
+
+// ===== v6.2：跨线程回调封送（「界面线程」处理器） =====
+
+const V62_SOURCE = [
+  '包 项目C++源码库',
+  '',
+  'C++源码库 后台库',
+  '  源码 = cpp/worker.cpp',
+  '  空 执行任务(整数型 次数, 处理器 进度回调(整数型 序号, 文本型 阶段) 界面线程) = run_worker',
+  '结束C++源码库'
+].join('\n');
+
+test('v6.2 解析「界面线程」封送后缀并序列化往返；封送+回传给中文阻断', () => {
+  const parsed = parseLingCpp(V62_SOURCE);
+  assert.equal(parsed.diagnostics.length, 0);
+  const parameter = parsed.program.cppLibraries[0].commands[0].parameters[1];
+  assert.equal(parameter.type, '处理器');
+  assert.equal(parameter.handlerMarshalUiThread, true);
+  assert.deepEqual((parameter.handlerSignatureParameters || []).map(item => item.type), ['整数型', '文本型']);
+  // 序列化 100% 往返
+  const serialized = serializeProjectCppSourceLibraries('项目C++源码库', parsed.program.cppLibraries);
+  assert.ok(serialized.includes('处理器 进度回调(整数型 序号, 文本型 阶段) 界面线程'), serialized);
+  const second = parseLingCpp(serialized).program.cppLibraries;
+  assert.equal(serializeProjectCppSourceLibraries('项目C++源码库', second), serialized);
+  // 与 回传 同现可解析，但诊断阻断（封送是异步投递，无法同步回传）
+  const withReturn = V62_SOURCE.replace(
+    '处理器 进度回调(整数型 序号, 文本型 阶段) 界面线程',
+    '处理器 进度回调(整数型 序号) 回传 逻辑型 界面线程');
+  const blocked = getProjectCppSourceLibraryDiagnostics(withReturn).map(item => `${item.message} ${item.suggestion}`);
+  assert.ok(blocked.some(item => item.includes('「界面线程」封送且带非空返回')), blocked.join('\n'));
+  // 回调签名里不能写界面线程（整体不匹配处理器片段 → 该参数落不进内联签名）
+  assert.equal(parseLingCpp(V62_SOURCE).program.cppLibraries[0].commands[0].parameters[0].type, '整数型');
+});
+
+test('v6.2 虚拟模块 binding 参数带 handlerMarshalUiThread 标记', () => {
+  const module = createProjectCppSourceDeclarationModule(parseLingCpp(V62_SOURCE).program.cppLibraries, 'proj-v62');
+  assert.ok(module);
+  const binding = module?.manifest.bindings.commands.find(item => item.command === '执行任务');
+  assert.ok(binding);
+  const handlerParameter = binding.parameters.find(item => item.type === 'handler');
+  assert.ok(handlerParameter);
+  assert.equal(handlerParameter.handlerMarshalUiThread, true);
+  // 未声明封送的回调不带标记（维持线程透传）
+  const plainSource = V62_SOURCE.replace(' 界面线程) = run_worker', ') = run_worker');
+  const plainModule = createProjectCppSourceDeclarationModule(parseLingCpp(plainSource).program.cppLibraries, 'proj-v62b');
+  const plainHandler = plainModule?.manifest.bindings.commands.find(item => item.command === '执行任务')?.parameters.find(item => item.type === 'handler');
+  assert.equal(plainHandler?.handlerMarshalUiThread, undefined);
+});
+
+test('v6.2 生成器：封送回调发射 PostMessage 闭包，main.cpp 带封送窗口运行时与界面线程创建调用', () => {
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.win32.basic');
+  const enabledModules: InstalledModule[] = [{ manifest: manifest!, installPath: 'builtin://lingbuilder.win32.basic', isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] }];
+  const project = {
+    schemaVersion: 2,
+    id: 'cpp-source-v62',
+    name: '跨线程封送',
+    windows: [{ id: 'main', fileName: 'MainWindow.xml', className: 'MainWindow', title: 'v6.2', width: 320, height: 200, background: '#202028', description: '', controls: [] }]
+  } as never;
+  const windowSource = [
+    '类 MainWindow',
+    '    事件 _MainWindow_创建完毕()',
+    '        执行任务(3, &任务进度)',
+    '    结束',
+    '    空 任务进度(整数型 序号, 文本型 阶段)',
+    '        调试输出(到文本(序号) + 阶段)',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const generated = generateLingCppNativeWin32Project(project, {
+    enabledModules,
+    lingCppSourceCode: windowSource,
+    lingCppSourceFilePath: 'src/MainWindow.lcpp',
+    lingCppSources: [
+      { filePath: 'src/MainWindow.lcpp', sourceCode: windowSource },
+      { filePath: 'src/项目C++源码库.lcpp', sourceCode: V62_SOURCE }
+    ]
+  });
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const allGenerated = generated.files.map(file => file.content).join('\n');
+  // 封送 lambda：外层捕获 this，载荷值拷贝（文本型 → std::wstring），经 LB_CppSrcPostToUiThread 投递
+  assert.ok(
+    mainCpp.includes('[this](int p0, const wchar_t* p1) { std::function<void()>* lbInvoke = new std::function<void()>([this, lbP0(p0), lbP1(std::wstring(p1))]() { this->任务进度(lbP0, lbP1.c_str()); }); LB_CppSrcPostToUiThread(lbInvoke); }'),
+    'main.cpp 未发射封送 lambda'
+  );
+  // 封送窗口运行时与界面线程创建调用仅在真实使用时发射（运行时在 main.cpp 或分体布局的 lingbuilder_runtime.h）
+  assert.ok(allGenerated.includes('WM_LINGBUILDER_CPPSRC_MARSHAL'), '生成产物缺封送窗口运行时');
+  assert.ok(allGenerated.includes('PostMessageW(g_lbCppSrcMarshalWindow'), '生成产物缺 PostMessage 投递');
+  assert.ok(mainCpp.includes('LB_CppSrcCreateMarshalWindow();'), 'wWinMain 缺封送窗口创建调用');
+  // 负例：未使用封送回调的工程不发射封送运行时
+  const plainDeclaration = V62_SOURCE.replace(' 界面线程) = run_worker', ') = run_worker');
+  const plainGenerated = generateLingCppNativeWin32Project(project, {
+    enabledModules,
+    lingCppSourceCode: windowSource,
+    lingCppSourceFilePath: 'src/MainWindow.lcpp',
+    lingCppSources: [
+      { filePath: 'src/MainWindow.lcpp', sourceCode: windowSource },
+      { filePath: 'src/项目C++源码库.lcpp', sourceCode: plainDeclaration }
+    ]
+  });
+  const plainMainCpp = plainGenerated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const plainAllGenerated = plainGenerated.files.map(file => file.content).join('\n');
+  assert.ok(!plainAllGenerated.includes('WM_LINGBUILDER_CPPSRC_MARSHAL'), '未用封送不应发射封送窗口运行时');
+  assert.ok(plainMainCpp.includes('[this](int p0, const wchar_t* p1) { return this->任务进度(p0, p1); }'), '未封送回调应维持线程透传直调 lambda');
+});

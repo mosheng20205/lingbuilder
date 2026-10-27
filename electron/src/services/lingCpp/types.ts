@@ -138,6 +138,12 @@ export interface LingCppParameter {
    * 生成 std::function&lt;返回(形参...)&gt;，lambda 体带 return 转发。
    */
   handlerReturnType?: string;
+  /**
+   * 项目 C++ 源码库 v6.2：回调跨线程封送（`处理器 名(...) 界面线程`）。回调被工作线程触发时
+   * 经 PostMessage 投递到界面线程封送窗口执行（同步转异步、载荷值拷贝快照、返回必须为空）。
+   * 未声明该标记的回调维持线程透传（现状）。
+   */
+  handlerMarshalUiThread?: boolean;
 }
 
 export interface LingCppStatement {
@@ -177,6 +183,8 @@ export type LingCppAstNodeKind =
   | 'cpp-source-command'
   | 'cpp-source-class'
   | 'cpp-source-class-method'
+  | 'cpp-source-struct'
+  | 'cpp-source-struct-field'
   | 'class'
   | 'access'
   | 'member'
@@ -408,6 +416,31 @@ export interface LingCppCppClass {
   methods: LingCppCppClassMethod[];
 }
 
+/**
+ * 项目 C++ 源码库结构体块字段：`类型 字段名 // 备注`。文本型字段 = std::wstring（同工程编译，
+ * 无 DLL 定长约束）；不支持定长数组/嵌套结构体/字节集字段（声明诊断给中文提示）。
+ */
+export interface LingCppCppSourceStructField {
+  name: string;
+  type: string;
+  note?: string;
+  line: number;
+}
+
+/**
+ * 项目 C++ 源码库结构体块：`结构体 中文名 = CppStruct`，字段行合成 `结构名_创建/销毁/取X/置X`
+ * 全局命令，调用端以长整数型句柄持有值；C++ 函数参数位按 `const CppStruct&`、返回位按值。
+ * 定义归属与类块同规则：库带「头文件 =」时定义来自头文件（字段行只是访问器契约），
+ * 无头文件库由生成声明头直接发 struct 定义。
+ */
+export interface LingCppCppSourceStruct {
+  name: string;
+  /** C++ 侧结构体名（ASCII 标识符）。 */
+  cppName: string;
+  line: number;
+  fields: LingCppCppSourceStructField[];
+}
+
 /** 项目 C++ 源码库单条命令：命令名映射到源码内的全局 C++ 函数（`= 函数名` 必写，ASCII 标识符）。 */
 export interface LingCppCppSourceCommand {
   name: string;
@@ -453,6 +486,8 @@ export interface LingCppCppSourceLibrary {
   commands: LingCppCppSourceCommand[];
   /** 类块：合成 类名_创建/销毁/方法 命令（句柄化，类定义来自本库头文件）。 */
   classes: LingCppCppClass[];
+  /** 结构体块（v6）：合成 结构名_创建/销毁/取X/置X 命令（句柄化），命令参数/返回可引用本库结构体。 */
+  structs: LingCppCppSourceStruct[];
 }
 
 export interface AiConnectionConfig {

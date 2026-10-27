@@ -208,6 +208,14 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
   assert.match(String(client.getInstructions() || ''), /命名空间 = xxx/u, 'instructions 必须给出源码库命名空间语法（v4）');
   assert.match(String(client.getInstructions() || ''), /类块不支持命名空间/u, 'instructions 必须钉住命名空间的类边界（v4）');
   assert.match(String(client.getInstructions() || ''), /局部 计数器 对象 = 0/u, 'instructions 必须给出类类型化局部变量语法（v5）');
+  assert.match(String(client.getInstructions() || ''), /结构体 点 = Point/u, 'instructions 必须给出源码库结构体块语法（v6）');
+  assert.match(String(client.getInstructions() || ''), /const Point&/u, 'instructions 必须钉住结构体参数期望签名 const&（v6）');
+  assert.match(String(client.getInstructions() || ''), /点_创建\(\)/u, 'instructions 必须给出结构体访问器命令族（v6）');
+  assert.match(String(client.getInstructions() || ''), /结构体库内作用域/u, 'instructions 必须钉住结构体库内作用域红线（v6）');
+  assert.match(String(client.getInstructions() || ''), /#include "CppSourceLibraries\.h"/u, 'instructions 必须给出无头文件库用户源码 include 契约（v6）');
+  assert.match(String(client.getInstructions() || ''), /界面线程/u, 'instructions 必须给出跨线程封送声明语法（v6.2）');
+  assert.match(String(client.getInstructions() || ''), /封送\+`回传 类型` 同现是声明期中文阻断/u, 'instructions 必须钉住封送禁非空返回红线（v6.2）');
+  assert.match(String(client.getInstructions() || ''), /载荷=参数值拷贝快照/u, 'instructions 必须钉住封送载荷快照语义（v6.2）');
   assert.match(String(client.getInstructions() || ''), /颜色一律 RRGGBB/u, 'instructions 必须钉住 RRGGBB 颜色红线（大漠迁移）');
   assert.match(String(client.getInstructions() || ''), /右下边界是开区间/u, 'instructions 必须钉住截图开区间红线');
   assert.match(String(client.getInstructions() || ''), /后台_找图全部/u, 'instructions 必须给出多模板命中区分口径');

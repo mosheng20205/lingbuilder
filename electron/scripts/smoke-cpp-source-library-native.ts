@@ -59,6 +59,7 @@ const USER_TEXT_CPP = [
   '#include <algorithm>',
   '#include <functional>',
   '#include <stdexcept>',
+  '#include <thread>',
   '',
   'const wchar_t* greet(const wchar_t* name) {',
   '    static std::wstring message;',
@@ -86,6 +87,17 @@ const USER_TEXT_CPP = [
   '    for (int i = 1; i <= count; ++i) {',
   '        callback(i, L"步");',
   '    }',
+  '}',
+  '',
+  '// v6.2 封送链路：回调在 std::thread 工作线程触发；.lcpp 侧声明「界面线程」后，',
+  '// 生成端把回调展开为 PostMessage 封送（join 后全部投递完成，界面线程消息循环逐条执行）。',
+  'void run_worker_threaded(int count, std::function<void(int, const wchar_t*)> callback) {',
+  '    std::thread worker([count, callback]() {',
+  '        for (int i = 1; i <= count; ++i) {',
+  '            callback(i, L"步");',
+  '        }',
+  '    });',
+  '    worker.join();',
   '}',
   '',
   'std::vector<int> source_numbers() {',
@@ -138,6 +150,35 @@ const USER_COUNTER_H = [
   '};'
 ].join('\r\n');
 
+// 结构体库（v6）：无「头文件 =」——Point 定义由生成的 CppSourceLibraries.h 提供，
+// 用户源码按新契约 #include 声明头（模块 /I 已对所有 TU 生效）；中文字段「名称」
+// 生成 std::wstring 成员，这里同时验证用户侧中文成员访问可编译。
+const USER_GEOMETRY_CPP = [
+  '#include <cmath>',
+  '#include <string>',
+  '#include "CppSourceLibraries.h"',
+  '',
+  'double distance(const Point& a, const Point& b) {',
+  '    double dx = a.x - b.x;',
+  '    double dy = a.y - b.y;',
+  '    return std::sqrt(dx * dx + dy * dy);',
+  '}',
+  '',
+  'Point midpoint(const Point& a, const Point& b) {',
+  '    Point result;',
+  '    result.x = (a.x + b.x) / 2;',
+  '    result.y = (a.y + b.y) / 2;',
+  '    result.名称 = L"中点";',
+  '    return result;',
+  '}',
+  '',
+  '// 文本型返回的期望签名是 const wchar_t*（std::wstring 返回是另一个修饰名，会 C2556/LNK2019）。',
+  'const wchar_t* describe(const Point& p) {',
+  '    static std::wstring text;',
+  '    text = L"点(" + std::to_wstring(static_cast<int>(p.x)) + L"," + std::to_wstring(static_cast<int>(p.y)) + L")";',
+  '    return text.c_str();',
+  '}'
+].join('\r\n');
 const DECLARATION_SOURCE = [
   '包 项目C++源码库',
   '',
@@ -158,6 +199,7 @@ const DECLARATION_SOURCE = [
   '  字节集 倒序字节(字节集 数据) = reverse_bytes',
   '  整数型 校验字节(字节集 数据) = check_bytes',
   '  空 执行进度(整数型 次数, 处理器 进度回调(整数型 序号, 文本型 阶段)) = run_progress',
+  '  空 执行线程任务(整数型 次数, 处理器 线程进度(整数型 序号, 文本型 阶段) 界面线程) = run_worker_threaded',
   '  整数型[] 源数组() = source_numbers',
   '  整数型[] 缩放数组(整数型[] 数据, 整数型 倍数) = scale_values',
   '  整数型 校验缩放(整数型[] 数据) = check_scaled',
@@ -184,6 +226,18 @@ const DECLARATION_SOURCE = [
   '    方法 整数型 取当前() = get_value',
   '    方法 空 累加(整数型 步长) = add_value',
   '  结束类',
+  '结束C++源码库',
+  '',
+  'C++源码库 几何库',
+  '  源码 = cpp/geometry.cpp',
+  '  结构体 点 = Point',
+  '    小数型 x // 横坐标',
+  '    小数型 y',
+  '    文本型 名称',
+  '  结束结构体',
+  '  小数型 两点距离(点 a, 点 b) = distance',
+  '  点 取中点(点 a, 点 b) = midpoint',
+  '  文本型 描述点(点 p) = describe',
   '结束C++源码库'
 ].join('\n');
 
@@ -202,6 +256,7 @@ async function main() {
   const source = [
     '类 MainWindow',
     '    整数型 回调计数',
+    '    整数型 封送计数',
     '    事件 _MainWindow_创建完毕()',
     '        局部 整数型 和值 = 加法计算(123, 456)',
     '        如果 (和值 != 579)',
@@ -267,11 +322,53 @@ async function main() {
     '        如果 (当前值 != 42)',
     '            @ ExitProcess(9);',
     '        如果结束',
-    '        @ std::ofstream report("cpp-source-library-smoke.txt", std::ios::binary | std::ios::trunc); report << "OK\\n"; report.close();',
-    '        @ ExitProcess(0);',
+    '        // v6 结构体链路：句柄创建 → 置字段 → 结构体参数命令 → 结构体返回句柄 → 取字段 → 销毁。',
+    '        // 与类句柄同一提升铁律：带初始化的局部声明会提升到子程序最前，必须先声明后按序赋值。',
+    '        局部 点 a = 0',
+    '        局部 点 b = 0',
+    '        局部 点 中点 = 0',
+    '        局部 小数型 距离值 = 0',
+    '        局部 文本型 点描述 = ""',
+    '        a = 点_创建()',
+    '        b = 点_创建()',
+    '        点_置x(a, 3)',
+    '        点_置y(a, 4)',
+    '        点_置x(b, 0)',
+    '        点_置y(b, 0)',
+    '        距离值 = 两点距离(a, b)',
+    '        如果 (距离值 != 5)',
+    '            @ ExitProcess(16);',
+    '        如果结束',
+    '        中点 = 取中点(a, b)',
+    '        如果 (点_取x(中点) != 1.5)',
+    '            @ ExitProcess(17);',
+    '        如果结束',
+    '        点描述 = 描述点(a)',
+    '        如果 (点描述 != "点(3,4)")',
+    '            @ ExitProcess(18);',
+    '        如果结束',
+    '        点_销毁(中点)',
+    '        点_销毁(b)',
+    '        点_销毁(a)',
+    '        // v6.2 封送链路：工作线程触发 6 次回调（join 保证全部投递完成），封送窗口在界面线程',
+    '        // 逐条执行；此刻还在 创建完毕 内（消息循环未启动），断言必须等消息泵跑起来——用',
+    '        // 延迟调用 排一次 WM_TIMER（低优先级，排在已入队的封送消息之后）再校验计数并收尾。',
+    '        封送计数 = 0',
+    '        执行线程任务(6, &线程进度)',
+    '        延迟调用(800, &封送校验)',
     '    结束',
     '    空 进度回调(整数型 序号, 文本型 阶段)',
     '        回调计数 = 回调计数 + 1',
+    '    结束',
+    '    空 线程进度(整数型 序号, 文本型 阶段)',
+    '        封送计数 = 封送计数 + 1',
+    '    结束',
+    '    空 封送校验()',
+    '        如果 (封送计数 != 6)',
+    '            @ ExitProcess(19);',
+    '        如果结束',
+    '        @ std::ofstream report("cpp-source-library-smoke.txt", std::ios::binary | std::ios::trunc); report << "OK\\n"; report.close();',
+    '        @ ExitProcess(0);',
     '    结束',
     '    逻辑型 达标判定(整数型 值)',
     '        如果 (值 >= 4)',
@@ -322,6 +419,7 @@ async function main() {
   await fs.writeFile(path.join(projectDir, 'cpp', 'mymath.h'), USER_MATH_H, 'utf8');
   await fs.writeFile(path.join(projectDir, 'cpp', 'textlib.cpp'), USER_TEXT_CPP, 'utf8');
   await fs.writeFile(path.join(projectDir, 'cpp', 'counter.h'), USER_COUNTER_H, 'utf8');
+  await fs.writeFile(path.join(projectDir, 'cpp', 'geometry.cpp'), USER_GEOMETRY_CPP, 'utf8');
   // 附加包含目录（v3）：「包含目录 = cpp/third_party」整目录随物化复制。
   await fs.mkdir(path.join(projectDir, 'cpp', 'third_party'), { recursive: true });
   await fs.writeFile(path.join(projectDir, 'cpp', 'third_party', 'helper.h'), USER_HELPER_H, 'utf8');
@@ -354,8 +452,24 @@ async function main() {
     if (!mainCpp.includes('LB_CppSrcTakeError()')) throw new Error('main.cpp 未调用取错误命令（v3 异常捕获缺失）。');
     if (!mainCpp.includes('三数相加(1, 2, 3)')) throw new Error('main.cpp 未发射命名空间命令调用（v4 缺失）。');
     if (!mainCpp.includes('long long 对象 = 0;')) throw new Error('main.cpp 未把类类型局部声明翻译为 long long（v5 缺失）。');
+    // v6 发射钉子：结构体定义/期望签名/访问器/适配器在声明头，句柄调用与结构体局部声明在 main.cpp。
+    if (!declarationHeader.includes('struct Point {')) throw new Error('声明头未发射结构体定义（v6 缺失）。');
+    if (!declarationHeader.includes('double distance(const Point& p0, const Point& p1);')) throw new Error('声明头结构体参数期望签名不是 const Point&（v6）。');
+    if (!declarationHeader.includes('Point midpoint(const Point& p0, const Point& p1);')) throw new Error('声明头结构体返回未按值声明（v6）。');
+    if (!declarationHeader.includes('std::wstring 名称;')) throw new Error('声明头文本型字段未生成 std::wstring 成员（v6）。');
+    if (!declarationHeader.includes('inline long long 点_创建() { return reinterpret_cast<long long>(new Point()); }')) throw new Error('声明头未发射结构体访问器（v6）。');
+    if (!declarationHeader.includes('inline double 两点距离(long long p0, long long p1) { return distance(*reinterpret_cast<Point*>(p0), *reinterpret_cast<Point*>(p1)); }')) throw new Error('声明头未发射结构体参数适配器（v6）。');
+    if (!declarationHeader.includes('inline long long 取中点(long long p0, long long p1) { return reinterpret_cast<long long>(new Point(midpoint(*reinterpret_cast<Point*>(p0), *reinterpret_cast<Point*>(p1)))); }')) throw new Error('声明头未发射结构体返回堆包裹适配器（v6）。');
+    if (!mainCpp.includes('long long a = 0;')) throw new Error('main.cpp 未把结构体名局部声明翻译为 long long（v6 缺失）。');
+    if (!mainCpp.includes('两点距离(a, b)')) throw new Error('main.cpp 未发射结构体参数命令调用（v6 缺失）。');
+    if (!mainCpp.includes('点_取x(中点)')) throw new Error('main.cpp 未发射结构体取字段调用（v6 缺失）。');
+    // v6.2 发射钉子：封送 lambda（载荷值拷贝 + PostMessage 投递）、封送窗口运行时与界面线程创建调用。
+    if (!mainCpp.includes('std::function<void()>* lbInvoke = new std::function<void()>([this, lbP0(p0), lbP1(std::wstring(p1))]() { this->线程进度(lbP0, lbP1.c_str()); }); LB_CppSrcPostToUiThread(lbInvoke);')) throw new Error('main.cpp 未发射封送 lambda（v6.2 缺失）。');
+    if (!mainCpp.includes('LB_CppSrcCreateMarshalWindow();')) throw new Error('wWinMain 缺封送窗口创建调用（v6.2 缺失）。');
+    const allGeneratedText = generated.files.map(file => file.content).join('\n');
+    if (!allGeneratedText.includes('WM_LINGBUILDER_CPPSRC_MARSHAL')) throw new Error('生成产物缺封送窗口运行时（v6.2 缺失）。');
   }
-  if (materialized.sourceFiles.length !== 4) throw new Error(`源码库物化应登记 4 个编译源码（mymath/textlib/工具库共用 textlib），实际 ${materialized.sourceFiles.length}`);
+  if (materialized.sourceFiles.length !== 5) throw new Error(`源码库物化应登记 5 个编译源码（mymath/textlib×3/geometry），实际 ${materialized.sourceFiles.length}`);
   for (const file of generated.files) {
     const target = path.resolve(projectDir, file.relativePath);
     if (!target.startsWith(`${projectDir}${path.sep}`)) throw new Error(`生成文件越界：${file.relativePath}`);

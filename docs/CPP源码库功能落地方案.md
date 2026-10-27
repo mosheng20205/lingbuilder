@@ -220,3 +220,89 @@ C++ 结构体 ↔ 项目数据类型映射；附加包含目录（`包含目录 
 - 不承诺「任意 C++ 文件直接调用」：完整 C++ 解析（模板/重载/STL/命名空间）是无底洞，本功能始终是**约束子集 + 明确诊断**。
 - 不做 .lbmod 替代：要分发、要隐藏源码、要收费门禁的场景仍走模块路线。
 - 不在本功能里改 DLL 命令声明管线（旧 `.h` 导入解析器缺陷不顺手修）。
+
+## 9. v6 分期方案（2026-10-27 立项：结构体映射 / 跨线程封送 / 模板白名单收口；**同日批复后 S1/S2/S3 全部落地**，实测与设计的偏差见 §9.5）
+
+v1~v5 收口后剩余三项能力。定案原则延续既有机型：**能进声明头的发射不进生成器**（v3 异常包装、v4 转发函数同范式），每个决策直接定死不分叉。
+
+### 9.1 S1 = C++ 结构体映射（主体工作）
+
+**核心定案：句柄化 + 声明头适配器，零生成器调用发射改动。**
+
+- **语法**（库块内新增结构体块，字段行尾 `// 备注` 为字段备注）：
+
+```text
+C++源码库 几何库
+  源码 = cpp/geometry.cpp
+  结构体 点 = Point          ← 「= C++ 类型名」必填且 ASCII（用户 C++ 代码引用它）
+    小数型 x // 横坐标
+    小数型 y
+    文本型 名称              ← 文本型字段 = std::wstring（无 DLL 定长约束，源码库独有优势）
+  结束结构体
+  小数型 两点距离(点 a, 点 b) = distance
+  点 取中点(点 a, 点 b) = midpoint
+结束C++源码库
+```
+
+- **定义归属**（与类块同规则，按库走）：库带「头文件 =」→ 结构体定义来自头文件，.lcpp 字段行只是访问器契约（头文件里静态扫描不到 `struct Point {` 定义形态给 warning）；无头文件库 → 生成头直接发 `struct Point { double x; double y; std::wstring 名称; };`（同编译器同工程，无布局/ABI 约束——这是与 DLL 结构体管线的本质区别，不需要 pack/定长/句柄跨界）。结构体**库内作用域**（与 DLL 结构体同范式），跨库使用给中文诊断。
+- **字段类型白名单**：整数型/长整数型/小数型/单精度小数型/逻辑型/字节型/指针整数 + 文本型(std::wstring)。**v6.1 明确不支持**：嵌套结构体字段、数组字段、字节集字段（中文诊断；真实需求出现再立项，过渡=拆两个扁平结构体分两次调用）。
+- **.lcpp 侧句柄语义**：结构体一律以句柄持有——`点_创建()`（零初始化 `new Point()`）/ `点_销毁(句柄)` / 每字段一对 `点_取X(句柄)` / `点_置X(句柄, 值)`（空句柄安全：取返回零值、置忽略，DLL 访问器同款）；结构体名登记 `contributes.types`（cppType=long long，v5 同款），`局部 点 句柄 = 0` 直接可用。句柄红线与类块一致：复制句柄=共享、必须显式 销毁。
+- **命令参数/返回**：
+  - 参数 `点 a` → binding `longLong`（描述注明句柄）；C++ 期望签名统一 **`const Point&`**（与字节集参数位 const& 同风格；C++ 侧写按值 `Point` 与声明是两个修饰名，不一致 LNK2019，期望签名注释写明）。调用点解引用由声明头适配器完成，生成器无感。
+  - 返回 `点` → binding `longLong`；C++ 侧按值返回 `Point`；调用点**自动堆包裹为句柄**（`new Point(f(...))`），用完必须 销毁。
+- **实现形态（声明头内完成全部发射，与 v3 包装/v4 转发同范式）**：
+
+```cpp
+struct Point { double x; double y; std::wstring 名称; };        // 无头文件库才发；有头文件库省略
+double distance(const Point& p0, const Point& p1);              // 期望签名前置声明
+Point midpoint(const Point& p0, const Point& p1);
+inline double 两点距离(long long p0, long long p1) { return distance(*reinterpret_cast<Point*>(p0), *reinterpret_cast<Point*>(p1)); }
+inline long long 取中点(long long p0, long long p1) { return reinterpret_cast<long long>(new Point(midpoint(*reinterpret_cast<Point*>(p0), *reinterpret_cast<Point*>(p1)))); }
+inline long long 点_创建() { return reinterpret_cast<long long>(new Point()); }
+inline void 点_销毁(long long lbHandle) { if (lbHandle) delete reinterpret_cast<Point*>(lbHandle); }
+inline double 点_取x(long long h) { return h ? reinterpret_cast<Point*>(h)->x : 0.0; }
+inline void 点_置x(long long h, double v) { if (h) reinterpret_cast<Point*>(h)->x = v; }
+inline const wchar_t* 点_取名称(long long h) { return h ? reinterpret_cast<Point*>(h)->名称.c_str() : L""; }
+inline void 点_置名称(long long h, const wchar_t* v) { if (h) reinterpret_cast<Point*>(h)->名称 = v ? v : L""; }
+```
+
+  适配器按中文命令名命名（与 v4 转发函数、DLL 访问器同一命名范式）；binding `runtimeName` 指向适配器。**lingCppWin32Project.ts 的调用发射零改动**（结构体参数就是 longLong 实参）。
+- **组合定案**：异常捕获叠加 → 捕获包装体承担解引用+堆包裹（`try { return reinterpret_cast<long long>(new Point(f(*ptr))); } catch { ...; return 0; }`），不再另发适配器；命名空间叠加 → 适配器体做限定调用 `ns::distance(...)`；类块与结构体块并存，分工=有行为走类、纯数据走结构体。
+- **多 TU 契约（新增文档红线）**：无头文件库用结构体时，用户 .cpp 必须 `#include` 生成的 CppSourceLibraries.h 拿结构体定义与期望签名（模块 targets 已注册 include 目录；W3 实测 /I 对用户 TU 的可达性，不可达则文档教相对路径引法）。头文件库用户 .cpp 照旧只含自己的头。
+- **命名冲突**：结构体名进声明文件唯一名空间（命令/类/结构体互斥重名诊断）；访问器命令名（`点_创建` 等）同样进命令唯一名检查。
+- **诊断族**：字段类型白名单、字段重名、结构体重名、`= C++ 类型名` 缺失/非 ASCII、跨库引用、命令参数/返回引用未声明结构体、头文件库缺 `struct X {` 定义 warning。
+- **编辑器**：结构体块 UI（库头下结构体网格：结构体名 / C++ 名 / 字段子表），序列化 100% 往返；「从 .h 导入」检测到 struct 定义给中文提示「结构体请用 结构体 块手写声明」（防静默丢失），v6.1 不做自动解析。
+- **manifest** 1.2.0 → 1.3.0。
+- **工作包**：
+  - W1 parser + 类型/诊断：`CPP_SOURCE_STRUCT_RE` / 字段行 RE / 模型 `LingCppCppSourceStruct(+Field)` / 序列化往返 / `resolveCppSourceType` 带结构体注册表的扩展 / 诊断族。
+  - W2 虚拟模块：`buildCppStructAccessorItems`（访问器命令 + binding）/ 命令参数返回的句柄形状与适配器 runtimeName / contributes.types 登记。
+  - W3 声明头生成：结构体定义段（顺序=include 之后、期望签名之前）/ 访问器与适配器 inline / `const Point&` 期望签名 / 捕获包装与命名空间限定 / `<string>` 条件包含 / 用户 TU include 可达性实测。
+  - W4 编辑器结构体 UI + .h 导入提示。
+  - W5 验收：测试钉子 ≥15；smoke v6 双平台（结构体创建/置字段/传参/结构体返回/取回字段/销毁全流程 + main.cpp 与声明头发射钉子断言）；示例工程「C++源码库演示」升级结构体场景。
+  - W6 四层同步（规则手册节、MCP 第 31 条、aiBridge 断言、cli.cjs 重建+stdio、docs 页、FUTURE_OPTIMIZATIONS、更新记录、记忆库）。
+
+### 9.2 S2 = 跨线程回调封送（显式声明，默认不封送）
+
+- **语法**：处理器参数内联签名后加 `界面线程` 后缀——`处理器 进度回调(整数型 序号, 文本型 阶段) 界面线程`（可带 `回传` 的写法解析，但封送+回传给中文阻断：封送是异步 fire-and-forget，无法同步回传）。
+- **语义定案**：
+  1. **必须显式声明才封送**，未声明的回调维持线程透传（现状）；封送把同步调用变异步投递，是语义改变，不允许默认。
+  2. 载荷 = 内联签名全部参数的**值拷贝快照**（投递时刻定格，之后改原变量不可见）；标量/文本型/字节集均可拷贝，无需额外限值表——实现为堆上 `std::function<void()>` 闭包经 `PostMessageW` 投递到 message-only 封送窗口，UI 线程执行后 delete（先例：NE HTTP 客户端事件窗口 lingCppWin32Project.ts 3258~3304）。
+  3. 同一线程的多次投递保序（消息队列语义），跨线程不保序；处理器在 UI 线程执行，处理器内**不得阻塞**，投递方**不得等待**。
+- **生成**：binding 参数扩展 `handlerMarshalUiThread: true`；`translateCppSourceCallArgument` 的 handler 分支按标记改发封送 lambda（Win32 `[this]` 捕获成员子程序、NE 无捕获调静态子程序）；生成端预扫描源码——只有存在封送处理器实参时才发射封送窗口运行时（`WM_APP+0x58`，实现前核对常量无冲突），窗口创建/清理两后端接线（Win32 窗口初始化段、NE 照 httpClient 样板）。
+- **诊断**：封送+回传阻断；`&子程序` 签名强校验不变。
+- **验收**：测试钉子 ≥8（解析往返/阻断诊断/binding/两后端发射形状/未用不发射负例）；smoke v6b 双平台——C++ 侧 `std::thread` 触发 N 次封送回调后 join，.lcpp 处理器全部在 UI 线程收到，运行日志断言计数与载荷；四层同步同 S1。
+
+### 9.3 S3 = 模板白名单：砍掉（定案）
+
+无真实需求样本（std::string_view/std::optional 均可让用户写一层薄包装函数绕过；真实模板函数本就没有固定符号可调）。动作＝纯文档收口：`docs/FUTURE_OPTIMIZATIONS.md` 注销该待办并写明口径（遇模板类类型签名维持中文诊断+建议薄包装，出现真实样本再立项）；规则手册 C++ 源码库节红线补一句同口径；MCP 第 31 条已有「模板不支持」无需改。无代码改动。
+
+### 9.4 期次顺序与基线纪律
+
+S1 → S2 → S3（S2 的封送载荷类型解析复用 S1 扩展后的类型表）。每期出口＝测试钉子全绿（`test:lingcpp`）+ smoke 双平台 PASS + 四层同步完成；回归甄别一律 stash 对照（lingcpp 10 红 / aiBridge 7 红为既有基线，不当回归修）。
+
+### 9.5 落地实录（2026-10-27 同日，S1+S2+S3 全部完成）
+
+- **S1 结构体映射**：按 9.1 全量落地，实现与设计一致（声明头适配器范式、零生成器调用发射改动）。落地新增三个设计细化：① 头文件库缺 struct 定义的静态扫描放物化期（notes 提示，非阻断——定义可能经其它头引入，假阳阻断会误伤），生成头注释自说明；② 命令适配器与访问器同样遵守「跨库重名不拒收解析、诊断定向提示」口径，访问器命令名与显式命令声明冲突有专项诊断；③ 期望签名的结构体参数注释直接写 `const Point&`（适配器才是收句柄的一方）。实测：测试钉子 31/31（其中 v6 新增 7 条）、smoke 双平台 PASS（无头文件库模式，用户 .cpp `#include "CppSourceLibraries.h"` 经模块 /I 命中——W3 验证项实锤成立，obj 指纹天然覆盖声明头变化）、示例工程头文件库模式双平台构建 PASS。**踩坑**：① 示例工程 cpp/ 目录原放项目根，而物化按 `<源码根>/cpp/` 解析——v1 示例就带病，本期移正；② 文本型返回的期望签名是 `const wchar_t*`，用户侧写 std::wstring 返回是另一个修饰名（C2556 实抓），smoke 已按正确写法并加注释。
+- **S2 跨线程封送**：按 9.2 落地。实现细化：① 封送运行时为两后端共享文本（message-only 窗口 + 堆闭包 PostMessage，WM_APP+0x60 经全表核对空闲），闭包自带 this 捕获、WndProc 无需知道用户类型；② 仅源码真实调用封送回调才发射运行时（按 binding 的 handlerMarshalUiThread 参数扫源码命令调用，负例断言钉住）；③ 创建在界面线程启动序列（Win32 wWinMain LoadLibraryW 后 / NE 延迟调用宿主创建后），退出时销毁对齐 httpClient 先例。实测：smoke 双平台 PASS——`std::thread` 工作线程触发 6 次回调、join 后 .lcpp 侧经 `延迟调用(800, &封送校验)` 等消息泵排空已入队的 6 条封送消息再断言（exit 0~19 全过）。**踩坑**：封送消息在 创建完毕 内投递、消息循环未启动，校验必须挪进 WM_TIMER 处理器（posted 消息优先于 WM_TIMER 派发，时序确定）。
+- **S3 模板白名单**：按 9.3 砍掉落地（FUTURE_OPTIMIZATIONS 注销 + 规则手册红线补口径 + MCP 第 31 条既有「模板不支持」保留）。
+- **回归**：lingcpp 235 过/10 失败、aiBridge 66 过/7 失败，与既有基线逐一相同（零新增红）；dist/cli.cjs 重建 + stdio 握手 PASS（v6/v6.2 关键词全命中）；规则手册/MCP/docs 页/更新记录/记忆库五层同步完成。

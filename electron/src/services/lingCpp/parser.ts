@@ -9,6 +9,8 @@ import {
   LingCppCppClass,
   LingCppCppClassMethod,
   LingCppCppSourceLibrary,
+  LingCppCppSourceStruct,
+  LingCppCppSourceStructField,
   LingCppDataField,
   LingCppDataType,
   LingCppDiagnostic,
@@ -255,10 +257,18 @@ const CPP_SOURCE_HEADER_RE = /^头文件\s*=\s*(.+)$/u;
 const CPP_SOURCE_COMMAND_RE = new RegExp(`^(空|${TYPE_EXPRESSION_SOURCE})\\s+(${TYPE_NAME_SOURCE})\\s*[（(]((?:[^（）)]|[（(][^）)]*[）)])*)[）)](?:\\s*=\\s*(${TYPE_NAME_SOURCE}))?$`, 'u');
 /** C++源码库 类块：`类 中文名 = CppClass`（C++ 类名必填，类定义来自同库声明的头文件）。 */
 const CPP_SOURCE_CLASS_RE = new RegExp(`^类\\s+(${TYPE_NAME_SOURCE})\\s*=\\s*(${TYPE_NAME_SOURCE})$`, 'u');
+/** C++源码库 结构体块（v6）：`结构体 中文名 = CppStruct`（ASCII 类型名必填，用户 C++ 代码引用它）。 */
+const CPP_SOURCE_STRUCT_RE = new RegExp(`^结构体\\s+(${TYPE_NAME_SOURCE})\\s*=\\s*(${TYPE_NAME_SOURCE})$`, 'u');
+/**
+ * C++源码库 结构体字段行（v6）：`类型 字段名 // 备注`。与 DLL 字段不同不支持定长数组——
+ * 单独匹配 `[长度]` 形态给定向中文提示，避免落入「无法识别行」泛化报错。
+ */
+const CPP_SOURCE_STRUCT_FIELD_RE = new RegExp(`^(${TYPE_EXPRESSION_SOURCE})\\s+(${TYPE_NAME_SOURCE})(?:\\s*//\\s*(.*))?$`, 'u');
+const CPP_SOURCE_STRUCT_FIELD_ARRAY_RE = new RegExp(`^(${TYPE_EXPRESSION_SOURCE})\\s+(${TYPE_NAME_SOURCE})\\s*(?:\\[\\s*\\d+\\s*\\]|［］)`, 'u');
 /** C++源码库 类块方法行：`方法 返回类型 名称(参数) [= C++方法名]`；「创建/销毁」为保留名。 */
 const CPP_SOURCE_METHOD_RE = new RegExp(`^方法\\s+(空|${TYPE_EXPRESSION_SOURCE})\\s+(${TYPE_NAME_SOURCE})\\s*[（(]((?:[^（）)]|[（(][^）)]*[）)])*)[）)](?:\\s*=\\s*(${TYPE_NAME_SOURCE}))?$`, 'u');
-/** 处理器参数片段：`处理器 名(类型 参数, ...)` 或 `处理器 名(...) 回传 类型`——内联回调签名，返回缺省为空。 */
-const CPP_HANDLER_PARAMETER_RE = new RegExp(`^处理器\\s+(${TYPE_NAME_SOURCE})\\s*[（(]([^）)]*)[）)](?:\\s+回传\\s+(${TYPE_EXPRESSION_SOURCE}))?$`, 'u');
+/** 处理器参数片段：`处理器 名(类型 参数, ...)` / `... 回传 类型` / `... 界面线程`（v6.2 跨线程封送，可与 回传 同现但生成侧阻断封送+非空返回）。 */
+const CPP_HANDLER_PARAMETER_RE = new RegExp(`^处理器\\s+(${TYPE_NAME_SOURCE})\\s*[（(]([^）)]*)[）)](?:\\s+回传\\s+(${TYPE_EXPRESSION_SOURCE}))?(?:\\s+界面线程)?$`, 'u');
 /** C++源码库 内 `包含目录 = xxx`（v3）：整目录递归复制进 modules/<id>/sources/，供相对 #include 命中。 */
 const CPP_SOURCE_INCLUDE_DIR_RE = /^包含目录\s*=\s*(.+)$/u;
 /** C++源码库 内 `异常 = 捕获`（v3）：本库命令经 try/catch 包装，异常文本经 <库名>_取错误() 读取。 */
@@ -317,6 +327,8 @@ function parseCppSourceParameterList(text: string, lineNumber: number): Array<Li
       // `回传 类型`（v3）：回调返回类型，缺省为空（void）。
       const handlerReturnType = (handlerMatch[3] || '').trim();
       if (handlerReturnType) parameter.handlerReturnType = handlerReturnType;
+      // `界面线程`（v6.2）：跨线程封送——显式声明才封送，缺省维持线程透传。
+      if (/界面线程$/u.test(piece.trim())) parameter.handlerMarshalUiThread = true;
       if (note !== undefined) parameter.note = note;
       return parameter;
     }
@@ -381,6 +393,7 @@ export function parseLingCpp(source: string): LingCppParseResult {
   let currentCppLibrary: LingCppCppSourceLibrary | null = null;
   let currentCppLibraryNode: LingCppAstNode | null = null;
   let currentCppClass: LingCppCppClass | null = null;
+  let currentCppStruct: LingCppCppSourceStruct | null = null;
   const astNodes: LingCppAstNode[] = [];  const rootNode = createAstNode('program', '源文件', 1, lines[0] || '', undefined, {
     range: createDocumentRange(lines)
   });
@@ -471,8 +484,8 @@ export function parseLingCpp(source: string): LingCppParseResult {
 
     // 行尾 // 注释与代码分离后再进入语句/声明解析：`控件_设置文本(标签4, …) // 说明`
     // 这类行不再因行尾注释破坏语句形态、被生成器降级成「暂不支持」注释而静默丢失。
-    // 例外：@ 内嵌 C++ 行原样透传；结构体字段行尾注释是字段备注语法（DLL_STRUCT_FIELD_RE）。
-    const line = rawTrimmed.startsWith('@') || currentDllStruct
+    // 例外：@ 内嵌 C++ 行原样透传；结构体字段行尾注释是字段备注语法（DLL/C++源码库同口径）。
+    const line = rawTrimmed.startsWith('@') || currentDllStruct || currentCppStruct
       ? rawLine
       : stripLingCppTrailingLineComment(rawLine);
     const trimmed = line.trim();
@@ -533,7 +546,8 @@ export function parseLingCpp(source: string): LingCppParseResult {
         headerFiles: [],
         includeDirs: [],
         commands: [],
-        classes: []
+        classes: [],
+        structs: []
       };
       currentCppLibraryNode = pushNode(createAstNode('cpp-source-library', currentCppLibrary.name, lineNumber, line, rootNode.id, {
         detail: '项目 C++ 源码库'
@@ -548,6 +562,9 @@ export function parseLingCpp(source: string): LingCppParseResult {
       }
       if (currentCppClass) {
         diagnostics.push(createDiagnostic('error', lineNumber, line, `类 ${currentCppClass.name} 缺少 结束类。`, '请在类方法后添加一行 `结束类`。'));
+      }
+      if (currentCppStruct) {
+        diagnostics.push(createDiagnostic('error', lineNumber, line, `结构体 ${currentCppStruct.name} 缺少 结束结构体。`, '请在结构体字段后添加一行 `结束结构体`。'));
       }
       closeCurrentCppLibrary(lineNumber);
       return;
@@ -630,6 +647,53 @@ export function parseLingCpp(source: string): LingCppParseResult {
           return;
         }
         diagnostics.push(createDiagnostic('error', lineNumber, line, '无法识别的类方法声明行。', '格式：`方法 返回类型 方法名(类型 参数, ...) [= C++方法名]`；「创建/销毁」为保留名（分别发射 new/delete）。'));
+        return;
+      }
+      // ===== 结构体块：结构体 中文名 = CppStruct / 字段行 / 结束结构体 =====
+      const cppStructMatch = !currentCppClass && !currentCppStruct ? trimmed.match(CPP_SOURCE_STRUCT_RE) : null;
+      if (cppStructMatch) {
+        const structName = cppStructMatch[1] || '';
+        const cppStructName = (cppStructMatch[2] || '').trim();
+        // 跨库重名不在这里拒收：拒收会让后续字段行全部变成「无法识别」孤儿；
+        // 结构体名唯一性由声明诊断（seenStructNames）给出定向中文提示。
+        currentCppStruct = { name: structName, cppName: cppStructName, line: lineNumber, fields: [] };
+        currentCppLibrary.structs.push(currentCppStruct);
+        pushNode(createAstNode('cpp-source-struct', structName, lineNumber, line, currentCppLibraryNode?.id, {
+          detail: `C++ 结构体：${cppStructName}`
+        }), currentCppLibraryNode);
+        return;
+      }
+      if (currentCppStruct) {
+        if (trimmed === '结束结构体') {
+          if (currentCppStruct.fields.length === 0) {
+            diagnostics.push(createDiagnostic('error', lineNumber, line, `结构体 ${currentCppStruct.name} 没有任何字段。`, '请在 结构体 与 结束结构体 之间声明字段，例如 `小数型 x`。'));
+          }
+          currentCppStruct = null;
+          return;
+        }
+        const structFieldArrayMatch = trimmed.match(CPP_SOURCE_STRUCT_FIELD_ARRAY_RE);
+        if (structFieldArrayMatch) {
+          diagnostics.push(createDiagnostic('error', lineNumber, line, `结构体 ${currentCppStruct.name} 的字段不支持数组/定长写法。`, '源码库结构体与 DLL 结构体不同：同工程编译没有布局约束，文本型字段就是 std::wstring，无需定长；请写 `类型 字段名`（暂不支持数组字段）。'));
+          return;
+        }
+        const structFieldMatch = trimmed.match(CPP_SOURCE_STRUCT_FIELD_RE);
+        if (structFieldMatch) {
+          const fieldType = (structFieldMatch[1] || '').trim();
+          const fieldName = structFieldMatch[2] || '';
+          if (currentCppStruct.fields.some(item => item.name === fieldName)) {
+            diagnostics.push(createDiagnostic('error', lineNumber, line, `结构体 ${currentCppStruct.name} 的字段 ${fieldName} 重复声明。`, '字段名在结构体内必须唯一。'));
+            return;
+          }
+          const field: LingCppCppSourceStructField = { name: fieldName, type: fieldType, line: lineNumber };
+          const noteText = (structFieldMatch[3] || '').trim();
+          if (noteText) field.note = noteText;
+          currentCppStruct.fields.push(field);
+          pushNode(createAstNode('cpp-source-struct-field', fieldName, lineNumber, line, currentCppLibraryNode?.id, {
+            detail: `${fieldType} ${fieldName}`
+          }), currentCppLibraryNode);
+          return;
+        }
+        diagnostics.push(createDiagnostic('error', lineNumber, line, '无法识别的结构体字段行。', '格式：`类型 字段名 // 备注`（文本型字段即 std::wstring，无需定长），用 `结束结构体` 收尾。'));
         return;
       }
       const cppSourceFileMatch = trimmed.match(CPP_SOURCE_FILE_RE);
@@ -1323,6 +1387,9 @@ export function parseLingCpp(source: string): LingCppParseResult {
     diagnostics.push(createDiagnostic('error', currentCppLibrary.line, lines[currentCppLibrary.line - 1] || `C++源码库 ${currentCppLibrary.name}`, 'C++源码库 声明缺少结束语句。', '请在末尾添加 `结束C++源码库`。'));
     if (currentCppClass) {
       diagnostics.push(createDiagnostic('error', currentCppClass.line, lines[currentCppClass.line - 1] || `类 ${currentCppClass.name}`, `类 ${currentCppClass.name} 缺少结束语句。`, '请在类方法末尾添加 `结束类`。'));
+    }
+    if (currentCppStruct) {
+      diagnostics.push(createDiagnostic('error', currentCppStruct.line, lines[currentCppStruct.line - 1] || `结构体 ${currentCppStruct.name}`, `结构体 ${currentCppStruct.name} 缺少结束语句。`, '请在结构体字段末尾添加 `结束结构体`。'));
     }
   }
   if (currentClass && currentClassNode) {
