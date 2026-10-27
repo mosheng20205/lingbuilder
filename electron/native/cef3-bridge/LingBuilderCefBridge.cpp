@@ -25101,11 +25101,14 @@ int LB_CEF3_CALL LB_CEF3_BrowserShowDevTools(LB_CEF3_HANDLE browser) {
   });
 }
 int LB_CEF3_CALL LB_CEF3_BrowserCloseDevTools(LB_CEF3_HANDLE browser) {
-  return PostBrowserAction(browser, [](CefRefPtr<CefBrowser> value, const std::shared_ptr<BrowserState>&) { value->GetHost()->CloseDevTools(); });
+  return InvokeBrowserHostOnUi(browser, [](CefRefPtr<CefBrowserHost> host) { host->CloseDevTools(); });
 }
 int LB_CEF3_CALL LB_CEF3_BrowserHasDevTools(LB_CEF3_HANDLE browser) {
-  int status = 0; auto state = GetBrowserState(browser, status); if (!state) return status;
-  auto value = SnapshotBrowser(state); return value && value->GetHost()->HasDevTools() ? 1 : 0;
+  int result = 0;
+  const int status = InvokeBrowserHostOnUi(browser, [&result](CefRefPtr<CefBrowserHost> host) {
+    result = host->HasDevTools() ? 1 : 0;
+  });
+  return status == LB_CEF3_OK ? result : 0;
 }
 
 LB_CEF3_TASK_HANDLE LB_CEF3_CALL LB_CEF3_DevToolsExecuteMethod(
