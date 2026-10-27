@@ -2349,3 +2349,9 @@ C++ 解析时前两个合成一个字面反斜杠，第三个与后面的字母 
 4. **Inno Setup 输出形态**：部分用户偏好 Inno（界面更现代）；生成器已抽象 spec→脚本两层，加一个 Inno 模板生成器即可并存，入口按用户选择分发。
 5. **安装包签名引导**：检测 signtool 与证书，构建后在导出链自动签名（未签名误报是新手分发最大障碍）；一期文档口径「属正常生态现象」。
 6. **每次导出前强制增量构建开关**：MCP 入口已每次重构建，server 路由（UI）目前用现有 bin + 提示基于构建时间；若用户反馈陈旧产物困扰，补「导出前先构建」复选（需复用 F5 路由构建段，注意当前是内联大路由的拆分前提）。
+
+## FBro 区域浏览器已知缺陷（2026-10-28 实测，0.8.36）
+
+- **`FBro_创建区域` 第 9 参「用户代理」未生效**：实测 navigator.userAgent 与 HTTP 头均为默认值（httpbin.org/user-agent 回显实证）。链路断点：宿主侧 `LB_FBro_CreateEx2` 的 UA 走 `StartBrowser` 内 `FBroHsRequestContext_SetPreference("general.useragent.override")`，该调用在请求上下文偏好子系统就绪前发生会被 CEF 静默忽略（返回 BOOL 被丢弃）。0.8.37 生成器已在 `FBro_区域导航` 前自动经宿主 RPC 双通道补设（`applyFingerprint` 的 userAgent 嵌套走官方 VIP UA-Data + `setUserAgent` HTTP 层），待随包验证；桥内 `OnAfterCreated` 也加了 pending 补设（`ua_preference_pending`）。长期看 CreateEx2 的 UA 语义需要在官方内核层确认。
+- **原生 UI 五步多开链崩溃**：`FBro_后台创建 → FBroVIP_实例设置新窗口转标签页 → FBro_实例应用指纹JSON → FBro_实例打开原生UI → 弹窗补指纹` 在「弹窗补指纹」一步崩溃于 FBrowserVIP.dll（0xc0000005 @ 偏移 0x1ad553，官方闭源 DLL 内部，弹窗句柄应用指纹触发）；等加载完成后再应用同样崩溃。修复只能等官方 DLL；教程与示例在 0.8.36 上应使用 `FBro_创建区域` 区域方式多开。
+- **`FBro_区域导航` 在宿主「启动中」态失败**：区域创建（`Start(config, false)` 不等就绪）后立即导航返回 0；教程示例已加「`FBro_区域是否存活` 轮询等待就绪」范式，运行时层可在区域创建后自动挂「就绪即导航」队列。

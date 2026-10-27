@@ -211,6 +211,9 @@ struct BrowserState {
   std::wstring profile;
   std::wstring title;
   std::wstring user_agent;
+  // StartBrowser 阶段请求上下文偏好未就绪时 SetPreference 会静默失败，
+  // 置 pending 后在 OnAfterCreated（上下文必然就绪）补设一次。
+  bool ua_preference_pending = false;
   std::wstring extension_directory;
   std::wstring extension_id;
   std::wstring last_event;
@@ -2382,6 +2385,15 @@ class BridgeBrowserEvent final : public FBroHsBroEvent {
     if (auto* state = Find(handle_)) {
       state->browser = browser;
       if ((state->flags & 8U) != 0 && browser->GetHost()) browser->GetHost()->SetAudioMuted(true);
+      if (state->ua_preference_pending && state->request_context && !state->user_agent.empty()) {
+        // 启动阶段偏好未就绪被静默忽略；浏览器创建完成时上下文已就绪，补设一次。
+        auto value = CefValue::Create();
+        value->SetString(state->user_agent);
+        auto error = FBroString_Creat();
+        if (FBroHsRequestContext_SetPreference(state->request_context, CefString("general.useragent.override"), value, error)) {
+          state->ua_preference_pending = false;
+        }
+      }
       Notify(*state, LB_FBRO_EVENT_CREATED, L"浏览器创建完成");
     }
   }
@@ -2921,7 +2933,8 @@ bool StartBrowser(BrowserState& state) {
     auto value = CefValue::Create();
     value->SetString(state.user_agent);
     auto error = FBroString_Creat();
-    FBroHsRequestContext_SetPreference(state.request_context, CefString("general.useragent.override"), value, error);
+    const bool applied = FBroHsRequestContext_SetPreference(state.request_context, CefString("general.useragent.override"), value, error);
+    if (!applied) state.ua_preference_pending = true;
   }
   if (state.request_context && !state.extension_directory.empty() && g_extension_plus_enabled
       && !state.extension_load_started) {

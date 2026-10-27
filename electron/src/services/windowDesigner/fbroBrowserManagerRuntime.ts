@@ -889,6 +889,20 @@ export function generateFbroBrowserManagerRuntime(enabled: boolean): FbroBrowser
 #if LINGBUILDER_FBRO_AVAILABLE
         FbroRegionInstance* region = FBro_查找区域(instanceId);
         if (!region || !region->started || !address || !*address) return 0;
+        // 导航前补设 UA：创建期 launch 配置里的 userAgent 走 CreateEx2 的
+        // request-context 偏好，偏好子系统未就绪时会被 CEF 静默忽略；
+        // 这里双通道补设——官方 VIP UA-Data（改 navigator.userAgent/UA-CH，导航前
+        // 发出即对本次导航生效）+ HTTP 层偏好（尽力而为）。
+        if (!region->userAgent.empty()) {
+            LingFbroProcessController::Json fingerprintResult;
+            const std::wstring fingerprintJson = L"{\"userAgent\":{\"mainUserAgent\":\""
+                + region->userAgent + L"\",\"platform\":\"Windows\",\"mobile\":false,\"bitness\":\"64\",\"architecture\":\"x86\"}}";
+            LingFbroProcessController::Instance().Request(region->processInstanceId, L"applyFingerprint",
+                LingFbroProcessController::Json{{"value", lingbuilder_fbro_process_detail::JsonUtf8(fingerprintJson)}}, fingerprintResult);
+            LingFbroProcessController::Json userAgentResult;
+            LingFbroProcessController::Instance().Request(region->processInstanceId, L"setUserAgent",
+                LingFbroProcessController::Json{{"value", lingbuilder_fbro_process_detail::JsonUtf8(region->userAgent)}}, userAgentResult);
+        }
         LingFbroProcessController::Json result;
         return LingFbroProcessController::Instance().Request(region->processInstanceId, L"navigate",
             LingFbroProcessController::Json{{"url", lingbuilder_fbro_process_detail::JsonUtf8(address)}}, result) ? 1 : 0;
