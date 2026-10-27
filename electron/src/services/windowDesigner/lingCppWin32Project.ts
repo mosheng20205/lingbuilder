@@ -13990,6 +13990,9 @@ ${webSocketServerWindowField}
         std::wstring userAgent;
         std::wstring proxyServer;
         std::wstring fingerprintJson;
+        // 指纹延迟重试：创建批次内浏览器/VIP 控件常未就绪，首次应用会静默失败（-1/-4）；
+        // 由 WM_TIMER 延迟重试直到成功（fingerprintApplied）或次数耗尽。
+        bool fingerprintApplied = false;
         std::wstring lastEvent;
         std::wstring lastEventData;
         std::wstring lastEventJson;
@@ -15810,7 +15813,30 @@ ${embeddedSiteRuntimeSection}
             LB_FBro_SetEventCallbackV2(instance->handle, FBro_桥接事件V2, this);
             LB_FBro_SetEventCallbackV3(instance->handle, FBro_桥接事件V3, this);
             if (!instance->proxyServer.empty()) LB_FBro_SetProxy(instance->handle, instance->proxyServer.c_str(), L"", L"");
-            if (!instance->fingerprintJson.empty()) LB_FBro_ApplyFingerprintJson(instance->handle, instance->fingerprintJson.c_str());
+            if (!instance->fingerprintJson.empty()) {
+                if (LB_FBro_ApplyFingerprintJson(instance->handle, instance->fingerprintJson.c_str()) > 0) {
+                    instance->fingerprintApplied = true;
+                } else {
+                    // 浏览器句柄刚建立时 CEF/VIP 控件尚未就绪，首次应用常见 -1/-4；
+                    // 延迟就绪窗口后重试，成功或次数耗尽为止（失败不再静默丢失）。
+                    struct FbroFingerprintRetry { FbroBrowserInstance* instance; int attemptsLeft = 5; };
+                    auto retryState = std::make_shared<FbroFingerprintRetry>();
+                    retryState->instance = instance;
+                    auto retryStep = std::make_shared<std::function<void()>>();
+                    *retryStep = [this, retryState, retryStep]() {
+                        auto* pending = retryState->instance;
+                        if (!pending || pending->fingerprintApplied || !pending->handle || retryState->attemptsLeft <= 0) return;
+                        if (LB_FBro_ApplyFingerprintJson(pending->handle, pending->fingerprintJson.c_str()) > 0) {
+                            pending->fingerprintApplied = true;
+                            return;
+                        }
+                        --retryState->attemptsLeft;
+                        const auto step = retryStep;
+                        延迟调用(1500, [step]() { (*step)(); });
+                    };
+                    延迟调用(1500, [retryStep]() { (*retryStep)(); });
+                }
+            }
 #ifdef LINGBUILDER_FBRO_EMBEDDED_SITE
             if (instance->handle) {
                 // OnWindowCreated 处于消息循环上下文，注册等待安全；成功后导航入口地址。
