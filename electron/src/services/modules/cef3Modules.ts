@@ -417,26 +417,26 @@ const objectEntries = [
   api('CEF3菜单_设置字体', 'CefMenuModel::SetFontList', [{ name: '菜单句柄', type: 'longLong' }, { name: '命令ID', type: 'int' }, { name: '字体描述', type: 'wideString' }], 'int', '设置项目CEF字体描述。', { visibility: 'advanced' }),
   api('CEF3菜单_按索引设置字体', 'CefMenuModel::SetFontListAt', [{ name: '菜单句柄', type: 'longLong' }, { name: '索引', type: 'int' }, { name: '字体描述', type: 'wideString' }], 'int', '按索引设置CEF字体描述；索引-1表示默认字体。', { visibility: 'advanced' }),
   api('CEF3菜单_释放', 'LB_CEF3_MenuRelease', [{ name: '菜单句柄', type: 'longLong' }], 'int', '在CEF UI线程释放菜单受管句柄。', { visibility: 'advanced' }),
-  api('CEF3图像_创建', 'CefImage::CreateImage', [], 'longLong', '在CEF UI线程创建空图像并返回类型化受管句柄。', { visibility: 'advanced' }),
-  api('CEF3图像_是否为空', 'CefImage::IsEmpty', [{ name: '图像句柄', type: 'longLong' }], 'int', '判断图像是否不含任何缩放表示。', { visibility: 'advanced' }),
-  api('CEF3图像_是否相同', 'CefImage::IsSame', [{ name: '图像句柄', type: 'longLong' }, { name: '另一图像句柄', type: 'longLong' }], 'int', '比较两个CEF图像对象。', { visibility: 'advanced' }),
+  api('CEF3图像_创建', 'CefImage::CreateImage', [], 'CEF3图像句柄', '在CEF UI线程创建空图像并返回类型化受管句柄。', { visibility: 'advanced' }),
+  api('CEF3图像_是否为空', 'CefImage::IsEmpty', [{ name: '图像句柄', type: 'CEF3图像句柄' }], 'int', '判断图像是否不含任何缩放表示。', { visibility: 'advanced' }),
+  api('CEF3图像_是否相同', 'CefImage::IsSame', [{ name: '图像句柄', type: 'CEF3图像句柄' }, { name: '另一图像句柄', type: 'CEF3图像句柄' }], 'int', '比较两个CEF图像对象。', { visibility: 'advanced' }),
   api('CEF3图像_添加位图', 'CefImage::AddBitmap', [
-    { name: '图像句柄', type: 'longLong' }, { name: '缩放', type: 'double' },
+    { name: '图像句柄', type: 'CEF3图像句柄' }, { name: '缩放', type: 'double' },
     { name: '像素宽度', type: 'int' }, { name: '像素高度', type: 'int' },
     { name: '颜色类型', type: 'int' }, { name: '透明类型', type: 'int' },
     { name: '像素缓冲', type: 'longLong' }
   ], 'int', '从受管BGRA/RGBA像素缓冲添加缩放表示，缓冲大小必须为宽×高×4。', { visibility: 'advanced' }),
-  api('CEF3图像_添加PNG', 'CefImage::AddPNG', [{ name: '图像句柄', type: 'longLong' }, { name: '缩放', type: 'double' }, { name: 'PNG缓冲', type: 'longLong' }], 'int', '从受管PNG缓冲添加缩放表示。', { visibility: 'advanced' }),
-  api('CEF3图像_添加JPEG', 'CefImage::AddJPEG', [{ name: '图像句柄', type: 'longLong' }, { name: '缩放', type: 'double' }, { name: 'JPEG缓冲', type: 'longLong' }], 'int', '从受管JPEG缓冲添加缩放表示。', { visibility: 'advanced' }),
-  api('CEF3图像_取宽度', 'CefImage::GetWidth', [{ name: '图像句柄', type: 'longLong' }], 'longLong', '取得图像的设备无关宽度。', { visibility: 'advanced' }),
-  api('CEF3图像_取高度', 'CefImage::GetHeight', [{ name: '图像句柄', type: 'longLong' }], 'longLong', '取得图像的设备无关高度。', { visibility: 'advanced' }),
-  api('CEF3图像_是否有表示', 'CefImage::HasRepresentation', [{ name: '图像句柄', type: 'longLong' }, { name: '缩放', type: 'double' }], 'int', '判断指定缩放表示是否存在。', { visibility: 'advanced' }),
-  api('CEF3图像_删除表示', 'CefImage::RemoveRepresentation', [{ name: '图像句柄', type: 'longLong' }, { name: '缩放', type: 'double' }], 'int', '删除指定缩放表示。', { visibility: 'advanced' }),
-  api('CEF3图像_取表示信息', 'CefImage::GetRepresentationInfo', [{ name: '图像句柄', type: 'longLong' }, { name: '缩放', type: 'double' }], 'wideString', '以JSON返回最接近缩放表示的实际缩放、像素宽度和高度。', { visibility: 'advanced' }),
-  api('CEF3图像_取位图缓冲', 'CefImage::GetAsBitmap', [{ name: '图像句柄', type: 'longLong' }, { name: '缩放', type: 'double' }, { name: '颜色类型', type: 'int' }, { name: '透明类型', type: 'int' }], 'longLong', '导出指定缩放表示为受管位图缓冲。', { visibility: 'advanced' }),
-  api('CEF3图像_取PNG缓冲', 'CefImage::GetAsPNG', [{ name: '图像句柄', type: 'longLong' }, { name: '缩放', type: 'double' }, { name: '保留透明', type: 'bool' }], 'longLong', '导出指定缩放表示为受管PNG缓冲。', { visibility: 'advanced' }),
-  api('CEF3图像_取JPEG缓冲', 'CefImage::GetAsJPEG', [{ name: '图像句柄', type: 'longLong' }, { name: '缩放', type: 'double' }, { name: '质量', type: 'int' }], 'longLong', '导出指定缩放表示为受管JPEG缓冲，质量范围0到100。', { visibility: 'advanced' }),
-  api('CEF3图像_释放', 'LB_CEF3_ImageRelease', [{ name: '图像句柄', type: 'longLong' }], 'int', '在CEF UI线程释放图像对象受管句柄。', { visibility: 'advanced' }),
+  api('CEF3图像_添加PNG', 'CefImage::AddPNG', [{ name: '图像句柄', type: 'CEF3图像句柄' }, { name: '缩放', type: 'double' }, { name: 'PNG缓冲', type: 'longLong' }], 'int', '从受管PNG缓冲添加缩放表示。', { visibility: 'advanced' }),
+  api('CEF3图像_添加JPEG', 'CefImage::AddJPEG', [{ name: '图像句柄', type: 'CEF3图像句柄' }, { name: '缩放', type: 'double' }, { name: 'JPEG缓冲', type: 'longLong' }], 'int', '从受管JPEG缓冲添加缩放表示。', { visibility: 'advanced' }),
+  api('CEF3图像_取宽度', 'CefImage::GetWidth', [{ name: '图像句柄', type: 'CEF3图像句柄' }], 'longLong', '取得图像的设备无关宽度。', { visibility: 'advanced' }),
+  api('CEF3图像_取高度', 'CefImage::GetHeight', [{ name: '图像句柄', type: 'CEF3图像句柄' }], 'longLong', '取得图像的设备无关高度。', { visibility: 'advanced' }),
+  api('CEF3图像_是否有表示', 'CefImage::HasRepresentation', [{ name: '图像句柄', type: 'CEF3图像句柄' }, { name: '缩放', type: 'double' }], 'int', '判断指定缩放表示是否存在。', { visibility: 'advanced' }),
+  api('CEF3图像_删除表示', 'CefImage::RemoveRepresentation', [{ name: '图像句柄', type: 'CEF3图像句柄' }, { name: '缩放', type: 'double' }], 'int', '删除指定缩放表示。', { visibility: 'advanced' }),
+  api('CEF3图像_取表示信息', 'CefImage::GetRepresentationInfo', [{ name: '图像句柄', type: 'CEF3图像句柄' }, { name: '缩放', type: 'double' }], 'wideString', '以JSON返回最接近缩放表示的实际缩放、像素宽度和高度。', { visibility: 'advanced' }),
+  api('CEF3图像_取位图缓冲', 'CefImage::GetAsBitmap', [{ name: '图像句柄', type: 'CEF3图像句柄' }, { name: '缩放', type: 'double' }, { name: '颜色类型', type: 'int' }, { name: '透明类型', type: 'int' }], 'longLong', '导出指定缩放表示为受管位图缓冲。', { visibility: 'advanced' }),
+  api('CEF3图像_取PNG缓冲', 'CefImage::GetAsPNG', [{ name: '图像句柄', type: 'CEF3图像句柄' }, { name: '缩放', type: 'double' }, { name: '保留透明', type: 'bool' }], 'longLong', '导出指定缩放表示为受管PNG缓冲。', { visibility: 'advanced' }),
+  api('CEF3图像_取JPEG缓冲', 'CefImage::GetAsJPEG', [{ name: '图像句柄', type: 'CEF3图像句柄' }, { name: '缩放', type: 'double' }, { name: '质量', type: 'int' }], 'longLong', '导出指定缩放表示为受管JPEG缓冲，质量范围0到100。', { visibility: 'advanced' }),
+  api('CEF3图像_释放', 'LB_CEF3_ImageRelease', [{ name: '图像句柄', type: 'CEF3图像句柄' }], 'int', '在CEF UI线程释放图像对象受管句柄。', { visibility: 'advanced' }),
   api('CEF3导航项_取当前可见', 'CefBrowserHost::GetVisibleNavigationEntry', [{ name: '控件名', type: 'controlRef' }], 'longLong', '在CEF UI线程快照当前可见导航项并返回类型化受管句柄。', { visibility: 'advanced' }),
   api('CEF3导航项_读取历史', 'CefBrowserHost::GetNavigationEntries', [{ name: '控件名', type: 'controlRef' }, { name: '仅当前项', type: 'bool' }], 'longLong', '异步读取导航历史并返回结果为JSON数组的任务ID。', { visibility: 'advanced' }),
   api('CEF3导航项_是否有效', 'CefNavigationEntry::IsValid', [{ name: '导航项句柄', type: 'longLong' }], 'int', '判断导航项快照是否有效。', { visibility: 'advanced' }),
@@ -567,6 +567,10 @@ const transferEntries = [
   api('CEF3传输_读取流是否结束', 'CefStreamReader::Eof', [{ name: '读取流句柄', type: 'CEF3读取流句柄' }], 'bool', '返回当前读取位置是否已到流末尾。', { runtimeName: 'LB_CEF3_StreamReaderEof', visibility: 'advanced' }),
   api('CEF3传输_读取流是否可能阻塞', 'CefStreamReader::MayBlock', [{ name: '读取流句柄', type: 'CEF3读取流句柄' }], 'bool', '返回CEF对当前读取流可能执行阻塞文件操作的提示；内存缓冲读取流通常返回假。', { runtimeName: 'LB_CEF3_StreamReaderMayBlock', visibility: 'advanced' }),
   api('CEF3传输_释放读取流', 'CefStreamReader::Release', [{ name: '读取流句柄', type: 'CEF3读取流句柄' }], 'int', '释放受管读取流句柄和其保留的源缓冲引用；重复释放返回稳定错误码。', { runtimeName: 'LB_CEF3_HandleRelease', visibility: 'advanced' })
+];
+
+const objectsTypes: ModuleTypeContribution[] = [
+  { name: 'CEF3图像句柄', kind: 'opaque', cppType: 'uint64_t', description: '由CEF3图像_创建返回的受管CefImage句柄；只能配合图像族接口使用，不能转换为原生指针。' }
 ];
 
 const transferTypes: ModuleTypeContribution[] = [
@@ -782,7 +786,7 @@ const osrEntries = [
 
 export const CEF3_SUBMODULES: LingBuilderModuleManifest[] = [
   module('lingbuilder.cef3.events', 'CEF3事件模块', '界面', '提供浏览器事件数据、同步决策和处理器引用绑定。', withParamDocs(CEF3_EVENT_PARAM_DOCS, eventEntries)),
-  module('lingbuilder.cef3.objects', 'CEF3受管对象模块', '系统', '提供任务、缓冲、Value、Dictionary、List、Image、NavigationEntry和证书类型化对象的安全生命周期接口。', withParamDocs(CEF3_OBJECTS_PARAM_DOCS, objectEntries)),
+  module('lingbuilder.cef3.objects', 'CEF3受管对象模块', '系统', '提供任务、缓冲、Value、Dictionary、List、Image、NavigationEntry和证书类型化对象的安全生命周期接口。', withParamDocs(CEF3_OBJECTS_PARAM_DOCS, objectEntries), false, objectsTypes),
   module('lingbuilder.cef3.session', 'CEF3会话模块', '网络', '提供每实例RequestContext、缓存和Cookie隔离会话能力。', withParamDocs(CEF3_SESSION_PARAM_DOCS, sessionEntries), true),
   module('lingbuilder.cef3.network', 'CEF3网络模块', '网络', '提供实例级代理与基于Chromium网络栈的纯协议HTTP请求族（自定义头/正文、响应头全量读取、代理认证）。', withParamDocs(CEF3_NETWORK_PARAM_DOCS, networkEntries)),
   module('lingbuilder.cef3.transfer', 'CEF3传输模块', '网络', '提供下载、打印、受管二进制流和读写处理器能力。', withParamDocs(CEF3_TRANSFER_PARAM_DOCS, transferEntries), true, transferTypes),

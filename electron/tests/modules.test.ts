@@ -600,12 +600,17 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       // 基线 2026-10-24 三写回（飞书富文本加签密钥批次）：notify 推送_发飞书富文本
       // +1 参数（加签密钥，wideString；运行时签名本就带密钥且默认 L""，binding 补齐对齐，
       // 无新增 controlRef）（实算摘要 2faf202c/647dfe24）。
+      // 基线 2026-10-27 写回（CEF3 图像族名义类型批次）：lingbuilder.cef3.objects
+      // 新增公开类型 CEF3图像句柄（opaque/uint64_t），图像族 15 命令的 图像句柄/
+      // 另一图像句柄 参数与 CEF3图像_创建 返回值由裸 longLong 改为名义类型
+      //（对齐传输族约定；类型门禁此前按裸 longLong 拦截名义句柄实参，ep28 教程实录暴露），
+      // 无新增 controlRef（实算摘要 2faf202c/8217b147）。
       modules: 108,
       commands: 4623,
       parameters: 8599,
       controlReferences: 1499,
       commandDigest: '2faf202c',
-      parameterDigest: '647dfe24'
+      parameterDigest: '8217b147'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -1162,12 +1167,15 @@ test('工作区已安装模块全部通过 controlRef 清单和示例门禁', as
       // 基线 2026-10-24 三写回（飞书富文本加签密钥批次）：内置 notify 富文本 +1 参数
       //（见内置夹具注释）；磁盘侧 +1 模块 +5 命令 +7 参数来自并行会话在途清单，
       // 按本机实算写回（实算摘要 a8d672d7/87168cfc）。
-      modules: 122,
-      commands: 8757,
-      parameters: 20965,
+      // 基线 2026-10-27 写回（CEF3 图像族名义类型批次）：内置部分见上一用例
+      //（图像族 15 命令签名改名义类型，无 controlRef 变化）；磁盘侧 +4 命令 +6 参数
+      // 来自并行会话在途清单，按本机实算写回（实算摘要 879ccbe5/495cec28）。
+      commands: 8761,
+      parameters: 20971,
+      commandDigest: '879ccbe5',
       controlReferences: 5281,
       commandDigest: 'a8d672d7',
-      parameterDigest: '87168cfc'
+      parameterDigest: '495cec28'
   }, '内置、官方和当前工作区第三方模块的每个方法与参数都必须进入全量审计');
   // OpenCV 以内置清单为准：本机未装 SDK 时磁盘上的同名清单是只有骨架的占位包（0 命令、无 targets）。
   const manifest = BUILTIN_MODULES.find(module => module.id === OPENCV_MODULE_ID) || auditedManifests.get('lingbuilder.opencv.sdk');
