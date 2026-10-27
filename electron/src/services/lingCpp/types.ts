@@ -135,6 +135,8 @@ export interface LingCppStatement {
   text: string;
   /** 多行文本块语句的结束行（1-based，含）；普通单行语句缺省。 */
   endLine?: number;
+  /** 行尾 `//` 注释原样尾巴（含前导空格与 `//…`）；text 只存纯代码，显示重建时回挂。 */
+  trailingComment?: string;
 }
 
 export interface LingCppSourceRange {

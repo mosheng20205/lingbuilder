@@ -20,7 +20,7 @@ import {
   proposeLingCppEdit,
   validateDesignerProjectEdit
 } from '../src/services/lingCpp/aiEditService';
-import { findLingCppMethod, LING_CPP_KEYWORDS, LING_CPP_TYPES, parseLingCpp } from '../src/services/lingCpp/parser';
+import { findLingCppMethod, LING_CPP_KEYWORDS, LING_CPP_TYPES, parseLingCpp, stripLingCppTrailingLineComment } from '../src/services/lingCpp/parser';
 import {
   buildLingCppLanguageContext,
   formatLingCpp,
@@ -4539,6 +4539,85 @@ test('LCPP 整行注释中的信息框和调试输出不会进入 F5 生成结�
   assert.match(mainCpp, /if \(true\) \{/u);
   assert.match(mainCpp, /调试输出\(L"保留输出"\);/u);
 });
+
+test('LCPP 行尾 // 注释不改变语句语义（2026-10-27 用户报告：加注释后编译不执行该语句）', () => {
+  const source = [
+    '类 游戏主窗体 : 公开 窗体',
+    '    事件 _按钮1_被单击()',
+    '        局部 文本型 文本值 = "你好" // 行尾备注',
+    '        调试输出("一键处理按钮") // 事件触发',
+    '        控件_设置文本(按钮2, 文本_替换(文本值, "你", "您"))//展开层备注',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    activeWindowId: 'window-1',
+    lingCppSourceCode: source
+  });
+  const mainCpp = generated.files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
+
+  // 行尾注释的语句必须照常生成调用，不得落入「暂不支持」注释降级被静默丢掉。
+  assert.match(mainCpp, /调试输出\(L"一键处理按钮"\);/u);
+  assert.doesNotMatch(mainCpp, /暂不支持的中文 C\+\+ 语句：调试输出/u);
+  // 局部声明初值剥离注释后照常参与表达式翻译（不再把注释吸进初值）。
+  assert.match(mainCpp, /L"你好"/u);
+  assert.doesNotMatch(mainCpp, /暂不支持的中文 C\+\+ 语句/u);
+});
+
+test('stripLingCppTrailingLineComment 保护字符串与括号内 //（C++ 源码库形参备注语法）', () => {
+  assert.equal(
+    stripLingCppTrailingLineComment('控件_设置文本(标签4, 文本_替换(文本值, "你", "您"))//展开层无法编辑输入'),
+    '控件_设置文本(标签4, 文本_替换(文本值, "你", "您"))'
+  );
+  assert.equal(stripLingCppTrailingLineComment('调试输出("http://lingbuilder.com") // 内网地址'), '调试输出("http://lingbuilder.com")');
+  assert.equal(stripLingCppTrailingLineComment('常量 文本型 网址 = "http://a"'), '常量 文本型 网址 = "http://a"');
+  // C++ 源码库命令声明的形参行内 // 备注（括号深度 > 0）不是行尾注释。
+  assert.equal(
+    stripLingCppTrailingLineComment('整数型 取和(整数型 a // 第一个加数, 整数型 b) = add'),
+    '整数型 取和(整数型 a // 第一个加数, 整数型 b) = add'
+  );
+  assert.equal(stripLingCppTrailingLineComment('打开窗口(窗口1)'), '打开窗口(窗口1)');
+});
+
+test('LCPP 行尾注释进 statement.trailingComment，新手显示重建与草稿冲刷基线回挂（专业模式↔新手模式注释不丢）', () => {
+  const source = [
+    '类 游戏主窗体 : 公开 窗体',
+    '    事件 _按钮1_被单击()',
+    '        调试输出("wbz")//132',
+    '        调试输出("甲") // 备注带空格',
+    '        // 整行注释不算行尾注释',
+    '        调试输出("乙")',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const parsed = parseLingCpp(source);
+  const method = parsed.program.classes[0]?.methods[0];
+  assert.ok(method);
+  const statements = method?.statements.filter(statement => statement.text.trim()) || [];
+  assert.equal(statements[0]?.text, '调试输出("wbz")');
+  assert.equal(statements[0]?.trailingComment, '//132');
+  assert.equal(statements[1]?.text, '调试输出("甲")');
+  assert.equal(statements[1]?.trailingComment, ' // 备注带空格');
+  assert.equal(statements[2]?.trailingComment, undefined);
+  // 整行注释行不是 trailingComment 语义。
+  const commentStatement = method?.statements.find(statement => statement.text.startsWith('//')) ;
+  assert.equal(commentStatement?.trailingComment, undefined);
+
+  // 草稿冲刷基线与「画布显示文本」（statement.text + trailingComment）一致时不触发重写。
+  const displayedBody = [
+    '调试输出("wbz")//132',
+    '调试输出("甲") // 备注带空格',
+    '// 整行注释不算行尾注释',
+    '调试输出("乙")'
+  ].join('\n');
+  const flush = applyPendingBeginnerCodeDrafts(source, {
+    [createBeginnerCodeDraftKey('游戏主窗体', 'event', '_按钮1_被单击')]: displayedBody
+  });
+  assert.equal(flush.success, true);
+  assert.equal(flush.changed, false, '带行尾注释的方法体草稿与显示基线一致时不得触发重写');
+  assert.equal(flush.sourceCode, source);
+});
+
 
 test('generateLingCppNativeWin32Project emits members, locals and module return assignments as C++', () => {
   const source = [

@@ -2346,7 +2346,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         blocks.push({
           targetKey,
           bodyText: beginnerCodeDrafts[targetKey]
-            ?? `${statements.map(statement => statement.text).join('\n').replace(/\s+$/u, '')}`,
+            ?? `${statements.map(statement => `${statement.text}${statement.trailingComment || ''}`).join('\n').replace(/\s+$/u, '')}`,
           sourceLineMap: getBeginnerBodySourceLines(statements)
         });
       }
@@ -5082,7 +5082,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     );
     const baseIndent = Number.isFinite(baseIndentLength) ? baseIndentLength : 0;
     const relativeLines = method.statements.map(statement =>
-      `${statement.indent.slice(Math.min(baseIndent, statement.indent.length))}${statement.text}`
+      `${statement.indent.slice(Math.min(baseIndent, statement.indent.length))}${statement.text}${statement.trailingComment || ''}`
     );
     return formatBeginnerFlowIndentation(relativeLines).join('\n').replace(/\s+$/u, '');
   };
@@ -11369,7 +11369,15 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       const ctrlHoverSpan = beginnerCtrlHoverSpan?.targetKey === targetKey
         ? `${beginnerCtrlHoverSpan.segmentId}:${beginnerCtrlHoverSpan.start}:${beginnerCtrlHoverSpan.end}`
         : '';
-      return `|h:${hovered}|a:${active}|c:${completion}|l:${autoLocal}|d:${draftLength}|u:${ctrlHoverSpan}`;
+      // 展开层参数草稿的「值」必须进所属块切片：受控 input 的 value 来自这份草稿，
+      // 只把键放进全局 blockRevision（11340 行）时，第二次击键起块被记忆化外壳跳过、
+      // input fiber 持旧 props，React 事件后按旧值回写 DOM——实测第二个字符起输入被吞，
+      // 中文输入法组合态同样被掐断（2026-10-27 用户报告 + CDP 真机插桩实锤）。
+      const commandArgumentDrafts = Object.entries(beginnerCommandArgumentDrafts)
+        .filter(([draftKey]) => draftKey.startsWith(`${targetKey}:`))
+        .map(([draftKey, value]) => `${draftKey}=${value}`)
+        .join('|');
+      return `|h:${hovered}|a:${active}|c:${completion}|l:${autoLocal}|d:${draftLength}|u:${ctrlHoverSpan}|g:${commandArgumentDrafts}`;
     };
     const pushCanvasItem = (
       key: string,

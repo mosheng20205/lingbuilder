@@ -24,7 +24,12 @@ export function createBeginnerCodeDraftKey(
 }
 
 function methodBodyText(method: LingCppMethod): string {
-  return method.statements.map(statement => statement.text).join('\n').replace(/\s+$/u, '');
+  // 与新手画布显示口径一致：行尾注释回挂（statement.text 只存纯代码），
+  // 否则带注释的方法体每次冲刷草稿都会被误判为「有改动」而整块重写。
+  return method.statements
+    .map(statement => `${statement.text}${statement.trailingComment || ''}`)
+    .join('\n')
+    .replace(/\s+$/u, '');
 }
 
 /**

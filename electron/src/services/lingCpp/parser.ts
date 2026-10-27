@@ -113,6 +113,51 @@ export function isLingCppCommentLine(line: string): boolean {
   return trimmed.startsWith('//') || trimmed === '注释' || trimmed.startsWith('注释 ');
 }
 
+/**
+ * 去掉一行代码末尾的 `//` 行尾注释，返回纯代码部分（含原始缩进）。
+ * 引号（半角/中文弯引号）与反斜杠转义内的 `//` 不算注释；圆括号/中文括号内
+ * 的 `//` 也不算——C++ 源码库命令声明的形参备注语法是 `命令(整数型 x // 说明, …)`，
+ * 必须原样保留给声明解析器。找不到符合条件的行尾注释时原样返回。
+ */
+export function stripLingCppTrailingLineComment(line: string): string {
+  let inDoubleQuote = false;
+  let inChineseQuote = false;
+  let depth = 0;
+  for (let index = 0; index < line.length - 1; index += 1) {
+    const char = line[index];
+    const next = line[index + 1];
+    if (char === '\' && (inDoubleQuote || inChineseQuote)) {
+      index += 1;
+      continue;
+    }
+    if (!inChineseQuote && char === '"') {
+      inDoubleQuote = !inDoubleQuote;
+      continue;
+    }
+    if (!inDoubleQuote && char === '“') {
+      inChineseQuote = true;
+      continue;
+    }
+    if (inChineseQuote && char === '”') {
+      inChineseQuote = false;
+      continue;
+    }
+    if (inDoubleQuote || inChineseQuote) continue;
+    if (char === '(' || char === '（') {
+      depth += 1;
+      continue;
+    }
+    if (char === ')' || char === '）') {
+      depth = Math.max(0, depth - 1);
+      continue;
+    }
+    if (depth === 0 && char === '/' && next === '/') {
+      return line.slice(0, index).replace(/[ 	]+$/u, '');
+    }
+  }
+  return line;
+}
+
 /** Read the single declaration note immediately preceding a source line. */
 export function readLingCppDeclarationNote(lines: string[], lineNumber: number): string | undefined {
   for (let index = lineNumber - 2; index >= 0; index -= 1) {
@@ -298,29 +343,39 @@ export function parseLingCpp(source: string): LingCppParseResult {
     currentDllStruct = null;
   };
 
-  lines.forEach((line, index) => {
+  lines.forEach((rawLine, index) => {
     const lineNumber = index + 1;
-    const trimmed = line.trim();
+    const rawTrimmed = rawLine.trim();
 
     // 文本块内部行与结束标记不参与任何行级语法；开始行落到兜底时收敛为单条语句。
     if (textBlockConsumedLines.has(lineNumber) && !textBlockByOpenLine.has(lineNumber)) return;
     if (textBlockStrayCloses.has(lineNumber)) {
-      diagnostics.push(createDiagnostic('error', lineNumber, line, '多余的文本块结束标记。', `请删除该行，或在前面补写「变量 = ${LING_CPP_TEXT_BLOCK_DELIMITER}」开始行。`));
+      diagnostics.push(createDiagnostic('error', lineNumber, rawLine, '多余的文本块结束标记。', `请删除该行，或在前面补写「变量 = ${LING_CPP_TEXT_BLOCK_DELIMITER}」开始行。`));
       return;
     }
 
-    if (!trimmed) {
-      appendStatement(currentMethod, line, lineNumber);
+    if (!rawTrimmed) {
+      appendStatement(currentMethod, rawLine, lineNumber);
       return;
     }
 
-    if (isLingCppCommentLine(trimmed)) {
-      appendStatement(currentMethod, line, lineNumber);
-      pushNode(createAstNode('comment', trimmed, lineNumber, line, currentMethodNode?.id || currentClassNode?.id || currentFunctionLibraryNode?.id || currentDataTypeNode?.id || rootNode.id, {
-        value: trimmed
+    if (isLingCppCommentLine(rawTrimmed) || rawTrimmed.startsWith("'")) {
+      appendStatement(currentMethod, rawLine, lineNumber);
+      pushNode(createAstNode('comment', rawTrimmed, lineNumber, rawLine, currentMethodNode?.id || currentClassNode?.id || currentFunctionLibraryNode?.id || currentDataTypeNode?.id || rootNode.id, {
+        value: rawTrimmed
       }), currentMethodNode || currentClassNode || currentFunctionLibraryNode || currentDataTypeNode || rootNode);
       return;
     }
+
+    // 行尾 // 注释与代码分离后再进入语句/声明解析：`控件_设置文本(标签4, …) // 说明`
+    // 这类行不再因行尾注释破坏语句形态、被生成器降级成「暂不支持」注释而静默丢失。
+    // 例外：@ 内嵌 C++ 行原样透传；结构体字段行尾注释是字段备注语法（DLL_STRUCT_FIELD_RE）。
+    const line = rawTrimmed.startsWith('@') || currentDllStruct
+      ? rawLine
+      : stripLingCppTrailingLineComment(rawLine);
+    const trimmed = line.trim();
+    // 被剥掉的尾巴原样保存（含前导空格），新手编辑器按语句重建显示行时回挂。
+    const trailingComment = rawLine.length > line.length ? rawLine.slice(line.length) : undefined;
 
     if (trimmed === '结束数据类型') {
       if (!currentDataType || !currentDataTypeNode) {
@@ -867,7 +922,7 @@ export function parseLingCpp(source: string): LingCppParseResult {
       diagnostics.push(createDiagnostic('error', lineNumber, line, `多行文本块标记 ${LING_CPP_TEXT_BLOCK_DELIMITER} 只能写在「变量 = ${LING_CPP_TEXT_BLOCK_DELIMITER}」行尾，或作为单独一行的结束标记。`, '一期仅支持赋值右部文本块；命令实参、返回值和类型声明初值请先赋值给变量再引用。'));
     }
 
-    const statement = appendStatement(currentMethod, line, lineNumber);
+    const statement = appendStatement(currentMethod, line, lineNumber, trailingComment);
     pushNode(createAstNode('statement', trimmed, lineNumber, line, currentMethodNode?.id || currentClassNode?.id || currentFunctionLibraryNode?.id, {
       value: statement?.text || trimmed,
       detail: currentMethod ? '方法语句' : '未识别类成员'
@@ -1216,11 +1271,17 @@ export function buildLingCppSymbolIndex(nodes: LingCppAstNode[]): LingCppSymbolI
   return index;
 }
 
-function appendStatement(method: LingCppMethod | null, line: string, lineNumber: number): LingCppStatement | undefined {
+function appendStatement(
+  method: LingCppMethod | null,
+  line: string,
+  lineNumber: number,
+  trailingComment?: string
+): LingCppStatement | undefined {
   if (!method) return undefined;
   const indent = line.match(/^\s*/)?.[0] || '';
   const text = line.slice(indent.length);
   const statement: LingCppStatement = { line: lineNumber, indent, text };
+  if (trailingComment) statement.trailingComment = trailingComment;
   method.statements.push(statement);
   return statement;
 }
