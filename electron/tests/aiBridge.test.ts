@@ -196,6 +196,17 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
   assert.match(String(client.getInstructions() || ''), /lingbuilder\.barcode/u, 'instructions 必须给出一维条码模块口径（2026-10-24 批次4）');
   assert.match(String(client.getInstructions() || ''), /lingbuilder\.op/u, 'instructions 必须给出 OP 后台图色模块选型（2026-10-24 批次5）');
   assert.match(String(client.getInstructions() || ''), /后台_绑定窗口/u, 'instructions 必须给出后台绑定标准链路');
+  assert.match(String(client.getInstructions() || ''), /项目C\+\+源码库\.lcpp/u, 'instructions 必须给出 C++ 源码库声明文件路径（2026-10-27 批次）');
+  assert.match(String(client.getInstructions() || ''), /= C\+\+函数名/u, 'instructions 必须写明源码库命令的 ASCII 函数名映射语法');
+  assert.match(String(client.getInstructions() || ''), /字节集返回必须按值返回/u, 'instructions 必须写明字节集按值返回的 ABI 口径');
+  assert.match(String(client.getInstructions() || ''), /处理器 进度回调\(整数型 序号, 文本型 阶段\)/u, 'instructions 必须给出源码库回调参数内联签名语法（v2）');
+  assert.match(String(client.getInstructions() || ''), /类 计数器 = Counter/u, 'instructions 必须给出源码库类句柄化语法（v2）');
+  assert.match(String(client.getInstructions() || ''), /初始化器抢跑/u, 'instructions 必须钉住类句柄流的声明提升陷阱');
+  assert.match(String(client.getInstructions() || ''), /回传 逻辑型/u, 'instructions 必须给出回调非空返回语法（v3）');
+  assert.match(String(client.getInstructions() || ''), /整数型\[\] 求和/u, 'instructions 必须给出一维数组参数语法（v3）');
+  assert.match(String(client.getInstructions() || ''), /异常 = 捕获/u, 'instructions 必须给出异常捕获模式与取错误命令（v3）');
+  assert.match(String(client.getInstructions() || ''), /命名空间 = xxx/u, 'instructions 必须给出源码库命名空间语法（v4）');
+  assert.match(String(client.getInstructions() || ''), /类块不支持命名空间/u, 'instructions 必须钉住命名空间的类边界（v4）');
   assert.match(String(client.getInstructions() || ''), /颜色一律 RRGGBB/u, 'instructions 必须钉住 RRGGBB 颜色红线（大漠迁移）');
   assert.match(String(client.getInstructions() || ''), /右下边界是开区间/u, 'instructions 必须钉住截图开区间红线');
   assert.match(String(client.getInstructions() || ''), /后台_找图全部/u, 'instructions 必须给出多模板命中区分口径');

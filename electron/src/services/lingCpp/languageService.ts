@@ -3789,6 +3789,9 @@ function isThreadWorkerHandler(source: string, handlerName: string, bindings: Mo
 
 function getModuleHandlerDiagnostics(source: string, program: LingCppProgram, moduleContext?: LingCppModuleContext): LingCppDiagnostic[] {
   const diagnostics: LingCppDiagnostic[] = [];
+  // 项目 C++ 源码库声明文件：命令行是声明不是调用，处理器参数写的是签名不是 &引用，
+  // 调用形态扫描会把每条声明误判成「缺 &引用/处理器不存在」，整文件跳过。
+  if ((program.cppLibraries?.length || 0) > 0) return diagnostics;
   const handlers = new Map<string, LingCppMethod[]>();
   [...program.classes.flatMap(cls => cls.methods), ...program.functionLibraries.flatMap(library => library.methods)].forEach(method => {
     const key = normalizeIdentifier(method.name);
@@ -4182,6 +4185,11 @@ function validateArrayCommandInvocation(
   const arrayIndex = parameters.findIndex(parameter => parameter.type === 'array');
   const arrayParameterName = parameters[arrayIndex]?.name || '数组';
   const arrayArgument = (args[arrayIndex] || '').trim();
+  // 项目 C++ 源码库的数组形参按 const 引用输入（值语义，cppConstRefArray 标记），
+  // 不适用模块数组命令的「就地出参、必须传已声明数组变量」校验。
+  if (parameters[arrayIndex]?.cppConstRefArray === true) {
+    return [];
+  }
   if (!/^[\p{L}_][\p{L}\p{N}_]*(?:\s*\.\s*[\p{L}_][\p{L}\p{N}_]*)*$/u.test(arrayArgument)) {
     return [createDiagnostic(
       'error', expression.line, expression.text,

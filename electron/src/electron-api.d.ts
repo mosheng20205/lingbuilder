@@ -199,6 +199,7 @@ declare global {
         selectVideo: () => Promise<{ canceled: boolean; filePath?: string }>;
         selectIcon: () => Promise<{ canceled: boolean; filePath?: string }>;
         selectEmbeddedFiles: () => Promise<{ canceled: boolean; filePaths?: string[]; error?: string }>;
+        selectCppSourceFiles: () => Promise<{ canceled: boolean; filePaths?: string[]; error?: string }>;
         selectEmbeddedFolder: () => Promise<{ canceled: boolean; directoryPath?: string; error?: string }>;
       };
       credentials?: {

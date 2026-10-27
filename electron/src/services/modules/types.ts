@@ -399,6 +399,11 @@ export interface ModuleCommandBindingParameter {
    * 创建/销毁/取/置命令管理），生成 C++ 时调用点自动加 `(结构名 *)` 强转。
    */
   cppStructName?: string;
+  /**
+   * 项目 C++ 源码库：数组形参按 const 引用输入（值语义，绑定类型仍为 array）。
+   * 语言服务据此跳过模块数组命令「必须传已声明数组变量（就地出参）」的校验。
+   */
+  cppConstRefArray?: boolean;
   /** 可选参数只能出现在参数列表尾部。 */
   optional?: boolean;
   /** 可选参数省略时使用的确定性默认值；null 表示“未设置”。 */
@@ -427,6 +432,32 @@ export interface ModuleDelayedCallInvocation {
   handlerParameterIndex: number;
 }
 
+/**
+ * 项目 C++ 源码库：处理器实参在同编译单元内直接调用——生成 std::function 兼容 lambda
+ * （Win32 后端 `[this]` 捕获成员子程序，new_emoji 后端无捕获调用静态子程序），
+ * 不走「按名字符串解析」的运行时桥。回调线程与调用线程一致，不做封送。
+ * 签名来自处理器参数的 handlerSignature。
+ */
+export interface ModuleCppCallbackInvocation {
+  kind: 'cppCallback';
+}
+
+/**
+ * 项目 C++ 源码库类句柄命令：调用点不发射自由函数调用，而是
+ * constructor → `reinterpret_cast<long long>(new 类名(实参))`；
+ * destructor → `delete reinterpret_cast<类名*>(对象)`；
+ * method → `reinterpret_cast<类名*>(对象)->方法(实参...)`。
+ * 类定义来自同库声明的用户头文件（无头文件无法完成类型，声明期阻断）。
+ */
+export interface ModuleCppClassMethodInvocation {
+  kind: 'cppClassMethod';
+  /** C++ 侧类名（ASCII 标识符）。 */
+  className: string;
+  /** C++ 方法名；constructor/destructor 缺省（发射 new/delete）。 */
+  cppMethodName?: string;
+  form: 'constructor' | 'destructor' | 'method';
+}
+
 export interface ModuleCommandBinding {
   command: string;
   runtimeName: string;
@@ -437,7 +468,7 @@ export interface ModuleCommandBinding {
   example?: string;
   description?: string;
   /** 由语言服务和生成器共同校验并展开的受管处理器调用。 */
-  invocation?: ModuleManagedTaskInvocation | ModuleDelayedCallInvocation;
+  invocation?: ModuleManagedTaskInvocation | ModuleDelayedCallInvocation | ModuleCppCallbackInvocation | ModuleCppClassMethodInvocation;
   /** Pro 专享命令标记：与 contributes.commands 的 access 字段同源，语言服务/生成器按此拦截。 */
   access?: 'pro';
 }

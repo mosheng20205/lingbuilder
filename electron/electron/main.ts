@@ -1601,6 +1601,27 @@ function registerIpcHandlers(): void {
       return { canceled: false, filePaths: [] as string[], error: error instanceof Error ? error.message : String(error) };
     }
   });
+  // 「添加 C++ 源码…」：本机多选 .h/.cpp 源码文件，由服务端复制进项目 cpp/ 目录。
+  ipcMain.handle('designer-assets:select-cpp-source-files', async () => {
+    const owner = getFocusedWindow();
+    const options: Electron.OpenDialogOptions = {
+      title: '选择要导入的 C++ 源码文件',
+      properties: ['openFile', 'multiSelections'],
+      filters: [
+        { name: 'C++ 源码（.cpp / .cc / .cxx / .c / .h / .hpp）', extensions: ['cpp', 'cc', 'cxx', 'c', 'h', 'hpp', 'hh', 'hxx'] },
+        { name: '所有文件', extensions: ['*'] }
+      ]
+    };
+    const result = owner
+      ? await dialog.showOpenDialog(owner, options)
+      : await dialog.showOpenDialog(options);
+    if (result.canceled || result.filePaths.length === 0) return { canceled: true, filePaths: [] as string[] };
+    try {
+      return { canceled: false, filePaths: await resolvePickedFiles(result.filePaths) };
+    } catch (error) {
+      return { canceled: false, filePaths: [] as string[], error: error instanceof Error ? error.message : String(error) };
+    }
+  });
   ipcMain.handle('designer-assets:select-embedded-folder', async () => {
     const owner = getFocusedWindow();
     const options: Electron.OpenDialogOptions = {

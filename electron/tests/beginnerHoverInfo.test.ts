@@ -16,6 +16,7 @@ const program: LingCppProgram = {
   dataTypes: [],
   functionLibraries: [],
   dllLibraries: [],
+  cppLibraries: [],
   classes: [
     {
       name: '窗口一',

@@ -219,6 +219,7 @@ interface SidebarProps {
   onOpenProjectGlobalVariables?: (projectId: string) => void | Promise<void>;
   onOpenProjectDataTypes?: (projectId: string) => void | Promise<void>;
   onOpenProjectDllCommands?: (projectId: string) => void | Promise<void>;
+  onOpenProjectCppSourceLibrary?: (projectId: string) => void | Promise<void>;
   onCreateFunctionLibrary?: (projectId: string, prefill?: string) => void | Promise<void>;
   onCreateFunctionLibraryFolder?: (projectId: string, prefill?: string) => void | Promise<void>;
   onDeleteFunctionLibraryFolder?: (projectId: string, folderPath: string) => void | Promise<void>;
@@ -227,6 +228,7 @@ interface SidebarProps {
   onCopySolutionFullPath?: () => boolean | Promise<boolean>;
   onCopyProjectFullPath?: (projectId: string) => boolean | Promise<boolean>;
   onAddProjectResource?: (projectId: string) => Promise<DesignerImageImportResult>;
+  onAddProjectCppSource?: (projectId: string) => void | Promise<void>;
   onOpenProjectAssetsDirectory?: (projectId: string) => void | Promise<void>;
   onExportLcppSourcePackage?: (projectId: string) => void | Promise<void>;
   onExportInstaller?: (projectId: string) => void | Promise<void>;
@@ -278,6 +280,7 @@ export default function Sidebar({
   onOpenProjectGlobalVariables,
   onOpenProjectDataTypes,
   onOpenProjectDllCommands,
+  onOpenProjectCppSourceLibrary,
   onCreateFunctionLibrary,
   onCreateFunctionLibraryFolder,
   onDeleteFunctionLibraryFolder,
@@ -286,6 +289,7 @@ export default function Sidebar({
   onCopySolutionFullPath,
   onCopyProjectFullPath,
   onAddProjectResource,
+  onAddProjectCppSource,
   onOpenProjectAssetsDirectory,
   onExportLcppSourcePackage,
   onExportInstaller,
@@ -1547,6 +1551,13 @@ export default function Sidebar({
                 : <Plus className="w-3.5 h-3.5 text-sky-400" />}
               <span>{resourceImportingProjectId === project.id ? '正在添加资源…' : '添加资源…'}</span>
             </div>
+            <div
+              className={menuItemClass}
+              onClick={() => { void onAddProjectCppSource?.(project.id); }}
+            >
+              <FileCode className="w-3.5 h-3.5 text-sky-400" />
+              <span>添加 C++ 源码…</span>
+            </div>
             <div className={menuItemClass} onClick={() => void onExportLcppSourcePackage?.(project.id)}>
               <Package className="w-3.5 h-3.5 text-emerald-400" />
               <span>一键导出 LCPP 源码包…</span>
@@ -2302,6 +2313,21 @@ export default function Sidebar({
                             <FileCode className="h-4 w-4 shrink-0 text-amber-500" />
                             <span className="truncate">DLL 命令</span>
                             {!projectDeclarationFileExists(files, project.sourceRoot, '项目DLL命令.lcpp') && (
+                              <span className="ml-auto text-[9px] opacity-60">未创建</span>
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void onOpenProjectCppSourceLibrary?.(project.id)}
+                            className={`flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-[length:var(--lb-sidebar-font-size,13px)] font-sans transition-colors ${
+                              isDarkMode ? 'text-slate-300 hover:bg-[#2A2D2E]/50' : 'text-slate-700 hover:bg-slate-100'
+                            }`}
+                            title="把别人写好的 C++ 源码（.h/.cpp）声明为中文命令；源码直接并入生成的工程一起编译"
+                          >
+                            <span aria-hidden="true" className="h-4 w-4 shrink-0" />
+                            <FileCode className="h-4 w-4 shrink-0 text-sky-500" />
+                            <span className="truncate">C++ 源码库</span>
+                            {!projectDeclarationFileExists(files, project.sourceRoot, '项目C++源码库.lcpp') && (
                               <span className="ml-auto text-[9px] opacity-60">未创建</span>
                             )}
                           </button>

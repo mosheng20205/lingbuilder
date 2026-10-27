@@ -21,6 +21,42 @@ export interface EmbeddedResourceImportEntry {
   size: number;
 }
 
+export interface CppSourceImportClientResult {
+  ok: boolean;
+  canceled?: boolean;
+  /** 已复制的项目相对路径（cpp/xxx.cpp），可直接写进「源码 =」声明。 */
+  relativePaths?: string[];
+  /** 声明文件的项目相对路径（导入后自动打开它）。 */
+  declarationFilePath?: string;
+  notes?: string[];
+  error?: string;
+}
+
+/**
+ * 「添加 C++ 源码…」：本机多选 .h/.cpp → 复制进 <项目源码根>/cpp/（重名 -2/-3）。
+ * 桌面版经 designer-assets 受控 IPC 取路径，复制与校验统一由工作区本地服务完成（renderer 不碰 fs）。
+ */
+export async function selectAndImportCppSourceFiles(projectId: string): Promise<CppSourceImportClientResult> {
+  const selection = await window.lingBuilder?.designerAssets?.selectCppSourceFiles();
+  if (!selection) return { ok: false, error: '本机文件选择仅在 LingBuilder 桌面版中可用。' };
+  if (selection.error) return { ok: false, error: selection.error };
+  if (selection.canceled || !selection.filePaths?.length) return { ok: false, canceled: true };
+  const response = await fetch('/api/project/cpp-source/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectId, sourcePaths: selection.filePaths })
+  });
+  const result = await response.json() as { ok?: boolean; copied?: Array<{ relativePath: string }>; skipped?: Array<{ path: string; reason: string }>; declarationFilePath?: string; error?: string };
+  if (!response.ok || !result.ok) return { ok: false, error: result.error || 'C++ 源码复制到项目失败。' };
+  const notes = (result.skipped || []).map(item => `已跳过 ${item.path.split(/[\\/]/u).pop() || item.path}：${item.reason}`);
+  return {
+    ok: true,
+    relativePaths: (result.copied || []).map(item => item.relativePath),
+    declarationFilePath: result.declarationFilePath,
+    notes
+  };
+}
+
 export interface EmbeddedResourceImportResult {
   ok: boolean;
   canceled?: boolean;

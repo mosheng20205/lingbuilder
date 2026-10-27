@@ -21,6 +21,7 @@ export interface LingCppProgram {
   dataTypes: LingCppDataType[];
   functionLibraries: LingCppFunctionLibrary[];
   dllLibraries: LingCppDllLibrary[];
+  cppLibraries: LingCppCppSourceLibrary[];
   classes: LingCppClass[];
   diagnostics: LingCppDiagnostic[];
   source: string;
@@ -127,6 +128,16 @@ export interface LingCppParameter {
   note?: string;
   /** 项目 DLL 命令声明：按指针传址（输出参数），生成 `类型*` 形参与 `&实参` 调用。 */
   byRef?: boolean;
+  /**
+   * 项目 C++ 源码库：处理器参数的内联签名（`处理器 名(类型 参数, ...)`）。
+   * 生成 C++ 时该参数展开为 std::function&lt;...&gt; 兼容 lambda。
+   */
+  handlerSignatureParameters?: LingCppParameter[];
+  /**
+   * 项目 C++ 源码库：回调返回类型（`处理器 名(...) 回传 类型`）；缺省为空（void）。
+   * 生成 std::function&lt;返回(形参...)&gt;，lambda 体带 return 转发。
+   */
+  handlerReturnType?: string;
 }
 
 export interface LingCppStatement {
@@ -161,6 +172,11 @@ export type LingCppAstNodeKind =
   | 'dll-struct'
   | 'dll-struct-align'
   | 'dll-struct-field'
+  | 'cpp-source-library'
+  | 'cpp-source-file'
+  | 'cpp-source-command'
+  | 'cpp-source-class'
+  | 'cpp-source-class-method'
   | 'class'
   | 'access'
   | 'member'
@@ -366,6 +382,77 @@ export interface LingCppProjectDllCommandContext {
   filePath: string;
   sourceCode: string;
   dllLibraries: LingCppDllLibrary[];
+}
+
+/** 项目 C++ 源码库类的方法声明（类块内 `方法 返回类型 名称(参数) [= C++方法名]`）。 */
+export interface LingCppCppClassMethod {
+  name: string;
+  returnType: string;
+  parameters: LingCppParameter[];
+  /** C++ 方法名（ASCII）；「创建/销毁」两个保留名不需要（分别发射 new/delete）。 */
+  cppName?: string;
+  remark?: string;
+  isPublic?: boolean;
+  line: number;
+}
+
+/**
+ * 项目 C++ 源码库类块：`类 中文名 = CppClass`，方法块合成 `类名_创建/类名_销毁/类名_方法名`
+ * 全局命令，调用端以长整数型句柄持有对象（首参固定「对象」）。类定义来自同库声明的用户头文件。
+ */
+export interface LingCppCppClass {
+  name: string;
+  /** C++ 侧类名（ASCII 标识符）。 */
+  cppName: string;
+  line: number;
+  methods: LingCppCppClassMethod[];
+}
+
+/** 项目 C++ 源码库单条命令：命令名映射到源码内的全局 C++ 函数（`= 函数名` 必写，ASCII 标识符）。 */
+export interface LingCppCppSourceCommand {
+  name: string;
+  returnType: string;
+  parameters: LingCppParameter[];
+  /** 命令备注（写入合成模块的 description，补全/新手提示可见）。 */
+  remark?: string;
+  /** 源码内的 C++ 函数名；生成 C++ 调用点即用该名字。 */
+  cppName: string;
+  /** 命令是否公开（对补全和新手编辑器可见）；缺省视为公开，仅 `公开 = 假` 显式关闭。 */
+  isPublic?: boolean;
+  line: number;
+}
+
+/** 项目 C++ 源码库内引用的源码/头文件（项目内相对路径）。 */
+export interface LingCppCppSourceFileRef {
+  relativePath: string;
+  line: number;
+}
+
+/**
+ * 项目 C++ 源码库：不经 DLL、不经 .lbmod，项目内的 .h/.cpp 源码直接并入生成的 C++
+ * 工程一起编译（同编译器同 CRT，无 ABI 边界），中文命令按 `= C++函数名` 直连源码函数。
+ */
+export interface LingCppCppSourceLibrary {
+  name: string;
+  line: number;
+  endLine?: number;
+  /** 源码 = xxx.cpp：参与编译的源码文件（至少一条）。 */
+  sourceFiles: LingCppCppSourceFileRef[];
+  /** 头文件 = xxx.h：可选；缺省由生成器按声明自动发期望签名前置声明。 */
+  headerFiles: LingCppCppSourceFileRef[];
+  /** 包含目录 = xxx（v3）：整目录递归复制进 modules/<id>/sources/<目录>，供源码内相对 #include 命中。 */
+  includeDirs: LingCppCppSourceFileRef[];
+  /** 异常 = 捕获（v3）：本库全部命令经 try/catch 包装，异常文本经 <库名>_取错误() 读取。 */
+  exceptionCapture?: boolean;
+  /**
+   * 命名空间 = xxx（v4，仅函数命令）：C++ 函数位于该命名空间；生成头在 namespace 块内发
+   * 期望签名前置声明，并按中文命令名发全局 inline 转发函数（绑定 runtimeName 即命令名）。
+   * 类块不支持命名空间（类定义来自头文件，类名按原样解析）。
+   */
+  namespaceName?: string;
+  commands: LingCppCppSourceCommand[];
+  /** 类块：合成 类名_创建/销毁/方法 命令（句柄化，类定义来自本库头文件）。 */
+  classes: LingCppCppClass[];
 }
 
 export interface AiConnectionConfig {

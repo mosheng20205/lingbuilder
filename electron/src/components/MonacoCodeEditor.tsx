@@ -1422,9 +1422,14 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
       if (cancelled) return;
       const availableModules = Array.isArray(installedResult.modules) ? installedResult.modules as InstalledModule[] : [];
       const enabledModulesBase = Array.isArray(enabledResult.modules) ? enabledResult.modules as InstalledModule[] : [];
-      // 项目级 DLL 命令声明：虚拟模块只并入补全上下文。
+      // 项目级 DLL 命令声明与 C++ 源码库：虚拟模块只并入补全上下文。
       const declaredModule = (enabledResult as { projectDeclarationModule?: InstalledModule | null }).projectDeclarationModule ?? null;
-      const enabledModules = declaredModule ? [...enabledModulesBase, declaredModule] : enabledModulesBase;
+      const declaredCppSourceModule = (enabledResult as { projectCppSourceModule?: InstalledModule | null }).projectCppSourceModule ?? null;
+      const enabledModules = [
+        ...enabledModulesBase,
+        ...(declaredModule ? [declaredModule] : []),
+        ...(declaredCppSourceModule ? [declaredCppSourceModule] : [])
+      ];
       setFetchedModuleContext({ availableModules, enabledModules });
     });
 

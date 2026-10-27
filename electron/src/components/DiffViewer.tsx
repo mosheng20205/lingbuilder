@@ -65,6 +65,7 @@ import LingCppStructureEditor from './LingCppStructureEditor';
 import ProjectGlobalVariableEditor from './ProjectGlobalVariableEditor';
 import ProjectDataTypeEditor from './ProjectDataTypeEditor';
 import ProjectDllCommandsEditor from './ProjectDllCommandsEditor';
+import ProjectCppSourceLibraryEditor from './ProjectCppSourceLibraryEditor';
 import {
   DIFF_VIEW_MODE_CHANGE_EVENT,
   type DiffViewMode
@@ -141,6 +142,7 @@ import { normalizeIdentifier, parseLingCpp } from '../services/lingCpp/parser';
 import { collectProjectDeclarationContexts, isProjectGlobalsFilePath } from '../services/lingCpp/projectGlobalService';
 import { isProjectDataTypesFilePath } from '../services/lingCpp/projectDataTypeService';
 import { isProjectDllCommandsFilePath } from '../services/lingCpp/projectDllCommandService';
+import { isProjectCppSourceLibraryFilePath } from '../services/lingCpp/projectCppSourceLibraryService';
 import { createProjectFunctionContext } from '../services/lingCpp/functionLibraryService';
 import { fetchWithSdkDependencies } from '../services/sdkDependencies/sdkDependencyClient';
 import { getLingCppParameterElementType, isLingCppArrayParameterType, setLingCppArrayParameterType } from '../services/lingCpp/parameterTypeService';
@@ -289,6 +291,7 @@ interface DiffViewerProps {
   onUpdateProjectSources?: (sources: Array<{ filePath: string; sourceCode: string }>) => void;
   onOpenProjectDataTypes?: () => void;
   onOpenProjectDllCommands?: () => void;
+  onOpenProjectCppSourceLibrary?: () => void;
   isDarkMode: boolean;
   activeFile?: any;
   editorFontSize?: number;
@@ -1628,6 +1631,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   onUpdateProjectSources,
   onOpenProjectDataTypes,
   onOpenProjectDllCommands,
+  onOpenProjectCppSourceLibrary,
   isDarkMode,
   activeFile,
   editorFontSize = 13,
@@ -2302,6 +2306,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     [activeFile?.path, allFiles, normalizedSourceCode]
   );
   const isActiveProjectDllCommandsFile = Boolean(activeFile?.path && isProjectDllCommandsFilePath(String(activeFile.path)));
+  const isActiveProjectCppSourceLibraryFile = Boolean(activeFile?.path && isProjectCppSourceLibraryFilePath(String(activeFile.path)));
   const lingCppProjectSources = useMemo(() => allFiles
     .filter(file => file.language === 'lingcpp' || String(file.path || '').toLocaleLowerCase().endsWith('.lcpp'))
     .map(file => ({
@@ -12734,6 +12739,17 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               <span>命令</span>
             </button>
           )}
+          {onOpenProjectCppSourceLibrary && editorExperienceMode === 'beginner' && viewType === 'code' && activeFile?.language === 'lingcpp' && isActiveProjectCppSourceLibraryFile && (
+            <button
+              type="button"
+              onClick={onOpenProjectCppSourceLibrary}
+              className={`flex items-center gap-1 rounded border px-2.5 py-1 text-[10px] font-medium ${isDarkMode ? 'border-sky-500/30 bg-sky-600/10 text-sky-300 hover:bg-sky-600/20' : 'border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100'}`}
+              title="打开项目 C++ 源码库声明"
+            >
+              <span className="font-semibold">C++</span>
+              <span>源码库</span>
+            </button>
+          )}
           {onOpenProjectDataTypes && editorExperienceMode === 'beginner' && viewType === 'code' && activeFile?.language === 'lingcpp' && (
             <button
               type="button"
@@ -12936,6 +12952,15 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
             <div className="flex-1 min-h-0 flex overflow-hidden">
               {isActiveProjectDllCommandsFile ? (
                 <ProjectDllCommandsEditor
+                  sourceCode={normalizedSourceCode}
+                  filePath={activeFile?.path}
+                  isDarkMode={isDarkMode}
+                  readOnly={!onUpdateSourceContent}
+                  commandService={commandService}
+                  onChange={updateSourceCode}
+                />
+              ) : isActiveProjectCppSourceLibraryFile ? (
+                <ProjectCppSourceLibraryEditor
                   sourceCode={normalizedSourceCode}
                   filePath={activeFile?.path}
                   isDarkMode={isDarkMode}

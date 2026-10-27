@@ -73,6 +73,8 @@ import type { TextFileFormat } from '../files/types';
 import { generateLingCppNativeWin32Project } from '../windowDesigner/lingCppWin32Project';
 import { createProjectDllDeclarationModuleFromSources, getProjectDllCommandsDiagnostics, isProjectDllCommandsFilePath } from '../lingCpp/projectDllCommandService';
 import { materializeProjectDllDeclarationModules } from '../modules/projectDllMaterializeService';
+import { materializeProjectCppSourceLibraries } from '../modules/projectCppSourceMaterializeService';
+import { createProjectCppSourceDeclarationModule, createProjectCppSourceDeclarationModuleFromSources } from '../lingCpp/projectCppSourceLibraryService';
 import { getEmbeddedResourceSpecsForBuild } from '../windowDesigner/embeddedResourceMigration';
 import { normalizeIdentifier, parseLingCpp } from '../lingCpp/parser';
 import { exportVisualStudioProject } from '../windowDesigner/visualStudioProjectExporter';
@@ -1747,8 +1749,10 @@ export class AiBridgeService {
     ]);
     await this.assertModuleAccess(enabledModules.map(module => module.manifest.id));
     await this.requireSdkDependencies(enabledModules.map(module => module.manifest.id));
-    // 项目级 DLL 命令声明：扫描全部源码解析声明库（虚拟模块由生成器内部合成，这里准备物化数据）。
-    const projectDllLibraries = lingCppSources.flatMap(source => parseLingCpp(source.sourceCode).program.dllLibraries || []);
+    // 项目级 DLL 命令声明 + C++ 源码库：扫描全部源码解析声明（虚拟模块由生成器内部合成，这里准备物化数据）。
+    const parsedBuildPrograms = lingCppSources.map(source => ({ source, program: parseLingCpp(source.sourceCode).program }));
+    const projectDllLibraries = parsedBuildPrograms.flatMap(item => item.program.dllLibraries || []);
+    const projectCppSourceLibraries = parsedBuildPrograms.flatMap(item => item.program.cppLibraries || []);
     // 输出形态来自解决方案项目记录（windows-console / buildProperties.outputType）；
     // 必须在生成前解析：DLL 模式生成 DllMain + “公开”子程序导出包装，控制台模式生成 wmain + “启动()”入口。
     const outputKind = await this.resolveProjectOutputKind(buildLease.projectId);
@@ -1931,6 +1935,24 @@ export class AiBridgeService {
       moduleNativePlan.libFiles.push(...projectDllLibFiles);
       projectDllBuildNotes.push(...projectDllNotes);
     }
+    // 项目级 C++ 源码库物化：用户源码并入 modules/lingbuilder.project.cppsrc/sources/，声明头写 include/，源码进多 TU 编译。
+    const projectCppSourceBuildNotes: string[] = [];
+    const projectCppSourceExportModule = createProjectCppSourceDeclarationModule(projectCppSourceLibraries, managedProjectId);
+    if (projectCppSourceLibraries.length > 0) {
+      const projectCppSourceRoot = path.resolve(this.workspaceRoot, projectRef.sourceRoot || 'src');
+      const { blocking: cppSourceBlocking, sourceFiles: cppSourceFiles, notes: cppSourceNotes } = await materializeProjectCppSourceLibraries({
+        cppLibraries: projectCppSourceLibraries,
+        sourceRootAbsolute: projectCppSourceRoot,
+        buildDir,
+        sourceDir,
+        binDir,
+        exportDir,
+        logs: []
+      });
+      moduleNativePlan.blockingDiagnostics.push(...cppSourceBlocking);
+      moduleNativePlan.sourceFiles.push(...cppSourceFiles);
+      projectCppSourceBuildNotes.push(...cppSourceNotes);
+    }
     if (moduleNativePlan.blockingDiagnostics.length > 0) {
       const result = {
         ok: false,
@@ -1958,6 +1980,11 @@ export class AiBridgeService {
       await fs.mkdir(path.dirname(target), { recursive: true });
       await fs.copyFile(artifact.absolutePath, target);
     }
+    // VS 导出并入 C++ 源码库虚拟模块：targets.sources 映射为 modules/<id>/sources/<file> 的 ClCompile 条目，
+    // 导出的 vcxproj 才能独立编译用户源码（与直编 plan.sourceFiles 同一份文件）。
+    const exportEnabledModules = projectCppSourceLibraries.length > 0 && projectCppSourceExportModule
+      ? [...enabledModules, projectCppSourceExportModule]
+      : enabledModules;
     const buildVisualStudioProject = await exportVisualStudioProject({
       projectDir: buildDir,
       projectId,
@@ -1965,7 +1992,7 @@ export class AiBridgeService {
         ...file,
         relativePath: normalizeFilePath(path.join('src', file.relativePath))
       })),
-      enabledModules,
+      enabledModules: exportEnabledModules,
       contentFiles: [...buildContentFiles, ...codeGeneratorResult.artifacts.filter(artifact => artifact.kind === 'descriptor' || artifact.kind === 'runtime').map(artifact => normalizeFilePath(path.join('src', artifact.relativePath)))],
       requiredCppStandard: moduleNativePlan.requiredCppStandard,
       requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt,
@@ -1979,7 +2006,7 @@ export class AiBridgeService {
       projectDir: exportDir,
       projectId,
       generatedFiles: [...generatedProject.files, ...generatedCodegenFiles],
-      enabledModules,
+      enabledModules: exportEnabledModules,
       contentFiles: [...exportContentFiles, ...codeGeneratorResult.artifacts.filter(artifact => artifact.kind === 'descriptor' || artifact.kind === 'runtime').map(artifact => normalizeFilePath(artifact.relativePath))],
       requiredCppStandard: moduleNativePlan.requiredCppStandard,
       requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt,
@@ -2010,6 +2037,7 @@ export class AiBridgeService {
       ...generatedProject.diagnostics,
       ...codeGeneratorResult.logs,
       ...projectDllBuildNotes,
+      ...projectCppSourceBuildNotes,
       ...moduleNativePlan.diagnostics
     ];
 
@@ -2758,10 +2786,15 @@ export class AiBridgeService {
       this.moduleService.getEnabledProjectModules(projectId)
     ]);
     await this.assertModuleAccess(enabledModules.map(module => module.manifest.id));
-    // 项目级 DLL 命令声明：合成虚拟模块并入上下文，使诊断/补全/AI 描述覆盖声明命令。
+    // 项目级 DLL 命令声明 + C++ 源码库：合成虚拟模块并入上下文，使诊断/补全/AI 描述覆盖声明命令。
     const sources = await this.resolveLingCppProjectSources(projectId);
     const projectDllModule = createProjectDllDeclarationModuleFromSources(sources, projectId);
-    const mergedEnabled = projectDllModule ? [...enabledModules, projectDllModule] : enabledModules;
+    const projectCppSourceModule = createProjectCppSourceDeclarationModuleFromSources(sources, projectId);
+    const mergedEnabled = [
+      ...enabledModules,
+      ...(projectDllModule ? [projectDllModule] : []),
+      ...(projectCppSourceModule ? [projectCppSourceModule] : [])
+    ];
     return { availableModules, enabledModules: mergedEnabled };
   }
 

@@ -48,6 +48,7 @@ export default defineConfig({
             { text: '编写代码', link: '/guide/user/writing-code' },
             { text: '构建与运行', link: '/guide/user/build-and-run' },
             { text: '导入 C++ 工程', link: '/guide/user/import-cpp-project' },
+            { text: 'C++ 源码库', link: '/guide/user/cpp-source-library' },
             { text: '模块市场', link: '/guide/user/modules/marketplace' },
             { text: '安装与管理模块', link: '/guide/user/modules/install-module' },
             { text: '新建与打开模块', link: '/guide/user/modules/create-module' },

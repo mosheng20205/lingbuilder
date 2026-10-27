@@ -1174,7 +1174,6 @@ test('工作区已安装模块全部通过 controlRef 清单和示例门禁', as
       parameters: 20971,
       commandDigest: '879ccbe5',
       controlReferences: 5281,
-      commandDigest: 'a8d672d7',
       parameterDigest: '495cec28'
   }, '内置、官方和当前工作区第三方模块的每个方法与参数都必须进入全量审计');
   // OpenCV 以内置清单为准：本机未装 SDK 时磁盘上的同名清单是只有骨架的占位包（0 命令、无 targets）。

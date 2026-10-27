@@ -187,6 +187,7 @@ import {
 import {
   deleteDesignerImageResource,
   selectAndImportDesignerImage,
+  selectAndImportCppSourceFiles,
   type DesignerImageDeleteResult,
   type DesignerImageImportResult
 } from './services/windowDesigner/designerAssetClient';
@@ -242,6 +243,7 @@ import { collectProjectDeclarationContexts, EMPTY_PROJECT_GLOBALS_SOURCE, isProj
 import { executeProjectGlobalVariableCommand } from './services/lingCpp/projectGlobalCommandService';
 import { EMPTY_PROJECT_DATA_TYPES_SOURCE, isProjectDataTypesFilePath, PROJECT_DATA_TYPES_FILE_NAME } from './services/lingCpp/projectDataTypeService';
 import { createProjectDllDeclarationModuleFromSources, EMPTY_PROJECT_DLL_COMMANDS_SOURCE, isProjectDllCommandsFilePath, PROJECT_DLL_COMMANDS_FILE_NAME, PROJECT_DLL_MODULE_ID } from './services/lingCpp/projectDllCommandService';
+import { createProjectCppSourceDeclarationModuleFromSources, isProjectCppSourceLibraryFilePath, EMPTY_PROJECT_CPP_SOURCE_LIBRARY_SOURCE, PROJECT_CPP_SOURCE_LIBRARY_FILE_NAME, PROJECT_CPP_SOURCE_MODULE_ID } from './services/lingCpp/projectCppSourceLibraryService';
 import { executeProjectDataTypeCommand } from './services/lingCpp/projectDataTypeCommandService';
 import { createProjectConstantRenameProposal, findProjectConstantReferences } from './services/lingCpp/projectConstantReferenceService';
 import { findFunctionLibraryReferences, isFunctionLibrarySource, renameFunctionLibraryAcrossSources } from './services/lingCpp/functionLibraryService';
@@ -932,6 +934,38 @@ export default function App() {
     await handleSelectFile(targetFile);
   }, [handleSelectFile, solution.projects]);
 
+  const handleOpenProjectCppSourceLibrary = useCallback(async (projectId: string): Promise<void> => {
+    const project = solution.projects.find(item => item.id === projectId);
+    if (!project || project.type !== 'visual-cpp') return;
+    if (projectId !== activeProjectIdRef.current) {
+      await requestWorkbenchAlert({ title: '项目尚未就绪', description: '请先等待该项目切换并载入完成。', confirmLabel: '知道了' });
+      return;
+    }
+    const sourceRoot = project.sourceRoot.replace(/\\/gu, '/').replace(/\/+$/u, '');
+    const filePath = `${sourceRoot}/${PROJECT_CPP_SOURCE_LIBRARY_FILE_NAME}`;
+    let targetFile = filesRef.current.find(file => file.path.replace(/\\/gu, '/') === filePath);
+    if (!targetFile) {
+      targetFile = {
+        path: filePath,
+        name: PROJECT_CPP_SOURCE_LIBRARY_FILE_NAME,
+        language: 'lingcpp',
+        encoding: 'utf8',
+        eol: 'lf',
+        savedEncoding: 'utf8',
+        savedEol: 'lf',
+        formatModified: false,
+        originalContent: '',
+        translatedContent: EMPTY_PROJECT_CPP_SOURCE_LIBRARY_SOURCE,
+        strings: [],
+        isModified: true
+      };
+      const nextFiles = [...filesRef.current, targetFile];
+      filesRef.current = nextFiles;
+      setFiles(nextFiles);
+    }
+    await handleSelectFile(targetFile);
+  }, [handleSelectFile, solution.projects]);
+
   const addPersistedFunctionLibraryToEditor = useCallback(async (filePath: string, sourceCode: string, select = true) => {
     const existing = filesRef.current.find(file => file.path.replace(/\\/gu, '/') === filePath.replace(/\\/gu, '/'));
     if (existing) {
@@ -1564,22 +1598,38 @@ export default function App() {
     const normalizedPath = String(file.path || '').replace(/\\/gu, '/');
     return normalizedPath === `${activeProjectSourceRoot}/${PROJECT_DLL_COMMANDS_FILE_NAME}`;
   });
+  // 项目级 C++ 源码库声明：与 DLL 命令声明同款「缓冲区实时合成」，补全/诊断免重启即时生效。
+  const cppSourceBufferFile = files.find(file => {
+    const normalizedPath = String(file.path || '').replace(/\\/gu, '/');
+    return normalizedPath === `${activeProjectSourceRoot}/${PROJECT_CPP_SOURCE_LIBRARY_FILE_NAME}`;
+  });
   const liveProjectDllModule = useMemo(() => {
     if (!dllCommandsBufferFile) return undefined;
     const sourceCode = String(dllCommandsBufferFile.translatedContent || dllCommandsBufferFile.originalContent || '');
     if (!sourceCode.trim()) return undefined;
     return createProjectDllDeclarationModuleFromSources([{ filePath: dllCommandsBufferFile.path, sourceCode }], activeProjectId);
   }, [activeProjectId, dllCommandsBufferFile]);
+  const liveProjectCppSourceModule = useMemo(() => {
+    if (!cppSourceBufferFile) return undefined;
+    const sourceCode = String(cppSourceBufferFile.translatedContent || cppSourceBufferFile.originalContent || '');
+    if (!sourceCode.trim()) return undefined;
+    return createProjectCppSourceDeclarationModuleFromSources([{ filePath: cppSourceBufferFile.path, sourceCode }], activeProjectId);
+  }, [activeProjectId, cppSourceBufferFile]);
   const moduleContext = useMemo<LingCppModuleContext>(() => {
     // 声明文件未打开时沿用服务端磁盘快照（进入工作台/设计器保存/模块变更时刷新）；
-    // 已打开则以缓冲区为准：清空声明即同步移除虚拟模块，不会复活磁盘上的旧声明。
-    if (!dllCommandsBufferFile) return serverModuleContext;
-    const enabledWithoutDeclared = serverModuleContext.enabledModules.filter(module => module.manifest?.id !== PROJECT_DLL_MODULE_ID);
+    // 任一声明文件已打开则以缓冲区为准：清空声明即同步移除对应虚拟模块，不会复活磁盘上的旧声明。
+    if (!dllCommandsBufferFile && !cppSourceBufferFile) return serverModuleContext;
+    const enabledWithoutDeclared = serverModuleContext.enabledModules.filter(module =>
+      module.manifest?.id !== PROJECT_DLL_MODULE_ID && module.manifest?.id !== PROJECT_CPP_SOURCE_MODULE_ID);
     return {
       ...serverModuleContext,
-      enabledModules: liveProjectDllModule ? [...enabledWithoutDeclared, liveProjectDllModule] : enabledWithoutDeclared
+      enabledModules: [
+        ...enabledWithoutDeclared,
+        ...(liveProjectDllModule ? [liveProjectDllModule] : []),
+        ...(liveProjectCppSourceModule ? [liveProjectCppSourceModule] : [])
+      ]
     };
-  }, [dllCommandsBufferFile, liveProjectDllModule, serverModuleContext]);
+  }, [dllCommandsBufferFile, liveProjectDllModule, cppSourceBufferFile, liveProjectCppSourceModule, serverModuleContext]);
 
   const refreshSolution = useCallback(async () => {
     try {
@@ -2612,7 +2662,7 @@ void DisplayStatus() {
   };
 
   const handleDeleteFile = async (file: CppFile): Promise<boolean> => {
-    if (isProjectGlobalsFilePath(file.path) || isProjectDataTypesFilePath(file.path) || isProjectDllCommandsFilePath(file.path)) {
+    if (isProjectGlobalsFilePath(file.path) || isProjectDataTypesFilePath(file.path) || isProjectDllCommandsFilePath(file.path) || isProjectCppSourceLibraryFilePath(file.path)) {
       await requestWorkbenchAlert({ title: '无法删除', description: '该项目结构文件不能在 IDE 中删除；请在对应的新手编辑器中清空内容。', confirmLabel: '知道了' });
       return false;
     }
@@ -2704,7 +2754,7 @@ void DisplayStatus() {
   };
 
   const handleRenameFile = async (file: CppFile, newName: string): Promise<boolean> => {
-    if (isProjectGlobalsFilePath(file.path) || isProjectDataTypesFilePath(file.path) || isProjectDllCommandsFilePath(file.path)) {
+    if (isProjectGlobalsFilePath(file.path) || isProjectDataTypesFilePath(file.path) || isProjectDllCommandsFilePath(file.path) || isProjectCppSourceLibraryFilePath(file.path)) {
       await requestWorkbenchAlert({ title: '无法重命名', description: '该项目结构文件使用固定名称，不能在 IDE 中重命名。', confirmLabel: '知道了' });
       return false;
     }
@@ -6108,6 +6158,7 @@ void DisplayStatus() {
     openProjectGlobalVariables: (projectId?: unknown) => handleOpenProjectGlobalVariables(typeof projectId === 'string' ? projectId : activeProjectIdRef.current),
     openProjectDataTypes: (projectId?: unknown) => handleOpenProjectDataTypes(typeof projectId === 'string' ? projectId : activeProjectIdRef.current),
     openProjectDllCommands: (projectId?: unknown) => handleOpenProjectDllCommands(typeof projectId === 'string' ? projectId : activeProjectIdRef.current),
+    openProjectCppSourceLibrary: (projectId?: unknown) => handleOpenProjectCppSourceLibrary(typeof projectId === 'string' ? projectId : activeProjectIdRef.current),
     createFunctionLibrary: (projectId?: unknown) => handleCreateFunctionLibrary(typeof projectId === 'string' ? projectId : activeProjectIdRef.current),
     pasteFunctionLibrary: (projectId?: unknown) => handlePasteFunctionLibrary(typeof projectId === 'string' ? projectId : activeProjectIdRef.current),
     closeSolution: handleCloseCurrentSolution,
@@ -6229,6 +6280,22 @@ void DisplayStatus() {
       return projectId
         ? selectAndImportDesignerImage(projectId)
         : Promise.resolve<DesignerImageImportResult>({ ok: false, error: '当前解决方案中没有可添加资源的项目。' });
+    },
+    addProjectCppSource: async (requestedProjectId?: unknown) => {
+      const projectId = typeof requestedProjectId === 'string' && requestedProjectId.trim()
+        ? requestedProjectId.trim()
+        : activeProjectId || solution.startupProjectId || solution.projects[0]?.id;
+      if (!projectId) return;
+      const result = await selectAndImportCppSourceFiles(projectId);
+      if (result.canceled) return;
+      if (!result.ok) {
+        await requestWorkbenchAlert({ title: '添加 C++ 源码失败', description: result.error || '复制到项目失败。', confirmLabel: '知道了' });
+        return;
+      }
+      const importedNames = (result.relativePaths || []).map(item => item.split('/').pop() || item).join('、');
+      appendEditorTransactionLog(`【C++ 源码库】已导入：${importedNames}；请在「C++ 源码库」声明里用「源码 = ${result.relativePaths?.[0] || ''}」引用并声明命令。`);
+      (result.notes || []).forEach(note => appendEditorTransactionLog(`【C++ 源码库】${note}`));
+      await handleOpenProjectCppSourceLibrary(projectId);
     },
     copyEmbeddedResourceName: async (payload?: unknown) => {
       const name = typeof (payload as { name?: unknown })?.name === 'string' ? String((payload as { name: string }).name).trim() : '';
@@ -6441,6 +6508,16 @@ void DisplayStatus() {
         when: 'workspace.open && !workbench.modalOpen',
         order: 12,
         handler: (_context, projectId) => workbenchCommandHandlersRef.current.openProjectDllCommands(projectId)
+      },
+      {
+        id: 'workbench.action.project.openCppSourceLibrary',
+        title: '项目：打开 C++ 源码库',
+        aliases: ['Open Project C++ Source Library', 'C++ Source Library'],
+        category: '文件',
+        description: '把别人写好的 C++ 源码（.h/.cpp）声明为中文命令，源码直接并入生成的工程一起编译。',
+        when: 'workspace.open && !workbench.modalOpen',
+        order: 12,
+        handler: (_context, projectId) => workbenchCommandHandlersRef.current.openProjectCppSourceLibrary(projectId)
       },
       {
         id: 'workbench.action.project.createFunctionLibrary',
@@ -6667,6 +6744,17 @@ void DisplayStatus() {
         enabled: context => !context['operation.busy'],
         order: 13,
         handler: (_context, projectId) => workbenchCommandHandlersRef.current.addProjectResource(projectId)
+      },
+      {
+        id: 'workbench.action.project.addCppSourceFiles',
+        title: '项目：添加 C++ 源码…',
+        aliases: ['Add C++ Source Files', 'Import C++ Source'],
+        category: '文件',
+        description: '选择本机 .h/.cpp 源码复制进项目 cpp/ 目录，配合「C++ 源码库」声明为中文命令。',
+        when: 'workspace.open && !workbench.modalOpen',
+        enabled: context => !context['operation.busy'],
+        order: 13,
+        handler: (_context, projectId) => workbenchCommandHandlersRef.current.addProjectCppSource(projectId)
       },
       {
         id: 'workbench.action.project.copyImageResourcePath',
@@ -8424,6 +8512,7 @@ void DisplayStatus() {
           onOpenProjectGlobalVariables={projectId => { void executeWorkbenchCommand('workbench.action.project.openGlobalVariables', projectId); }}
           onOpenProjectDataTypes={projectId => { void executeWorkbenchCommand('workbench.action.project.openDataTypes', projectId); }}
           onOpenProjectDllCommands={projectId => { void executeWorkbenchCommand('workbench.action.project.openDllCommands', projectId); }}
+          onOpenProjectCppSourceLibrary={projectId => { void executeWorkbenchCommand('workbench.action.project.openCppSourceLibrary', projectId); }}
           onCreateFunctionLibrary={handleCreateFunctionLibrary}
           onCreateFunctionLibraryFolder={handleCreateFunctionLibraryFolder}
           onDeleteFunctionLibraryFolder={handleDeleteFunctionLibraryFolder}
@@ -8432,6 +8521,7 @@ void DisplayStatus() {
           onCopySolutionFullPath={() => executeWorkbenchCommand('workbench.action.solution.copyFullPath')}
           onCopyProjectFullPath={projectId => executeWorkbenchCommand('workbench.action.project.copyFullPath', projectId)}
           onAddProjectResource={handleAddProjectResource}
+          onAddProjectCppSource={projectId => { void executeWorkbenchCommand('workbench.action.project.addCppSourceFiles', projectId); }}
           onOpenProjectAssetsDirectory={handleOpenProjectAssetsDirectory}
           onExportLcppSourcePackage={projectId => { void executeWorkbenchCommand('workbench.action.project.exportLcppSourcePackage', projectId); }}
           onExportInstaller={projectId => { void executeWorkbenchCommand('workbench.action.project.exportInstaller', projectId); }}
@@ -8502,6 +8592,9 @@ void DisplayStatus() {
                 : undefined}
               onOpenProjectDllCommands={activeProjectHasWindowDesigner
                 ? () => { void executeWorkbenchCommand('workbench.action.project.openDllCommands', activeProjectIdRef.current); }
+                : undefined}
+              onOpenProjectCppSourceLibrary={activeProjectHasWindowDesigner
+                ? () => { void executeWorkbenchCommand('workbench.action.project.openCppSourceLibrary', activeProjectIdRef.current); }
                 : undefined}
               isDarkMode={isDarkMode}
               activeFile={activeFile}

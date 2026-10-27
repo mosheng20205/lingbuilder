@@ -4,6 +4,7 @@ import { createProjectFunctionContext } from './functionLibraryService';
 import { getLingCppSemanticDiagnostics } from './languageService';
 import { createProjectTypeContext, isProjectDataTypesFilePath } from './projectDataTypeService';
 import { isProjectDllCommandsFilePath } from './projectDllCommandService';
+import { isProjectCppSourceLibraryFilePath } from './projectCppSourceLibraryService';
 import { createProjectGlobalContext, isProjectGlobalsFilePath } from './projectGlobalService';
 
 export const ARGUMENT_TYPE_DIAGNOSTIC_ID_PREFIX = 'lingcpp-argument-type-';
@@ -31,7 +32,7 @@ export function collectArgumentTypeAdmissionProblems(request: {
   const problems: string[] = [];
   for (const source of normalized) {
     if (!source.filePath.toLocaleLowerCase().endsWith('.lcpp')) continue;
-    if (isProjectGlobalsFilePath(source.filePath) || isProjectDataTypesFilePath(source.filePath) || isProjectDllCommandsFilePath(source.filePath)) continue;
+    if (isProjectGlobalsFilePath(source.filePath) || isProjectDataTypesFilePath(source.filePath) || isProjectDllCommandsFilePath(source.filePath) || isProjectCppSourceLibraryFilePath(source.filePath)) continue;
     const diagnostics = getLingCppSemanticDiagnostics(
       source.sourceCode, undefined, source.filePath,
       request.moduleContext, projectGlobals, projectTypes, projectFunctions

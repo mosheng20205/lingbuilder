@@ -112,6 +112,7 @@ contextBridge.exposeInMainWorld('lingBuilder', {
     selectVideo: () => ipcRenderer.invoke('designer-assets:select-video'),
     selectIcon: () => ipcRenderer.invoke('designer-assets:select-icon'),
     selectEmbeddedFiles: () => ipcRenderer.invoke('designer-assets:select-embedded-files'),
+    selectCppSourceFiles: () => ipcRenderer.invoke('designer-assets:select-cpp-source-files'),
     selectEmbeddedFolder: () => ipcRenderer.invoke('designer-assets:select-embedded-folder'),
   },
   credentials: {

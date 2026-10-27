@@ -93,6 +93,9 @@ import { TaskService } from "./src/services/tasks/taskService";
 import { BuildConfigurationService, getBuildCompilerFlags, getModuleTargetId, type BuildArchitecture, type BuildConfiguration } from "./src/services/tasks/buildConfigurationService";
 import { resolveExecutableNameParts } from "./src/services/solution/externalProjectService";
 import { isProjectDllCommandsFilePath, createProjectDllDeclarationModuleFromSources } from "./src/services/lingCpp/projectDllCommandService";
+import { isProjectCppSourceLibraryFilePath, createProjectCppSourceDeclarationModule, createProjectCppSourceDeclarationModuleFromSources, PROJECT_CPP_SOURCE_LIBRARY_FILE_NAME } from "./src/services/lingCpp/projectCppSourceLibraryService";
+import { materializeProjectCppSourceLibraries } from "./src/services/modules/projectCppSourceMaterializeService";
+import { importCppSourceFiles } from "./src/services/solution/cppSourceFileImportService";
 import { materializeProjectDllDeclarationModules } from "./src/services/modules/projectDllMaterializeService";
 import { getEmbeddedResourceSpecsForBuild } from "./src/services/windowDesigner/embeddedResourceMigration";
 import { resolveProjectBuildDirectories, setActiveWorkspaceBuildExcludeDirs } from "./src/services/tasks/buildPathService";
@@ -843,7 +846,9 @@ app.get("/api/modules/project", async (req, res) => {
     // 模块管理 UI（侧边栏模块组/模块检查器）读取 modules，不显示虚拟模块。
     const sources = await resolveLingCppProjectSources(validatedProjectId, undefined);
     const projectDeclarationModule = createProjectDllDeclarationModuleFromSources(sources, validatedProjectId) ?? null;
-    res.json({ ok: true, modules, projectDeclarationModule });
+    // 项目级 C++ 源码库声明：与 DLL 声明同构的独立字段，由补全上下文合并。
+    const projectCppSourceModule = createProjectCppSourceDeclarationModuleFromSources(sources, validatedProjectId) ?? null;
+    res.json({ ok: true, modules, projectDeclarationModule, projectCppSourceModule });
   } catch (error: any) {
     res.status(500).json({ ok: false, error: error?.message || "项目模块读取失败" });
   }
@@ -1711,6 +1716,24 @@ app.post("/api/window-designer/assets/import", async (req, res) => {
   }
 });
 
+// 「添加 C++ 源码…」：本机 .h/.cpp 复制进 <项目源码根>/cpp/，重名自动 -2/-3；返回可直接写进「源码 =」的相对路径。
+app.post("/api/project/cpp-source/import", async (req, res) => {
+  const { projectId, sourcePaths } = req.body as { projectId?: string; sourcePaths?: string[] };
+  if (!isNonEmptyString(projectId) || !Array.isArray(sourcePaths) || sourcePaths.length === 0) {
+    return res.status(400).json({ ok: false, error: "缺少 projectId 或源码文件路径列表。" });
+  }
+  try {
+    const solutionService = getSolutionService();
+    const projectRef = solutionService.getProject(await solutionService.getSolution(), projectId.trim());
+    const sourceRootAbsolute = path.resolve(getRepoWorkspaceRoot(), projectRef.sourceRoot || "src");
+    const imported = await importCppSourceFiles({ sourcePaths, sourceRootAbsolute });
+    if (!imported.ok) return res.status(400).json(imported);
+    res.json({ ...imported, declarationFilePath: `${(projectRef.sourceRoot || "src").replace(/\\/g, "/").replace(/\/+$/, "")}/${PROJECT_CPP_SOURCE_LIBRARY_FILE_NAME}` });
+  } catch (error: any) {
+    res.status(400).json({ ok: false, error: error?.message || "C++ 源码复制到项目失败。" });
+  }
+});
+
 app.post("/api/window-designer/assets/import-animation", async (req, res) => {
   const { projectId, sourcePath } = req.body as { projectId?: string; sourcePath?: string };
   if (!isNonEmptyString(projectId) || !isNonEmptyString(sourcePath)) {
@@ -2396,6 +2419,10 @@ app.post("/api/window-designer/build-run", async (req, res) => {
     const projectDllLibraries = projectDllSource
       ? (parseLingCpp(projectDllSource.sourceCode).program.dllLibraries || [])
       : [];
+    // 项目级 C++ 源码库：按最终构建源码集合解析（与生成器聚合同口径，声明放在任何 .lcpp 都生效）。
+    const resolvedF5Sources = await resolveLingCppProjectSources(projectId, lingCppSources);
+    const projectCppSourceLibraries = resolvedF5Sources.flatMap(source =>
+      (parseLingCpp(source.sourceCode).program.cppLibraries || []));
     const sourceCode = typeof lingCppSourceCode === "string"
       ? lingCppSourceCode
       : typeof eplSourceCode === "string"
@@ -2440,7 +2467,7 @@ app.post("/api/window-designer/build-run", async (req, res) => {
       activeWindowId,
       lingCppSourceCode: sourceCode,
       lingCppSourceFilePath,
-      lingCppSources: await resolveLingCppProjectSources(projectId, lingCppSources),
+      lingCppSources: resolvedF5Sources,
       enabledModules,
       outputKind: routeOutputKind,
       requireAdministrator: routeRequireAdministrator,
@@ -2547,6 +2574,22 @@ app.post("/api/window-designer/build-run", async (req, res) => {
       moduleNativePlan.blockingDiagnostics.push(...projectDllBlocking);
       moduleNativePlan.libFiles.push(...projectDllLibFiles);
     }
+    // 项目级 C++ 源码库物化：用户源码复制进 modules/<id>/sources/，声明头写 include/，源码进多 TU 编译。
+    const projectCppSourceExportModule = createProjectCppSourceDeclarationModule(projectCppSourceLibraries, projectId);
+    if (projectCppSourceLibraries.length > 0) {
+      const { blocking: cppSourceBlocking, sourceFiles: cppSourceFiles } = await materializeProjectCppSourceLibraries({
+        cppLibraries: projectCppSourceLibraries,
+        sourceRootAbsolute: path.resolve(getRepoWorkspaceRoot(), routeSourceRoot),
+        buildDir,
+        sourceDir,
+        binDir,
+        exportDir,
+        logs: []
+      });
+      moduleNativePlan.blockingDiagnostics.push(...cppSourceBlocking);
+      moduleNativePlan.sourceFiles.push(...cppSourceFiles);
+    }
+    const cppSourceExportModules = projectCppSourceExportModule ? [...enabledModules, projectCppSourceExportModule] : enabledModules;
     if (moduleNativePlan.blockingDiagnostics.length > 0) {
       return res.status(200).json({
         ok: false,
@@ -2573,7 +2616,7 @@ app.post("/api/window-designer/build-run", async (req, res) => {
         ...file,
         relativePath: normalizeFilePath(path.join("src", file.relativePath))
       })),
-      enabledModules,
+      enabledModules: cppSourceExportModules,
       contentFiles: [...buildContentFiles, ...codeGeneratorResult.artifacts.filter(artifact => artifact.kind === 'descriptor' || artifact.kind === 'runtime').map(artifact => normalizeFilePath(path.join('src', artifact.relativePath)))],
       requiredCppStandard: moduleNativePlan.requiredCppStandard,
       requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt,
@@ -2586,7 +2629,7 @@ app.post("/api/window-designer/build-run", async (req, res) => {
       projectDir: exportDir,
       projectId,
       generatedFiles: [...generatedProject.files, ...generatedCodegenFiles],
-      enabledModules,
+      enabledModules: cppSourceExportModules,
       contentFiles: [...exportContentFiles, ...codeGeneratorResult.artifacts.filter(artifact => artifact.kind === 'descriptor' || artifact.kind === 'runtime').map(artifact => normalizeFilePath(artifact.relativePath))],
       requiredCppStandard: moduleNativePlan.requiredCppStandard,
       requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt,
@@ -3102,6 +3145,10 @@ async function runControlledWindowDesignerBuild(options: {
       projectDllLibraries = parseLingCpp(declarationSource.sourceCode).program.dllLibraries || [];
     }
   }
+  // 项目级 C++ 源码库：按最终构建源码集合解析（与生成器聚合同口径，声明放在任何 .lcpp 都生效）。
+  const resolvedRunSources = lingCppSources?.length ? lingCppSources : await resolveLingCppProjectSources(projectId);
+  const projectCppSourceLibraries = resolvedRunSources.flatMap(source =>
+    (parseLingCpp(source.sourceCode).program.cppLibraries || []));
   let outputFileNameParts = { baseName: "LingBuilderPreview", fileName: "LingBuilderPreview.exe" };
   try {
     outputFileNameParts = resolveExecutableNameParts(outputExecutableName, outputType);
@@ -3112,7 +3159,7 @@ async function runControlledWindowDesignerBuild(options: {
     activeWindowId,
     lingCppSourceCode: sourceCode,
     lingCppSourceFilePath,
-    lingCppSources: lingCppSources?.length ? lingCppSources : await resolveLingCppProjectSources(projectId),
+    lingCppSources: resolvedRunSources,
     enabledModules,
     outputKind: consoleMode ? "console-application" : outputType === "dll" ? "dynamic-library" : "application",
     requireAdministrator,
@@ -3215,6 +3262,22 @@ async function runControlledWindowDesignerBuild(options: {
     moduleNativePlan.blockingDiagnostics.push(...projectDllBlocking);
     moduleNativePlan.libFiles.push(...projectDllLibFiles);
   }
+  // 项目级 C++ 源码库物化：用户源码复制进 modules/<id>/sources/，声明头写 include/，源码进多 TU 编译。
+  const projectCppSourceExportModule = createProjectCppSourceDeclarationModule(projectCppSourceLibraries, projectId);
+  if (projectCppSourceLibraries.length > 0) {
+    const { blocking: cppSourceBlocking, sourceFiles: cppSourceFiles } = await materializeProjectCppSourceLibraries({
+      cppLibraries: projectCppSourceLibraries,
+      sourceRootAbsolute: path.resolve(getRepoWorkspaceRoot(), projectSourceRootForDll),
+      buildDir,
+      sourceDir,
+      binDir,
+      exportDir,
+      logs: []
+    });
+    moduleNativePlan.blockingDiagnostics.push(...cppSourceBlocking);
+    moduleNativePlan.sourceFiles.push(...cppSourceFiles);
+  }
+  const cppSourceExportModules = projectCppSourceExportModule ? [...enabledModules, projectCppSourceExportModule] : enabledModules;
   if (moduleNativePlan.blockingDiagnostics.length > 0) {
     return {
       ok: false,
@@ -3246,11 +3309,11 @@ async function runControlledWindowDesignerBuild(options: {
       ...file,
       relativePath: normalizeFilePath(path.join("src", file.relativePath))
     })),
-    enabledModules,
-    contentFiles: [...buildContentFiles, ...codeGeneratorResult.artifacts.filter(artifact => artifact.kind === 'descriptor' || artifact.kind === 'runtime').map(artifact => normalizeFilePath(path.join('src', artifact.relativePath)))],
-    requiredCppStandard: moduleNativePlan.requiredCppStandard,
-    requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt,
-    projectKind: consoleMode ? "console-application" : outputType === "dll" ? "dynamic-library" : "application",
+      enabledModules: cppSourceExportModules,
+      contentFiles: [...buildContentFiles, ...codeGeneratorResult.artifacts.filter(artifact => artifact.kind === 'descriptor' || artifact.kind === 'runtime').map(artifact => normalizeFilePath(path.join('src', artifact.relativePath)))],
+      requiredCppStandard: moduleNativePlan.requiredCppStandard,
+      requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt,
+      projectKind: consoleMode ? "console-application" : outputType === "dll" ? "dynamic-library" : "application",
     definitionFile: dllDefinitionFile,
     fbroRuntimeFromBuildBin: true,
     requireAdministrator
@@ -3259,11 +3322,11 @@ async function runControlledWindowDesignerBuild(options: {
     projectDir: exportDir,
     projectId,
     generatedFiles: [...generatedProject.files, ...generatedCodegenFiles],
-    enabledModules,
-    contentFiles: [...exportContentFiles, ...codeGeneratorResult.artifacts.filter(artifact => artifact.kind === 'descriptor' || artifact.kind === 'runtime').map(artifact => normalizeFilePath(artifact.relativePath))],
-    requiredCppStandard: moduleNativePlan.requiredCppStandard,
-    requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt,
-    projectKind: consoleMode ? "console-application" : outputType === "dll" ? "dynamic-library" : "application",
+      enabledModules: cppSourceExportModules,
+      contentFiles: [...exportContentFiles, ...codeGeneratorResult.artifacts.filter(artifact => artifact.kind === 'descriptor' || artifact.kind === 'runtime').map(artifact => normalizeFilePath(artifact.relativePath))],
+      requiredCppStandard: moduleNativePlan.requiredCppStandard,
+      requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt,
+      projectKind: consoleMode ? "console-application" : outputType === "dll" ? "dynamic-library" : "application",
     requireAdministrator
   });
 
