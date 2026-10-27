@@ -25095,7 +25095,7 @@ int LB_CEF3_CALL LB_CEF3_BrowserPrint(LB_CEF3_HANDLE browser) {
 int LB_CEF3_CALL LB_CEF3_BrowserShowDevTools(LB_CEF3_HANDLE browser) {
   return PostBrowserAction(browser, [](CefRefPtr<CefBrowser> value, const std::shared_ptr<BrowserState>& state) {
     if ((state->flags & LB_CEF3_BROWSER_DEVTOOLS) == 0) return;
-    CefWindowInfo info{}; info.SetAsPopup(nullptr, L"CEF3开发者工具");
+    CefWindowInfo info{}; info.SetAsPopup(value->GetHost()->GetWindowHandle(), L"CEF3开发者工具");
     CefBrowserSettings settings{}; settings.size = sizeof(settings);
     value->GetHost()->ShowDevTools(info, state->client, settings, CefPoint());
   });
