@@ -3,23 +3,44 @@
 !include "nsProcess.nsh"
 !include "WinMessages.nsh"
 
-; 安装器核心文件期望尺寸（app.asar / 主程序 exe 字节数）：makensis 编译期从
-; release\win-unpacked 实测。编译发生在 electron-builder 打包与签名之后，这里的尺寸
-; 与 app-64.7z 解到安装目录的最终文件一致（afterPack 钩子早于 exe 签名，实测会差一个
-; 签名块，不能用——2026-10-25 实锤）。NSIS 3.04 无 !getsize，用 cmd for 取尺寸落盘后
-; searchparse 进 define。相对锚点：BUILD_RESOURCES_DIR=electron\build，输出目录=release。
+; 安装器核心文件期望尺寸（app.asar / 主程序 exe 字节数）：makensis 编译期从本次打包的
+; 真实 appOutDir 实测。afterPack 钩子（scripts/verify-cef3-after-pack.cjs）把
+; context.appOutDir 写进 build\lb-app-out-dir.txt——app-64.7z 负载就解自该目录，
+; 期望尺寸必须与它同源。禁止写死 release\win-unpacked：自定义输出目录（repack-*）
+; 时根目录是陈货，量出的期望尺寸与负载不符，核对永远失败、安装必然中止
+; （2026-10-27 0.8.36 repack-0836-r1 实锤：负载 asar 274295563 vs 陈货 273357598）。
+; 编译发生在 electron-builder 打包与签名之后（afterPack 早于 exe 签名，钩子里量 exe
+; 会差一个签名块，不能用——2026-10-25 实锤）。NSIS 3.04 无 !getsize，用 cmd for 取
+; 尺寸落盘后 searchparse 进 define。
 ; 单阶段直解补丁（scripts/patch-nsis-single-phase-extract.cjs）取消了两段式解压的
 ; $PLUGINSDIR\7z-out 权威副本，被占用文件的「半更新」防护以此处期望尺寸为唯一核对基准。
 !ifndef BUILD_UNINSTALLER
   !tempfile LBSZTMP
-  !system 'cmd /c (for %A in ("${BUILD_RESOURCES_DIR}\..\release\win-unpacked\${PRODUCT_FILENAME}.exe") do @echo LB_EXE_SZ=%~zA-LB_END)>"${LBSZTMP}"'
+  !searchparse /file "${BUILD_RESOURCES_DIR}\lb-app-out-dir.txt" "LB_APP_OUT_DIR=" LB_APP_OUT_DIR
+  !system 'cmd /c (for %A in ("${LB_APP_OUT_DIR}\${PRODUCT_FILENAME}.exe") do @echo LB_EXE_SZ=%~zA-LB_END)>"${LBSZTMP}"'
   !searchparse /file "${LBSZTMP}" "LB_EXE_SZ=" LB_EXPECTED_EXE_SIZE "-LB_END"
-  !system 'cmd /c (for %A in ("${BUILD_RESOURCES_DIR}\..\release\win-unpacked\resources\app.asar") do @echo LB_ASAR_SZ=%~zA-LB_END)>"${LBSZTMP}"'
+  !system 'cmd /c (for %A in ("${LB_APP_OUT_DIR}\resources\app.asar") do @echo LB_ASAR_SZ=%~zA-LB_END)>"${LBSZTMP}"'
   !searchparse /file "${LBSZTMP}" "LB_ASAR_SZ=" LB_EXPECTED_ASAR_SIZE "-LB_END"
   !delfile "${LBSZTMP}"
 !endif
 
 Var LingBuilderKillTries
+
+; 播种防御（2026-10-27 实锤）：多用户模板用 HKCU\Software\<APP_GUID>\InstallLocation
+; 播种 $INSTDIR。该值若指向的目录里已没有主程序（目录被删、装到过别处后残留），
+; 向导会一路把用户带进死路径（本次事故：指向 Program Files (x86) 旧残留，用户
+; 反复安装全部装进错误目录，真实安装目录毫发未动）。启动前清除死指针；安装成功
+; 收尾时 registryAddInstallInfo 会重写正确值，正常自定义目录不受影响。
+!macro preInit
+  !ifndef BUILD_UNINSTALLER
+    ReadRegStr $0 HKCU "Software\${APP_GUID}" "InstallLocation"
+    ${If} $0 != ""
+      ${Unless} ${FileExists} "$0\${PRODUCT_FILENAME}.exe"
+        DeleteRegValue HKCU "Software\${APP_GUID}" "InstallLocation"
+      ${EndUnless}
+    ${EndIf}
+  !endif
+!macroend
 
 ; Electron 的主、渲染和 GPU 子进程都使用 LingBuilder.exe。nsProcess 的
 ; CloseProcess 会先关闭窗口、等待 3 秒，再结束仍在运行的同名进程。
@@ -225,7 +246,7 @@ Var LingBuilderKillTries
         SetErrorLevel 87
         Quit
       lbCoreRepairFailBox:
-        MessageBox MB_ICONEXCLAMATION|MB_OK "安装已中止：核心程序文件（LingBuilder.exe / app.asar）在本次安装期间被其它进程占用，自动修复未能成功。$\n$\n常见原因：连接 LingBuilder 的外部 AI 客户端（Codex / Claude / ZCode 等）在自动重启其 MCP 宿主进程并锁住程序文件。$\n$\n请先退出这些 AI 客户端（或在任务管理器「详细信息」中结束所有 LingBuilder.exe），然后重新运行本安装器。"
+        MessageBox MB_ICONEXCLAMATION|MB_OK "安装已中止：核心程序文件（LingBuilder.exe / app.asar）在本次安装期间未能成功写入，自动修复未能成功。$\n$\n常见原因一：连接 LingBuilder 的外部 AI 客户端（Codex / Claude / ZCode 等）在自动重启其 MCP 宿主进程并锁住程序文件。$\n$\n常见原因二：本安装包与核对基准不一致（打包问题）——若已确认没有 LingBuilder / AI 客户端在运行仍出现本提示，请勿反复重试，重新获取或重新打包安装包。$\n$\n处置：先退出这些 AI 客户端（或在任务管理器「详细信息」中结束所有 LingBuilder.exe）后重试一次；仍失败则换一个安装目录，或重新下载安装包。"
         SetErrorLevel 87
         Quit
     lbCoreFilesVerified:
