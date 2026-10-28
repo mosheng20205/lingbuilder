@@ -802,7 +802,9 @@ std::wstring BuildResourceFieldsJson(CefRefPtr<CefFrame> frame,
   std::wstring json = L"{\"browser\":\"1\"";
   json += L",\"frame\":\"" + JsonEscape(frame ? frame->GetURL().ToWString() : L"") + L"\"";
   json += L",\"request\":\"" + std::to_wstring(request ? 1 : 0) + L"\"";
-  json += L",\"response\":\"" + std::to_wstring(response ? 1 : 0) + L"\"";
+  // 哨兵键不能叫 response：调用方会再追加真正的受管句柄数字 "response":<handle>，
+  // 同名键会让 FBro_取事件对象字段 的首匹配读到 "1" 而永远查无此句柄（恒 -7）。
+  json += L",\"has_response\":\"" + std::to_wstring(response ? 1 : 0) + L"\"";
   if (request) {
     json += L",\"request_id\":" + std::to_wstring(request->GetIdentifier());
     json += L",\"request_url\":\"" + JsonEscape(request->GetURL().ToWString()) + L"\"";
