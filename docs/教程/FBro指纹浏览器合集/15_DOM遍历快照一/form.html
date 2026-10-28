@@ -1,0 +1,26 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>练习报名表</title><style>
+body{font-family:"Microsoft YaHei";padding:30px;background:#f4f6f8}
+input,select{padding:8px;margin:6px 0;width:320px}
+button{padding:10px 28px;background:#007ACC;color:#fff;border:0;border-radius:6px}
+#result{margin-top:20px;padding:16px;background:#dff5e1;border-radius:8px;white-space:pre-line;min-height:80px}
+</style></head><body>
+<h2 id="title">练习报名表</h2>
+<form id="regform" onsubmit="return doSubmit()">
+昵称：<input id="user" placeholder="请输入昵称"><br>
+密码：<input id="pwd" type="password" placeholder="请输入密码"><br>
+城市：<select id="city"><option>北京</option><option>上海</option><option>广州</option><option>深圳</option></select><br>
+ agree <input id="agree" type="checkbox"> 我已阅读并同意条款<br>
+<button type="submit" id="submit">提交报名</button>
+</form>
+<div id="result">（提交后这里显示汇总）</div>
+<script>
+function doSubmit(){
+  var u=document.getElementById('user').value;
+  var p=document.getElementById('pwd').value;
+  var c=document.getElementById('city').value;
+  var a=document.getElementById('agree').checked;
+  document.getElementById('result').textContent='汇总：昵称='+u+'，密码长度='+p.length+'，城市='+c+'，已同意='+a;
+  return false;
+}
+</script>
+</body></html>
