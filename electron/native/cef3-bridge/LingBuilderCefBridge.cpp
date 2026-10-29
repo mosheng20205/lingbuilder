@@ -1002,6 +1002,9 @@ struct BrowserState {
   HWND parent = nullptr;
   uint32_t flags = 0;
   bool windowless = false;
+  // 弹窗窗口边界代次：每次 LB_CEF3_BrowserSetWindowBounds 递增；挂起的延迟重试
+  // 发现代次不再是自己时就放弃，保证「最后一次调用必胜」（创建定界 vs 事后摆位竞态）。
+  std::atomic<unsigned long long> popup_bounds_generation{0};
   // 0 表示「未设置视口」：GetViewRect 会依次回落到宿主窗口客户区与默认常量。
   // 非 0 才是权威视口（V4 配置、订阅方下发的矩形或上一次 OnPaint 的实际帧尺寸）。
   int osr_view_width = 0;
@@ -3861,22 +3864,30 @@ void PumpCurrentThreadMessages() {
   }
 }
 
-bool HasCefUiTransientWindow() {
+/* exclude_window：调用方浏览器自己的顶层框架（GA_ROOT）。Chrome Runtime 弹窗的
+   顶层窗口本身就是 Chrome_WidgetWin_1，不排除会被误判成瞬态窗口，导致
+   BrowserClose/关闭全部实例 对弹窗永远等待直到放弃（弹窗关不掉）。 */
+bool HasCefUiTransientWindow(HWND exclude_window = nullptr) {
   const DWORD thread_id = g_cef_ui_thread_id.load(std::memory_order_acquire);
   if (thread_id == 0) return false;
-  bool found = false;
+  struct TransientWindowProbe {
+    HWND exclude_window;
+    bool found;
+  } probe{exclude_window, false};
   EnumThreadWindows(thread_id, [](HWND window, LPARAM parameter) -> BOOL {
+    auto* probe = reinterpret_cast<TransientWindowProbe*>(parameter);
+    if (window == probe->exclude_window) return TRUE;
     std::array<wchar_t, 128> class_name{};
     GetClassNameW(window, class_name.data(), static_cast<int>(class_name.size()));
     const std::wstring_view class_view(class_name.data());
     if (class_view.starts_with(L"Chrome_WidgetWin_")
         && class_view != L"Chrome_WidgetWin_0") {
-      *reinterpret_cast<bool*>(parameter) = true;
+      probe->found = true;
       return FALSE;
     }
     return TRUE;
-  }, reinterpret_cast<LPARAM>(&found));
-  return found;
+  }, reinterpret_cast<LPARAM>(&probe));
+  return probe.found;
 }
 
 void CloseBrowserWhenCefUiIsReady(CefRefPtr<CefBrowser> browser, bool force_close,
@@ -3886,7 +3897,10 @@ void CloseBrowserWhenCefUiIsReady(CefRefPtr<CefBrowser> browser, bool force_clos
   if (!host) return;
   const bool probe_ready = GetTickCount64()
       >= g_cef_ui_transient_probe_after.load(std::memory_order_acquire);
-  if (probe_ready && !HasCefUiTransientWindow()) {
+  const HWND browser_window = host->GetWindowHandle();
+  const HWND root_window =
+      browser_window ? GetAncestor(browser_window, GA_ROOT) : nullptr;
+  if (probe_ready && !HasCefUiTransientWindow(root_window)) {
     host->CloseBrowser(force_close);
     return;
   }
@@ -22044,7 +22058,10 @@ int LB_CEF3_CALL LB_CEF3_BrowserTryClose(LB_CEF3_HANDLE browser) {
         if (!host) return;
         const bool probe_ready = GetTickCount64()
             >= g_cef_ui_transient_probe_after.load(std::memory_order_acquire);
-        *result = probe_ready && !HasCefUiTransientWindow()
+        const HWND browser_window = host->GetWindowHandle();
+        const HWND root_window =
+            browser_window ? GetAncestor(browser_window, GA_ROOT) : nullptr;
+        *result = probe_ready && !HasCefUiTransientWindow(root_window)
             ? (host->TryCloseBrowser() ? 1 : 0)
             : 0;
       })) return Fail(LB_CEF3_ERROR_TIMEOUT, L"请求CEF3浏览器关闭超时");
@@ -22157,6 +22174,118 @@ int LB_CEF3_CALL LB_CEF3_BrowserResize(LB_CEF3_HANDLE browser) {
     SetWindowPos(browser_window, nullptr, 0, 0, bounds.right - bounds.left, bounds.bottom - bounds.top,
                  SWP_NOZORDER | SWP_NOACTIVATE);
   });
+}
+
+static bool IsTopLevelChromeRuntimePopup(const std::shared_ptr<BrowserState>& state) {
+  return state && !state->windowless && state->parent == nullptr &&
+         (state->flags & LB_CEF3_BROWSER_CHROME_RUNTIME) != 0;
+}
+
+/* Chrome Runtime 弹窗下 host->GetWindowHandle() 可能是浏览器子窗口（地址栏/标签栏
+   框架的内层），窗口边界与原生句柄必须落在 GA_ROOT 解析出的真顶层框架上。 */
+static HWND ResolveTopLevelPopupWindow(CefRefPtr<CefBrowserHost> host) {
+  const HWND browser_window = host ? host->GetWindowHandle() : nullptr;
+  if (!browser_window) return nullptr;
+  const HWND root_window = GetAncestor(browser_window, GA_ROOT);
+  return root_window ? root_window : browser_window;
+}
+
+/* Chrome Runtime 弹窗的顶层窗口是异步创建的：定界任务跑到时 GetWindowHandle 可能
+   还是空。带截止时间在 UI 线程延迟重试，窗口就绪即落位（默认 5 秒上限）；
+   generation 不再是当前值说明有更新的定界请求，立即放弃（最后调用必胜）。 */
+void ApplyPopupWindowBoundsWhenReady(const std::shared_ptr<BrowserState>& state, int x, int y,
+    int width, int height, bool keep_position, bool keep_size, unsigned long long generation,
+    std::chrono::steady_clock::time_point deadline) {
+  if (state->popup_bounds_generation.load(std::memory_order_acquire) != generation) return;
+  CefRefPtr<CefBrowser> browser;
+  {
+    std::lock_guard<std::mutex> lock(state->mutex);
+    browser = state->browser;
+  }
+  if (browser) {
+    const HWND browser_window = ResolveTopLevelPopupWindow(browser->GetHost());
+    if (browser_window) {
+      UINT flags = SWP_NOZORDER | SWP_NOACTIVATE;
+      if (keep_position) flags |= SWP_NOMOVE;
+      if (keep_size) flags |= SWP_NOSIZE;
+      SetWindowPos(browser_window, nullptr, x, y,
+                   width > 0 ? width : 0, height > 0 ? height : 0, flags);
+      return;
+    }
+  }
+  if (std::chrono::steady_clock::now() >= deadline) return;
+  CefPostDelayedTask(TID_UI, new BridgeFunctionTask(
+      [state, x, y, width, height, keep_position, keep_size, generation, deadline]() {
+        ApplyPopupWindowBoundsWhenReady(
+            state, x, y, width, height, keep_position, keep_size, generation, deadline);
+      }), 30);
+}
+
+int LB_CEF3_CALL LB_CEF3_BrowserSetWindowBounds(
+    LB_CEF3_HANDLE browser, int x, int y, int width, int height) {
+  int status = 0;
+  auto state = GetBrowserState(browser, status);
+  if (!state) return status;
+  if (!IsTopLevelChromeRuntimePopup(state))
+    return Fail(LB_CEF3_ERROR_NOT_SUPPORTED, L"窗口边界命令仅支持 Chrome Runtime 顶层弹窗实例");
+  const bool keep_position = x < 0 || y < 0;
+  const bool keep_size = width < 1 || height < 1;
+  if (keep_position && keep_size) return LB_CEF3_OK;
+  // 创建后立刻调用时浏览器对象/顶层窗口可能还没在 CEF UI 线程建好：不能在调用线程
+  // 做快照（PostBrowserAction 的同步快照会立刻失败），整体投递进 UI 队列并在窗口
+  // 就绪前延迟重试——创建任务与定界任务同队 FIFO，就绪即落位，首帧绘制前生效。
+  const unsigned long long generation =
+      state->popup_bounds_generation.fetch_add(1, std::memory_order_acq_rel) + 1;
+  return PostToCefUi([state, x, y, width, height, keep_position, keep_size, generation]() {
+    ApplyPopupWindowBoundsWhenReady(state, x, y, width, height, keep_position, keep_size,
+        generation, std::chrono::steady_clock::now() + std::chrono::seconds(5));
+  }) ? LB_CEF3_OK : Fail(LB_CEF3_ERROR_WRONG_THREAD, L"无法投递CEF UI线程");
+}
+
+int LB_CEF3_CALL LB_CEF3_BrowserGetWindowBounds(
+    LB_CEF3_HANDLE browser, int* out_x, int* out_y, int* out_width, int* out_height) {
+  if (!out_x || !out_y || !out_width || !out_height)
+    return Fail(LB_CEF3_ERROR_INVALID_ARGUMENT, L"窗口边界输出参数不能为空");
+  *out_x = 0; *out_y = 0; *out_width = 0; *out_height = 0;
+  int status = 0;
+  auto state = GetBrowserState(browser, status);
+  if (!state) return status;
+  if (!IsTopLevelChromeRuntimePopup(state))
+    return Fail(LB_CEF3_ERROR_NOT_SUPPORTED, L"窗口边界命令仅支持 Chrome Runtime 顶层弹窗实例");
+  RECT bounds{};
+  const int rect_status = InvokeBrowserHostOnUi(browser, [&](CefRefPtr<CefBrowserHost> host) {
+    const HWND browser_window = ResolveTopLevelPopupWindow(host);
+    if (browser_window) GetWindowRect(browser_window, &bounds);
+  });
+  if (rect_status != LB_CEF3_OK) return rect_status;
+  if (bounds.right <= bounds.left || bounds.bottom <= bounds.top)
+    return Fail(LB_CEF3_ERROR_OPERATION_FAILED, L"弹窗窗口尚未创建完成，稍后再取边界");
+  *out_x = bounds.left;
+  *out_y = bounds.top;
+  *out_width = bounds.right - bounds.left;
+  *out_height = bounds.bottom - bounds.top;
+  return LB_CEF3_OK;
+}
+
+int LB_CEF3_CALL LB_CEF3_BrowserGetNativeWindowHandle(
+    LB_CEF3_HANDLE browser, uint64_t* out_hwnd) {
+  if (!out_hwnd) return Fail(LB_CEF3_ERROR_INVALID_ARGUMENT, L"原生窗口句柄输出参数不能为空");
+  *out_hwnd = 0;
+  int status = 0;
+  auto state = GetBrowserState(browser, status);
+  if (!state) return status;
+  if (!IsTopLevelChromeRuntimePopup(state))
+    return Fail(LB_CEF3_ERROR_NOT_SUPPORTED, L"原生窗口句柄仅支持 Chrome Runtime 顶层弹窗实例");
+  uintptr_t window_value = 0;
+  const int handle_status = InvokeBrowserHostOnUi(browser, [&](CefRefPtr<CefBrowserHost> host) {
+    const HWND browser_window = ResolveTopLevelPopupWindow(host);
+    if (browser_window) window_value = reinterpret_cast<uintptr_t>(browser_window);
+  });
+  if (handle_status != LB_CEF3_OK) return handle_status;
+  if (window_value == 0)
+    return Fail(LB_CEF3_ERROR_OPERATION_FAILED, L"弹窗窗口尚未创建完成，稍后再取句柄");
+  *out_hwnd = static_cast<uint64_t>(window_value);
+  return LB_CEF3_OK;
 }
 
 int LB_CEF3_CALL LB_CEF3_BrowserLoadUrl(LB_CEF3_HANDLE browser, const wchar_t* url) {
@@ -25108,7 +25237,8 @@ int LB_CEF3_CALL LB_CEF3_BrowserHasDevTools(LB_CEF3_HANDLE browser) {
   const int status = InvokeBrowserHostOnUi(browser, [&result](CefRefPtr<CefBrowserHost> host) {
     result = host->HasDevTools() ? 1 : 0;
   });
-  return status == LB_CEF3_OK ? result : 0;
+  if (status != LB_CEF3_OK) return status;
+  return result;
 }
 
 LB_CEF3_TASK_HANDLE LB_CEF3_CALL LB_CEF3_DevToolsExecuteMethod(

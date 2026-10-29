@@ -1062,7 +1062,9 @@ void LB_CEF3_CALL TestEventCallbackV4(const LB_CEF3_EVENT_PACKET_V4* packet,
       call.argument_count = 1;
       LB_CEF3_RESULT_V4 result{};
       result.struct_size = sizeof(result);
-      assert(LB_CEF3_InvokeV4(&call, &result) == LB_CEF3_OK);
+      // 浏览器先行关闭/请求被取消时桥会作废挂起续体：迟到线程拿不到续体属合法时序，
+      // 放弃应答即可，不计测试失败（实机高负载下偶发，见 2026-10-29 弹窗边界批次）。
+      if (LB_CEF3_InvokeV4(&call, &result) != LB_CEF3_OK) return;
       assert(result.value_kind == LB_CEF3_VALUE_V4_VOID);
       assert(LB_CEF3_HandleRelease(continuation) == LB_CEF3_OK);
     }).detach();
@@ -1099,7 +1101,8 @@ void LB_CEF3_CALL TestEventCallbackV4(const LB_CEF3_EVENT_PACKET_V4* packet,
       call.argument_count = 1;
       LB_CEF3_RESULT_V4 result{};
       result.struct_size = sizeof(result);
-      assert(LB_CEF3_InvokeV4(&call, &result) == LB_CEF3_OK);
+      // 与受管资源异步跳过同口径：续体被桥作废（浏览器先行关闭）时放弃应答不算失败。
+      if (LB_CEF3_InvokeV4(&call, &result) != LB_CEF3_OK) return;
       assert(result.value_kind == LB_CEF3_VALUE_V4_VOID);
       assert(LB_CEF3_HandleRelease(continuation) == LB_CEF3_OK);
     }).detach();
@@ -16697,6 +16700,136 @@ int wmain() {
   assert(LB_CEF3_BrowserWasHidden(browser_a, 1) == LB_CEF3_ERROR_RELEASED_HANDLE);
   assert(LB_CEF3_BrowserExitFullscreen(browser_a, 1) == LB_CEF3_ERROR_RELEASED_HANDLE);
   assert(LB_CEF3_BrowserIsAudioMuted(browser_a) == LB_CEF3_ERROR_RELEASED_HANDLE);
+
+  // 弹窗窗口边界命令：出参校验、已释放句柄拒绝、内嵌实例拒绝、真实顶层弹窗往返。
+  std::array<wchar_t, 256> bounds_error{};
+  size_t bounds_error_required = 0;
+  int bounds_x = 0, bounds_y = 0, bounds_width = 0, bounds_height = 0;
+  assert(LB_CEF3_BrowserGetWindowBounds(browser_a, nullptr, &bounds_y,
+             &bounds_width, &bounds_height) == LB_CEF3_ERROR_INVALID_ARGUMENT);
+  assert(LB_CEF3_BrowserGetNativeWindowHandle(browser_a, nullptr)
+      == LB_CEF3_ERROR_INVALID_ARGUMENT);
+  assert(LB_CEF3_BrowserSetWindowBounds(browser_a, 10, 10, 800, 600)
+      == LB_CEF3_ERROR_RELEASED_HANDLE);
+  assert(LB_CEF3_BrowserGetWindowBounds(browser_a, &bounds_x, &bounds_y,
+             &bounds_width, &bounds_height) == LB_CEF3_ERROR_RELEASED_HANDLE);
+
+  const auto bounds_host = CreateWindowExW(0, L"STATIC", L"CEF3测试边界宿主",
+      WS_OVERLAPPEDWINDOW, 0, 0, 320, 240, nullptr, nullptr,
+      GetModuleHandleW(nullptr), nullptr);
+  assert(bounds_host != nullptr);
+  LB_CEF3_BROWSER_CONFIG_V3 bounds_embedded_config{};
+  bounds_embedded_config.struct_size = sizeof(bounds_embedded_config);
+  bounds_embedded_config.abi_version = LB_CEF3_ABI_VERSION_V3;
+  bounds_embedded_config.parent_window = reinterpret_cast<uint64_t>(bounds_host);
+  bounds_embedded_config.user_token = 104;
+  bounds_embedded_config.flags = LB_CEF3_BROWSER_JAVASCRIPT;
+  bounds_embedded_config.initial_url = L"about:blank";
+  bounds_embedded_config.profile_key = L"native-test-bounds-embedded";
+  bounds_embedded_config.proxy_mode = L"direct";
+  auto browser_bounds_embedded = LB_CEF3_BrowserCreate(&bounds_embedded_config);
+  assert(browser_bounds_embedded != 0);
+  assert(LB_CEF3_BrowserSetWindowBounds(browser_bounds_embedded, 10, 10, 800, 600)
+      == LB_CEF3_ERROR_NOT_SUPPORTED);
+  LB_CEF3_GetLastError(
+      bounds_error.data(), bounds_error.size(), &bounds_error_required);
+  assert(std::wstring(bounds_error.data())
+      == L"窗口边界命令仅支持 Chrome Runtime 顶层弹窗实例");
+  assert(LB_CEF3_BrowserGetWindowBounds(browser_bounds_embedded, &bounds_x,
+             &bounds_y, &bounds_width, &bounds_height)
+      == LB_CEF3_ERROR_NOT_SUPPORTED);
+  uint64_t bounds_native_window = 0;
+  assert(LB_CEF3_BrowserGetNativeWindowHandle(
+             browser_bounds_embedded, &bounds_native_window)
+      == LB_CEF3_ERROR_NOT_SUPPORTED);
+  // 宿主窗口必须等浏览器真正创建完成才能销毁，否则排队的创建任务会拿到悬空父窗口。
+  int embedded_focus_status = 0;
+  const auto embedded_ready_deadline = GetTickCount64() + 30000;
+  while ((embedded_focus_status =
+              LB_CEF3_BrowserSetFocus(browser_bounds_embedded, 0)) != LB_CEF3_OK
+      && GetTickCount64() < embedded_ready_deadline) {
+    PumpHostMessages();
+    Sleep(10);
+  }
+  assert(embedded_focus_status == LB_CEF3_OK);
+  // BrowserClose 是异步的：必须等关闭事件落地再销毁宿主窗口，否则 WM_DESTROY 会
+  // 级联命中仍存活的 CEF 子窗口（libcef 窗口过程内 CHECK 崩溃）。
+  const auto embedded_closed_before = g_browser_closed_events.load();
+  assert(LB_CEF3_BrowserClose(browser_bounds_embedded, 1) == LB_CEF3_OK);
+  const auto embedded_closed_deadline = GetTickCount64() + 10000;
+  while (g_browser_closed_events.load() <= embedded_closed_before
+      && GetTickCount64() < embedded_closed_deadline) {
+    PumpHostMessages();
+    Sleep(10);
+  }
+  assert(g_browser_closed_events.load() > embedded_closed_before);
+  assert(LB_CEF3_HandleRelease(browser_bounds_embedded) == LB_CEF3_OK);
+  if (IsWindow(bounds_host)) assert(DestroyWindow(bounds_host) != 0);
+
+  LB_CEF3_BROWSER_CONFIG_V3 popup_bounds_config{};
+  popup_bounds_config.struct_size = sizeof(popup_bounds_config);
+  popup_bounds_config.abi_version = LB_CEF3_ABI_VERSION_V3;
+  popup_bounds_config.user_token = 103;
+  popup_bounds_config.flags =
+      LB_CEF3_BROWSER_CHROME_RUNTIME | LB_CEF3_BROWSER_JAVASCRIPT;
+  popup_bounds_config.initial_url = L"about:blank";
+  popup_bounds_config.profile_key = L"native-test-popup-bounds";
+  popup_bounds_config.proxy_mode = L"direct";
+  auto browser_popup = LB_CEF3_BrowserCreateChrome(&popup_bounds_config);
+  assert(browser_popup != 0);
+  const auto popup_window_deadline = GetTickCount64() + 30000;
+  int popup_window_status = LB_CEF3_ERROR_OPERATION_FAILED;
+  while ((popup_window_status = LB_CEF3_BrowserGetNativeWindowHandle(
+              browser_popup, &bounds_native_window)) != LB_CEF3_OK
+      && GetTickCount64() < popup_window_deadline) {
+    PumpHostMessages();
+    Sleep(10);
+  }
+  assert(popup_window_status == LB_CEF3_OK && bounds_native_window != 0);
+  assert(IsWindow(reinterpret_cast<HWND>(
+      static_cast<uintptr_t>(bounds_native_window))));
+  // 900 宽会被 Chrome 最小窗宽（实测约 1026 物理像素）向上钳制，往返精确断言
+  // 用高于钳制值的 1600×1000；钳制语义=尺寸只增不减，位置恒精确。
+  assert(LB_CEF3_BrowserSetWindowBounds(browser_popup, 60, 50, 1600, 1000)
+      == LB_CEF3_OK);
+  const auto popup_bounds_deadline = GetTickCount64() + 10000;
+  while (GetTickCount64() < popup_bounds_deadline) {
+    bounds_x = 0; bounds_y = 0; bounds_width = 0; bounds_height = 0;
+    if (LB_CEF3_BrowserGetWindowBounds(browser_popup, &bounds_x, &bounds_y,
+            &bounds_width, &bounds_height) == LB_CEF3_OK
+        && bounds_x == 60 && bounds_y == 50
+        && bounds_width == 1600 && bounds_height == 1000) {
+      break;
+    }
+    PumpHostMessages();
+    Sleep(10);
+  }
+  if (!(bounds_x == 60 && bounds_y == 50
+      && bounds_width == 1600 && bounds_height == 1000)) {
+    std::fwprintf(stderr,
+        L"CEF3 popup bounds mismatch: x=%d y=%d w=%d h=%d\n",
+        bounds_x, bounds_y, bounds_width, bounds_height);
+    std::fflush(stderr);
+  }
+  assert(bounds_x == 60 && bounds_y == 50
+      && bounds_width == 1600 && bounds_height == 1000);
+  assert(LB_CEF3_BrowserSetWindowBounds(browser_popup, -1, -1, -1, -1)
+      == LB_CEF3_OK);
+  // Chrome Runtime 顶层弹窗拆除较慢且关闭事件不保证经全局回调上报：
+  // 直接轮询原生顶层窗口是否销毁（30 秒上限），窗口消失即关闭完成。
+  assert(LB_CEF3_BrowserClose(browser_popup, 1) == LB_CEF3_OK);
+  const auto popup_closed_deadline = GetTickCount64() + 30000;
+  while (IsWindow(reinterpret_cast<HWND>(
+             static_cast<uintptr_t>(bounds_native_window)))
+      && GetTickCount64() < popup_closed_deadline) {
+    PumpHostMessages();
+    Sleep(10);
+  }
+  assert(!IsWindow(reinterpret_cast<HWND>(
+      static_cast<uintptr_t>(bounds_native_window))));
+  assert(LB_CEF3_HandleRelease(browser_popup) == LB_CEF3_OK);
+  std::fprintf(stderr, "CEF3 test checkpoint: popup-window-bounds\n");
+  std::fflush(stderr);
   assert(LB_CEF3_HandleRelease(browser_b) == LB_CEF3_OK);
   std::fprintf(stderr, "CEF3 test checkpoint: browser-b-released\n");
   std::fflush(stderr);

@@ -18735,7 +18735,7 @@ ${generateFbroVipIndividualRuntime(false)}
 #endif
     }
 
-    int CEF3_创建弹窗浏览器(int instanceId, const wchar_t* address, const wchar_t* cacheDirectory, const wchar_t* proxyServer) {
+    int CEF3_创建弹窗浏览器(int instanceId, const wchar_t* address, const wchar_t* cacheDirectory, const wchar_t* proxyServer, int left = -1, int top = -1, int width = -1, int height = -1) {
 #if LINGBUILDER_CEF3_AVAILABLE
         if (instanceId <= 0) { 调试输出(L"CEF3 创建弹窗失败：实例编号必须为正整数。"); return 0; }
 #if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
@@ -18769,15 +18769,22 @@ ${generateFbroVipIndividualRuntime(false)}
         instance->bridgeHandle = handle;
         instance->created = true;   // 同无头路径：bridgeReady 只能由「已就绪」确认或创建完成事件置位
         instance->currentUrl = bridgeConfig.initial_url ? bridgeConfig.initial_url : L"";
+        // 初始窗口边界：尾部可选参数，-1＝保持系统默认；坐标为屏幕物理像素。
+        // 创建任务与定界任务同在 CEF UI 任务队列按 FIFO 执行，定界在首帧绘制前生效。
+        if (left >= 0 || top >= 0 || width > 0 || height > 0) {
+            if (LB_CEF3_BrowserSetWindowBounds(handle, left, top, width, height) != LB_CEF3_OK) {
+                调试输出(L"CEF3 弹窗窗口边界设置失败：坐标须为屏幕物理像素，尺寸不得低于 Chrome 最小窗宽（尺寸只会被放大不会被裁切）。");
+            }
+        }
         cefBrowsers_[runtimeId] = std::move(instance);
         return 1;
 #else
-        (void)address; (void)cacheDirectory; (void)proxyServer;
+        (void)address; (void)cacheDirectory; (void)proxyServer; (void)left; (void)top; (void)width; (void)height;
         调试输出(L"CEF3 创建弹窗失败：当前构建未启用 CEF3 桥。");
         return 0;
 #endif
 #else
-        (void)instanceId; (void)address; (void)cacheDirectory; (void)proxyServer;
+        (void)instanceId; (void)address; (void)cacheDirectory; (void)proxyServer; (void)left; (void)top; (void)width; (void)height;
         调试输出(L"CEF3 不可用：构建环境缺少 CEF3 SDK。");
         return 0;
 #endif
@@ -20236,6 +20243,42 @@ ${generateFbroVipIndividualRuntime(false)}
         return found != cefBrowsers_.end() && found->second ? found->second->userAgent : L"";
 #else
         (void)instanceId; return L"";
+#endif
+    }
+
+    int CEF3_置实例窗口边界(int instanceId, int left, int top, int width, int height) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        auto found = cefBrowsers_.find(CEF3_运行时弹窗编号偏移 + instanceId);
+        if (found == cefBrowsers_.end() || !found->second->bridgeHandle) { 调试输出(L"CEF3 置实例窗口边界失败：该实例编号不存在或浏览器尚未创建。"); return 0; }
+        if (LB_CEF3_BrowserSetWindowBounds(found->second->bridgeHandle, left, top, width, height) != LB_CEF3_OK) { 调试输出(L"CEF3 置实例窗口边界失败：窗口边界命令仅支持 Chrome Runtime 顶层弹窗实例（区域布局归宿主管，无头无窗口）。"); return 0; }
+        return 1;
+#else
+        (void)instanceId; (void)left; (void)top; (void)width; (void)height; 调试输出(L"CEF3 置实例窗口边界失败：当前构建未启用 CEF3 桥。"); return 0;
+#endif
+    }
+
+    std::wstring CEF3_取实例窗口边界JSON(int instanceId) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        auto found = cefBrowsers_.find(CEF3_运行时弹窗编号偏移 + instanceId);
+        if (found == cefBrowsers_.end() || !found->second->bridgeHandle) { 调试输出(L"CEF3 取实例窗口边界失败：该实例编号不存在或浏览器尚未创建。"); return L"{}"; }
+        int x = 0, y = 0, w = 0, h = 0;
+        if (LB_CEF3_BrowserGetWindowBounds(found->second->bridgeHandle, &x, &y, &w, &h) != LB_CEF3_OK) { 调试输出(L"CEF3 取实例窗口边界失败：仅支持 Chrome Runtime 顶层弹窗实例，且需等弹窗窗口创建完成。"); return L"{}"; }
+        return L"{\\"x\\":" + std::to_wstring(x) + L",\\"y\\":" + std::to_wstring(y)
+            + L",\\"width\\":" + std::to_wstring(w) + L",\\"height\\":" + std::to_wstring(h) + L"}";
+#else
+        (void)instanceId; return L"{}";
+#endif
+    }
+
+    long long CEF3_取实例窗口句柄(int instanceId) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        auto found = cefBrowsers_.find(CEF3_运行时弹窗编号偏移 + instanceId);
+        if (found == cefBrowsers_.end() || !found->second->bridgeHandle) { 调试输出(L"CEF3 取实例窗口句柄失败：该实例编号不存在或浏览器尚未创建。"); return 0; }
+        unsigned long long nativeWindow = 0;
+        if (LB_CEF3_BrowserGetNativeWindowHandle(found->second->bridgeHandle, &nativeWindow) != LB_CEF3_OK) { 调试输出(L"CEF3 取实例窗口句柄失败：仅支持 Chrome Runtime 顶层弹窗实例，且需等弹窗窗口创建完成。"); return 0; }
+        return static_cast<long long>(nativeWindow);
+#else
+        (void)instanceId; return 0;
 #endif
     }
 

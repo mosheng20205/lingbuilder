@@ -2087,6 +2087,8 @@ async function materializeCef3Sdk(
       plan.diagnostics.push('CEF3 SDK 缺少 LingBuilderCefBridge x64 资产。请运行 npm run module:cef3-bridge -- --install 重新生成 Bridge。');
     } else if (!await cef3BridgeHeaderSupportsResourceBody(bridgeHeader)) {
       addBlockingDiagnostic(plan, 'CEF3 SDK Bridge header is outdated: missing LB_CEF3_ResourceResponseBodyBegin. Please update the CEF3 SDK automatically.');
+    } else if (!await cef3BridgeHeaderSupportsPopupWindowBounds(bridgeHeader)) {
+      addBlockingDiagnostic(plan, 'CEF3 环境 SDK 版本过旧：Bridge header 缺少 LB_CEF3_BrowserSetWindowBounds（弹窗窗口边界接口）。请在模块中心更新「CEF3 环境 SDK」，或在仓库运行 npm run module:cef3-bridge -- --install 后重试。');
     } else {
       for (const root of roots) {
         await fs.mkdir(path.join(root, 'include'), { recursive: true });
@@ -2273,7 +2275,10 @@ async function findCef3SdkRoot(layout?: ModuleNativeDependencyLayout): Promise<s
     try {
       await fs.access(path.join(candidate.root, 'include', 'cef_app.h'));
       const bridgeHeader = path.join(candidate.root, 'bridge', 'x64', 'LingBuilderCefBridge.h');
-      if (await cef3BridgeHeaderSupportsResourceBody(bridgeHeader)) return candidate.root;
+      if (await cef3BridgeHeaderSupportsResourceBody(bridgeHeader)
+        && await cef3BridgeHeaderSupportsPopupWindowBounds(bridgeHeader)) {
+        return candidate.root;
+      }
       staleCandidate ||= candidate.root;
     } catch {
       // 尝试下一个候选 SDK 根目录。
@@ -2298,6 +2303,18 @@ async function cef3BridgeHeaderSupportsResourceBody(headerPath: string): Promise
   try {
     const header = await fs.readFile(headerPath, 'utf8');
     return /\bLB_CEF3_ResourceResponseBodyBegin\b/u.test(header);
+  } catch {
+    return false;
+  }
+}
+
+/* 弹窗窗口边界接口（CEF3_置实例窗口边界/取实例窗口边界JSON/取实例窗口句柄 依赖）
+   的 ABI 门槛：2026-10-29 批次新增，防「生成器已发射新调用、旧 SDK 无符号」的
+   找不到标识符链接失败在构建末端才爆。 */
+async function cef3BridgeHeaderSupportsPopupWindowBounds(headerPath: string): Promise<boolean> {
+  try {
+    const header = await fs.readFile(headerPath, 'utf8');
+    return /\bLB_CEF3_BrowserSetWindowBounds\b/u.test(header);
   } catch {
     return false;
   }

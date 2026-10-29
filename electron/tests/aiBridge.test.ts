@@ -164,6 +164,11 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.match(String(client.getInstructions() || ''), /FBro_实例设置窗口边界\(弹窗, X, Y, 宽, 高\)/u, 'instructions 必须给出 FBro 弹窗位置/尺寸控制命令口径');
     assert.match(String(client.getInstructions() || ''), /FBro_实例取窗口边界JSON\(弹窗\)/u, 'instructions 必须给出 FBro 弹窗边界回读命令');
     assert.match(String(client.getInstructions() || ''), /FBro_实例取窗口句柄\(弹窗\)/u, 'instructions 必须给出 FBro 弹窗顶层 HWND 查询命令');
+    assert.match(String(client.getInstructions() || ''), /CEF3_置实例窗口边界\(实例编号, 左, 顶, 宽, 高\)/u, 'instructions 必须给出 CEF3 弹窗窗口边界命令口径（多开平铺）');
+    assert.match(String(client.getInstructions() || ''), /CEF3_取实例窗口边界JSON/u, 'instructions 必须给出 CEF3 弹窗边界回读命令（物理像素，键名同 win32 窗口_取边界JSON）');
+    assert.match(String(client.getInstructions() || ''), /CEF3_取实例窗口句柄/u, 'instructions 必须给出 CEF3 弹窗原生 HWND 查询命令');
+    assert.match(String(client.getInstructions() || ''), /与 CEF3_创建区域 的 DIP 语义刻意不同/u, 'instructions 必须写明 CEF3 弹窗物理像素与区域 DIP 的对比红线');
+    assert.match(String(client.getInstructions() || ''), /LB_CEF3_BrowserSetWindowBounds/u, 'instructions 必须写明 CEF3 弹窗定位能力依赖新 SDK 标记与物化门槛拦截');
     assert.match(String(client.getInstructions() || ''), /虚拟内核必须与 UA 声称的 Chrome 大版本一致/u, 'instructions 必须写明内核开关随 UA 版本钳位 116~135，写死真实内核会被检测标红');
     assert.match(String(client.getInstructions() || ''), /timeZone\{hour,minute,name,standardName\}/u, 'instructions 必须写明指纹 JSON 是桥 schema（时区键形态）');
     assert.match(String(client.getInstructions() || ''), /键名错＝没设/u, 'instructions 必须警示 UI 形状键被静默跳过、应用成功不等于生效');

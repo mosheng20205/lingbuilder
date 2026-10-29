@@ -705,6 +705,18 @@ LB_CEF3_API int LB_CEF3_CALL LB_CEF3_BrowserWasHidden(
 LB_CEF3_API int LB_CEF3_CALL LB_CEF3_BrowserExitFullscreen(
     LB_CEF3_HANDLE browser, int will_cause_resize);
 LB_CEF3_API int LB_CEF3_CALL LB_CEF3_BrowserResize(LB_CEF3_HANDLE browser);
+/* Chrome Runtime 顶层弹窗窗口边界读写：坐标一律屏幕物理像素（与 SetWindowPos 同口径，
+   与内嵌区域的 DIP 语义刻意不同）。仅对 LB_CEF3_BROWSER_CHROME_RUNTIME 且非 windowless、
+   无宿主父窗口的弹窗实例生效；内嵌区域与 OSR 无头实例一律返回 LB_CEF3_ERROR_NOT_SUPPORTED。
+   x/y < 0 表示整组位置不变（SWP_NOMOVE）；width/height < 1 表示整组尺寸不变（SWP_NOSIZE）。 */
+LB_CEF3_API int LB_CEF3_CALL LB_CEF3_BrowserSetWindowBounds(
+    LB_CEF3_HANDLE browser, int x, int y, int width, int height);
+LB_CEF3_API int LB_CEF3_CALL LB_CEF3_BrowserGetWindowBounds(
+    LB_CEF3_HANDLE browser, int* out_x, int* out_y, int* out_width, int* out_height);
+/* 取弹窗原生顶层 HWND（0 = 尚无窗口）。桥与宿主 exe 同进程，该值只许在本进程内用于
+   移动/置前台/关闭等窗口管理，不得跨进程传递或持久化。 */
+LB_CEF3_API int LB_CEF3_CALL LB_CEF3_BrowserGetNativeWindowHandle(
+    LB_CEF3_HANDLE browser, uint64_t* out_hwnd);
 LB_CEF3_API int LB_CEF3_CALL LB_CEF3_BrowserLoadUrl(LB_CEF3_HANDLE browser, const wchar_t* url);
 LB_CEF3_API int LB_CEF3_CALL LB_CEF3_BrowserGoBack(LB_CEF3_HANDLE browser);
 LB_CEF3_API int LB_CEF3_CALL LB_CEF3_BrowserGoForward(LB_CEF3_HANDLE browser);
@@ -889,8 +901,11 @@ LB_CEF3_API int LB_CEF3_CALL LB_CEF3_ClientGetDownloadHandlerAvailable(
     LB_CEF3_HANDLE client);
 LB_CEF3_API int LB_CEF3_CALL LB_CEF3_ClientGetPrintHandlerAvailable(
     LB_CEF3_HANDLE client);
-/* Native HWND values never cross the ABI. Successful calls return a retained
-   managed Browser alias representing the associated native window. */
+/* Native HWND values never cross the ABI, with one explicit exception:
+   LB_CEF3_BrowserGetNativeWindowHandle hands the raw top-level HWND of a Chrome
+   Runtime popup to the same-process host for window management only.
+   Otherwise, successful calls return a retained managed Browser alias
+   representing the associated native window. */
 LB_CEF3_API int LB_CEF3_CALL LB_CEF3_BrowserGetWindowHandle(
     LB_CEF3_HANDLE browser, LB_CEF3_HANDLE* result);
 LB_CEF3_API int LB_CEF3_CALL LB_CEF3_BrowserGetOpenerWindowHandle(
