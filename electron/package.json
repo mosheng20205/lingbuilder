@@ -139,6 +139,7 @@
     "smoke:ai-bridge-stdio": "tsx scripts/smoke-ai-bridge-stdio.ts",
     "smoke:fbro-native": "tsx scripts/smoke-fbro-native.ts",
     "smoke:fbro-headless": "tsx scripts/smoke-fbro-headless.ts",
+    "smoke:fbro-popup-bounds": "tsx scripts/smoke-fbro-popup-bounds.ts",
     "smoke:fbro-startup-switches": "tsx scripts/smoke-fbro-startup-switches.ts",
     "smoke:fbro-process-native": "tsx scripts/smoke-fbro-process-native.ts",
     "smoke:fbro-events-stress": "tsx scripts/smoke-fbro-events-stress.ts",

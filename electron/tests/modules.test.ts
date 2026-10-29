@@ -605,12 +605,17 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       // 另一图像句柄 参数与 CEF3图像_创建 返回值由裸 longLong 改为名义类型
       //（对齐传输族约定；类型门禁此前按裸 longLong 拦截名义句柄实参，ep28 教程实录暴露），
       // 无新增 controlRef（实算摘要 2faf202c/8217b147）。
+      // 基线 2026-10-29 写回（FBro 弹窗顶层窗口控制批次）：lingbuilder.fbro.browser 2.13.0
+      // 新增 FBro_实例取窗口句柄 / FBro_实例取窗口边界JSON / FBro_实例设置窗口边界
+      // 三命令（+3 命令 +7 参数，实例句柄/数值参数，无新增 controlRef；
+      // 同批 FBro_后台创建 描述补「要可见窗口请接着 FBro_实例打开原生UI」交叉引用）
+      //（实算摘要 9ea9a7d7/d9f1dadf）。
       modules: 108,
-      commands: 4623,
-      parameters: 8599,
+      commands: 4626,
+      parameters: 8606,
       controlReferences: 1499,
-      commandDigest: '2faf202c',
-      parameterDigest: '8217b147'
+      commandDigest: '9ea9a7d7',
+      parameterDigest: 'd9f1dadf'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -1170,11 +1175,16 @@ test('工作区已安装模块全部通过 controlRef 清单和示例门禁', as
       // 基线 2026-10-27 写回（CEF3 图像族名义类型批次）：内置部分见上一用例
       //（图像族 15 命令签名改名义类型，无 controlRef 变化）；磁盘侧 +4 命令 +6 参数
       // 来自并行会话在途清单，按本机实算写回（实算摘要 879ccbe5/495cec28）。
-      commands: 8761,
-      parameters: 20971,
-      commandDigest: '879ccbe5',
+      // 基线 2026-10-29 写回（FBro 弹窗顶层窗口控制批次）：内置 +3 命令 +7 参数
+      //（fbro.browser 2.13.0 弹窗边界三命令，见内置夹具注释）；磁盘侧无独立变化
+      //（实算摘要 aff6d81c/83add250）。同批补上期望对象一直缺失的 modules 键
+      //（actual 侧带 modules: audit.moduleCount，缺键 deepEqual 恒败的存量基线红就此转绿）。
+      modules: 122,
+      commands: 8764,
+      parameters: 20978,
+      commandDigest: 'aff6d81c',
       controlReferences: 5281,
-      parameterDigest: '495cec28'
+      parameterDigest: '83add250'
   }, '内置、官方和当前工作区第三方模块的每个方法与参数都必须进入全量审计');
   // OpenCV 以内置清单为准：本机未装 SDK 时磁盘上的同名清单是只有骨架的占位包（0 命令、无 targets）。
   const manifest = BUILTIN_MODULES.find(module => module.id === OPENCV_MODULE_ID) || auditedManifests.get('lingbuilder.opencv.sdk');
@@ -2949,7 +2959,8 @@ test('FBro browser 2.5 keeps 2.1 submodules compatible with the v3 event core', 
   // 基线 2026-09-29 写回：fbro.browser 2.10.0（区域实例精细化）→ 2.11.0（实例级代理）；
   // 子模块除 vip 2.2.0（新窗口转标签页）→ 2.3.0（实例级指纹应用）、
   // network 2.1.0→2.2.0（纯协议响应读取族）外仍为 2.1.0。
-  assert.equal(callable.find(module => module.id === 'lingbuilder.fbro.browser')?.version, '2.12.0');
+  // 基线 2026-10-29 写回：fbro.browser 2.13.0（弹窗顶层窗口控制三命令）。
+  assert.equal(callable.find(module => module.id === 'lingbuilder.fbro.browser')?.version, '2.13.0');
   assert.ok(callable.filter(module => module.id !== 'lingbuilder.fbro.browser' && module.id !== 'lingbuilder.fbro.vip' && module.id !== 'lingbuilder.fbro.network').every(module => module.version === '2.1.0'));
   assert.equal(callable.find(module => module.id === 'lingbuilder.fbro.vip')?.version, '2.3.0');
   assert.equal(callable.find(module => module.id === 'lingbuilder.fbro.network')?.version, '2.2.0');
@@ -2970,7 +2981,8 @@ test('FBro module family exposes one manager entry and atomically enables the st
   // 基线 2026-09-29 写回：区域族+原生UI（692→705）与实例级代理/实例级指纹应用（705→707）。
   // 基线 2026-09-29 再写回：纯协议响应读取族（707→712，fbro.network +5，取响应对象/取消也归 network）。
   // 2026-09-29 六写回：FBro_实例取Cookie（fbro.browser 2.12.0，后台实例收割登录态 Cookie）。
-  assert.equal(countModuleCommands(family), 713);
+  // 2026-10-29 写回：弹窗顶层窗口控制三命令（fbro.browser 2.13.0，713→716）。
+  assert.equal(countModuleCommands(family), 716);
   assert.equal(isModuleHiddenByFamily('lingbuilder.fbro.browser'), false);
   assert.equal(isModuleHiddenByFamily('lingbuilder.fbro.objects'), true);
   assert.equal(isModuleHiddenByFamily('lingbuilder.fbro.sdk'), true);
@@ -4881,7 +4893,9 @@ test('FBro user documentation covers public events, classified slots and public 
   // FBro_实例设置代理、FBroVIP_实例应用指纹JSON，均随 fbro README 命令表同步）。
   // 基线 2026-09-29 再写回：698 → 703（纯协议响应读取族 fbro.network +5）。
   // 基线 2026-09-29 三写回：703 → 704（FBro_实例取Cookie，后台实例收割登录态 Cookie）。
-  assert.equal(publicCommands.length, 704);
+  // 基线 2026-10-29 写回：704 → 707（fbro.browser 2.13.0 弹窗顶层窗口控制三命令：
+  // FBro_实例取窗口句柄/取窗口边界JSON/设置窗口边界，随 fbro README 命令表同步）。
+  assert.equal(publicCommands.length, 707);
   assert.equal(internalCommands.length, 9);
   assert.ok(document.includes('FBro_绑定事件(FBro浏览器1, "新窗口打开前", &处理新窗口)'));
   assert.ok(document.includes(

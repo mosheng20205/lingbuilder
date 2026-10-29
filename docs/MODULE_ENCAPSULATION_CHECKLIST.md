@@ -2,7 +2,7 @@
 
 更新时间：2026-10-19
 
-本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **108 个内置模块、4623 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
+本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **108 个内置模块、4626 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
 
 - `schemaVersion: 2`。
 - `contributes.commands` 与 `bindings.commands` 一一对应。
@@ -166,7 +166,7 @@ OpenCV 模块保留基础 GDI+ 图像模块并作为新增高级能力。公开�
 | 3.0预览 | `lingbuilder.cef3.views` | CEF3 Chrome Runtime视图模块 | 1 |
 | 3.0预览 | `lingbuilder.cef3.osr` | CEF3无头渲染（OSR）重绘、帧率与回调订阅模块 | 5 |
 | 3.0预览 | `lingbuilder.cef3.platform` | CEF3版本、MIME、命令行与Chrome Variations工具模块 | 72 |
-| 已封装（2.11.0 实例级代理） | `lingbuilder.fbro.browser` | FBro核心浏览器模块（CEF 135 x64/C ABI v3，兼容 v1/v2） | 141 |
+| 已封装（2.13.0 弹窗顶层窗口控制） | `lingbuilder.fbro.browser` | FBro核心浏览器模块（CEF 135 x64/C ABI v3，兼容 v1/v2） | 144 |
 | 已封装 | `lingbuilder.fbro.events` | FBro 174 槽位事件目录、同步/延迟决策与受管事件对象模块 | 12 |
 | 已封装 | `lingbuilder.fbro.session` | FBro会话、Cookie 与代理认证模块 | 10 |
 | 已封装 | `lingbuilder.fbro.transfer` | FBro下载、打印、PDF、文件对话框与截图模块 | 5 |

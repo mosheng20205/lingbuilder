@@ -158,6 +158,12 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.match(String(client.getInstructions() || ''), /FBro异步请求_取响应对象/u, 'instructions 必须给出 FBro 纯协议同能力（响应对象读取）');
     assert.match(String(client.getInstructions() || ''), /FBro网络_取下载块/u, 'instructions 必须给出 FBro 纯协议同能力（下载块一次性取回）');
     assert.match(String(client.getInstructions() || ''), /FBroVIP_实例应用指纹JSON/u, 'instructions 必须给出 FBro 指纹浏览器纯代码多开链与实例级指纹命令');
+    assert.match(String(client.getInstructions() || ''), /没有名字带「创建」的命令/u, 'instructions 必须写明 FBro 弹独立顶层窗＝后台创建+实例打开原生UI 两步链的反误解红线');
+    assert.match(String(client.getInstructions() || ''), /FBro 浏览器创建形态总览/u, 'instructions 必须给出 FBro 四种创建入口形态总览（控件嵌入/动态区域/后台无窗口/独立顶层弹窗）');
+    assert.match(String(client.getInstructions() || ''), /四种创建入口/u, 'instructions 必须写明创建形态总览覆盖四种入口');
+    assert.match(String(client.getInstructions() || ''), /FBro_实例设置窗口边界\(弹窗, X, Y, 宽, 高\)/u, 'instructions 必须给出 FBro 弹窗位置/尺寸控制命令口径');
+    assert.match(String(client.getInstructions() || ''), /FBro_实例取窗口边界JSON\(弹窗\)/u, 'instructions 必须给出 FBro 弹窗边界回读命令');
+    assert.match(String(client.getInstructions() || ''), /FBro_实例取窗口句柄\(弹窗\)/u, 'instructions 必须给出 FBro 弹窗顶层 HWND 查询命令');
     assert.match(String(client.getInstructions() || ''), /虚拟内核必须与 UA 声称的 Chrome 大版本一致/u, 'instructions 必须写明内核开关随 UA 版本钳位 116~135，写死真实内核会被检测标红');
     assert.match(String(client.getInstructions() || ''), /timeZone\{hour,minute,name,standardName\}/u, 'instructions 必须写明指纹 JSON 是桥 schema（时区键形态）');
     assert.match(String(client.getInstructions() || ''), /键名错＝没设/u, 'instructions 必须警示 UI 形状键被静默跳过、应用成功不等于生效');
@@ -367,6 +373,12 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.match(String(client.getInstructions() || ''), /投屏帧坐标≠手机\/屏幕坐标/u, 'instructions 必须钉住投屏坐标缩放换算红线');
     assert.match(String(client.getInstructions() || ''), /识图状态（取结果\/取第N）是线程本地存储/u, 'instructions 必须写明识图结果线程本地语义');
     assert.match(String(client.getInstructions() || ''), /模板不得超过 512×512 像素/u, 'instructions 必须钉住模板尺寸上限');
+    // 2026-10-29：new_emoji Tree 行布局 DPI 修复——图标列自动宽度与 indentWidth/iconWidth/rowHeight 选项必须进外部 AI 消费层，
+    // 否则外部 AI 会继续按旧的固定 24px 图标列写树（emoji 压字），或不知道可以自定义缩进/行高。
+    assert.match(String(client.getInstructions() || ''), /new_emoji Tree 行布局/u, 'instructions 必须给出 Tree 行布局条款');
+    assert.match(String(client.getInstructions() || ''), /NE树_设置选项JSON/u, 'instructions 必须给出 Tree 选项 JSON 命令');
+    assert.match(String(client.getInstructions() || ''), /"indentWidth":20,"iconWidth":28,"rowHeight":38/u, 'instructions 必须给出三个行布局键的设置示例');
+    assert.match(String(client.getInstructions() || ''), /树数据编辑对话框回写 treeDataJson 时只保留/u, 'instructions 必须钉住树数据编辑器会丢弃选项键的坑');
     assert.match(String(client.getInstructions() || ''), /关键词与加签可叠加/u, 'instructions 必须写明钉钉关键词+加签叠加校验');
     assert.match(String(client.getInstructions() || ''), /没有 4KB 上限/u, 'instructions 必须写明超长列分段读取无截断上限');
     assert.match(String(client.getInstructions() || ''), /调试输出\(值1, 值2, \.\.\.\)/u, 'instructions 必须给出调试输出命令替代 std::cout 的口径');
