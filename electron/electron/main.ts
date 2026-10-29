@@ -211,9 +211,22 @@ function cliEntryPath(): string {
  * AI Bridge 随 IDE 启动自动拉起（2026-10-02）：连接中心只承担状态展示与「通用 MCP 配置」复制，
  * 用户不再需要每次进连接中心点「启动」。没有持久化 Token 时先落一个持久 Token 再启动，
  * 保证外部客户端里粘贴的 MCP 配置一次长期有效。任何失败都只进诊断日志与错误态徽标，不阻断 IDE。
+ * 2026-10-29（issue#IKR4IP）：例程/录制实例（LINGBUILDER_REC_USER_DATA 独立 userData 的第二个
+ * IDE 进程）不再自动拉起——17860 只有一个，自动启动会与主窗口的 Bridge 抢端口；需要时可在该
+ * 窗口的连接中心手动启动（手动启动撞上主窗口 Bridge 时会得到点名 PID 的明确错误，不会被静默抢杀）。
  */
 async function autoStartAiBridgeOnLaunch(): Promise<void> {
   if (process.argv.includes('--smoke-test')) return;
+  if (process.env.LINGBUILDER_REC_USER_DATA) return;
+  await startManagedAiBridgeWithPersistedSettings(getShellWorkspaceRoot(), false);
+}
+
+/**
+ * 按持久化启动设置（端口/权限/Token，safeStorage 加密）把受管 Bridge 拉到指定工作区。
+ * 随 IDE 启动与「换工作区自动重启」（2026-10-29，issue#IKR4IP）共用；失败只进诊断日志，
+ * 不阻断调用方（IDE 启动 / 工作区切换）。
+ */
+async function startManagedAiBridgeWithPersistedSettings(workspaceRoot: string, afterWorkspaceSwitch: boolean): Promise<void> {
   try {
     const settingsPath = resolveAiBridgeStartSettingsPath(app.getPath('userData'));
     const settings = await readAiBridgeStartSettings(settingsPath, safeStorage);
@@ -238,17 +251,21 @@ async function autoStartAiBridgeOnLaunch(): Promise<void> {
       }, safeStorage);
     }
     await aiBridgeManager.start({
-      workspaceRoot: getShellWorkspaceRoot(),
+      workspaceRoot,
       port,
       permission,
       lifecycle: 'workspace',
       token,
       moduleAccessState: Buffer.from(JSON.stringify(await readModulePermitCache()), 'utf8').toString('base64url')
     });
-    logDiagnostic('info', 'ai-bridge', `AI Bridge 已随 IDE 启动自动拉起（端口 ${port}，${permission} 权限）。`);
+    logDiagnostic('info', 'ai-bridge', afterWorkspaceSwitch
+      ? `工作区已切换，AI Bridge 已自动在新工作区重启（端口 ${port}，${permission} 权限）。`
+      : `AI Bridge 已随 IDE 启动自动拉起（端口 ${port}，${permission} 权限）。`);
   } catch (reason) {
-    // manager.start 失败时已把快照置为 error 态（标题栏徽标可见），这里只补诊断日志。
-    logDiagnostic('warn', 'ai-bridge', `AI Bridge 自动启动失败：${reason instanceof Error ? reason.message : String(reason)}`);
+    // manager.start 失败时已把快照置为 error 态（连接中心可见），这里只补诊断日志。
+    logDiagnostic('warn', 'ai-bridge', afterWorkspaceSwitch
+      ? `工作区切换后 AI Bridge 自动重启失败：${reason instanceof Error ? reason.message : String(reason)}`
+      : `AI Bridge 自动启动失败：${reason instanceof Error ? reason.message : String(reason)}`);
   }
 }
 
@@ -965,6 +982,12 @@ async function writePackagedSmokeProgress(stage: string): Promise<void> {
 
 async function switchWorkspace(workspacePath: string): Promise<void> {
   const candidateWorkspace = await workspaceService.validateWorkspace(workspacePath);
+  // 旧 Bridge 绑定的是旧工作区，切换前必须停掉；2026-10-29（issue#IKR4IP）起，切换前在运行的
+  // Bridge 会在切换完成后按持久化设置自动在新工作区重启——此前换项目后 Bridge 保持停止，
+  // 外部 MCP 客户端必断线，还得手动去连接中心拉起，这正是「mcp 更换项目就出问题」的主因之一。
+  const bridgeWasRunning = aiBridgeManager
+    ? (aiBridgeManager.snapshot().state === 'running' || aiBridgeManager.snapshot().state === 'starting')
+    : false;
   if (aiBridgeManager?.snapshot().state !== 'stopped') await aiBridgeManager.stop('工作区即将切换');
   const result = await requestRendererApi('/api/workspace/switch', {
     method: 'POST',
@@ -977,6 +1000,9 @@ async function switchWorkspace(workspacePath: string): Promise<void> {
     workspacePath: activeWorkspace,
     version: result.version
   });
+  if (bridgeWasRunning && !process.argv.includes('--smoke-test')) {
+    void startManagedAiBridgeWithPersistedSettings(getShellWorkspaceRoot(), true);
+  }
 }
 
 async function importModulePackage(sourcePath: string) {
