@@ -422,7 +422,7 @@ function buildManifest(commands, designerCatalog, designerCatalogSha256) {
     schemaVersion: 2,
     id: MODULE_ID,
     name: MODULE_NAME,
-    version: '2.0.0',
+    version: '2.1.0',
     minLingBuilderVersion: '0.3.0',
     category: '界面',
     description: '集成 new_emoji Windows 原生 Direct2D/DirectWrite UI DLL，提供中文/emoji 友好的原生控件能力。',

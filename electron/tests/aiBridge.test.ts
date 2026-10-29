@@ -378,7 +378,7 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.match(String(client.getInstructions() || ''), /new_emoji Tree 行布局/u, 'instructions 必须给出 Tree 行布局条款');
     assert.match(String(client.getInstructions() || ''), /NE树_设置选项JSON/u, 'instructions 必须给出 Tree 选项 JSON 命令');
     assert.match(String(client.getInstructions() || ''), /"indentWidth":20,"iconWidth":28,"rowHeight":38/u, 'instructions 必须给出三个行布局键的设置示例');
-    assert.match(String(client.getInstructions() || ''), /树数据编辑对话框回写 treeDataJson 时只保留/u, 'instructions 必须钉住树数据编辑器会丢弃选项键的坑');
+    assert.match(String(client.getInstructions() || ''), /树数据编辑对话框保存时会原样保留根对象上的选项键/u, 'instructions 必须写明树数据编辑器保留选项键（2026-10-29 有损回写已修）');
     assert.match(String(client.getInstructions() || ''), /关键词与加签可叠加/u, 'instructions 必须写明钉钉关键词+加签叠加校验');
     assert.match(String(client.getInstructions() || ''), /没有 4KB 上限/u, 'instructions 必须写明超长列分段读取无截断上限');
     assert.match(String(client.getInstructions() || ''), /调试输出\(值1, 值2, \.\.\.\)/u, 'instructions 必须给出调试输出命令替代 std::cout 的口径');
