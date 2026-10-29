@@ -176,6 +176,10 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.match(String(client.getInstructions() || ''), /clearAllData:true 清空该档案全部数据/u, 'instructions 必须写明 clearAllData 只用于槽位重置、多开保登录态不要发');
     assert.match(String(client.getInstructions() || ''), /语言一致性红线/u, 'instructions 必须写明 mainAcceptLanguage/languages/acceptLanguages 三键同源裸逗号列表红线');
     assert.match(String(client.getInstructions() || ''), /裸单标签 Accept-Language/u, 'instructions 必须警示只发首标签会出站裸单标签头、被检测站判语言不匹配');
+    assert.match(String(client.getInstructions() || ''), /缓存目录语义/u, 'instructions 必须写明 FBro 缓存目录被收进内核根缓存 Temp<N> 数据窗格的语义（2026-10-29 桥 2.9.5）');
+    assert.match(String(client.getInstructions() || ''), /profile-<名>-<路径哈希>/u, 'instructions 必须写明根外绝对路径重定位为稳定哈希目录、跨重启同目录');
+    assert.match(String(client.getInstructions() || ''), /桥自动把历史档案迁入新根/u, 'instructions 必须写明内核换 Temp<N> 根时桥自动迁移登录态');
+    assert.match(String(client.getInstructions() || ''), /缓存目录传空串＝全局共享档案/u, 'instructions 必须警示缓存目录传空＝全局共享档案，防关联多开禁止传空');
     assert.match(String(client.getInstructions() || ''), /二维码模块（lingbuilder\.qrcode）写作口径/u, 'instructions 必须给出二维码模块写作口径条目');
     assert.match(String(client.getInstructions() || ''), /二维码_生成\(内容, 纠错级别, 边长像素, 空白边模块数\)/u, 'instructions 必须给出二维码生成标准调用形态');
     assert.match(String(client.getInstructions() || ''), /不要自己估容量/u, 'instructions 必须写明版本自动选择、禁止外部估算容量');

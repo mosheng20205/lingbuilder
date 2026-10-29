@@ -7195,8 +7195,12 @@ test('进程内 FBro 调试端口随 enableDevTools 开关并支持全关', () =
 test('FBro bridge serializes browser creation onto the CEF UI thread and contains profiles under root cache', async () => {
   const bridgeSource = await fs.readFile(path.resolve(import.meta.dirname, '..', 'native', 'fbro-bridge', 'LingBuilderFbroBridge.cpp'), 'utf8');
   assert.match(bridgeSource, /CefPostTask\(TID_UI, new BridgeBrowserStartTask\(handle\)\)/u);
-  assert.match(bridgeSource, /ResolveProfileDirectory/u);
-  assert.match(bridgeSource, /normalized_root \/ \(L"profile-"/u);
+  // 缓存目录收编链（2026-10-29 桥 2.9.5）：先向内核查真实根（Temp<N> 动态轮换，
+  // 不能编译期假设），再把传入目录解析成根下稳定目录，并在换根时迁移历史档案。
+  assert.match(bridgeSource, /DiscoverKernelRootCachePath/u);
+  assert.match(bridgeSource, /ResolveKernelProfileTarget/u);
+  assert.match(bridgeSource, /MigrateProfileLeafIntoKernelRoot/u);
+  assert.match(bridgeSource, /normalized_kernel_root \/ \(L"profile-"/u);
   assert.doesNotMatch(bridgeSource, /g_browsers\.emplace\(handle, std::move\(state\)\);\s*StartBrowser\(\*raw\)/u);
   assert.match(bridgeSource, /LB_FBRO_EVENT_BEFORE_POPUP/u);
   assert.match(bridgeSource, /Notify\(\*state, LB_FBRO_EVENT_BEFORE_POPUP, target_url\.ToWString\(\)\)/u);
@@ -7702,7 +7706,7 @@ test('FBro native dependency materializer preserves directories and only repairs
     files.push({ path: relative, size: content.length, sha256: crypto.createHash('sha256').update(content).digest('hex') });
   }
   await fs.writeFile(path.join(sdk, 'runtime-manifest.json'), JSON.stringify({
-    schemaVersion: 1, sdkVersion: '135.0.21', architecture: 'x64', bridgeVersion: '2.9.4', files
+    schemaVersion: 1, sdkVersion: '135.0.21', architecture: 'x64', bridgeVersion: '2.9.5', files
   }), 'utf8');
   const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.browser');
   assert.ok(manifest);
@@ -7782,7 +7786,7 @@ test('FBro 工作区旧版本 SDK 副本让位给机器级缓存的匹配版本'
   // 机器级缓存已由 SDK 面板装到当前版本（真实事故：多标签浏览器工作区 2.9.3 遮蔽 2.9.4 缓存）。
   await writeFbroVersionFixture(path.join(root, 'ws', '.lingbuilder', 'modules', 'lingbuilder.fbro.sdk', 'sdk'), '2.9.3', 'stale-workspace-bridge');
   const cacheRoot = path.join(root, 'sdk-cache');
-  await writeFbroVersionFixture(path.join(cacheRoot, 'modules', 'lingbuilder.fbro.sdk', 'sdk'), '2.9.4', 'fresh-cache-bridge');
+  await writeFbroVersionFixture(path.join(cacheRoot, 'modules', 'lingbuilder.fbro.sdk', 'sdk'), '2.9.5', 'fresh-cache-bridge');
   const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.browser');
   assert.ok(manifest);
   const module: InstalledModule = { manifest, installPath: 'builtin://lingbuilder.fbro.browser', isBuiltin: true, isInstalled: true, diagnostics: [] };
@@ -7827,7 +7831,7 @@ test('FBro 所有候选版本都不匹配时回退旧副本并给出精确版本
       preferredTargetId: 'windows-msvc-x64'
     };
     const plan = await materializeModuleNativeDependencies([module], layout);
-    assert.match(plan.blockingDiagnostics.join('\n'), /需要 135\.0\.21\/Bridge 2\.9\.4\/x64，实际为 135\.0\.21\/Bridge 2\.9\.3\/x64/u);
+    assert.match(plan.blockingDiagnostics.join('\n'), /需要 135\.0\.21\/Bridge 2\.9\.5\/x64，实际为 135\.0\.21\/Bridge 2\.9\.3\/x64/u);
   } finally {
     if (previousFbroSdkRoot === undefined) delete process.env.FBRO_SDK_ROOT;
     else process.env.FBRO_SDK_ROOT = previousFbroSdkRoot;
@@ -7906,7 +7910,7 @@ test('FBro 与 CEF3 仅阻断进程内控件，独立进程共存时隔离两套
       schemaVersion: 1,
       sdkVersion: '135.0.21',
       architecture: 'x64',
-      bridgeVersion: '2.9.4',
+      bridgeVersion: '2.9.5',
       files: fbroFiles
     })),
     writeFixture(path.join(cef3Sdk, 'include', 'cef_app.h'), '#pragma once\n'),
@@ -7983,7 +7987,7 @@ test('FBro 单独启用时运行时只落 bin 顶层，fbro-host 只承载宿主
       schemaVersion: 1,
       sdkVersion: '135.0.21',
       architecture: 'x64',
-      bridgeVersion: '2.9.4',
+      bridgeVersion: '2.9.5',
       files: fbroFiles
     })),
     // 旧版无条件双写留下的 fbro-host 残留，物化后必须被清掉。

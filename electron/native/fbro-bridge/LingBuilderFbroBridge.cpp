@@ -2339,26 +2339,62 @@ bool ResolveRuntimeAssetPath(const std::wstring& supplied, bool require_director
   return true;
 }
 
-std::filesystem::path ResolveProfileDirectory(const std::wstring& profile, LB_FBRO_HANDLE handle,
-                                              std::wstring& warning) {
+// 内核会把全局缓存根重映射成 <根>\Temp<N>（多进程占用时轮换），并要求
+// RequestContext 的 cache_path 是 root_cache_path 的后代；直接给根级或外部
+// 绝对路径会被 context.cc 拒收并退化成内存态。全局上下文的 cache path 即
+// 内核当前真实根，创建上下文前先向内核查询，不能用编译期假设。
+std::filesystem::path DiscoverKernelRootCachePath() {
+  auto global = FBroHsRequestContext_GetGlobalContext();
+  if (global) {
+    const std::wstring queried = FromFbroString(FBroHsRequestContext_GetCachePath(global));
+    if (!queried.empty()) {
+      std::filesystem::path base = AbsoluteNormalizedPath(std::filesystem::path(queried));
+      if (base.filename().wstring() == L"Default") base = base.parent_path();
+      if (base != AbsoluteNormalizedPath(g_root_cache_directory)) return base;
+    }
+  }
+  // 查询不可用或仍是旧根时退回磁盘证据：取 mtime 最新的 Temp<N> 数据窗格；
+  // 没有任何 Temp<N> 才按内核直用根目录处理（旧内核行为）。
+  std::error_code ec;
+  std::filesystem::path best;
+  std::filesystem::file_time_type best_time{};
+  for (const auto& entry : std::filesystem::directory_iterator(g_root_cache_directory, ec)) {
+    const std::wstring name = entry.path().filename().wstring();
+    if (name.size() <= 4 || name.compare(0, 4, L"Temp") != 0) continue;
+    if (!std::all_of(name.begin() + 4, name.end(),
+                     [](wchar_t character) { return character >= L'0' && character <= L'9'; })) {
+      continue;
+    }
+    std::error_code time_error;
+    const auto write_time = std::filesystem::last_write_time(entry.path(), time_error);
+    if (time_error) continue;
+    if (best.empty() || write_time > best_time) {
+      best = entry.path();
+      best_time = write_time;
+    }
+  }
+  if (!best.empty()) return best;
+  return g_root_cache_directory;
+}
+
+// 把传入的缓存目录解析成内核真实根之下稳定且可持久化的绝对路径：
+//  - 相对名直接落到当前真实根之下，内核校验天然通过；
+//  - 根级或根外绝对路径换成「profile-<名>-<FNV 哈希>」稳定目录名，
+//    同一传入路径跨重启得到同一目录，配合迁移逻辑保持登录态。
+std::filesystem::path ResolveKernelProfileTarget(const std::wstring& profile,
+                                                 const std::filesystem::path& kernel_root,
+                                                 std::wstring& notice) {
   if (profile.empty()) return {};
   std::filesystem::path requested(profile);
-  std::filesystem::path candidate;
-  if (requested.is_relative()) {
-    const auto first = requested.begin();
-    candidate = first != requested.end() && (*first == L".fbro-global-cache")
-        ? g_runtime_directory / requested
-        : g_root_cache_directory / requested;
-  } else {
-    candidate = requested;
-  }
+  std::filesystem::path candidate = requested.is_relative()
+      ? AbsoluteNormalizedPath(kernel_root) / requested
+      : requested;
   candidate = AbsoluteNormalizedPath(candidate);
-  const auto normalized_root = AbsoluteNormalizedPath(g_root_cache_directory);
-  if (IsChildPath(normalized_root, candidate) && candidate.parent_path() == normalized_root) return candidate;
+  const auto normalized_kernel_root = AbsoluteNormalizedPath(kernel_root);
+  if (IsChildPath(normalized_kernel_root, candidate)) return candidate;
 
-  std::wstring stable_source = profile.empty() ? std::to_wstring(handle) : profile;
   unsigned long long hash = 1469598103934665603ULL;
-  for (wchar_t character : stable_source) {
+  for (wchar_t character : profile) {
     hash ^= static_cast<unsigned long long>(static_cast<unsigned int>(character));
     hash *= 1099511628211ULL;
   }
@@ -2370,10 +2406,43 @@ std::filesystem::path ResolveProfileDirectory(const std::wstring& profile, LB_FB
   if (label.size() > 32) label.resize(32);
   wchar_t hash_text[32]{};
   swprintf_s(hash_text, L"%016llx", hash);
-  if (requested.is_absolute() && !IsChildPath(normalized_root, candidate)) {
-    warning = L"缓存目录必须位于 FBro 全局缓存根目录内，已改用隔离目录";
+  notice = L"缓存目录不在内核根缓存目录内，已重定位到其下的隔离目录";
+  return normalized_kernel_root / (L"profile-" + label + L"-" + hash_text);
+}
+
+// 内核根在 Temp<N> 之间轮换，上一轮落在旧根里的隔离档案要搬进当前根才能
+// 续上登录态。只搬单层目录名（无路径分隔符）且避开内核簿记目录；
+// 目标已存在或来源被残锁占用时跳过，不阻塞浏览器创建。
+void MigrateProfileLeafIntoKernelRoot(const std::filesystem::path& profile_target,
+                                      const std::filesystem::path& kernel_root) {
+  const std::wstring leaf = profile_target.filename().wstring();
+  if (leaf.empty() || leaf.find_first_of(L"/\\") != std::wstring::npos) return;
+  if (leaf == L"Default" || leaf == L"." || leaf == L"..") return;
+  if (leaf.size() > 4 && leaf.compare(0, 4, L"Temp") == 0
+      && std::all_of(leaf.begin() + 4, leaf.end(),
+                     [](wchar_t character) { return character >= L'0' && character <= L'9'; })) {
+    return;
   }
-  return normalized_root / (L"profile-" + label + L"-" + hash_text);
+  std::error_code ec;
+  if (std::filesystem::exists(profile_target, ec)) return;
+  std::vector<std::filesystem::path> scan_roots{g_root_cache_directory};
+  for (const auto& entry : std::filesystem::directory_iterator(g_root_cache_directory, ec)) {
+    const std::wstring name = entry.path().filename().wstring();
+    if (name.size() > 4 && name.compare(0, 4, L"Temp") == 0
+        && std::all_of(name.begin() + 4, name.end(),
+                       [](wchar_t character) { return character >= L'0' && character <= L'9'; })) {
+      scan_roots.push_back(entry.path());
+    }
+  }
+  const auto normalized_kernel_root = AbsoluteNormalizedPath(kernel_root);
+  for (const auto& scan_root : scan_roots) {
+    if (AbsoluteNormalizedPath(scan_root) == normalized_kernel_root) continue;
+    const auto source = scan_root / leaf;
+    if (!std::filesystem::is_directory(source, ec)) { ec.clear(); continue; }
+    std::error_code move_error;
+    std::filesystem::rename(source, profile_target, move_error);
+    if (!move_error) return;
+  }
 }
 
 class BridgeBrowserEvent final : public FBroHsBroEvent {
@@ -2923,7 +2992,13 @@ bool StartBrowser(BrowserState& state) {
   // 仅在没有任何现成上下文时才按 profile 目录创建隔离上下文。
   if (!state.request_context && !state.profile.empty()) {
     CefRequestContextSettings context_settings{};
-    CefString(&context_settings.cache_path).FromWString(state.profile);
+    std::wstring profile_notice;
+    const std::filesystem::path kernel_root = DiscoverKernelRootCachePath();
+    const std::filesystem::path profile_target =
+        ResolveKernelProfileTarget(state.profile, kernel_root, profile_notice);
+    MigrateProfileLeafIntoKernelRoot(profile_target, kernel_root);
+    if (!profile_notice.empty()) state.last_error = profile_notice;
+    CefString(&context_settings.cache_path).FromWString(profile_target.wstring());
     context_settings.persist_session_cookies = true;
     // Keep the C# FBro VIP ordering: create an isolated RequestContext, load
     // the unpacked extension into it, then create the browser that owns it.
@@ -5401,10 +5476,7 @@ LB_FBRO_HANDLE __stdcall LB_FBro_CreateEx2(HWND host, const wchar_t* url,
   state->handle = g_next_handle.fetch_add(1);
   state->host = host;
   state->url = url ? url : L"about:blank";
-  std::wstring profile_warning;
-  state->profile = ResolveProfileDirectory(profile_directory ? profile_directory : L"", state->handle,
-                                           profile_warning).wstring();
-  state->last_error = profile_warning;
+  state->profile = profile_directory ? profile_directory : L"";
   state->user_agent = user_agent ? user_agent : L"";
   state->extension_directory = extension_directory ? extension_directory : L"";
   state->flags = flags;
@@ -5454,10 +5526,7 @@ LB_FBRO_HANDLE __stdcall LB_FBro_CreateBackground(const wchar_t* url,
   state->handle = g_next_handle.fetch_add(1);
   state->background = true;
   state->url = url ? url : L"about:blank";
-  std::wstring profile_warning;
-  state->profile = ResolveProfileDirectory(profile_directory ? profile_directory : L"", state->handle,
-                                           profile_warning).wstring();
-  state->last_error = profile_warning;
+  state->profile = profile_directory ? profile_directory : L"";
   state->extra_info_json = extra_info_json ? extra_info_json : L"";
   state->callback = callback;
   state->user_data = user_data;

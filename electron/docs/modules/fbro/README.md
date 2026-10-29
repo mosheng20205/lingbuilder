@@ -1,7 +1,7 @@
 <!-- 此文件由 electron/scripts/generate-cef3-fbro-event-docs.ts 生成。请修改 FBro 事件目录或模块 manifest 后运行 npm run module:fbro-docs。 -->
 # FBro 模块事件与接口参考
 
-本参考从 FBro C ABI v3 事件目录和实际模块 manifest 自动生成。FBro 模块族当前包含 8 个模块、174 个类方法事件槽位、158 个唯一事件签名、102 项公开可绑定事件和 698 条面向用户的中文接口。
+本参考从 FBro C ABI v3 事件目录和实际模块 manifest 自动生成。FBro 模块族当前包含 8 个模块、174 个类方法事件槽位、158 个唯一事件签名、102 项公开可绑定事件和 707 条面向用户的中文接口。
 
 ## 快速使用
 
@@ -229,16 +229,16 @@
 
 | 模块 | 模块 ID | 用户接口数 |
 |---|---|---:|
-| FBro指纹浏览器模块 | `lingbuilder.fbro.browser` | 132 |
+| FBro指纹浏览器模块 | `lingbuilder.fbro.browser` | 145 |
 | FBro事件模块 | `lingbuilder.fbro.events` | 13 |
 | FBro会话模块 | `lingbuilder.fbro.session` | 14 |
 | FBro传输模块 | `lingbuilder.fbro.transfer` | 22 |
 | FBro自动化模块 | `lingbuilder.fbro.automation` | 72 |
 | FBro受管对象模块 | `lingbuilder.fbro.objects` | 227 |
 | FBro高级网络模块 | `lingbuilder.fbro.network` | 23 |
-| FBro VIP 指纹模块 | `lingbuilder.fbro.vip` | 189 |
+| FBro VIP 指纹模块 | `lingbuilder.fbro.vip` | 191 |
 
-以下 704 条接口来自当前模块 manifest。另有 9 条 Bridge 自动管理或凭据安全替代命令标记为 `internal`，不进入本用户接口目录，也不进入 Monaco 普通补全。
+以下 707 条接口来自当前模块 manifest。另有 9 条 Bridge 自动管理或凭据安全替代命令标记为 `internal`，不进入本用户接口目录，也不进入 Monaco 普通补全。
 
 
 ### 1. FBro指纹浏览器模块
@@ -323,14 +323,14 @@
 | 74 | `FBro_移动浏览器窗口` | `FBro_移动浏览器窗口(控件名, X, Y, 宽度, 高度)` | 长整数型 | 常用 | `LB_FBro_MoveBrowserWindowAsync` | 在 UI 线程移动浏览器底层窗口（异步任务）；嵌入模式下通常改用设计器布局。返回任务句柄，用 FBro任务_* 读取。 |
 | 75 | `FBro_取创建标记` | `FBro_取创建标记(控件名)` | 文本型 | 常用 | `LB_FBro_GetBrowserFlag` | 返回浏览器创建时传入的官方标记字符串。 |
 | 76 | `FBro_取附加信息JSON` | `FBro_取附加信息JSON(控件名)` | 文本型 | 常用 | `LB_FBro_GetBrowserExtraInfoJson` | 返回浏览器创建期附加信息字典的 UTF-16 JSON；未设置时返回 {}。 |
-| 77 | `FBro_后台创建` | `FBro_后台创建(地址, 缓存目录, 附加信息JSON)` | 整数型 | 常用 | `LB_FBro_CreateBackground` | 创建无窗口承载的后台浏览器实例并返回实例句柄；事件照常分发，可用 FBro事件_* 与句柄命令操作。附加信息 JSON 传空跳过。后台创建本身无窗口：要可见的独立顶层浏览器请紧接着 FBro_实例打开原生UI(实例句柄, 地址) 弹出（零设计器控件、数量任意，弹窗与来源实例共用缓存目录=同一指纹档案）。 |
+| 77 | `FBro_后台创建` | `FBro_后台创建(地址, 缓存目录, 附加信息JSON)` | 整数型 | 常用 | `LB_FBro_CreateBackground` | 创建无窗口承载的后台浏览器实例并返回实例句柄；事件照常分发，可用 FBro事件_* 与句柄命令操作。附加信息 JSON 传空跳过。后台创建本身无窗口：要可见的独立顶层浏览器请紧接着 FBro_实例打开原生UI(实例句柄, 地址) 弹出（零设计器控件、数量任意，弹窗与来源实例共用缓存目录=同一指纹档案）。缓存目录（桥 2.9.5 起）会被收进内核根缓存下的 Temp<N> 数据窗格：相对名落到内核根下同名目录，根外绝对路径自动重定位为 profile-<名>-<路径哈希> 稳定目录（同一传入路径跨重启同目录），内核换根时自动迁移历史档案保持登录态；传空串=全局共享档案（多实例互串 Cookie/登录态，防关联多开禁止传空）。 |
 | 78 | `FBro_取启动命令行` | `FBro_取启动命令行()` | 文本型 | 常用 | `LB_FBro_GetStartupCommandLine` | 返回初始化时按控件启动开关构建的官方命令行文本；未启用任何开关时为空。 |
 | 79 | `FBro_设置启动开关JSON` | `FBro_设置启动开关JSON(开关JSON)` | 整数型 | 常用 | `LB_FBro_SetStartupSwitches` | 声明进程级 CEF 启动命令行开关：开关只在浏览器初始化前的 OnBeforeCommandLineProcessing 应用一次，因此本命令必须写成调用处的字面 JSON 文本，生成器把它烘焙进初始化代码（与 FBro_启用无头模式 同范式）；运行期调用不改变进程状态，返回 1 表示本次声明已烘焙生效、0 表示未烘焙。可用键（值只能是 true/false）：disableGpu、disableGpuCache、disableGpuBlockList、enableMediaStream、enableSpeechInput、enableAutoplay、headless、enableCrossFrame（官方跨域模式，跨框架/跨域操作）、disableProxy；白名单外的键或非法 JSON 会在生成前中文阻断，禁止借本命令传任意 Chromium 开关。设计器 FBroBrowser 控件的同名启动开关属性是同一份配置的图形入口，两者冲突时以本命令的字面声明为准。作用范围红线：9 个键**仅进程内模式生效**（独立进程 Host 由零参数启动、开关未透传），且开关是进程级的——放开后本进程所有进程内实例都受影响，跨域只在受控内网或自有页面使用；跨内核选型见「跨域/同源策略放开三内核选型」：CEF3 有逐条跨域白名单命令，EdgeView 用创建期属性/环境变量开关。 |
 | 80 | `FBro_启用无头模式` | `FBro_启用无头模式()` | 整数型 | 常用 | - | 声明本程序以无头模式启动：该开关是 CEF 进程级启动命令行开关，生成器在生成期烘焙进初始化代码（必须在 CEF 初始化前生效，运行期调用点不改变进程状态），返回 1 表示已烘焙无头模式、0 表示未启用。无头模式下本进程所有进程内浏览器均无窗口渲染，禁止与可见 FBroBrowser 控件混用；无窗口创建浏览器请用 FBro_后台创建。 |
 | 81 | `FBro_实例导航` | `FBro_实例导航(实例句柄, 地址)` | 整数型 | 常用 | - | 让 FBro_后台创建 返回的后台实例句柄直接导航，返回桥接成功码；不依赖控件名与消息泵，控制台无头场景可用。 |
 | 82 | `FBro_实例等待加载超时` | `FBro_实例等待加载超时(实例句柄, 超时毫秒)` | 整数型 | 常用 | - | 轮询等待后台实例加载完成，成功返回 1、超时或句柄无效返回 0；控制台等无消息循环场景同样可用，超时上限 600000 毫秒。 |
 | 83 | `FBro_实例执行JS` | `FBro_实例执行JS(实例句柄, 脚本)` | 文本型 | 常用 | - | 在后台实例句柄上同步执行 JavaScript 并返回 UTF-16 结果文本；建议先 FBro_实例等待加载超时 再取 document.title、location.href 等。 |
-| 84 | `FBro_实例取Cookie` | `FBro_实例取Cookie(实例句柄, 地址)` | 文本型 | 常用 | `LB_FBro_GetCookies` | 读取后台实例/弹窗句柄上指定地址（域名）的全部 Cookie（**含 HttpOnly**，如扫码登录后的 sessionid），返回 k=v; k=v 头串。后台实例没有控件名，FBro_取Cookie(控件名) 用不了，这是纯代码扫码链路收割登录态的标准入口。 |
+| 84 | `FBro_实例取Cookie` | `FBro_实例取Cookie(实例句柄, 地址)` | 文本型 | 常用 | - | 读取后台实例/弹窗句柄上指定地址（域名）的全部 Cookie（含 HttpOnly，如扫码登录后的 sessionid）；同步返回头串（k=v; k=v 形态，可直接交给 Cookie 格式解析）。句柄无效返回空文本。扫码登录收割登录态的标准入口（后台实例没有控件名，FBro_取Cookie 用不了）。 |
 | 85 | `FBro_实例是否存活` | `FBro_实例是否存活(实例句柄)` | 整数型 | 常用 | - | 返回后台实例句柄是否仍存活；已关闭或句柄无效返回 0。 |
 | 86 | `FBro_实例设置代理` | `FBro_实例设置代理(实例句柄, 代理地址)` | 整数型 | 常用 | - | 为后台实例/弹窗句柄设置代理（http://host:port 或 socks5://host:port，传空清除），浏览器就绪后调用生效。建议在 FBro_后台创建 之后、FBro_实例打开原生UI 弹出主页之前调用；弹窗与来源实例是两个浏览器，需要各自设置一次。 |
 | 87 | `FBro_实例关闭` | `FBro_实例关闭(实例句柄)` | 整数型 | 常用 | - | 关闭并销毁 FBro_后台创建 建立的后台实例；这是进程内最后一个浏览器时桥接层会随之收尾。 |
@@ -406,7 +406,7 @@
 | 5 | `FBro_设置事件响应JSON` | `FBro_设置事件响应JSON(控件名, 响应JSON)` | 整数型 | 常用 | `LB_FBro_SetEventResponseJson` | 设置 C ABI v3 事件结构化响应；回调返回后 Bridge 会立即复制。 |
 | 6 | `FBro_取事件对象` | `FBro_取事件对象(控件名)` | 长整数型 | 高级 | `LB_FBro_GetLastEventObject` | 取得 CertificateError 或 DragEnter 事件携带的受管对象句柄。 |
 | 7 | `FBro_取事件延续` | `FBro_取事件延续(控件名)` | 长整数型 | 高级 | `LB_FBro_GetLastEventContinuation` | 取得当前延迟决策事件的受管延续句柄；只允许传给完成或取消命令。 |
-| 8 | `FBro_取事件对象字段` | `FBro_取事件对象字段(控件名, 字段名)` | 文本型 | 高级 | `LB_FBro_GetEventObjectField` | 读取事件包中复制后的对象字段或受管句柄字段。 |
+| 8 | `FBro_取事件对象字段` | `FBro_取事件对象字段(控件名, 字段名)` | 长整数型 | 高级 | `LB_FBro_GetEventObjectField` | 读取事件包中复制后的对象字段或受管句柄字段（64 位句柄值，右键菜单/下载/响应/WS 客户端句柄都经此取得）。 |
 | 9 | `FBro事件_完成延续` | `FBro事件_完成延续(延续句柄, 响应JSON)` | 整数型 | 高级 | `LB_FBro_CompleteEventContinuation` | 完成认证、权限、查询或下载等延迟决策；重复完成返回稳定错误码。 |
 | 10 | `FBro事件_取消延续` | `FBro事件_取消延续(延续句柄)` | 整数型 | 高级 | `LB_FBro_CancelEventContinuation` | 取消尚未完成的受管事件延续。 |
 | 11 | `FBro_设置事件采样率` | `FBro_设置事件采样率(控件名, 事件名, 每秒次数)` | 整数型 | 常用 | `LB_FBro_SetEventSamplingRate` | 按浏览器和事件设置高频事件采样率；零表示暂停投递。 |
@@ -469,36 +469,36 @@
 
 | # | 接口 | 调用签名 | 返回值 | 级别 | 官方别名 | 说明 |
 |---:|---|---|---|---|---|---|
-| 3 | `FBro自动化_执行JS异步` | `FBro自动化_执行JS异步(控件名, 脚本)` | 长整数型 | 高级 | `LB_FBro_ExecuteJsAsync` | 异步执行 JavaScript 并返回受管任务 ID。 |
-| 4 | `FBro框架_取主框架` | `FBro框架_取主框架(控件名)` | 长整数型 | 高级 | `FBroHsBrowser_GetMainFrame` | 取得浏览器主框架的受管句柄。 |
-| 5 | `FBro框架_取焦点框架` | `FBro框架_取焦点框架(控件名)` | 长整数型 | 高级 | `FBroHsBrowser_GetFocusedFrame` | 取得当前焦点框架的受管句柄。 |
-| 6 | `FBro框架_按标识取框架` | `FBro框架_按标识取框架(控件名, 标识)` | 长整数型 | 高级 | `FBroHsBrowser_GetFrameById` | 按官方字符串标识取得受管框架句柄。 |
-| 7 | `FBro框架_按名称取框架` | `FBro框架_按名称取框架(控件名, 名称)` | 长整数型 | 高级 | `FBroHsBrowser_GetFrameByName` | 按框架名称取得受管框架句柄。 |
-| 8 | `FBro框架_取标识列表JSON` | `FBro框架_取标识列表JSON(控件名)` | 文本型 | 高级 | `FBroHsBrowser_GetFrameIdentifiers` | 取得全部框架标识的 UTF-16 JSON 数组。 |
-| 9 | `FBro框架_取名称列表JSON` | `FBro框架_取名称列表JSON(控件名)` | 文本型 | 高级 | `FBroHsBrowser_GetFrameNames` | 取得全部框架名称的 UTF-16 JSON 数组。 |
-| 10 | `FBro框架_是否有效` | `FBro框架_是否有效(框架句柄)` | 整数型 | 高级 | `FBroHsBrowserFrame_IsValid` | 检查受管框架是否仍有效。 |
-| 11 | `FBro框架_是否主框架` | `FBro框架_是否主框架(框架句柄)` | 整数型 | 高级 | `FBroHsBrowserFrame_IsMain` | 检查是否为主框架。 |
-| 12 | `FBro框架_是否焦点框架` | `FBro框架_是否焦点框架(框架句柄)` | 整数型 | 高级 | `FBroHsBrowserFrame_IsFocused` | 检查框架是否拥有焦点。 |
-| 13 | `FBro框架_取地址` | `FBro框架_取地址(框架句柄)` | 文本型 | 高级 | `FBroHsBrowserFrame_GetURL` | 取得框架当前地址。 |
-| 14 | `FBro框架_取名称` | `FBro框架_取名称(框架句柄)` | 文本型 | 高级 | `FBroHsBrowserFrame_GetName` | 取得框架名称。 |
-| 15 | `FBro框架_取标识` | `FBro框架_取标识(框架句柄)` | 文本型 | 高级 | `FBroHsBrowserFrame_GetIdentifier` | 取得框架官方字符串标识。 |
-| 16 | `FBro框架_取父框架` | `FBro框架_取父框架(框架句柄)` | 长整数型 | 高级 | `FBroHsBrowserFrame_GetParent` | 取得父框架受管句柄；主框架返回零。 |
-| 17 | `FBro框架_取浏览器实例` | `FBro框架_取浏览器实例(框架句柄)` | 长整数型 | 高级 | `FBroHsBrowserFrame_GetBrowser` | 取得框架所属的 LingBuilder 浏览器实例 ID。 |
-| 18 | `FBro框架_撤销` | `FBro框架_撤销(框架句柄)` | 整数型 | 高级 | `FBroHsBrowserFrame_Undo` | 在框架中执行撤销。 |
-| 19 | `FBro框架_重做` | `FBro框架_重做(框架句柄)` | 整数型 | 高级 | `FBroHsBrowserFrame_Redo` | 在框架中执行重做。 |
-| 20 | `FBro框架_剪切` | `FBro框架_剪切(框架句柄)` | 整数型 | 高级 | `FBroHsBrowserFrame_Cut` | 剪切框架当前选择。 |
-| 21 | `FBro框架_复制` | `FBro框架_复制(框架句柄)` | 整数型 | 高级 | `FBroHsBrowserFrame_Copy` | 复制框架当前选择。 |
-| 22 | `FBro框架_粘贴` | `FBro框架_粘贴(框架句柄)` | 整数型 | 高级 | `FBroHsBrowserFrame_Paste` | 在框架中粘贴。 |
-| 23 | `FBro框架_删除` | `FBro框架_删除(框架句柄)` | 整数型 | 高级 | `FBroHsBrowserFrame_Delete` | 删除框架当前选择。 |
-| 24 | `FBro框架_全选` | `FBro框架_全选(框架句柄)` | 整数型 | 高级 | `FBroHsBrowserFrame_SelectAll` | 全选框架内容。 |
-| 25 | `FBro框架_查看源代码` | `FBro框架_查看源代码(框架句柄)` | 整数型 | 高级 | `FBroHsBrowserFrame_ViewSource` | 打开框架源代码查看器。 |
-| 26 | `FBro框架_载入地址` | `FBro框架_载入地址(框架句柄, 地址)` | 整数型 | 高级 | `FBroHsBrowserFrame_LoadURL` | 让指定框架载入地址。 |
-| 27 | `FBro框架_执行JS` | `FBro框架_执行JS(框架句柄, 脚本, 脚本地址, 起始行)` | 整数型 | 高级 | `FBroHsBrowserFrame_ExecuteJavaScript` | 在指定框架执行 JavaScript，不等待返回值。 |
-| 28 | `FBro框架_载入请求` | `FBro框架_载入请求(框架句柄, 请求句柄)` | 整数型 | 高级 | `LB_FBro_FrameLoadRequest` | 让指定框架按受管请求对象载入（URL、方法、头与提交体）。 |
-| 29 | `FBro框架_发送进程消息` | `FBro框架_发送进程消息(框架句柄, 目标进程, 消息句柄)` | 整数型 | 高级 | `LB_FBro_FrameSendProcessMessage` | 向目标进程发送进程消息；目标进程 0=浏览器进程、1=渲染进程。 |
-| 30 | `FBro框架_创建URL请求` | `FBro框架_创建URL请求(框架句柄, 请求句柄)` | 长整数型 | 高级 | `LB_FBro_FrameCreateUrlRequestAsync` | 在框架所属上下文中异步发起 URL 请求；任务结果包含 urlRequest 句柄与 status/error/cached 字段。 |
-| 31 | `FBro异步请求_发起` | `FBro异步请求_发起(控件名, 请求句柄)` | 长整数型 | 高级 | `LB_FBro_UrlRequestStartAsync` | 使用指定浏览器会话上下文异步发起受管 URL 请求；任务结果包含 urlRequest 句柄、status、error 与 cached。 |
-| 32 | `FBro异步请求_取状态` | `FBro异步请求_取状态(URL请求句柄)` | 整数型 | 高级 | `LB_FBro_UrlRequestGetStatus` | 读取 URL 请求官方状态（1=未知 2=进行中 3=成功 4=失败）。 |
+| 1 | `FBro自动化_执行JS异步` | `FBro自动化_执行JS异步(控件名, 脚本)` | 长整数型 | 高级 | `LB_FBro_ExecuteJsAsync` | 异步执行 JavaScript 并返回受管任务 ID。 |
+| 2 | `FBro框架_取主框架` | `FBro框架_取主框架(控件名)` | 长整数型 | 高级 | `FBroHsBrowser_GetMainFrame` | 取得浏览器主框架的受管句柄。 |
+| 3 | `FBro框架_取焦点框架` | `FBro框架_取焦点框架(控件名)` | 长整数型 | 高级 | `FBroHsBrowser_GetFocusedFrame` | 取得当前焦点框架的受管句柄。 |
+| 4 | `FBro框架_按标识取框架` | `FBro框架_按标识取框架(控件名, 标识)` | 长整数型 | 高级 | `FBroHsBrowser_GetFrameById` | 按官方字符串标识取得受管框架句柄。 |
+| 5 | `FBro框架_按名称取框架` | `FBro框架_按名称取框架(控件名, 名称)` | 长整数型 | 高级 | `FBroHsBrowser_GetFrameByName` | 按框架名称取得受管框架句柄。 |
+| 6 | `FBro框架_取标识列表JSON` | `FBro框架_取标识列表JSON(控件名)` | 文本型 | 高级 | `FBroHsBrowser_GetFrameIdentifiers` | 取得全部框架标识的 UTF-16 JSON 数组。 |
+| 7 | `FBro框架_取名称列表JSON` | `FBro框架_取名称列表JSON(控件名)` | 文本型 | 高级 | `FBroHsBrowser_GetFrameNames` | 取得全部框架名称的 UTF-16 JSON 数组。 |
+| 8 | `FBro框架_是否有效` | `FBro框架_是否有效(框架句柄)` | 整数型 | 高级 | `FBroHsBrowserFrame_IsValid` | 检查受管框架是否仍有效。 |
+| 9 | `FBro框架_是否主框架` | `FBro框架_是否主框架(框架句柄)` | 整数型 | 高级 | `FBroHsBrowserFrame_IsMain` | 检查是否为主框架。 |
+| 10 | `FBro框架_是否焦点框架` | `FBro框架_是否焦点框架(框架句柄)` | 整数型 | 高级 | `FBroHsBrowserFrame_IsFocused` | 检查框架是否拥有焦点。 |
+| 11 | `FBro框架_取地址` | `FBro框架_取地址(框架句柄)` | 文本型 | 高级 | `FBroHsBrowserFrame_GetURL` | 取得框架当前地址。 |
+| 12 | `FBro框架_取名称` | `FBro框架_取名称(框架句柄)` | 文本型 | 高级 | `FBroHsBrowserFrame_GetName` | 取得框架名称。 |
+| 13 | `FBro框架_取标识` | `FBro框架_取标识(框架句柄)` | 文本型 | 高级 | `FBroHsBrowserFrame_GetIdentifier` | 取得框架官方字符串标识。 |
+| 14 | `FBro框架_取父框架` | `FBro框架_取父框架(框架句柄)` | 长整数型 | 高级 | `FBroHsBrowserFrame_GetParent` | 取得父框架受管句柄；主框架返回零。 |
+| 15 | `FBro框架_取浏览器实例` | `FBro框架_取浏览器实例(框架句柄)` | 长整数型 | 高级 | `FBroHsBrowserFrame_GetBrowser` | 取得框架所属的 LingBuilder 浏览器实例 ID。 |
+| 16 | `FBro框架_撤销` | `FBro框架_撤销(框架句柄)` | 整数型 | 高级 | `FBroHsBrowserFrame_Undo` | 在框架中执行撤销。 |
+| 17 | `FBro框架_重做` | `FBro框架_重做(框架句柄)` | 整数型 | 高级 | `FBroHsBrowserFrame_Redo` | 在框架中执行重做。 |
+| 18 | `FBro框架_剪切` | `FBro框架_剪切(框架句柄)` | 整数型 | 高级 | `FBroHsBrowserFrame_Cut` | 剪切框架当前选择。 |
+| 19 | `FBro框架_复制` | `FBro框架_复制(框架句柄)` | 整数型 | 高级 | `FBroHsBrowserFrame_Copy` | 复制框架当前选择。 |
+| 20 | `FBro框架_粘贴` | `FBro框架_粘贴(框架句柄)` | 整数型 | 高级 | `FBroHsBrowserFrame_Paste` | 在框架中粘贴。 |
+| 21 | `FBro框架_删除` | `FBro框架_删除(框架句柄)` | 整数型 | 高级 | `FBroHsBrowserFrame_Delete` | 删除框架当前选择。 |
+| 22 | `FBro框架_全选` | `FBro框架_全选(框架句柄)` | 整数型 | 高级 | `FBroHsBrowserFrame_SelectAll` | 全选框架内容。 |
+| 23 | `FBro框架_查看源代码` | `FBro框架_查看源代码(框架句柄)` | 整数型 | 高级 | `FBroHsBrowserFrame_ViewSource` | 打开框架源代码查看器。 |
+| 24 | `FBro框架_载入地址` | `FBro框架_载入地址(框架句柄, 地址)` | 整数型 | 高级 | `FBroHsBrowserFrame_LoadURL` | 让指定框架载入地址。 |
+| 25 | `FBro框架_执行JS` | `FBro框架_执行JS(框架句柄, 脚本, 脚本地址, 起始行)` | 整数型 | 高级 | `FBroHsBrowserFrame_ExecuteJavaScript` | 在指定框架执行 JavaScript，不等待返回值。 |
+| 26 | `FBro框架_载入请求` | `FBro框架_载入请求(框架句柄, 请求句柄)` | 整数型 | 高级 | `LB_FBro_FrameLoadRequest` | 让指定框架按受管请求对象载入（URL、方法、头与提交体）。 |
+| 27 | `FBro框架_发送进程消息` | `FBro框架_发送进程消息(框架句柄, 目标进程, 消息句柄)` | 整数型 | 高级 | `LB_FBro_FrameSendProcessMessage` | 向目标进程发送进程消息；目标进程 0=浏览器进程、1=渲染进程。 |
+| 28 | `FBro框架_创建URL请求` | `FBro框架_创建URL请求(框架句柄, 请求句柄)` | 长整数型 | 高级 | `LB_FBro_FrameCreateUrlRequestAsync` | 在框架所属上下文中异步发起 URL 请求；任务结果包含 urlRequest 句柄与 status/error/cached 字段。 |
+| 29 | `FBro异步请求_发起` | `FBro异步请求_发起(控件名, 请求句柄)` | 长整数型 | 高级 | `LB_FBro_UrlRequestStartAsync` | 使用指定浏览器会话上下文异步发起受管 URL 请求（Chromium 网络栈直发，TLS/H2 指纹与内核浏览器一致，适合纯协议直连接口）；任务结果包含 urlRequest 句柄、status、error 与 cached。本任务同时是请求的完成事件：FBro任务_等待 后可直接取响应对象；下载数据要在任务进行中用 FBro网络_取下载数据事件 领取。请求头务必先设 Accept-Encoding: identity（Chromium 不自动解压正文）。多步流程必须先声明不带初始化的局部变量再按序赋值（带初始化声明会被提升到子程序最前，设置类调用会被排到发起之后而失败，请求发起后对象只读）。 |
+| 30 | `FBro异步请求_取状态` | `FBro异步请求_取状态(URL请求句柄)` | 整数型 | 高级 | `LB_FBro_UrlRequestGetStatus` | 读取 URL 请求官方状态（1=未知 2=进行中 3=成功 4=失败）。 |
 | 31 | `FBro异步请求_取原请求` | `FBro异步请求_取原请求(URL请求句柄)` | 长整数型 | 高级 | `LB_FBro_UrlRequestGetRequestObject` | 取得 URL 请求对应的受管请求对象句柄。 |
 | 32 | `FBro填表_点击元素` | `FBro填表_点击元素(框架句柄, 选择器, 序号)` | 整数型 | 高级 | `LB_FBro_FrameTianBiaoClick` | 按 CSS 选择器点击第 index 个匹配元素（从 0 起）。 |
 | 33 | `FBro填表_滚动到元素` | `FBro填表_滚动到元素(框架句柄, 选择器, 序号, 滚到顶部)` | 整数型 | 高级 | `LB_FBro_FrameTianBiaoScrollIntoView` | 把匹配元素滚动到可视区域；滚到顶部为真时贴顶，否则尽量贴底。 |
@@ -631,154 +631,154 @@
 | 81 | `FBro右键参数_取媒体状态标志` | `FBro右键参数_取媒体状态标志(句柄)` | 整数型 | 高级 | `LB_FBro_ContextMenuParamsGetMediaStateFlags` | 取媒体状态标志（可播放/可暂停/可静音等）。 |
 | 82 | `FBro右键参数_取选择文本` | `FBro右键参数_取选择文本(句柄)` | 文本型 | 高级 | `LB_FBro_ContextMenuParamsGetSelectionText` | 取当前选中的文本。 |
 | 83 | `FBro右键参数_取错误单词` | `FBro右键参数_取错误单词(句柄)` | 文本型 | 高级 | `LB_FBro_ContextMenuParamsGetMisspelledWord` | 取拼写检查命中的错误单词。 |
-| 85 | `FBro右键参数_取字典建议` | `FBro右键参数_取字典建议(句柄)` | 文本型 | 高级 | `LB_FBro_ContextMenuParamsGetDictionarySuggestions` | 取拼写建议，返回字符串数组 JSON。 |
-| 86 | `FBro右键参数_是否可编辑` | `FBro右键参数_是否可编辑(句柄)` | 整数型 | 高级 | `LB_FBro_ContextMenuParamsIsEditable` | 判断右键目标是否为可编辑元素。 |
-| 87 | `FBro右键参数_是否启用拼写检查` | `FBro右键参数_是否启用拼写检查(句柄)` | 整数型 | 高级 | `LB_FBro_ContextMenuParamsIsSpellCheckEnabled` | 判断拼写检查是否启用。 |
-| 88 | `FBro右键参数_取编辑状态标志` | `FBro右键参数_取编辑状态标志(句柄)` | 整数型 | 高级 | `LB_FBro_ContextMenuParamsGetEditStateFlags` | 取编辑状态标志（可撤销/可重做/可剪切/可粘贴等）。 |
-| 89 | `FBro右键参数_是否自定义菜单` | `FBro右键参数_是否自定义菜单(句柄)` | 整数型 | 高级 | `LB_FBro_ContextMenuParamsIsCustomMenu` | 判断是否为自定义菜单请求。 |
-| 90 | `FBro响应_创建` | `FBro响应_创建()` | 长整数型 | 高级 | `LB_FBro_ResponseCreate` | 创建自定义响应对象（配合自定义资源处理器使用），用完可 FBro对象_释放。 |
-| 91 | `FBro响应_是否只读` | `FBro响应_是否只读(响应句柄)` | 整数型 | 高级 | `LB_FBro_ResponseIsReadOnly` | 判断响应是否只读（事件中收到的响应在改写场景外通常只读）。 |
-| 92 | `FBro响应_取错误` | `FBro响应_取错误(响应句柄)` | 整数型 | 高级 | `LB_FBro_ResponseGetError` | 取响应错误码。 |
-| 93 | `FBro响应_置错误` | `FBro响应_置错误(响应句柄, 错误码)` | 整数型 | 高级 | `LB_FBro_ResponseSetError` | 设置响应错误码。 |
-| 94 | `FBro响应_取状态码` | `FBro响应_取状态码(响应句柄)` | 整数型 | 高级 | `LB_FBro_ResponseGetStatus` | 取 HTTP 状态码。 |
-| 95 | `FBro响应_置状态码` | `FBro响应_置状态码(响应句柄, 状态码)` | 整数型 | 高级 | `LB_FBro_ResponseSetStatus` | 设置 HTTP 状态码。 |
-| 96 | `FBro响应_取状态文本` | `FBro响应_取状态文本(响应句柄)` | 文本型 | 高级 | `LB_FBro_ResponseGetStatusText` | 取状态文本（如 OK、Not Found）。 |
-| 97 | `FBro响应_置状态文本` | `FBro响应_置状态文本(响应句柄, 状态文本)` | 整数型 | 高级 | `LB_FBro_ResponseSetStatusText` | 设置状态文本。 |
-| 98 | `FBro响应_取MIME类型` | `FBro响应_取MIME类型(响应句柄)` | 文本型 | 高级 | `LB_FBro_ResponseGetMimeType` | 取响应 MIME 类型。 |
-| 99 | `FBro响应_置MIME类型` | `FBro响应_置MIME类型(响应句柄, MIME类型)` | 整数型 | 高级 | `LB_FBro_ResponseSetMimeType` | 设置响应 MIME 类型。 |
-| 100 | `FBro响应_取字符集` | `FBro响应_取字符集(响应句柄)` | 文本型 | 高级 | `LB_FBro_ResponseGetCharset` | 取响应字符集。 |
-| 101 | `FBro响应_置字符集` | `FBro响应_置字符集(响应句柄, 字符集)` | 整数型 | 高级 | `LB_FBro_ResponseSetCharset` | 设置响应字符集。 |
-| 102 | `FBro响应_取地址` | `FBro响应_取地址(响应句柄)` | 文本型 | 高级 | `LB_FBro_ResponseGetURL` | 取响应地址。 |
-| 103 | `FBro响应_置地址` | `FBro响应_置地址(响应句柄, 地址)` | 整数型 | 高级 | `LB_FBro_ResponseSetURL` | 设置响应地址。 |
-| 104 | `FBro响应_取协议头` | `FBro响应_取协议头(响应句柄, 头名)` | 文本型 | 高级 | `LB_FBro_ResponseGetHeaderByName` | 按名称取响应协议头。 |
-| 105 | `FBro响应_置协议头` | `FBro响应_置协议头(响应句柄, 头名, 值, 覆盖同名)` | 整数型 | 高级 | `LB_FBro_ResponseSetHeaderByName` | 按名称设置响应协议头。 |
-| 106 | `FBro响应_取协议头映射JSON` | `FBro响应_取协议头映射JSON(响应句柄)` | 文本型 | 高级 | `LB_FBro_ResponseGetHeaderMap` | 取全部协议头，返回 {"名":"值"} JSON。 |
-| 107 | `FBro响应_设置协议头映射JSON` | `FBro响应_设置协议头映射JSON(响应句柄, 协议头JSON, 清除原有)` | 整数型 | 高级 | `LB_FBro_ResponseSetHeaderMapJson` | 按 [{"name":..,"value":..}] JSON 批量设置协议头。 |
-| 108 | `FBro响应_删除协议头` | `FBro响应_删除协议头(响应句柄, 头名)` | 整数型 | 高级 | `LB_FBro_ResponseDeleteHeaderMap` | 按名称删除协议头。 |
-| 109 | `FBro对象_取类型` | `FBro对象_取类型(对象句柄)` | 整数型 | 高级 | `LB_FBro_ObjectGetType` | 取得受管对象注册表类型。 |
-| 110 | `FBro对象_释放` | `FBro对象_释放(对象句柄)` | 整数型 | 高级 | `LB_FBro_ObjectRelease` | 释放受管对象；重复释放返回稳定错误码。 |
-| 111 | `FBro值_创建` | `FBro值_创建()` | 长整数型 | 高级 | `FBroHsValue_Create` | 创建受管 Value 对象并返回不透明句柄。 |
-| 112 | `FBro值_是否有效` | `FBro值_是否有效(值句柄)` | 整数型 | 高级 | `FBroHsValue_IsValid` | 检查 Value 对象是否有效。 |
-| 113 | `FBro值_是否被拥有` | `FBro值_是否被拥有(值句柄)` | 整数型 | 高级 | `FBroHsValue_IsOwned` | 检查 Value 对象是否已归属于其它容器。 |
-| 114 | `FBro值_是否只读` | `FBro值_是否只读(值句柄)` | 整数型 | 高级 | `FBroHsValue_IsReadOnly` | 检查 Value 对象是否只读。 |
-| 115 | `FBro值_是否同一对象` | `FBro值_是否同一对象(值句柄, 另一值句柄)` | 整数型 | 高级 | `FBroHsValue_IsSame` | 检查两个 Value 句柄是否引用同一官方对象。 |
-| 116 | `FBro值_是否相等` | `FBro值_是否相等(值句柄, 另一值句柄)` | 整数型 | 高级 | `FBroHsValue_IsEqual` | 比较两个 Value 的内容。 |
-| 117 | `FBro值_复制` | `FBro值_复制(值句柄)` | 长整数型 | 高级 | `FBroHsValue_Copy` | 复制 Value 并返回独立受管句柄。 |
-| 118 | `FBro值_取类型` | `FBro值_取类型(值句柄)` | 整数型 | 高级 | `FBroHsValue_GetType` | 取得 Value 的官方值类型。 |
-| 119 | `FBro值_取逻辑` | `FBro值_取逻辑(值句柄)` | 整数型 | 高级 | `FBroHsValue_GetBool` | 读取逻辑值。 |
-| 120 | `FBro值_取整数` | `FBro值_取整数(值句柄)` | 整数型 | 高级 | `FBroHsValue_GetInt` | 读取整数值。 |
-| 121 | `FBro值_取小数` | `FBro值_取小数(值句柄)` | 小数型 | 高级 | `FBroHsValue_GetDouble` | 读取小数值。 |
-| 122 | `FBro值_取文本` | `FBro值_取文本(值句柄)` | 文本型 | 高级 | `FBroHsValue_GetString` | 读取 UTF-16 文本值。 |
-| 123 | `FBro值_设为空` | `FBro值_设为空(值句柄)` | 整数型 | 高级 | `FBroHsValue_SetNull` | 把 Value 设置为空值。 |
-| 124 | `FBro值_设置逻辑` | `FBro值_设置逻辑(值句柄, 值)` | 整数型 | 高级 | `FBroHsValue_SetBool` | 写入逻辑值。 |
-| 125 | `FBro值_设置整数` | `FBro值_设置整数(值句柄, 值)` | 整数型 | 高级 | `FBroHsValue_SetInt` | 写入整数值。 |
-| 126 | `FBro值_设置小数` | `FBro值_设置小数(值句柄, 值)` | 整数型 | 高级 | `FBroHsValue_SetDouble` | 写入小数值。 |
-| 127 | `FBro值_设置文本` | `FBro值_设置文本(值句柄, 值)` | 整数型 | 高级 | `FBroHsValue_SetString` | 写入 UTF-16 文本值。 |
-| 128 | `FBro值_取二进制` | `FBro值_取二进制(值句柄)` | 长整数型 | 高级 | `FBroHsValue_GetBinary` | 复制二进制值到受管缓冲并返回句柄。 |
-| 129 | `FBro值_设置二进制` | `FBro值_设置二进制(值句柄, 缓冲句柄)` | 整数型 | 高级 | `FBroHsValue_SetBinary` | 从受管缓冲写入二进制值。 |
-| 130 | `FBro值_取字典` | `FBro值_取字典(值句柄)` | 长整数型 | 高级 | `FBroHsValue_GetDictionary` | 取得受父对象管理的 Dictionary 句柄。 |
-| 131 | `FBro值_取列表` | `FBro值_取列表(值句柄)` | 长整数型 | 高级 | `FBroHsValue_GetList` | 取得受父对象管理的 List 句柄。 |
-| 132 | `FBro值_设置字典` | `FBro值_设置字典(值句柄, 字典句柄)` | 整数型 | 高级 | `FBroHsValue_SetDictionary` | 把 Dictionary 交由 Value 管理。 |
-| 133 | `FBro值_设置列表` | `FBro值_设置列表(值句柄, 列表句柄)` | 整数型 | 高级 | `FBroHsValue_SetList` | 把 List 交由 Value 管理。 |
-| 134 | `FBro字典_创建` | `FBro字典_创建()` | 长整数型 | 高级 | `FBroHsDictionaryValue_Create` | 创建受管 Dictionary 对象。 |
-| 135 | `FBro字典_是否有效` | `FBro字典_是否有效(字典句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_IsValid` | 检查 Dictionary 是否有效。 |
-| 136 | `FBro字典_是否被拥有` | `FBro字典_是否被拥有(字典句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_IsOwned` | 检查 Dictionary 是否已被拥有。 |
-| 137 | `FBro字典_是否只读` | `FBro字典_是否只读(字典句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_IsReadOnly` | 检查 Dictionary 是否只读。 |
-| 138 | `FBro字典_是否同一对象` | `FBro字典_是否同一对象(字典句柄, 另一字典句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_IsSame` | 检查两个 Dictionary 句柄是否引用同一官方对象。 |
-| 139 | `FBro字典_是否相等` | `FBro字典_是否相等(字典句柄, 另一字典句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_IsEqual` | 比较两个 Dictionary 的内容。 |
-| 140 | `FBro字典_复制` | `FBro字典_复制(字典句柄, 排除空子项)` | 长整数型 | 高级 | `FBroHsDictionaryValue_Copy` | 复制 Dictionary 并返回独立受管句柄。 |
-| 141 | `FBro字典_取数量` | `FBro字典_取数量(字典句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_GetSize` | 取得键数量。 |
-| 142 | `FBro字典_清空` | `FBro字典_清空(字典句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_Clear` | 删除全部键。 |
-| 143 | `FBro字典_是否存在键` | `FBro字典_是否存在键(字典句柄, 键)` | 整数型 | 高级 | `FBroHsDictionaryValue_HasKey` | 检查键是否存在。 |
-| 144 | `FBro字典_删除` | `FBro字典_删除(字典句柄, 键)` | 整数型 | 高级 | `FBroHsDictionaryValue_Remove` | 删除指定键。 |
-| 145 | `FBro字典_取类型` | `FBro字典_取类型(字典句柄, 键)` | 整数型 | 高级 | `FBroHsDictionaryValue_GetType` | 取得指定键的官方值类型。 |
-| 146 | `FBro字典_取逻辑` | `FBro字典_取逻辑(字典句柄, 键)` | 整数型 | 高级 | `FBroHsDictionaryValue_GetBool` | 读取逻辑值。 |
-| 147 | `FBro字典_取整数` | `FBro字典_取整数(字典句柄, 键)` | 整数型 | 高级 | `FBroHsDictionaryValue_GetInt` | 读取整数值。 |
-| 148 | `FBro字典_取小数` | `FBro字典_取小数(字典句柄, 键)` | 小数型 | 高级 | `FBroHsDictionaryValue_GetDouble` | 读取小数值。 |
-| 149 | `FBro字典_取文本` | `FBro字典_取文本(字典句柄, 键)` | 文本型 | 高级 | `FBroHsDictionaryValue_GetString` | 读取 UTF-16 文本值。 |
-| 150 | `FBro字典_取键列表JSON` | `FBro字典_取键列表JSON(字典句柄)` | 文本型 | 高级 | `FBroHsDictionaryValue_GetKeys` | 取得 UTF-16 JSON 键数组，不向源码暴露 StringList 或 STL。 |
-| 151 | `FBro字典_取值对象` | `FBro字典_取值对象(字典句柄, 键)` | 长整数型 | 高级 | `FBroHsDictionaryValue_GetValue` | 取得受字典管理的 Value 句柄。 |
-| 152 | `FBro字典_取二进制` | `FBro字典_取二进制(字典句柄, 键)` | 长整数型 | 高级 | `FBroHsDictionaryValue_GetBinary` | 复制指定键的二进制值到受管缓冲。 |
-| 153 | `FBro字典_取字典` | `FBro字典_取字典(字典句柄, 键)` | 长整数型 | 高级 | `FBroHsDictionaryValue_GetDictionary` | 取得受父字典管理的 Dictionary 句柄。 |
-| 154 | `FBro字典_取列表` | `FBro字典_取列表(字典句柄, 键)` | 长整数型 | 高级 | `FBroHsDictionaryValue_GetList` | 取得受父字典管理的 List 句柄。 |
-| 155 | `FBro字典_设为空` | `FBro字典_设为空(字典句柄, 键)` | 整数型 | 高级 | `FBroHsDictionaryValue_SetNull` | 把指定键设置为空值。 |
-| 156 | `FBro字典_设置逻辑` | `FBro字典_设置逻辑(字典句柄, 键, 值)` | 整数型 | 高级 | `FBroHsDictionaryValue_SetBool` | 写入逻辑值。 |
-| 157 | `FBro字典_设置整数` | `FBro字典_设置整数(字典句柄, 键, 值)` | 整数型 | 高级 | `FBroHsDictionaryValue_SetInt` | 写入整数值。 |
-| 158 | `FBro字典_设置小数` | `FBro字典_设置小数(字典句柄, 键, 值)` | 整数型 | 高级 | `FBroHsDictionaryValue_SetDouble` | 写入小数值。 |
-| 159 | `FBro字典_设置文本` | `FBro字典_设置文本(字典句柄, 键, 值)` | 整数型 | 高级 | `FBroHsDictionaryValue_SetString` | 写入 UTF-16 文本值。 |
-| 160 | `FBro字典_设置值对象` | `FBro字典_设置值对象(字典句柄, 键, 值句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_SetValue` | 把 Value 交由指定键管理。 |
-| 161 | `FBro字典_设置二进制` | `FBro字典_设置二进制(字典句柄, 键, 缓冲句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_SetBinary` | 从受管缓冲写入指定键。 |
-| 162 | `FBro字典_设置字典` | `FBro字典_设置字典(字典句柄, 键, 子字典句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_SetDictionary` | 把子 Dictionary 交由指定键管理。 |
-| 163 | `FBro字典_设置列表` | `FBro字典_设置列表(字典句柄, 键, 列表句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_SetList` | 把 List 交由指定键管理。 |
-| 164 | `FBro列表_创建` | `FBro列表_创建()` | 长整数型 | 高级 | `FBroHsListValue_Create` | 创建受管 List 对象。 |
-| 165 | `FBro列表_是否有效` | `FBro列表_是否有效(列表句柄)` | 整数型 | 高级 | `FBroHsListValue_IsValid` | 检查 List 是否有效。 |
-| 166 | `FBro列表_是否被拥有` | `FBro列表_是否被拥有(列表句柄)` | 整数型 | 高级 | `FBroHsListValue_IsOwned` | 检查 List 是否已被拥有。 |
-| 167 | `FBro列表_是否只读` | `FBro列表_是否只读(列表句柄)` | 整数型 | 高级 | `FBroHsListValue_IsReadOnly` | 检查 List 是否只读。 |
-| 168 | `FBro列表_是否同一对象` | `FBro列表_是否同一对象(列表句柄, 另一列表句柄)` | 整数型 | 高级 | `FBroHsListValue_IsSame` | 检查两个 List 句柄是否引用同一官方对象。 |
-| 169 | `FBro列表_是否相等` | `FBro列表_是否相等(列表句柄, 另一列表句柄)` | 整数型 | 高级 | `FBroHsListValue_IsEqual` | 比较两个 List 的内容。 |
-| 170 | `FBro列表_复制` | `FBro列表_复制(列表句柄)` | 长整数型 | 高级 | `FBroHsListValue_Copy` | 复制 List 并返回独立受管句柄。 |
-| 171 | `FBro列表_设置数量` | `FBro列表_设置数量(列表句柄, 数量)` | 整数型 | 高级 | `FBroHsListValue_SetSize` | 设置列表长度。 |
-| 172 | `FBro列表_取数量` | `FBro列表_取数量(列表句柄)` | 整数型 | 高级 | `FBroHsListValue_GetSize` | 取得列表长度。 |
-| 173 | `FBro列表_清空` | `FBro列表_清空(列表句柄)` | 整数型 | 高级 | `FBroHsListValue_Clear` | 清空列表。 |
-| 174 | `FBro列表_删除` | `FBro列表_删除(列表句柄, 索引)` | 整数型 | 高级 | `FBroHsListValue_Remove` | 删除指定索引。 |
-| 175 | `FBro列表_取类型` | `FBro列表_取类型(列表句柄, 索引)` | 整数型 | 高级 | `FBroHsListValue_GetType` | 取得指定索引的官方值类型。 |
-| 176 | `FBro列表_取逻辑` | `FBro列表_取逻辑(列表句柄, 索引)` | 整数型 | 高级 | `FBroHsListValue_GetBool` | 读取逻辑值。 |
-| 177 | `FBro列表_取整数` | `FBro列表_取整数(列表句柄, 索引)` | 整数型 | 高级 | `FBroHsListValue_GetInt` | 读取整数值。 |
-| 178 | `FBro列表_取小数` | `FBro列表_取小数(列表句柄, 索引)` | 小数型 | 高级 | `FBroHsListValue_GetDouble` | 读取小数值。 |
-| 179 | `FBro列表_取文本` | `FBro列表_取文本(列表句柄, 索引)` | 文本型 | 高级 | `FBroHsListValue_GetString` | 读取 UTF-16 文本值。 |
-| 180 | `FBro列表_取值对象` | `FBro列表_取值对象(列表句柄, 索引)` | 长整数型 | 高级 | `FBroHsListValue_GetValue` | 取得受列表管理的 Value 句柄。 |
-| 181 | `FBro列表_取二进制` | `FBro列表_取二进制(列表句柄, 索引)` | 长整数型 | 高级 | `FBroHsListValue_GetBinary` | 复制指定项的二进制值到受管缓冲。 |
-| 182 | `FBro列表_取字典` | `FBro列表_取字典(列表句柄, 索引)` | 长整数型 | 高级 | `FBroHsListValue_GetDictionary` | 取得受父列表管理的 Dictionary 句柄。 |
-| 183 | `FBro列表_取列表` | `FBro列表_取列表(列表句柄, 索引)` | 长整数型 | 高级 | `FBroHsListValue_GetList` | 取得受父列表管理的 List 句柄。 |
-| 184 | `FBro列表_设为空` | `FBro列表_设为空(列表句柄, 索引)` | 整数型 | 高级 | `FBroHsListValue_SetNull` | 把指定索引设置为空值。 |
-| 185 | `FBro列表_设置逻辑` | `FBro列表_设置逻辑(列表句柄, 索引, 值)` | 整数型 | 高级 | `FBroHsListValue_SetBool` | 写入逻辑值。 |
-| 186 | `FBro列表_设置整数` | `FBro列表_设置整数(列表句柄, 索引, 值)` | 整数型 | 高级 | `FBroHsListValue_SetInt` | 写入整数值。 |
-| 187 | `FBro列表_设置小数` | `FBro列表_设置小数(列表句柄, 索引, 值)` | 整数型 | 高级 | `FBroHsListValue_SetDouble` | 写入小数值。 |
-| 188 | `FBro列表_设置文本` | `FBro列表_设置文本(列表句柄, 索引, 值)` | 整数型 | 高级 | `FBroHsListValue_SetString` | 写入 UTF-16 文本值。 |
-| 189 | `FBro列表_设置值对象` | `FBro列表_设置值对象(列表句柄, 索引, 值句柄)` | 整数型 | 高级 | `FBroHsListValue_SetValue` | 把 Value 交由指定索引管理。 |
-| 190 | `FBro列表_设置二进制` | `FBro列表_设置二进制(列表句柄, 索引, 缓冲句柄)` | 整数型 | 高级 | `FBroHsListValue_SetBinary` | 从受管缓冲写入指定索引。 |
-| 191 | `FBro列表_设置字典` | `FBro列表_设置字典(列表句柄, 索引, 字典句柄)` | 整数型 | 高级 | `FBroHsListValue_SetDictionary` | 把 Dictionary 交由指定索引管理。 |
-| 192 | `FBro列表_设置列表` | `FBro列表_设置列表(列表句柄, 索引, 子列表句柄)` | 整数型 | 高级 | `FBroHsListValue_SetList` | 把子 List 交由指定索引管理。 |
-| 193 | `FBro流_从文件创建` | `FBro流_从文件创建(路径)` | 长整数型 | 高级 | `FBroStream_CreateForFile` | 从文件创建受管只读 Stream 句柄。 |
-| 194 | `FBro流_从缓冲创建` | `FBro流_从缓冲创建(缓冲句柄)` | 长整数型 | 高级 | `FBroStream_CreateForData` | 复制受管缓冲并创建内存 Stream，保证底层数据生命周期。 |
-| 195 | `FBro流_读取` | `FBro流_读取(流句柄, 元素大小, 元素数量)` | 长整数型 | 高级 | `FBroStream_Read` | 读取数据并返回新的受管缓冲句柄，单次最多 256 MiB。 |
-| 196 | `FBro流_定位` | `FBro流_定位(流句柄, 偏移, 基准)` | 整数型 | 高级 | `FBroStream_Seek` | 按 0=开头、1=当前位置、2=结尾定位 Stream。 |
-| 197 | `FBro流_取位置` | `FBro流_取位置(流句柄)` | 长整数型 | 高级 | `FBroStream_Tell` | 取得当前字节位置。 |
-| 198 | `FBro流_是否结束` | `FBro流_是否结束(流句柄)` | 整数型 | 高级 | `FBroStream_Eof` | 检查 Stream 是否到达结尾。 |
-| 199 | `FBro流_是否可能阻塞` | `FBro流_是否可能阻塞(流句柄)` | 整数型 | 高级 | `FBroStream_MayBlock` | 查询该 Stream 操作是否可能阻塞。 |
-| 200 | `FBro图像_异步下载` | `FBro图像_异步下载(控件名, 地址, 作为图标, 最大尺寸, 绕过缓存)` | 长整数型 | 高级 | `FBroHsBrowserHost_DownloadImage` | 通过当前浏览器会话异步下载图像并返回任务 ID。 |
-| 201 | `FBro图像_下载` | `FBro图像_下载(控件名, 地址, 作为图标, 最大尺寸, 绕过缓存)` | 长整数型 | 高级 | `LB_FBro_DownloadImageSync` | 同步下载图像并直接返回图像句柄（60 秒超时，失败返回 0）；用完调用 FBro对象_释放。 |
-| 202 | `FBro图像_是否为空` | `FBro图像_是否为空(图像句柄)` | 整数型 | 高级 | `FBroHsImage_IsEmpty` | 检查受管 Image 是否为空。 |
-| 203 | `FBro图像_取宽度` | `FBro图像_取宽度(图像句柄)` | 整数型 | 高级 | `FBroHsImage_GetWidth` | 取得图像 DIP 宽度。 |
-| 204 | `FBro图像_取高度` | `FBro图像_取高度(图像句柄)` | 整数型 | 高级 | `FBroHsImage_GetHeight` | 取得图像 DIP 高度。 |
-| 205 | `FBro图像_取表示信息JSON` | `FBro图像_取表示信息JSON(图像句柄, 缩放因子)` | 文本型 | 高级 | `FBroHsImage_GetRepresentationInfo` | 返回实际缩放、像素宽度和像素高度的 UTF-16 JSON。 |
-| 206 | `FBro图像_转位图缓冲` | `FBro图像_转位图缓冲(图像句柄, 缩放因子, 颜色类型, 透明类型)` | 长整数型 | 高级 | `FBroHsImage_GetAsBitmap` | 把最接近的位图表示复制到受管缓冲。 |
-| 207 | `FBro图像_转JPEG缓冲` | `FBro图像_转JPEG缓冲(图像句柄, 缩放因子, 质量)` | 长整数型 | 高级 | `FBroHsImage_GetAsJPEG` | 把图像编码为 JPEG 受管缓冲。 |
-| 208 | `FBro图像_转PNG缓冲` | `FBro图像_转PNG缓冲(图像句柄, 缩放因子, 保留透明)` | 长整数型 | 高级 | `FBroHsImage_GetAsPNG` | 把图像编码为 PNG 受管缓冲。 |
-| 209 | `FBro证书_异步取当前` | `FBro证书_异步取当前(控件名)` | 长整数型 | 高级 | `LB_FBro_GetCurrentCertificateAsync` | 从当前可见导航项异步取得 TLS 证书任务。 |
-| 210 | `FBro证书_取主体` | `FBro证书_取主体(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetSubject` | 取得受证书管理的主体 Principal 句柄。 |
-| 211 | `FBro证书_取颁发者` | `FBro证书_取颁发者(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetIssuer` | 取得受证书管理的颁发者 Principal 句柄。 |
-| 212 | `FBro证书_取序列号缓冲` | `FBro证书_取序列号缓冲(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetSerialNumber` | 取得证书序列号受管缓冲。 |
-| 213 | `FBro证书_取DER缓冲` | `FBro证书_取DER缓冲(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetDEREncoded` | 取得 DER 编码证书受管缓冲。 |
-| 214 | `FBro证书_取PEM缓冲` | `FBro证书_取PEM缓冲(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetPEMEncoded` | 取得 PEM 编码证书受管缓冲。 |
-| 215 | `FBro证书_取生效时间` | `FBro证书_取生效时间(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetValidStart` | 取得证书生效 Unix 时间。 |
-| 216 | `FBro证书_取失效时间` | `FBro证书_取失效时间(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetValidExpiry` | 取得证书失效 Unix 时间。 |
-| 217 | `FBro证书_取颁发链数量` | `FBro证书_取颁发链数量(证书句柄)` | 整数型 | 高级 | `FBroHsX509Certificate_GetIssuerChainSize` | 取得颁发链数量。 |
-| 218 | `FBro证书_取DER颁发链项` | `FBro证书_取DER颁发链项(证书句柄, 索引)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetDEREncodedIssuerChain` | 取得指定颁发链项的 DER 受管缓冲。 |
-| 219 | `FBro证书_取PEM颁发链项` | `FBro证书_取PEM颁发链项(证书句柄, 索引)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetPEMEncodedIssuerChain` | 取得指定颁发链项的 PEM 受管缓冲。 |
-| 220 | `FBro证书主体_取显示名` | `FBro证书主体_取显示名(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetDisplayName` | 取得证书主体显示名。 |
-| 221 | `FBro证书主体_取通用名` | `FBro证书主体_取通用名(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetCommonName` | 取得证书主体通用名。 |
-| 222 | `FBro证书主体_取地区名` | `FBro证书主体_取地区名(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetLocalityName` | 取得证书主体地区名。 |
-| 223 | `FBro证书主体_取省州名` | `FBro证书主体_取省州名(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetStateOrProvinceName` | 取得证书主体省或州名。 |
-| 224 | `FBro证书主体_取国家名` | `FBro证书主体_取国家名(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetCountryName` | 取得证书主体国家名。 |
-| 225 | `FBro证书主体_取组织JSON` | `FBro证书主体_取组织JSON(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetOrganizationNames` | 取得组织名 UTF-16 JSON 数组。 |
-| 226 | `FBro证书主体_取组织单位JSON` | `FBro证书主体_取组织单位JSON(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetOrganizationUnitNames` | 取得组织单位名 UTF-16 JSON 数组。 |
-| 227 | `FBro拖放数据_是否有图像` | `FBro拖放数据_是否有图像(拖放数据句柄)` | 整数型 | 高级 | `FBroHsDragData_HasImage` | 检查 DragEnter 事件对象是否携带图像。 |
-| 228 | `FBro拖放数据_取图像` | `FBro拖放数据_取图像(拖放数据句柄)` | 长整数型 | 高级 | `FBroHsDragData_GetImage` | 从 DragEnter 事件对象取得受管 Image 句柄。 |
+| 84 | `FBro右键参数_取字典建议` | `FBro右键参数_取字典建议(句柄)` | 文本型 | 高级 | `LB_FBro_ContextMenuParamsGetDictionarySuggestions` | 取拼写建议，返回字符串数组 JSON。 |
+| 85 | `FBro右键参数_是否可编辑` | `FBro右键参数_是否可编辑(句柄)` | 整数型 | 高级 | `LB_FBro_ContextMenuParamsIsEditable` | 判断右键目标是否为可编辑元素。 |
+| 86 | `FBro右键参数_是否启用拼写检查` | `FBro右键参数_是否启用拼写检查(句柄)` | 整数型 | 高级 | `LB_FBro_ContextMenuParamsIsSpellCheckEnabled` | 判断拼写检查是否启用。 |
+| 87 | `FBro右键参数_取编辑状态标志` | `FBro右键参数_取编辑状态标志(句柄)` | 整数型 | 高级 | `LB_FBro_ContextMenuParamsGetEditStateFlags` | 取编辑状态标志（可撤销/可重做/可剪切/可粘贴等）。 |
+| 88 | `FBro右键参数_是否自定义菜单` | `FBro右键参数_是否自定义菜单(句柄)` | 整数型 | 高级 | `LB_FBro_ContextMenuParamsIsCustomMenu` | 判断是否为自定义菜单请求。 |
+| 89 | `FBro响应_创建` | `FBro响应_创建()` | 长整数型 | 高级 | `LB_FBro_ResponseCreate` | 创建自定义响应对象（配合自定义资源处理器使用），用完可 FBro对象_释放。 |
+| 90 | `FBro响应_是否只读` | `FBro响应_是否只读(响应句柄)` | 整数型 | 高级 | `LB_FBro_ResponseIsReadOnly` | 判断响应是否只读（事件中收到的响应在改写场景外通常只读）。 |
+| 91 | `FBro响应_取错误` | `FBro响应_取错误(响应句柄)` | 整数型 | 高级 | `LB_FBro_ResponseGetError` | 取响应错误码。 |
+| 92 | `FBro响应_置错误` | `FBro响应_置错误(响应句柄, 错误码)` | 整数型 | 高级 | `LB_FBro_ResponseSetError` | 设置响应错误码。 |
+| 93 | `FBro响应_取状态码` | `FBro响应_取状态码(响应句柄)` | 整数型 | 高级 | `LB_FBro_ResponseGetStatus` | 取 HTTP 状态码。 |
+| 94 | `FBro响应_置状态码` | `FBro响应_置状态码(响应句柄, 状态码)` | 整数型 | 高级 | `LB_FBro_ResponseSetStatus` | 设置 HTTP 状态码。 |
+| 95 | `FBro响应_取状态文本` | `FBro响应_取状态文本(响应句柄)` | 文本型 | 高级 | `LB_FBro_ResponseGetStatusText` | 取状态文本（如 OK、Not Found）。 |
+| 96 | `FBro响应_置状态文本` | `FBro响应_置状态文本(响应句柄, 状态文本)` | 整数型 | 高级 | `LB_FBro_ResponseSetStatusText` | 设置状态文本。 |
+| 97 | `FBro响应_取MIME类型` | `FBro响应_取MIME类型(响应句柄)` | 文本型 | 高级 | `LB_FBro_ResponseGetMimeType` | 取响应 MIME 类型。 |
+| 98 | `FBro响应_置MIME类型` | `FBro响应_置MIME类型(响应句柄, MIME类型)` | 整数型 | 高级 | `LB_FBro_ResponseSetMimeType` | 设置响应 MIME 类型。 |
+| 99 | `FBro响应_取字符集` | `FBro响应_取字符集(响应句柄)` | 文本型 | 高级 | `LB_FBro_ResponseGetCharset` | 取响应字符集。 |
+| 100 | `FBro响应_置字符集` | `FBro响应_置字符集(响应句柄, 字符集)` | 整数型 | 高级 | `LB_FBro_ResponseSetCharset` | 设置响应字符集。 |
+| 101 | `FBro响应_取地址` | `FBro响应_取地址(响应句柄)` | 文本型 | 高级 | `LB_FBro_ResponseGetURL` | 取响应地址。 |
+| 102 | `FBro响应_置地址` | `FBro响应_置地址(响应句柄, 地址)` | 整数型 | 高级 | `LB_FBro_ResponseSetURL` | 设置响应地址。 |
+| 103 | `FBro响应_取协议头` | `FBro响应_取协议头(响应句柄, 头名)` | 文本型 | 高级 | `LB_FBro_ResponseGetHeaderByName` | 按名称取响应协议头。 |
+| 104 | `FBro响应_置协议头` | `FBro响应_置协议头(响应句柄, 头名, 值, 覆盖同名)` | 整数型 | 高级 | `LB_FBro_ResponseSetHeaderByName` | 按名称设置响应协议头。 |
+| 105 | `FBro响应_取协议头映射JSON` | `FBro响应_取协议头映射JSON(响应句柄)` | 文本型 | 高级 | `LB_FBro_ResponseGetHeaderMap` | 取全部协议头，返回 [{"name":"...","value":"..."}] JSON 数组；保持服务端顺序，多值头（如 Set-Cookie）会出现多个同名条目。响应句柄可来自资源响应事件，或 FBro异步请求_取响应对象 返回的纯协议请求响应。 |
+| 106 | `FBro响应_设置协议头映射JSON` | `FBro响应_设置协议头映射JSON(响应句柄, 协议头JSON, 清除原有)` | 整数型 | 高级 | `LB_FBro_ResponseSetHeaderMapJson` | 按 [{"name":..,"value":..}] JSON 批量设置协议头。 |
+| 107 | `FBro响应_删除协议头` | `FBro响应_删除协议头(响应句柄, 头名)` | 整数型 | 高级 | `LB_FBro_ResponseDeleteHeaderMap` | 按名称删除协议头。 |
+| 108 | `FBro对象_取类型` | `FBro对象_取类型(对象句柄)` | 整数型 | 高级 | `LB_FBro_ObjectGetType` | 取得受管对象注册表类型。 |
+| 109 | `FBro对象_释放` | `FBro对象_释放(对象句柄)` | 整数型 | 高级 | `LB_FBro_ObjectRelease` | 释放受管对象；重复释放返回稳定错误码。 |
+| 110 | `FBro值_创建` | `FBro值_创建()` | 长整数型 | 高级 | `FBroHsValue_Create` | 创建受管 Value 对象并返回不透明句柄。 |
+| 111 | `FBro值_是否有效` | `FBro值_是否有效(值句柄)` | 整数型 | 高级 | `FBroHsValue_IsValid` | 检查 Value 对象是否有效。 |
+| 112 | `FBro值_是否被拥有` | `FBro值_是否被拥有(值句柄)` | 整数型 | 高级 | `FBroHsValue_IsOwned` | 检查 Value 对象是否已归属于其它容器。 |
+| 113 | `FBro值_是否只读` | `FBro值_是否只读(值句柄)` | 整数型 | 高级 | `FBroHsValue_IsReadOnly` | 检查 Value 对象是否只读。 |
+| 114 | `FBro值_是否同一对象` | `FBro值_是否同一对象(值句柄, 另一值句柄)` | 整数型 | 高级 | `FBroHsValue_IsSame` | 检查两个 Value 句柄是否引用同一官方对象。 |
+| 115 | `FBro值_是否相等` | `FBro值_是否相等(值句柄, 另一值句柄)` | 整数型 | 高级 | `FBroHsValue_IsEqual` | 比较两个 Value 的内容。 |
+| 116 | `FBro值_复制` | `FBro值_复制(值句柄)` | 长整数型 | 高级 | `FBroHsValue_Copy` | 复制 Value 并返回独立受管句柄。 |
+| 117 | `FBro值_取类型` | `FBro值_取类型(值句柄)` | 整数型 | 高级 | `FBroHsValue_GetType` | 取得 Value 的官方值类型。 |
+| 118 | `FBro值_取逻辑` | `FBro值_取逻辑(值句柄)` | 整数型 | 高级 | `FBroHsValue_GetBool` | 读取逻辑值。 |
+| 119 | `FBro值_取整数` | `FBro值_取整数(值句柄)` | 整数型 | 高级 | `FBroHsValue_GetInt` | 读取整数值。 |
+| 120 | `FBro值_取小数` | `FBro值_取小数(值句柄)` | 小数型 | 高级 | `FBroHsValue_GetDouble` | 读取小数值。 |
+| 121 | `FBro值_取文本` | `FBro值_取文本(值句柄)` | 文本型 | 高级 | `FBroHsValue_GetString` | 读取 UTF-16 文本值。 |
+| 122 | `FBro值_设为空` | `FBro值_设为空(值句柄)` | 整数型 | 高级 | `FBroHsValue_SetNull` | 把 Value 设置为空值。 |
+| 123 | `FBro值_设置逻辑` | `FBro值_设置逻辑(值句柄, 值)` | 整数型 | 高级 | `FBroHsValue_SetBool` | 写入逻辑值。 |
+| 124 | `FBro值_设置整数` | `FBro值_设置整数(值句柄, 值)` | 整数型 | 高级 | `FBroHsValue_SetInt` | 写入整数值。 |
+| 125 | `FBro值_设置小数` | `FBro值_设置小数(值句柄, 值)` | 整数型 | 高级 | `FBroHsValue_SetDouble` | 写入小数值。 |
+| 126 | `FBro值_设置文本` | `FBro值_设置文本(值句柄, 值)` | 整数型 | 高级 | `FBroHsValue_SetString` | 写入 UTF-16 文本值。 |
+| 127 | `FBro值_取二进制` | `FBro值_取二进制(值句柄)` | 长整数型 | 高级 | `FBroHsValue_GetBinary` | 复制二进制值到受管缓冲并返回句柄。 |
+| 128 | `FBro值_设置二进制` | `FBro值_设置二进制(值句柄, 缓冲句柄)` | 整数型 | 高级 | `FBroHsValue_SetBinary` | 从受管缓冲写入二进制值。 |
+| 129 | `FBro值_取字典` | `FBro值_取字典(值句柄)` | 长整数型 | 高级 | `FBroHsValue_GetDictionary` | 取得受父对象管理的 Dictionary 句柄。 |
+| 130 | `FBro值_取列表` | `FBro值_取列表(值句柄)` | 长整数型 | 高级 | `FBroHsValue_GetList` | 取得受父对象管理的 List 句柄。 |
+| 131 | `FBro值_设置字典` | `FBro值_设置字典(值句柄, 字典句柄)` | 整数型 | 高级 | `FBroHsValue_SetDictionary` | 把 Dictionary 交由 Value 管理。 |
+| 132 | `FBro值_设置列表` | `FBro值_设置列表(值句柄, 列表句柄)` | 整数型 | 高级 | `FBroHsValue_SetList` | 把 List 交由 Value 管理。 |
+| 133 | `FBro字典_创建` | `FBro字典_创建()` | 长整数型 | 高级 | `FBroHsDictionaryValue_Create` | 创建受管 Dictionary 对象。 |
+| 134 | `FBro字典_是否有效` | `FBro字典_是否有效(字典句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_IsValid` | 检查 Dictionary 是否有效。 |
+| 135 | `FBro字典_是否被拥有` | `FBro字典_是否被拥有(字典句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_IsOwned` | 检查 Dictionary 是否已被拥有。 |
+| 136 | `FBro字典_是否只读` | `FBro字典_是否只读(字典句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_IsReadOnly` | 检查 Dictionary 是否只读。 |
+| 137 | `FBro字典_是否同一对象` | `FBro字典_是否同一对象(字典句柄, 另一字典句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_IsSame` | 检查两个 Dictionary 句柄是否引用同一官方对象。 |
+| 138 | `FBro字典_是否相等` | `FBro字典_是否相等(字典句柄, 另一字典句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_IsEqual` | 比较两个 Dictionary 的内容。 |
+| 139 | `FBro字典_复制` | `FBro字典_复制(字典句柄, 排除空子项)` | 长整数型 | 高级 | `FBroHsDictionaryValue_Copy` | 复制 Dictionary 并返回独立受管句柄。 |
+| 140 | `FBro字典_取数量` | `FBro字典_取数量(字典句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_GetSize` | 取得键数量。 |
+| 141 | `FBro字典_清空` | `FBro字典_清空(字典句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_Clear` | 删除全部键。 |
+| 142 | `FBro字典_是否存在键` | `FBro字典_是否存在键(字典句柄, 键)` | 整数型 | 高级 | `FBroHsDictionaryValue_HasKey` | 检查键是否存在。 |
+| 143 | `FBro字典_删除` | `FBro字典_删除(字典句柄, 键)` | 整数型 | 高级 | `FBroHsDictionaryValue_Remove` | 删除指定键。 |
+| 144 | `FBro字典_取类型` | `FBro字典_取类型(字典句柄, 键)` | 整数型 | 高级 | `FBroHsDictionaryValue_GetType` | 取得指定键的官方值类型。 |
+| 145 | `FBro字典_取逻辑` | `FBro字典_取逻辑(字典句柄, 键)` | 整数型 | 高级 | `FBroHsDictionaryValue_GetBool` | 读取逻辑值。 |
+| 146 | `FBro字典_取整数` | `FBro字典_取整数(字典句柄, 键)` | 整数型 | 高级 | `FBroHsDictionaryValue_GetInt` | 读取整数值。 |
+| 147 | `FBro字典_取小数` | `FBro字典_取小数(字典句柄, 键)` | 小数型 | 高级 | `FBroHsDictionaryValue_GetDouble` | 读取小数值。 |
+| 148 | `FBro字典_取文本` | `FBro字典_取文本(字典句柄, 键)` | 文本型 | 高级 | `FBroHsDictionaryValue_GetString` | 读取 UTF-16 文本值。 |
+| 149 | `FBro字典_取键列表JSON` | `FBro字典_取键列表JSON(字典句柄)` | 文本型 | 高级 | `FBroHsDictionaryValue_GetKeys` | 取得 UTF-16 JSON 键数组，不向源码暴露 StringList 或 STL。 |
+| 150 | `FBro字典_取值对象` | `FBro字典_取值对象(字典句柄, 键)` | 长整数型 | 高级 | `FBroHsDictionaryValue_GetValue` | 取得受字典管理的 Value 句柄。 |
+| 151 | `FBro字典_取二进制` | `FBro字典_取二进制(字典句柄, 键)` | 长整数型 | 高级 | `FBroHsDictionaryValue_GetBinary` | 复制指定键的二进制值到受管缓冲。 |
+| 152 | `FBro字典_取字典` | `FBro字典_取字典(字典句柄, 键)` | 长整数型 | 高级 | `FBroHsDictionaryValue_GetDictionary` | 取得受父字典管理的 Dictionary 句柄。 |
+| 153 | `FBro字典_取列表` | `FBro字典_取列表(字典句柄, 键)` | 长整数型 | 高级 | `FBroHsDictionaryValue_GetList` | 取得受父字典管理的 List 句柄。 |
+| 154 | `FBro字典_设为空` | `FBro字典_设为空(字典句柄, 键)` | 整数型 | 高级 | `FBroHsDictionaryValue_SetNull` | 把指定键设置为空值。 |
+| 155 | `FBro字典_设置逻辑` | `FBro字典_设置逻辑(字典句柄, 键, 值)` | 整数型 | 高级 | `FBroHsDictionaryValue_SetBool` | 写入逻辑值。 |
+| 156 | `FBro字典_设置整数` | `FBro字典_设置整数(字典句柄, 键, 值)` | 整数型 | 高级 | `FBroHsDictionaryValue_SetInt` | 写入整数值。 |
+| 157 | `FBro字典_设置小数` | `FBro字典_设置小数(字典句柄, 键, 值)` | 整数型 | 高级 | `FBroHsDictionaryValue_SetDouble` | 写入小数值。 |
+| 158 | `FBro字典_设置文本` | `FBro字典_设置文本(字典句柄, 键, 值)` | 整数型 | 高级 | `FBroHsDictionaryValue_SetString` | 写入 UTF-16 文本值。 |
+| 159 | `FBro字典_设置值对象` | `FBro字典_设置值对象(字典句柄, 键, 值句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_SetValue` | 把 Value 交由指定键管理。 |
+| 160 | `FBro字典_设置二进制` | `FBro字典_设置二进制(字典句柄, 键, 缓冲句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_SetBinary` | 从受管缓冲写入指定键。 |
+| 161 | `FBro字典_设置字典` | `FBro字典_设置字典(字典句柄, 键, 子字典句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_SetDictionary` | 把子 Dictionary 交由指定键管理。 |
+| 162 | `FBro字典_设置列表` | `FBro字典_设置列表(字典句柄, 键, 列表句柄)` | 整数型 | 高级 | `FBroHsDictionaryValue_SetList` | 把 List 交由指定键管理。 |
+| 163 | `FBro列表_创建` | `FBro列表_创建()` | 长整数型 | 高级 | `FBroHsListValue_Create` | 创建受管 List 对象。 |
+| 164 | `FBro列表_是否有效` | `FBro列表_是否有效(列表句柄)` | 整数型 | 高级 | `FBroHsListValue_IsValid` | 检查 List 是否有效。 |
+| 165 | `FBro列表_是否被拥有` | `FBro列表_是否被拥有(列表句柄)` | 整数型 | 高级 | `FBroHsListValue_IsOwned` | 检查 List 是否已被拥有。 |
+| 166 | `FBro列表_是否只读` | `FBro列表_是否只读(列表句柄)` | 整数型 | 高级 | `FBroHsListValue_IsReadOnly` | 检查 List 是否只读。 |
+| 167 | `FBro列表_是否同一对象` | `FBro列表_是否同一对象(列表句柄, 另一列表句柄)` | 整数型 | 高级 | `FBroHsListValue_IsSame` | 检查两个 List 句柄是否引用同一官方对象。 |
+| 168 | `FBro列表_是否相等` | `FBro列表_是否相等(列表句柄, 另一列表句柄)` | 整数型 | 高级 | `FBroHsListValue_IsEqual` | 比较两个 List 的内容。 |
+| 169 | `FBro列表_复制` | `FBro列表_复制(列表句柄)` | 长整数型 | 高级 | `FBroHsListValue_Copy` | 复制 List 并返回独立受管句柄。 |
+| 170 | `FBro列表_设置数量` | `FBro列表_设置数量(列表句柄, 数量)` | 整数型 | 高级 | `FBroHsListValue_SetSize` | 设置列表长度。 |
+| 171 | `FBro列表_取数量` | `FBro列表_取数量(列表句柄)` | 整数型 | 高级 | `FBroHsListValue_GetSize` | 取得列表长度。 |
+| 172 | `FBro列表_清空` | `FBro列表_清空(列表句柄)` | 整数型 | 高级 | `FBroHsListValue_Clear` | 清空列表。 |
+| 173 | `FBro列表_删除` | `FBro列表_删除(列表句柄, 索引)` | 整数型 | 高级 | `FBroHsListValue_Remove` | 删除指定索引。 |
+| 174 | `FBro列表_取类型` | `FBro列表_取类型(列表句柄, 索引)` | 整数型 | 高级 | `FBroHsListValue_GetType` | 取得指定索引的官方值类型。 |
+| 175 | `FBro列表_取逻辑` | `FBro列表_取逻辑(列表句柄, 索引)` | 整数型 | 高级 | `FBroHsListValue_GetBool` | 读取逻辑值。 |
+| 176 | `FBro列表_取整数` | `FBro列表_取整数(列表句柄, 索引)` | 整数型 | 高级 | `FBroHsListValue_GetInt` | 读取整数值。 |
+| 177 | `FBro列表_取小数` | `FBro列表_取小数(列表句柄, 索引)` | 小数型 | 高级 | `FBroHsListValue_GetDouble` | 读取小数值。 |
+| 178 | `FBro列表_取文本` | `FBro列表_取文本(列表句柄, 索引)` | 文本型 | 高级 | `FBroHsListValue_GetString` | 读取 UTF-16 文本值。 |
+| 179 | `FBro列表_取值对象` | `FBro列表_取值对象(列表句柄, 索引)` | 长整数型 | 高级 | `FBroHsListValue_GetValue` | 取得受列表管理的 Value 句柄。 |
+| 180 | `FBro列表_取二进制` | `FBro列表_取二进制(列表句柄, 索引)` | 长整数型 | 高级 | `FBroHsListValue_GetBinary` | 复制指定项的二进制值到受管缓冲。 |
+| 181 | `FBro列表_取字典` | `FBro列表_取字典(列表句柄, 索引)` | 长整数型 | 高级 | `FBroHsListValue_GetDictionary` | 取得受父列表管理的 Dictionary 句柄。 |
+| 182 | `FBro列表_取列表` | `FBro列表_取列表(列表句柄, 索引)` | 长整数型 | 高级 | `FBroHsListValue_GetList` | 取得受父列表管理的 List 句柄。 |
+| 183 | `FBro列表_设为空` | `FBro列表_设为空(列表句柄, 索引)` | 整数型 | 高级 | `FBroHsListValue_SetNull` | 把指定索引设置为空值。 |
+| 184 | `FBro列表_设置逻辑` | `FBro列表_设置逻辑(列表句柄, 索引, 值)` | 整数型 | 高级 | `FBroHsListValue_SetBool` | 写入逻辑值。 |
+| 185 | `FBro列表_设置整数` | `FBro列表_设置整数(列表句柄, 索引, 值)` | 整数型 | 高级 | `FBroHsListValue_SetInt` | 写入整数值。 |
+| 186 | `FBro列表_设置小数` | `FBro列表_设置小数(列表句柄, 索引, 值)` | 整数型 | 高级 | `FBroHsListValue_SetDouble` | 写入小数值。 |
+| 187 | `FBro列表_设置文本` | `FBro列表_设置文本(列表句柄, 索引, 值)` | 整数型 | 高级 | `FBroHsListValue_SetString` | 写入 UTF-16 文本值。 |
+| 188 | `FBro列表_设置值对象` | `FBro列表_设置值对象(列表句柄, 索引, 值句柄)` | 整数型 | 高级 | `FBroHsListValue_SetValue` | 把 Value 交由指定索引管理。 |
+| 189 | `FBro列表_设置二进制` | `FBro列表_设置二进制(列表句柄, 索引, 缓冲句柄)` | 整数型 | 高级 | `FBroHsListValue_SetBinary` | 从受管缓冲写入指定索引。 |
+| 190 | `FBro列表_设置字典` | `FBro列表_设置字典(列表句柄, 索引, 字典句柄)` | 整数型 | 高级 | `FBroHsListValue_SetDictionary` | 把 Dictionary 交由指定索引管理。 |
+| 191 | `FBro列表_设置列表` | `FBro列表_设置列表(列表句柄, 索引, 子列表句柄)` | 整数型 | 高级 | `FBroHsListValue_SetList` | 把子 List 交由指定索引管理。 |
+| 192 | `FBro流_从文件创建` | `FBro流_从文件创建(路径)` | 长整数型 | 高级 | `FBroStream_CreateForFile` | 从文件创建受管只读 Stream 句柄。 |
+| 193 | `FBro流_从缓冲创建` | `FBro流_从缓冲创建(缓冲句柄)` | 长整数型 | 高级 | `FBroStream_CreateForData` | 复制受管缓冲并创建内存 Stream，保证底层数据生命周期。 |
+| 194 | `FBro流_读取` | `FBro流_读取(流句柄, 元素大小, 元素数量)` | 长整数型 | 高级 | `FBroStream_Read` | 读取数据并返回新的受管缓冲句柄，单次最多 256 MiB。 |
+| 195 | `FBro流_定位` | `FBro流_定位(流句柄, 偏移, 基准)` | 整数型 | 高级 | `FBroStream_Seek` | 按 0=开头、1=当前位置、2=结尾定位 Stream。 |
+| 196 | `FBro流_取位置` | `FBro流_取位置(流句柄)` | 长整数型 | 高级 | `FBroStream_Tell` | 取得当前字节位置。 |
+| 197 | `FBro流_是否结束` | `FBro流_是否结束(流句柄)` | 整数型 | 高级 | `FBroStream_Eof` | 检查 Stream 是否到达结尾。 |
+| 198 | `FBro流_是否可能阻塞` | `FBro流_是否可能阻塞(流句柄)` | 整数型 | 高级 | `FBroStream_MayBlock` | 查询该 Stream 操作是否可能阻塞。 |
+| 199 | `FBro图像_异步下载` | `FBro图像_异步下载(控件名, 地址, 作为图标, 最大尺寸, 绕过缓存)` | 长整数型 | 高级 | `FBroHsBrowserHost_DownloadImage` | 通过当前浏览器会话异步下载图像并返回任务 ID。 |
+| 200 | `FBro图像_下载` | `FBro图像_下载(控件名, 地址, 作为图标, 最大尺寸, 绕过缓存)` | 长整数型 | 高级 | `LB_FBro_DownloadImageSync` | 同步下载图像并直接返回图像句柄（60 秒超时，失败返回 0）；用完调用 FBro对象_释放。 |
+| 201 | `FBro图像_是否为空` | `FBro图像_是否为空(图像句柄)` | 整数型 | 高级 | `FBroHsImage_IsEmpty` | 检查受管 Image 是否为空。 |
+| 202 | `FBro图像_取宽度` | `FBro图像_取宽度(图像句柄)` | 整数型 | 高级 | `FBroHsImage_GetWidth` | 取得图像 DIP 宽度。 |
+| 203 | `FBro图像_取高度` | `FBro图像_取高度(图像句柄)` | 整数型 | 高级 | `FBroHsImage_GetHeight` | 取得图像 DIP 高度。 |
+| 204 | `FBro图像_取表示信息JSON` | `FBro图像_取表示信息JSON(图像句柄, 缩放因子)` | 文本型 | 高级 | `FBroHsImage_GetRepresentationInfo` | 返回实际缩放、像素宽度和像素高度的 UTF-16 JSON。 |
+| 205 | `FBro图像_转位图缓冲` | `FBro图像_转位图缓冲(图像句柄, 缩放因子, 颜色类型, 透明类型)` | 长整数型 | 高级 | `FBroHsImage_GetAsBitmap` | 把最接近的位图表示复制到受管缓冲。 |
+| 206 | `FBro图像_转JPEG缓冲` | `FBro图像_转JPEG缓冲(图像句柄, 缩放因子, 质量)` | 长整数型 | 高级 | `FBroHsImage_GetAsJPEG` | 把图像编码为 JPEG 受管缓冲。 |
+| 207 | `FBro图像_转PNG缓冲` | `FBro图像_转PNG缓冲(图像句柄, 缩放因子, 保留透明)` | 长整数型 | 高级 | `FBroHsImage_GetAsPNG` | 把图像编码为 PNG 受管缓冲。 |
+| 208 | `FBro证书_异步取当前` | `FBro证书_异步取当前(控件名)` | 长整数型 | 高级 | `LB_FBro_GetCurrentCertificateAsync` | 从当前可见导航项异步取得 TLS 证书任务。 |
+| 209 | `FBro证书_取主体` | `FBro证书_取主体(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetSubject` | 取得受证书管理的主体 Principal 句柄。 |
+| 210 | `FBro证书_取颁发者` | `FBro证书_取颁发者(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetIssuer` | 取得受证书管理的颁发者 Principal 句柄。 |
+| 211 | `FBro证书_取序列号缓冲` | `FBro证书_取序列号缓冲(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetSerialNumber` | 取得证书序列号受管缓冲。 |
+| 212 | `FBro证书_取DER缓冲` | `FBro证书_取DER缓冲(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetDEREncoded` | 取得 DER 编码证书受管缓冲。 |
+| 213 | `FBro证书_取PEM缓冲` | `FBro证书_取PEM缓冲(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetPEMEncoded` | 取得 PEM 编码证书受管缓冲。 |
+| 214 | `FBro证书_取生效时间` | `FBro证书_取生效时间(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetValidStart` | 取得证书生效 Unix 时间。 |
+| 215 | `FBro证书_取失效时间` | `FBro证书_取失效时间(证书句柄)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetValidExpiry` | 取得证书失效 Unix 时间。 |
+| 216 | `FBro证书_取颁发链数量` | `FBro证书_取颁发链数量(证书句柄)` | 整数型 | 高级 | `FBroHsX509Certificate_GetIssuerChainSize` | 取得颁发链数量。 |
+| 217 | `FBro证书_取DER颁发链项` | `FBro证书_取DER颁发链项(证书句柄, 索引)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetDEREncodedIssuerChain` | 取得指定颁发链项的 DER 受管缓冲。 |
+| 218 | `FBro证书_取PEM颁发链项` | `FBro证书_取PEM颁发链项(证书句柄, 索引)` | 长整数型 | 高级 | `FBroHsX509Certificate_GetPEMEncodedIssuerChain` | 取得指定颁发链项的 PEM 受管缓冲。 |
+| 219 | `FBro证书主体_取显示名` | `FBro证书主体_取显示名(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetDisplayName` | 取得证书主体显示名。 |
+| 220 | `FBro证书主体_取通用名` | `FBro证书主体_取通用名(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetCommonName` | 取得证书主体通用名。 |
+| 221 | `FBro证书主体_取地区名` | `FBro证书主体_取地区名(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetLocalityName` | 取得证书主体地区名。 |
+| 222 | `FBro证书主体_取省州名` | `FBro证书主体_取省州名(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetStateOrProvinceName` | 取得证书主体省或州名。 |
+| 223 | `FBro证书主体_取国家名` | `FBro证书主体_取国家名(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetCountryName` | 取得证书主体国家名。 |
+| 224 | `FBro证书主体_取组织JSON` | `FBro证书主体_取组织JSON(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetOrganizationNames` | 取得组织名 UTF-16 JSON 数组。 |
+| 225 | `FBro证书主体_取组织单位JSON` | `FBro证书主体_取组织单位JSON(主体句柄)` | 文本型 | 高级 | `FBroHsX509CertPrincipal_GetOrganizationUnitNames` | 取得组织单位名 UTF-16 JSON 数组。 |
+| 226 | `FBro拖放数据_是否有图像` | `FBro拖放数据_是否有图像(拖放数据句柄)` | 整数型 | 高级 | `FBroHsDragData_HasImage` | 检查 DragEnter 事件对象是否携带图像。 |
+| 227 | `FBro拖放数据_取图像` | `FBro拖放数据_取图像(拖放数据句柄)` | 长整数型 | 高级 | `FBroHsDragData_GetImage` | 从 DragEnter 事件对象取得受管 Image 句柄。 |
 
 ### 7. FBro高级网络模块
 
-提供显式启用的代理与认证高级 API，以及基于 Chromium 网络栈的纯协议 HTTP 请求响应读取。 模块 ID：`lingbuilder.fbro.network`；本节共 23 条用户接口。
+提供显式启用的代理与认证高级 API，以及基于 Chromium 网络栈的纯协议 HTTP 请求响应读取（下载块事件领取、响应对象/响应头读取）。 模块 ID：`lingbuilder.fbro.network`；本节共 23 条用户接口。
 
 | # | 接口 | 调用签名 | 返回值 | 级别 | 官方别名 | 说明 |
 |---:|---|---|---|---|---|---|
@@ -808,7 +808,7 @@
 
 ### 8. FBro VIP 指纹模块
 
-提供不泄露授权信息的结构化 VIP 指纹入口。 模块 ID：`lingbuilder.fbro.vip`；本节共 189 条用户接口。
+提供不泄露授权信息的结构化 VIP 指纹入口。 模块 ID：`lingbuilder.fbro.vip`；本节共 191 条用户接口。
 
 | # | 接口 | 调用签名 | 返回值 | 级别 | 官方别名 | 说明 |
 |---:|---|---|---|---|---|---|
@@ -895,114 +895,114 @@
 | 81 | `FBroVIP_网络代理_设置SSL密码套件` | `FBroVIP_网络代理_设置SSL密码套件(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetSSLCipher` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetSSLCipher(CefRefPtr<FBroVIPControl> vipcontrol, int min_version, int max_version, const CefString& cipher_command)。这是独立的安全指纹命令；参数JSON为路径 sslCipher 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
 | 82 | `FBroVIP_内核反检测_设置触摸事件模拟` | `FBroVIP_内核反检测_设置触摸事件模拟(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetTouchEventEmulationEnabled` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetTouchEventEmulationEnabled(CefRefPtr<FBroVIPControl> vipcontrol, BOOL enabled, int maxTouchPoints)。这是独立的安全指纹命令；参数JSON为路径 touchEmulation 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
 | 83 | `FBroVIP_内核反检测_设置V8内核` | `FBroVIP_内核反检测_设置V8内核(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetV8Kernel` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetV8Kernel(CefRefPtr<FBroVIPControl> vipcontrol, int kernel)。这是独立的安全指纹命令；参数JSON为路径 v8Kernel 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 85 | `FBroVIP_浏览器指纹_设置接受语言` | `FBroVIP_浏览器指纹_设置接受语言(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirAcceptlanguages` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirAcceptlanguages(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 acceptLanguages 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 86 | `FBroVIP_浏览器指纹_设置应用代码名` | `FBroVIP_浏览器指纹_设置应用代码名(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirAppCodeName` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirAppCodeName(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 appCodeName 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 87 | `FBroVIP_浏览器指纹_设置应用名` | `FBroVIP_浏览器指纹_设置应用名(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirAppName` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirAppName(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 appName 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 88 | `FBroVIP_浏览器指纹_设置应用版本` | `FBroVIP_浏览器指纹_设置应用版本(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirAppVersion` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirAppVersion(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 appVersion 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 89 | `FBroVIP_设备插件_设置音频输入设备` | `FBroVIP_设备插件_设置音频输入设备(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirAudioInput` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirAudioInput(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 audioInput 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 90 | `FBroVIP_设备插件_设置音频输出设备` | `FBroVIP_设备插件_设置音频输出设备(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirAudioOutput` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirAudioOutput(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 audioOutput 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 91 | `FBroVIP_电池_设置电池充电状态` | `FBroVIP_电池_设置电池充电状态(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirBatteryManagerCharging` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirBatteryManagerCharging(CefRefPtr<FBroVIPControl> vipcontrol, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 battery.charging 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 92 | `FBroVIP_电池_设置电池充电时间` | `FBroVIP_电池_设置电池充电时间(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirBatteryManagerChargingTime` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirBatteryManagerChargingTime(CefRefPtr<FBroVIPControl> vipcontrol, double indata)。这是独立的安全指纹命令；参数JSON为路径 battery.chargingTime 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 93 | `FBroVIP_电池_设置电池放电时间` | `FBroVIP_电池_设置电池放电时间(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirBatteryManagerDischargingTime` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirBatteryManagerDischargingTime(CefRefPtr<FBroVIPControl> vipcontrol, double indata)。这是独立的安全指纹命令；参数JSON为路径 battery.dischargingTime 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 94 | `FBroVIP_电池_设置电池电量` | `FBroVIP_电池_设置电池电量(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirBatteryManagerLevel` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirBatteryManagerLevel(CefRefPtr<FBroVIPControl> vipcontrol, double indata)。这是独立的安全指纹命令；参数JSON为路径 battery.level 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 95 | `FBroVIP_Canvas字体音频指纹_设置Canvas字体指纹` | `FBroVIP_Canvas字体音频指纹_设置Canvas字体指纹(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirCanvas2DFontFingerprint` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirCanvas2DFontFingerprint(CefRefPtr<FBroVIPControl> vipcontrol, double indata)。这是独立的安全指纹命令；参数JSON为路径 canvas2dFontFingerprint 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 96 | `FBroVIP_浏览器指纹_设置Cookie启用状态` | `FBroVIP_浏览器指纹_设置Cookie启用状态(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirCookieEnabled` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirCookieEnabled(CefRefPtr<FBroVIPControl> vipcontrol, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 cookieEnabled 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 97 | `FBroVIP_Canvas字体音频指纹_设置CSS字体指纹` | `FBroVIP_Canvas字体音频指纹_设置CSS字体指纹(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirCSSFontFingerprint` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirCSSFontFingerprint(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata, int x, int y)。这是独立的安全指纹命令；参数JSON为路径 cssFontFingerprint 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 98 | `FBroVIP_浏览器指纹_设置设备内存` | `FBroVIP_浏览器指纹_设置设备内存(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirDeviceMemory` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirDeviceMemory(CefRefPtr<FBroVIPControl> vipcontrol, int indata)。这是独立的安全指纹命令；参数JSON为路径 deviceMemory 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 99 | `FBroVIP_屏幕视口_设置设备像素比` | `FBroVIP_屏幕视口_设置设备像素比(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirDevicePixelRatio` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirDevicePixelRatio(CefRefPtr<FBroVIPControl> vipcontrol, double indata)。这是独立的安全指纹命令；参数JSON为路径 devicePixelRatio 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 100 | `FBroVIP_GPUWebGL_设置GPU架构` | `FBroVIP_GPUWebGL_设置GPU架构(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirGPUArchitecture` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirGPUArchitecture(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 gpuArchitecture 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 101 | `FBroVIP_GPUWebGL_设置GPU描述` | `FBroVIP_GPUWebGL_设置GPU描述(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirGPUDescription` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirGPUDescription(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 gpuDescription 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 102 | `FBroVIP_GPUWebGL_设置GPU设备` | `FBroVIP_GPUWebGL_设置GPU设备(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirGPUDevice` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirGPUDevice(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 gpuDevice 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 103 | `FBroVIP_GPUWebGL_设置GPU限制` | `FBroVIP_GPUWebGL_设置GPU限制(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirGPULimits` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirGPULimits(CefRefPtr<FBroVIPControl> vipcontrol, int type, int64_t indata)。这是独立的安全指纹命令；参数JSON为路径 gpuLimits 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 104 | `FBroVIP_GPUWebGL_设置GPU子组最大值` | `FBroVIP_GPUWebGL_设置GPU子组最大值(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirGPUSubgroupMaxSize` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirGPUSubgroupMaxSize(CefRefPtr<FBroVIPControl> vipcontrol, unsigned indata)。这是独立的安全指纹命令；参数JSON为路径 gpuSubgroupMaxSize 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 105 | `FBroVIP_GPUWebGL_设置GPU子组最小值` | `FBroVIP_GPUWebGL_设置GPU子组最小值(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirGPUSubgroupMinSize` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirGPUSubgroupMinSize(CefRefPtr<FBroVIPControl> vipcontrol, unsigned indata)。这是独立的安全指纹命令；参数JSON为路径 gpuSubgroupMinSize 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 106 | `FBroVIP_GPUWebGL_设置GPU厂商` | `FBroVIP_GPUWebGL_设置GPU厂商(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirGPUVendor` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirGPUVendor(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 gpuVendor 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 107 | `FBroVIP_浏览器指纹_设置硬件并发数` | `FBroVIP_浏览器指纹_设置硬件并发数(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirHardwareConcurrency` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirHardwareConcurrency(CefRefPtr<FBroVIPControl> vipcontrol, int indata)。这是独立的安全指纹命令；参数JSON为路径 hardwareConcurrency 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 108 | `FBroVIP_内核反检测_设置可信事件标记` | `FBroVIP_内核反检测_设置可信事件标记(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirisTrusted` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirisTrusted(CefRefPtr<FBroVIPControl> vipcontrol, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 isTrusted 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 109 | `FBroVIP_浏览器指纹_设置Java启用状态` | `FBroVIP_浏览器指纹_设置Java启用状态(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirJavaEnabled` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirJavaEnabled(CefRefPtr<FBroVIPControl> vipcontrol, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 javaEnabled 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 110 | `FBroVIP_内核反检测_设置浏览器内核` | `FBroVIP_内核反检测_设置浏览器内核(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirKernel` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirKernel(CefRefPtr<FBroVIPControl> vipcontrol, int kernel)。这是独立的安全指纹命令；参数JSON为路径 kernel 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 111 | `FBroVIP_浏览器指纹_设置语言列表` | `FBroVIP_浏览器指纹_设置语言列表(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirLanguages` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirLanguages(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 languages 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 112 | `FBroVIP_位置时区_设置地理位置` | `FBroVIP_位置时区_设置地理位置(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirLongitudeAndLatitude` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirLongitudeAndLatitude(CefRefPtr<FBroVIPControl> vipcontrol, double longitude, double latitude, double altitude, double accuracy, double altitude_accuracy, double heading, double speed)。这是独立的安全指纹命令；参数JSON为路径 geolocation 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 113 | `FBroVIP_浏览器指纹_设置在线状态` | `FBroVIP_浏览器指纹_设置在线状态(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirOnLine` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirOnLine(CefRefPtr<FBroVIPControl> vipcontrol, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 online 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 114 | `FBroVIP_屏幕视口_设置屏幕方向` | `FBroVIP_屏幕视口_设置屏幕方向(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirOrientation` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirOrientation(CefRefPtr<FBroVIPControl> vipcontrol, int orientation, int orientation_type)。这是独立的安全指纹命令；参数JSON为路径 orientation 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 115 | `FBroVIP_浏览器指纹_设置平台` | `FBroVIP_浏览器指纹_设置平台(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirPlatform` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirPlatform(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 platform 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 116 | `FBroVIP_浏览器指纹_设置产品名` | `FBroVIP_浏览器指纹_设置产品名(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirProduct` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirProduct(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 product 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 117 | `FBroVIP_浏览器指纹_设置产品子版本` | `FBroVIP_浏览器指纹_设置产品子版本(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirProductSub` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirProductSub(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 productSub 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 118 | `FBroVIP_Canvas字体音频指纹_设置矩形指纹` | `FBroVIP_Canvas字体音频指纹_设置矩形指纹(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirRectFingerprint` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirRectFingerprint(CefRefPtr<FBroVIPControl> vipcontrol, int x, int y, int w, int h)。这是独立的安全指纹命令；参数JSON为路径 rectFingerprint 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 119 | `FBroVIP_屏幕视口_设置可用屏幕高度与宽度` | `FBroVIP_屏幕视口_设置可用屏幕高度与宽度(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirScreenavailHeightAndWidth` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirScreenavailHeightAndWidth(CefRefPtr<FBroVIPControl> vipcontrol, int H, int W)。这是独立的安全指纹命令；参数JSON为该接口对应的完整指纹配置补丁，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 120 | `FBroVIP_屏幕视口_设置屏幕颜色深度` | `FBroVIP_屏幕视口_设置屏幕颜色深度(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirScreencolorDepth` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirScreencolorDepth(CefRefPtr<FBroVIPControl> vipcontrol, int indata)。这是独立的安全指纹命令；参数JSON为路径 screenColorDepth 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 121 | `FBroVIP_屏幕视口_设置屏幕高度与宽度` | `FBroVIP_屏幕视口_设置屏幕高度与宽度(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirScreenHeightAndWidth` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirScreenHeightAndWidth(CefRefPtr<FBroVIPControl> vipcontrol, int H, int W)。这是独立的安全指纹命令；参数JSON为该接口对应的完整指纹配置补丁，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 122 | `FBroVIP_屏幕视口_设置屏幕像素深度` | `FBroVIP_屏幕视口_设置屏幕像素深度(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirScreenpixelDepth` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirScreenpixelDepth(CefRefPtr<FBroVIPControl> vipcontrol, int indata)。这是独立的安全指纹命令；参数JSON为路径 screenPixelDepth 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 123 | `FBroVIP_屏幕视口_设置屏幕坐标` | `FBroVIP_屏幕视口_设置屏幕坐标(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirScreenXAndY` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirScreenXAndY(CefRefPtr<FBroVIPControl> vipcontrol, int X, int Y)。这是独立的安全指纹命令；参数JSON为该接口对应的完整指纹配置补丁，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 124 | `FBroVIP_设备插件_设置语音合成声音` | `FBroVIP_设备插件_设置语音合成声音(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirSpeechSynthesisVoices` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirSpeechSynthesisVoices(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 speechSynthesisVoices 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 125 | `FBroVIP_位置时区_设置时区` | `FBroVIP_位置时区_设置时区(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirTimeZone` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirTimeZone(CefRefPtr<FBroVIPControl> vipcontrol, int timezonehour, int timezonemin, const CefString& timezonename, const CefString& standardtimezonename)。这是独立的安全指纹命令；参数JSON为路径 timeZone 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 126 | `FBroVIP_UserAgentData_设置UserAgentData` | `FBroVIP_UserAgentData_设置UserAgentData(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirUserAgent` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirUserAgent(CefRefPtr<FBroVIPControl> vipcontrol, CefRefPtr<FBroVIPUserAgentData> userAgentData)。这是独立的安全指纹命令；参数JSON为路径 userAgent 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 127 | `FBroVIP_浏览器指纹_设置厂商` | `FBroVIP_浏览器指纹_设置厂商(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirVendor` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirVendor(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 vendor 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 128 | `FBroVIP_浏览器指纹_设置厂商子版本` | `FBroVIP_浏览器指纹_设置厂商子版本(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirVendorSub` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirVendorSub(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 vendorSub 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 129 | `FBroVIP_设备插件_设置视频输入设备` | `FBroVIP_设备插件_设置视频输入设备(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirVideoInput` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirVideoInput(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 videoInput 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 130 | `FBroVIP_屏幕视口_设置视口` | `FBroVIP_屏幕视口_设置视口(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirViewport` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirViewport(CefRefPtr<FBroVIPControl> vipcontrol, int x, int y, int w, int h)。这是独立的安全指纹命令；参数JSON为路径 viewport 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 131 | `FBroVIP_浏览器指纹_设置WebDriver标记` | `FBroVIP_浏览器指纹_设置WebDriver标记(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirWebdriver` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirWebdriver(CefRefPtr<FBroVIPControl> vipcontrol, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 webdriver 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 132 | `FBroVIP_GPUWebGL_设置WebGL渲染器` | `FBroVIP_GPUWebGL_设置WebGL渲染器(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirWebglrenderer` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirWebglrenderer(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 webglRenderer 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 133 | `FBroVIP_GPUWebGL_设置WebGL厂商` | `FBroVIP_GPUWebGL_设置WebGL厂商(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirWebglvendor` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirWebglvendor(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 webglVendor 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 134 | `FBroVIP_网络代理_设置WebRTC地址` | `FBroVIP_网络代理_设置WebRTC地址(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirWebrtcIP` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirWebrtcIP(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& publicip, const CefString& localip, const CefString& host,BOOL disable)。这是独立的安全指纹命令；参数JSON为路径 webrtc 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 135 | `FBroVIP_内核反检测_设置Web功能内核` | `FBroVIP_内核反检测_设置Web功能内核(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetWebFeatureKernel` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetWebFeatureKernel(CefRefPtr<FBroVIPControl> vipcontrol, int kernel)。这是独立的安全指纹命令；参数JSON为路径 webFeatureKernel 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 136 | `FBroVIP_GPUWebGL_设置WebGL固定指纹` | `FBroVIP_GPUWebGL_设置WebGL固定指纹(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetWebGLFingerPrint_constant` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetWebGLFingerPrint_constant(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 fingerprints.webgl.constant 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 137 | `FBroVIP_GPUWebGL_设置WebGL随机指纹` | `FBroVIP_GPUWebGL_设置WebGL随机指纹(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetWebGLFingerPrint_random` | 官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPControl_SetWebGLFingerPrint_random(CefRefPtr<FBroVIPControl> vipcontrol, int minipoint, int maxpoint, int srand)。这是独立的安全指纹命令；参数JSON为路径 fingerprints.webgl 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 138 | `FBroVIP_网络代理_设置全局S5代理认证` | `FBroVIP_网络代理_设置全局S5代理认证(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPGlobal_SetS5Auth` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPGlobal_SetS5Auth(const CefString& username, const CefString& password, BOOL closeMsg)。这是独立的安全指纹命令；参数JSON为路径 s5Auth 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 139 | `FBroVIP_浏览器扩展_启用扩展增强` | `FBroVIP_浏览器扩展_启用扩展增强(控件名, 参数JSON)` | 长整数型 | 高级 | `FBroHsVIPRequestContext_EnableExtensionPlus` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPRequestContext_EnableExtensionPlus()。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。 |
-| 140 | `FBroVIP_浏览器扩展_取扩展名称` | `FBroVIP_浏览器扩展_取扩展名称(控件名, 参数JSON)` | 长整数型 | 高级 | `FBroHsVIPRequestContext_GetExtensionName` | 官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPRequestContext_GetExtensionName(CefRefPtr<CefRequestContext> requestContext, const CefString& extensionID)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。 |
-| 141 | `FBroVIP_浏览器扩展_取扩展路径` | `FBroVIP_浏览器扩展_取扩展路径(控件名, 参数JSON)` | 长整数型 | 高级 | `FBroHsVIPRequestContext_GetExtensionPath` | 官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPRequestContext_GetExtensionPath(CefRefPtr<CefRequestContext> requestContext, const CefString& extensionID)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。 |
-| 142 | `FBroVIP_浏览器扩展_取扩展地址` | `FBroVIP_浏览器扩展_取扩展地址(控件名, 参数JSON)` | 长整数型 | 高级 | `FBroHsVIPRequestContext_GetExtensionURL` | 官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPRequestContext_GetExtensionURL(CefRefPtr<CefRequestContext> requestContext, const CefString& extensionID)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。 |
-| 143 | `FBroVIP_浏览器扩展_安装CRX` | `FBroVIP_浏览器扩展_安装CRX(控件名, 参数JSON)` | 长整数型 | 高级 | `FBroHsVIPRequestContext_InstallCrx` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPRequestContext_InstallCrx(CefRefPtr<CefRequestContext> requestContext, const CefString& filePath)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。 |
-| 144 | `FBroVIP_浏览器扩展_加载扩展目录` | `FBroVIP_浏览器扩展_加载扩展目录(控件名, 参数JSON)` | 长整数型 | 高级 | `FBroHsVIPRequestContext_LoadExtension` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPRequestContext_LoadExtension(CefRefPtr<CefRequestContext> requestContext, const CefString& path)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。 |
-| 145 | `FBroVIP_浏览器扩展_卸载扩展` | `FBroVIP_浏览器扩展_卸载扩展(控件名, 参数JSON)` | 长整数型 | 高级 | `FBroHsVIPRequestContext_UnstallExtension` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPRequestContext_UnstallExtension(CefRefPtr<CefRequestContext> requestContext, const CefString& extensionID)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。 |
-| 146 | `FBroVIP_资源替换_添加缓冲替换` | `FBroVIP_资源替换_添加缓冲替换(控件名, 参数JSON)` | 长整数型 | 高级 | `FBroHsVIPResourceHandler_AddChangeData` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPResourceHandler_AddChangeData(int find_type, const CefString& url, const CefString& mini_type, CefRefPtr<FBroDoubleString> header_map, void* change_data, size_t data_size)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。 |
-| 147 | `FBroVIP_资源替换_添加文件替换` | `FBroVIP_资源替换_添加文件替换(控件名, 参数JSON)` | 长整数型 | 高级 | `FBroHsVIPResourceHandler_AddChangeFile` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPResourceHandler_AddChangeFile(int find_type, const CefString& url, const CefString& mini_type, CefRefPtr<FBroDoubleString> header_map, const CefString& file_path)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。 |
-| 148 | `FBroVIP_资源替换_清空替换规则` | `FBroVIP_资源替换_清空替换规则(控件名, 参数JSON)` | 长整数型 | 高级 | `FBroHsVIPResourceHandler_DeleteAllData` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPResourceHandler_DeleteAllData()。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。 |
-| 149 | `FBroVIP_资源替换_删除替换规则` | `FBroVIP_资源替换_删除替换规则(控件名, 参数JSON)` | 长整数型 | 高级 | `FBroHsVIPResourceHandler_DeleteChangeData` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPResourceHandler_DeleteChangeData(const CefString& url)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。 |
-| 150 | `FBroVIP_响应过滤_添加缓冲替换` | `FBroVIP_响应过滤_添加缓冲替换(控件名, 参数JSON)` | 长整数型 | 高级 | `FBroHsVIPResponseFilter_AddChangeData` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPResponseFilter_AddChangeData(int find_type, const CefString& url, int change_type, const CefString& key, const CefString& change_data)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。 |
-| 151 | `FBroVIP_响应过滤_清空替换规则` | `FBroVIP_响应过滤_清空替换规则(控件名, 参数JSON)` | 长整数型 | 高级 | `FBroHsVIPResponseFilter_DeleteAllData` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPResponseFilter_DeleteAllData()。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。 |
-| 152 | `FBroVIP_响应过滤_删除替换规则` | `FBroVIP_响应过滤_删除替换规则(控件名, 参数JSON)` | 长整数型 | 高级 | `FBroHsVIPResponseFilter_DeleteChangeData` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPResponseFilter_DeleteChangeData(const CefString& url)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。 |
-| 153 | `FBroVIP_UserAgent_取架构` | `FBroVIP_UserAgent_取架构(控件名, 参数JSON)` | 文本型 | 高级 | `FBroHsVIPUserAgentData_GetArchitecture` | 官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPUserAgentData_GetArchitecture(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。 |
-| 154 | `FBroVIP_UserAgent_取系统位数` | `FBroVIP_UserAgent_取系统位数(控件名, 参数JSON)` | 文本型 | 高级 | `FBroHsVIPUserAgentData_GetBitness` | 官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPUserAgentData_GetBitness(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。 |
-| 155 | `FBroVIP_UserAgent_取品牌列表` | `FBroVIP_UserAgent_取品牌列表(控件名, 参数JSON)` | 文本型 | 高级 | `FBroHsVIPUserAgentData_GetBrands` | 官方接口：DLLEXPORT CefRefPtr<FBroDoubleString> TEXPORTS FBroHsVIPUserAgentData_GetBrands(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。 |
-| 156 | `FBroVIP_UserAgent_取设备形态列表` | `FBroVIP_UserAgent_取设备形态列表(控件名, 参数JSON)` | 文本型 | 高级 | `FBroHsVIPUserAgentData_GetFormFactors` | 官方接口：DLLEXPORT CefRefPtr<FBroCefStringList> TEXPORTS FBroHsVIPUserAgentData_GetFormFactors(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。 |
-| 157 | `FBroVIP_UserAgent_取完整版本` | `FBroVIP_UserAgent_取完整版本(控件名, 参数JSON)` | 文本型 | 高级 | `FBroHsVIPUserAgentData_GetFullVersion` | 官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPUserAgentData_GetFullVersion(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。 |
-| 158 | `FBroVIP_UserAgent_取完整版本列表` | `FBroVIP_UserAgent_取完整版本列表(控件名, 参数JSON)` | 文本型 | 高级 | `FBroHsVIPUserAgentData_GetFullVersionList` | 官方接口：DLLEXPORT CefRefPtr<FBroDoubleString> TEXPORTS FBroHsVIPUserAgentData_GetFullVersionList(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。 |
-| 159 | `FBroVIP_UserAgent_取主接受语言` | `FBroVIP_UserAgent_取主接受语言(控件名, 参数JSON)` | 文本型 | 高级 | `FBroHsVIPUserAgentData_GetMainAcceptLanguage` | 官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPUserAgentData_GetMainAcceptLanguage(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。 |
-| 160 | `FBroVIP_UserAgent_取主平台` | `FBroVIP_UserAgent_取主平台(控件名, 参数JSON)` | 文本型 | 高级 | `FBroHsVIPUserAgentData_GetMainPlatform` | 官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPUserAgentData_GetMainPlatform(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。 |
-| 161 | `FBroVIP_UserAgent_取主UserAgent` | `FBroVIP_UserAgent_取主UserAgent(控件名, 参数JSON)` | 文本型 | 高级 | `FBroHsVIPUserAgentData_GetMainUserAgent` | 官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPUserAgentData_GetMainUserAgent(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。 |
-| 162 | `FBroVIP_UserAgent_取移动设备标记` | `FBroVIP_UserAgent_取移动设备标记(控件名, 参数JSON)` | 文本型 | 高级 | `FBroHsVIPUserAgentData_GetMobile` | 官方接口：DLLEXPORT BOOL TEXPORTS FBroHsVIPUserAgentData_GetMobile(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。 |
-| 163 | `FBroVIP_UserAgent_取设备型号` | `FBroVIP_UserAgent_取设备型号(控件名, 参数JSON)` | 文本型 | 高级 | `FBroHsVIPUserAgentData_GetModel` | 官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPUserAgentData_GetModel(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。 |
-| 164 | `FBroVIP_UserAgent_取平台` | `FBroVIP_UserAgent_取平台(控件名, 参数JSON)` | 文本型 | 高级 | `FBroHsVIPUserAgentData_GetPlatform` | 官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPUserAgentData_GetPlatform(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。 |
-| 165 | `FBroVIP_UserAgent_取平台版本` | `FBroVIP_UserAgent_取平台版本(控件名, 参数JSON)` | 文本型 | 高级 | `FBroHsVIPUserAgentData_GetPlatformVersion` | 官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPUserAgentData_GetPlatformVersion(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。 |
-| 166 | `FBroVIP_UserAgent_取WOW64标记` | `FBroVIP_UserAgent_取WOW64标记(控件名, 参数JSON)` | 文本型 | 高级 | `FBroHsVIPUserAgentData_GetWow64` | 官方接口：DLLEXPORT BOOL TEXPORTS FBroHsVIPUserAgentData_GetWow64(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。 |
-| 167 | `FBroVIP_UserAgent_设置架构` | `FBroVIP_UserAgent_设置架构(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPUserAgentData_SetArchitecture` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetArchitecture(CefRefPtr<FBroVIPUserAgentData> userAgentData, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.architecture 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 168 | `FBroVIP_UserAgent_设置系统位数` | `FBroVIP_UserAgent_设置系统位数(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPUserAgentData_SetBitness` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetBitness(CefRefPtr<FBroVIPUserAgentData> userAgentData, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.bitness 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 169 | `FBroVIP_UserAgent_设置品牌列表` | `FBroVIP_UserAgent_设置品牌列表(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPUserAgentData_SetBrands` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetBrands(CefRefPtr<FBroVIPUserAgentData> userAgentData, CefRefPtr<FBroDoubleString> indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.brands 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 170 | `FBroVIP_UserAgent_设置设备形态列表` | `FBroVIP_UserAgent_设置设备形态列表(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPUserAgentData_SetFormFactors` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetFormFactors(CefRefPtr<FBroVIPUserAgentData> userAgentData, CefRefPtr<FBroCefStringList> indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.formFactors 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 171 | `FBroVIP_UserAgent_设置完整版本` | `FBroVIP_UserAgent_设置完整版本(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPUserAgentData_SetFullVersion` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetFullVersion(CefRefPtr<FBroVIPUserAgentData> userAgentData, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.fullVersion 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 172 | `FBroVIP_UserAgent_设置完整版本列表` | `FBroVIP_UserAgent_设置完整版本列表(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPUserAgentData_SetFullVersionList` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetFullVersionList(CefRefPtr<FBroVIPUserAgentData> userAgentData, CefRefPtr<FBroDoubleString> indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.fullVersionList 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 173 | `FBroVIP_UserAgent_设置主接受语言` | `FBroVIP_UserAgent_设置主接受语言(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPUserAgentData_SetMainAcceptLanguage` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetMainAcceptLanguage(CefRefPtr<FBroVIPUserAgentData> userAgentData, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.mainAcceptLanguage 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 174 | `FBroVIP_UserAgent_设置主平台` | `FBroVIP_UserAgent_设置主平台(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPUserAgentData_SetMainPlatform` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetMainPlatform(CefRefPtr<FBroVIPUserAgentData> userAgentData, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.mainPlatform 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 175 | `FBroVIP_UserAgent_设置主UserAgent` | `FBroVIP_UserAgent_设置主UserAgent(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPUserAgentData_SetMainUserAgent` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetMainUserAgent(CefRefPtr<FBroVIPUserAgentData> userAgentData, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.mainUserAgent 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 176 | `FBroVIP_UserAgent_设置移动设备标记` | `FBroVIP_UserAgent_设置移动设备标记(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPUserAgentData_SetMobile` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetMobile(CefRefPtr<FBroVIPUserAgentData> userAgentData, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.mobile 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 177 | `FBroVIP_UserAgent_设置设备型号` | `FBroVIP_UserAgent_设置设备型号(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPUserAgentData_SetModel` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetModel(CefRefPtr<FBroVIPUserAgentData> userAgentData, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.model 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 178 | `FBroVIP_UserAgent_设置平台` | `FBroVIP_UserAgent_设置平台(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPUserAgentData_SetPlatform` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetPlatform(CefRefPtr<FBroVIPUserAgentData> userAgentData, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.platform 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 179 | `FBroVIP_UserAgent_设置平台版本` | `FBroVIP_UserAgent_设置平台版本(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPUserAgentData_SetPlatformVersion` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetPlatformVersion(CefRefPtr<FBroVIPUserAgentData> userAgentData, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.platformVersion 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 180 | `FBroVIP_UserAgent_设置WOW64标记` | `FBroVIP_UserAgent_设置WOW64标记(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPUserAgentData_SetWow64` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetWow64(CefRefPtr<FBroVIPUserAgentData> userAgentData, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.wow64 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
-| 181 | `FBroVIP_应用指纹JSON` | `FBroVIP_应用指纹JSON(控件名, JSON)` | 整数型 | 高级 | `LB_FBro_ApplyFingerprintJson` | 通过 UTF-16 JSON 批量应用完整直接指纹配置，覆盖浏览器、屏幕、GPU、WebRTC、时区、电池、位置、设备、Canvas/WebGL/Audio 和 User-Agent Data；不会暴露 Key。 |
-| 182 | `FBroVIP_取已应用配置JSON` | `FBroVIP_取已应用配置JSON(控件名)` | 文本型 | 高级 | `LB_FBro_GetAppliedFingerprintJson` | 取得最近一次成功应用的规范化指纹配置与 User-Agent Data JSON。 |
-| 183 | `FBroVIP_取授权信息JSON` | `FBroVIP_取授权信息JSON()` | 文本型 | 高级 | `LB_FBro_GetVipLicenseInfoJson` | 读取脱敏的 VIP 授权状态、版本、授权范围和有效期；不返回 Key。 |
-| 184 | `FBroVIP_取调用次数` | `FBroVIP_取调用次数(控件名)` | 文本型 | 高级 | `LB_FBro_GetFingerprintCallCount` | 查询 VIP 指纹调用次数。 |
-| 185 | `FBroVIP_清空调用次数` | `FBroVIP_清空调用次数(控件名)` | 整数型 | 高级 | `LB_FBro_ClearFingerprintCallCount` | 清空 VIP 指纹调用次数。 |
-| 186 | `FBroVIP_DOM异步命令` | `FBroVIP_DOM异步命令(控件名, 命令, 参数JSON)` | 长整数型 | 高级 | `LB_FBro_VipDomCommandAsync` | DOM 批量高级分发入口；单项 DOM 命令已经在 DOM 分类中分别公开。 |
-| 187 | `FBroVIP_扩展异步命令` | `FBroVIP_扩展异步命令(控件名, 命令, 参数JSON)` | 长整数型 | 高级 | `LB_FBro_VipExtensionCommandAsync` | 扩展批量高级分发入口；文件路径必须位于生成程序目录内。 |
-| 188 | `FBroVIP_资源规则异步命令` | `FBroVIP_资源规则异步命令(控件名, 命令, 参数JSON)` | 长整数型 | 高级 | `LB_FBro_VipResourceCommandAsync` | 资源与响应规则批量高级分发入口；二进制数据只接受 FBro 受管缓冲句柄。 |
-| 189 | `FBroVIP_开发者工具异步命令` | `FBroVIP_开发者工具异步命令(控件名, 命令, 参数JSON)` | 长整数型 | 高级 | `LB_FBro_VipDevToolsCommandAsync` | DevTools、Runtime 与输入批量高级分发入口；单项命令已经分别公开。 |
-| 190 | `FBroVIP_设置启动代理` | `FBroVIP_设置启动代理(地址, 用户名, 密码)` | 整数型 | 高级 | `LB_FBro_SetVipStartupProxy` | 配置 VIP 启动代理；必须在首个 FBro 运行时初始化前调用，凭据只保存在 Bridge 内存中。 |
-| 191 | `FBroVIP_实例设置新窗口转标签页` | `FBroVIP_实例设置新窗口转标签页(实例句柄, 开关)` | 整数型 | 高级 | `LB_FBro_SetPopupToTab` | 开启后（开关传 1，传 0 关闭），该实例内的新窗口（target=_blank、window.open）在 Chrome 原生UI 实例中自动转为本窗口新标签页（等价官方 C# OnBeforePopup+AddTabAt 示例），不再走"当前页加载"兜底；FBro_实例打开原生UI 弹出的窗口继承来源实例的开关，也可以直接把开关设置在弹窗句柄上。仅进程内实例有效；VIP 控制器不可用时自动回落当前页加载。 |
-| 192 | `FBroVIP_实例应用指纹JSON` | `FBroVIP_实例应用指纹JSON(实例句柄, JSON)` | 整数型 | 高级 | - | 对 FBro_后台创建 / FBro_实例打开原生UI 返回的后台实例或弹窗句柄批量应用完整直接指纹配置，JSON 契约与 FBroVIP_应用指纹JSON 完全一致；指纹设置按浏览器生效，弹窗与来源实例共用缓存目录但是两个浏览器，需要各自应用一次。实例句柄无效返回 -1，浏览器尚未就绪返回 -1（可延迟重试），VIP 授权校验失败返回 -5、VIP 控制器不可用返回 -4。 |
+| 84 | `FBroVIP_浏览器指纹_设置接受语言` | `FBroVIP_浏览器指纹_设置接受语言(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirAcceptlanguages` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirAcceptlanguages(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 acceptLanguages 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 85 | `FBroVIP_浏览器指纹_设置应用代码名` | `FBroVIP_浏览器指纹_设置应用代码名(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirAppCodeName` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirAppCodeName(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 appCodeName 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 86 | `FBroVIP_浏览器指纹_设置应用名` | `FBroVIP_浏览器指纹_设置应用名(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirAppName` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirAppName(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 appName 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 87 | `FBroVIP_浏览器指纹_设置应用版本` | `FBroVIP_浏览器指纹_设置应用版本(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirAppVersion` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirAppVersion(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 appVersion 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 88 | `FBroVIP_设备插件_设置音频输入设备` | `FBroVIP_设备插件_设置音频输入设备(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirAudioInput` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirAudioInput(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 audioInput 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 89 | `FBroVIP_设备插件_设置音频输出设备` | `FBroVIP_设备插件_设置音频输出设备(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirAudioOutput` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirAudioOutput(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 audioOutput 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 90 | `FBroVIP_电池_设置电池充电状态` | `FBroVIP_电池_设置电池充电状态(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirBatteryManagerCharging` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirBatteryManagerCharging(CefRefPtr<FBroVIPControl> vipcontrol, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 battery.charging 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 91 | `FBroVIP_电池_设置电池充电时间` | `FBroVIP_电池_设置电池充电时间(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirBatteryManagerChargingTime` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirBatteryManagerChargingTime(CefRefPtr<FBroVIPControl> vipcontrol, double indata)。这是独立的安全指纹命令；参数JSON为路径 battery.chargingTime 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 92 | `FBroVIP_电池_设置电池放电时间` | `FBroVIP_电池_设置电池放电时间(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirBatteryManagerDischargingTime` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirBatteryManagerDischargingTime(CefRefPtr<FBroVIPControl> vipcontrol, double indata)。这是独立的安全指纹命令；参数JSON为路径 battery.dischargingTime 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 93 | `FBroVIP_电池_设置电池电量` | `FBroVIP_电池_设置电池电量(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirBatteryManagerLevel` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirBatteryManagerLevel(CefRefPtr<FBroVIPControl> vipcontrol, double indata)。这是独立的安全指纹命令；参数JSON为路径 battery.level 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 94 | `FBroVIP_Canvas字体音频指纹_设置Canvas字体指纹` | `FBroVIP_Canvas字体音频指纹_设置Canvas字体指纹(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirCanvas2DFontFingerprint` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirCanvas2DFontFingerprint(CefRefPtr<FBroVIPControl> vipcontrol, double indata)。这是独立的安全指纹命令；参数JSON为路径 canvas2dFontFingerprint 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 95 | `FBroVIP_浏览器指纹_设置Cookie启用状态` | `FBroVIP_浏览器指纹_设置Cookie启用状态(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirCookieEnabled` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirCookieEnabled(CefRefPtr<FBroVIPControl> vipcontrol, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 cookieEnabled 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 96 | `FBroVIP_Canvas字体音频指纹_设置CSS字体指纹` | `FBroVIP_Canvas字体音频指纹_设置CSS字体指纹(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirCSSFontFingerprint` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirCSSFontFingerprint(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata, int x, int y)。这是独立的安全指纹命令；参数JSON为路径 cssFontFingerprint 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 97 | `FBroVIP_浏览器指纹_设置设备内存` | `FBroVIP_浏览器指纹_设置设备内存(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirDeviceMemory` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirDeviceMemory(CefRefPtr<FBroVIPControl> vipcontrol, int indata)。这是独立的安全指纹命令；参数JSON为路径 deviceMemory 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 98 | `FBroVIP_屏幕视口_设置设备像素比` | `FBroVIP_屏幕视口_设置设备像素比(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirDevicePixelRatio` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirDevicePixelRatio(CefRefPtr<FBroVIPControl> vipcontrol, double indata)。这是独立的安全指纹命令；参数JSON为路径 devicePixelRatio 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 99 | `FBroVIP_GPUWebGL_设置GPU架构` | `FBroVIP_GPUWebGL_设置GPU架构(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirGPUArchitecture` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirGPUArchitecture(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 gpuArchitecture 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 100 | `FBroVIP_GPUWebGL_设置GPU描述` | `FBroVIP_GPUWebGL_设置GPU描述(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirGPUDescription` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirGPUDescription(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 gpuDescription 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 101 | `FBroVIP_GPUWebGL_设置GPU设备` | `FBroVIP_GPUWebGL_设置GPU设备(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirGPUDevice` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirGPUDevice(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 gpuDevice 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 102 | `FBroVIP_GPUWebGL_设置GPU限制` | `FBroVIP_GPUWebGL_设置GPU限制(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirGPULimits` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirGPULimits(CefRefPtr<FBroVIPControl> vipcontrol, int type, int64_t indata)。这是独立的安全指纹命令；参数JSON为路径 gpuLimits 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 103 | `FBroVIP_GPUWebGL_设置GPU子组最大值` | `FBroVIP_GPUWebGL_设置GPU子组最大值(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirGPUSubgroupMaxSize` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirGPUSubgroupMaxSize(CefRefPtr<FBroVIPControl> vipcontrol, unsigned indata)。这是独立的安全指纹命令；参数JSON为路径 gpuSubgroupMaxSize 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 104 | `FBroVIP_GPUWebGL_设置GPU子组最小值` | `FBroVIP_GPUWebGL_设置GPU子组最小值(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirGPUSubgroupMinSize` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirGPUSubgroupMinSize(CefRefPtr<FBroVIPControl> vipcontrol, unsigned indata)。这是独立的安全指纹命令；参数JSON为路径 gpuSubgroupMinSize 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 105 | `FBroVIP_GPUWebGL_设置GPU厂商` | `FBroVIP_GPUWebGL_设置GPU厂商(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirGPUVendor` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirGPUVendor(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 gpuVendor 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 106 | `FBroVIP_浏览器指纹_设置硬件并发数` | `FBroVIP_浏览器指纹_设置硬件并发数(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirHardwareConcurrency` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirHardwareConcurrency(CefRefPtr<FBroVIPControl> vipcontrol, int indata)。这是独立的安全指纹命令；参数JSON为路径 hardwareConcurrency 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 107 | `FBroVIP_内核反检测_设置可信事件标记` | `FBroVIP_内核反检测_设置可信事件标记(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirisTrusted` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirisTrusted(CefRefPtr<FBroVIPControl> vipcontrol, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 isTrusted 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 108 | `FBroVIP_浏览器指纹_设置Java启用状态` | `FBroVIP_浏览器指纹_设置Java启用状态(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirJavaEnabled` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirJavaEnabled(CefRefPtr<FBroVIPControl> vipcontrol, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 javaEnabled 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 109 | `FBroVIP_内核反检测_设置浏览器内核` | `FBroVIP_内核反检测_设置浏览器内核(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirKernel` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirKernel(CefRefPtr<FBroVIPControl> vipcontrol, int kernel)。这是独立的安全指纹命令；参数JSON为路径 kernel 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 110 | `FBroVIP_浏览器指纹_设置语言列表` | `FBroVIP_浏览器指纹_设置语言列表(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirLanguages` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirLanguages(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 languages 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 111 | `FBroVIP_位置时区_设置地理位置` | `FBroVIP_位置时区_设置地理位置(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirLongitudeAndLatitude` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirLongitudeAndLatitude(CefRefPtr<FBroVIPControl> vipcontrol, double longitude, double latitude, double altitude, double accuracy, double altitude_accuracy, double heading, double speed)。这是独立的安全指纹命令；参数JSON为路径 geolocation 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 112 | `FBroVIP_浏览器指纹_设置在线状态` | `FBroVIP_浏览器指纹_设置在线状态(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirOnLine` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirOnLine(CefRefPtr<FBroVIPControl> vipcontrol, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 online 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 113 | `FBroVIP_屏幕视口_设置屏幕方向` | `FBroVIP_屏幕视口_设置屏幕方向(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirOrientation` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirOrientation(CefRefPtr<FBroVIPControl> vipcontrol, int orientation, int orientation_type)。这是独立的安全指纹命令；参数JSON为路径 orientation 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 114 | `FBroVIP_浏览器指纹_设置平台` | `FBroVIP_浏览器指纹_设置平台(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirPlatform` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirPlatform(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 platform 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 115 | `FBroVIP_浏览器指纹_设置产品名` | `FBroVIP_浏览器指纹_设置产品名(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirProduct` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirProduct(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 product 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 116 | `FBroVIP_浏览器指纹_设置产品子版本` | `FBroVIP_浏览器指纹_设置产品子版本(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirProductSub` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirProductSub(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 productSub 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 117 | `FBroVIP_Canvas字体音频指纹_设置矩形指纹` | `FBroVIP_Canvas字体音频指纹_设置矩形指纹(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirRectFingerprint` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirRectFingerprint(CefRefPtr<FBroVIPControl> vipcontrol, int x, int y, int w, int h)。这是独立的安全指纹命令；参数JSON为路径 rectFingerprint 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 118 | `FBroVIP_屏幕视口_设置可用屏幕高度与宽度` | `FBroVIP_屏幕视口_设置可用屏幕高度与宽度(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirScreenavailHeightAndWidth` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirScreenavailHeightAndWidth(CefRefPtr<FBroVIPControl> vipcontrol, int H, int W)。这是独立的安全指纹命令；参数JSON为该接口对应的完整指纹配置补丁，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 119 | `FBroVIP_屏幕视口_设置屏幕颜色深度` | `FBroVIP_屏幕视口_设置屏幕颜色深度(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirScreencolorDepth` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirScreencolorDepth(CefRefPtr<FBroVIPControl> vipcontrol, int indata)。这是独立的安全指纹命令；参数JSON为路径 screenColorDepth 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 120 | `FBroVIP_屏幕视口_设置屏幕高度与宽度` | `FBroVIP_屏幕视口_设置屏幕高度与宽度(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirScreenHeightAndWidth` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirScreenHeightAndWidth(CefRefPtr<FBroVIPControl> vipcontrol, int H, int W)。这是独立的安全指纹命令；参数JSON为该接口对应的完整指纹配置补丁，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 121 | `FBroVIP_屏幕视口_设置屏幕像素深度` | `FBroVIP_屏幕视口_设置屏幕像素深度(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirScreenpixelDepth` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirScreenpixelDepth(CefRefPtr<FBroVIPControl> vipcontrol, int indata)。这是独立的安全指纹命令；参数JSON为路径 screenPixelDepth 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 122 | `FBroVIP_屏幕视口_设置屏幕坐标` | `FBroVIP_屏幕视口_设置屏幕坐标(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirScreenXAndY` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirScreenXAndY(CefRefPtr<FBroVIPControl> vipcontrol, int X, int Y)。这是独立的安全指纹命令；参数JSON为该接口对应的完整指纹配置补丁，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 123 | `FBroVIP_设备插件_设置语音合成声音` | `FBroVIP_设备插件_设置语音合成声音(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirSpeechSynthesisVoices` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirSpeechSynthesisVoices(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 speechSynthesisVoices 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 124 | `FBroVIP_位置时区_设置时区` | `FBroVIP_位置时区_设置时区(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirTimeZone` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirTimeZone(CefRefPtr<FBroVIPControl> vipcontrol, int timezonehour, int timezonemin, const CefString& timezonename, const CefString& standardtimezonename)。这是独立的安全指纹命令；参数JSON为路径 timeZone 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 125 | `FBroVIP_UserAgentData_设置UserAgentData` | `FBroVIP_UserAgentData_设置UserAgentData(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirUserAgent` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirUserAgent(CefRefPtr<FBroVIPControl> vipcontrol, CefRefPtr<FBroVIPUserAgentData> userAgentData)。这是独立的安全指纹命令；参数JSON为路径 userAgent 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 126 | `FBroVIP_浏览器指纹_设置厂商` | `FBroVIP_浏览器指纹_设置厂商(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirVendor` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirVendor(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 vendor 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 127 | `FBroVIP_浏览器指纹_设置厂商子版本` | `FBroVIP_浏览器指纹_设置厂商子版本(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirVendorSub` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirVendorSub(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 vendorSub 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 128 | `FBroVIP_设备插件_设置视频输入设备` | `FBroVIP_设备插件_设置视频输入设备(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirVideoInput` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirVideoInput(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 videoInput 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 129 | `FBroVIP_屏幕视口_设置视口` | `FBroVIP_屏幕视口_设置视口(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirViewport` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirViewport(CefRefPtr<FBroVIPControl> vipcontrol, int x, int y, int w, int h)。这是独立的安全指纹命令；参数JSON为路径 viewport 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 130 | `FBroVIP_浏览器指纹_设置WebDriver标记` | `FBroVIP_浏览器指纹_设置WebDriver标记(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirWebdriver` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirWebdriver(CefRefPtr<FBroVIPControl> vipcontrol, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 webdriver 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 131 | `FBroVIP_GPUWebGL_设置WebGL渲染器` | `FBroVIP_GPUWebGL_设置WebGL渲染器(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirWebglrenderer` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirWebglrenderer(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 webglRenderer 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 132 | `FBroVIP_GPUWebGL_设置WebGL厂商` | `FBroVIP_GPUWebGL_设置WebGL厂商(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirWebglvendor` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirWebglvendor(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 webglVendor 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 133 | `FBroVIP_网络代理_设置WebRTC地址` | `FBroVIP_网络代理_设置WebRTC地址(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetVirWebrtcIP` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirWebrtcIP(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& publicip, const CefString& localip, const CefString& host,BOOL disable)。这是独立的安全指纹命令；参数JSON为路径 webrtc 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 134 | `FBroVIP_内核反检测_设置Web功能内核` | `FBroVIP_内核反检测_设置Web功能内核(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetWebFeatureKernel` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetWebFeatureKernel(CefRefPtr<FBroVIPControl> vipcontrol, int kernel)。这是独立的安全指纹命令；参数JSON为路径 webFeatureKernel 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 135 | `FBroVIP_GPUWebGL_设置WebGL固定指纹` | `FBroVIP_GPUWebGL_设置WebGL固定指纹(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetWebGLFingerPrint_constant` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetWebGLFingerPrint_constant(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 fingerprints.webgl.constant 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 136 | `FBroVIP_GPUWebGL_设置WebGL随机指纹` | `FBroVIP_GPUWebGL_设置WebGL随机指纹(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPControl_SetWebGLFingerPrint_random` | 官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPControl_SetWebGLFingerPrint_random(CefRefPtr<FBroVIPControl> vipcontrol, int minipoint, int maxpoint, int srand)。这是独立的安全指纹命令；参数JSON为路径 fingerprints.webgl 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 137 | `FBroVIP_网络代理_设置全局S5代理认证` | `FBroVIP_网络代理_设置全局S5代理认证(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPGlobal_SetS5Auth` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPGlobal_SetS5Auth(const CefString& username, const CefString& password, BOOL closeMsg)。这是独立的安全指纹命令；参数JSON为路径 s5Auth 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 138 | `FBroVIP_浏览器扩展_启用扩展增强` | `FBroVIP_浏览器扩展_启用扩展增强(控件名, 参数JSON)` | 长整数型 | 高级 | `FBroHsVIPRequestContext_EnableExtensionPlus` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPRequestContext_EnableExtensionPlus()。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。 |
+| 139 | `FBroVIP_浏览器扩展_取扩展名称` | `FBroVIP_浏览器扩展_取扩展名称(控件名, 参数JSON)` | 长整数型 | 高级 | `FBroHsVIPRequestContext_GetExtensionName` | 官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPRequestContext_GetExtensionName(CefRefPtr<CefRequestContext> requestContext, const CefString& extensionID)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。 |
+| 140 | `FBroVIP_浏览器扩展_取扩展路径` | `FBroVIP_浏览器扩展_取扩展路径(控件名, 参数JSON)` | 长整数型 | 高级 | `FBroHsVIPRequestContext_GetExtensionPath` | 官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPRequestContext_GetExtensionPath(CefRefPtr<CefRequestContext> requestContext, const CefString& extensionID)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。 |
+| 141 | `FBroVIP_浏览器扩展_取扩展地址` | `FBroVIP_浏览器扩展_取扩展地址(控件名, 参数JSON)` | 长整数型 | 高级 | `FBroHsVIPRequestContext_GetExtensionURL` | 官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPRequestContext_GetExtensionURL(CefRefPtr<CefRequestContext> requestContext, const CefString& extensionID)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。 |
+| 142 | `FBroVIP_浏览器扩展_安装CRX` | `FBroVIP_浏览器扩展_安装CRX(控件名, 参数JSON)` | 长整数型 | 高级 | `FBroHsVIPRequestContext_InstallCrx` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPRequestContext_InstallCrx(CefRefPtr<CefRequestContext> requestContext, const CefString& filePath)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。 |
+| 143 | `FBroVIP_浏览器扩展_加载扩展目录` | `FBroVIP_浏览器扩展_加载扩展目录(控件名, 参数JSON)` | 长整数型 | 高级 | `FBroHsVIPRequestContext_LoadExtension` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPRequestContext_LoadExtension(CefRefPtr<CefRequestContext> requestContext, const CefString& path)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。 |
+| 144 | `FBroVIP_浏览器扩展_卸载扩展` | `FBroVIP_浏览器扩展_卸载扩展(控件名, 参数JSON)` | 长整数型 | 高级 | `FBroHsVIPRequestContext_UnstallExtension` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPRequestContext_UnstallExtension(CefRefPtr<CefRequestContext> requestContext, const CefString& extensionID)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。 |
+| 145 | `FBroVIP_资源替换_添加缓冲替换` | `FBroVIP_资源替换_添加缓冲替换(控件名, 参数JSON)` | 长整数型 | 高级 | `FBroHsVIPResourceHandler_AddChangeData` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPResourceHandler_AddChangeData(int find_type, const CefString& url, const CefString& mini_type, CefRefPtr<FBroDoubleString> header_map, void* change_data, size_t data_size)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。 |
+| 146 | `FBroVIP_资源替换_添加文件替换` | `FBroVIP_资源替换_添加文件替换(控件名, 参数JSON)` | 长整数型 | 高级 | `FBroHsVIPResourceHandler_AddChangeFile` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPResourceHandler_AddChangeFile(int find_type, const CefString& url, const CefString& mini_type, CefRefPtr<FBroDoubleString> header_map, const CefString& file_path)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。 |
+| 147 | `FBroVIP_资源替换_清空替换规则` | `FBroVIP_资源替换_清空替换规则(控件名, 参数JSON)` | 长整数型 | 高级 | `FBroHsVIPResourceHandler_DeleteAllData` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPResourceHandler_DeleteAllData()。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。 |
+| 148 | `FBroVIP_资源替换_删除替换规则` | `FBroVIP_资源替换_删除替换规则(控件名, 参数JSON)` | 长整数型 | 高级 | `FBroHsVIPResourceHandler_DeleteChangeData` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPResourceHandler_DeleteChangeData(const CefString& url)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。 |
+| 149 | `FBroVIP_响应过滤_添加缓冲替换` | `FBroVIP_响应过滤_添加缓冲替换(控件名, 参数JSON)` | 长整数型 | 高级 | `FBroHsVIPResponseFilter_AddChangeData` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPResponseFilter_AddChangeData(int find_type, const CefString& url, int change_type, const CefString& key, const CefString& change_data)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。 |
+| 150 | `FBroVIP_响应过滤_清空替换规则` | `FBroVIP_响应过滤_清空替换规则(控件名, 参数JSON)` | 长整数型 | 高级 | `FBroHsVIPResponseFilter_DeleteAllData` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPResponseFilter_DeleteAllData()。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。 |
+| 151 | `FBroVIP_响应过滤_删除替换规则` | `FBroVIP_响应过滤_删除替换规则(控件名, 参数JSON)` | 长整数型 | 高级 | `FBroHsVIPResponseFilter_DeleteChangeData` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPResponseFilter_DeleteChangeData(const CefString& url)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。 |
+| 152 | `FBroVIP_UserAgent_取架构` | `FBroVIP_UserAgent_取架构(控件名, 参数JSON)` | 文本型 | 高级 | `FBroHsVIPUserAgentData_GetArchitecture` | 官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPUserAgentData_GetArchitecture(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。 |
+| 153 | `FBroVIP_UserAgent_取系统位数` | `FBroVIP_UserAgent_取系统位数(控件名, 参数JSON)` | 文本型 | 高级 | `FBroHsVIPUserAgentData_GetBitness` | 官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPUserAgentData_GetBitness(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。 |
+| 154 | `FBroVIP_UserAgent_取品牌列表` | `FBroVIP_UserAgent_取品牌列表(控件名, 参数JSON)` | 文本型 | 高级 | `FBroHsVIPUserAgentData_GetBrands` | 官方接口：DLLEXPORT CefRefPtr<FBroDoubleString> TEXPORTS FBroHsVIPUserAgentData_GetBrands(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。 |
+| 155 | `FBroVIP_UserAgent_取设备形态列表` | `FBroVIP_UserAgent_取设备形态列表(控件名, 参数JSON)` | 文本型 | 高级 | `FBroHsVIPUserAgentData_GetFormFactors` | 官方接口：DLLEXPORT CefRefPtr<FBroCefStringList> TEXPORTS FBroHsVIPUserAgentData_GetFormFactors(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。 |
+| 156 | `FBroVIP_UserAgent_取完整版本` | `FBroVIP_UserAgent_取完整版本(控件名, 参数JSON)` | 文本型 | 高级 | `FBroHsVIPUserAgentData_GetFullVersion` | 官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPUserAgentData_GetFullVersion(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。 |
+| 157 | `FBroVIP_UserAgent_取完整版本列表` | `FBroVIP_UserAgent_取完整版本列表(控件名, 参数JSON)` | 文本型 | 高级 | `FBroHsVIPUserAgentData_GetFullVersionList` | 官方接口：DLLEXPORT CefRefPtr<FBroDoubleString> TEXPORTS FBroHsVIPUserAgentData_GetFullVersionList(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。 |
+| 158 | `FBroVIP_UserAgent_取主接受语言` | `FBroVIP_UserAgent_取主接受语言(控件名, 参数JSON)` | 文本型 | 高级 | `FBroHsVIPUserAgentData_GetMainAcceptLanguage` | 官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPUserAgentData_GetMainAcceptLanguage(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。 |
+| 159 | `FBroVIP_UserAgent_取主平台` | `FBroVIP_UserAgent_取主平台(控件名, 参数JSON)` | 文本型 | 高级 | `FBroHsVIPUserAgentData_GetMainPlatform` | 官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPUserAgentData_GetMainPlatform(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。 |
+| 160 | `FBroVIP_UserAgent_取主UserAgent` | `FBroVIP_UserAgent_取主UserAgent(控件名, 参数JSON)` | 文本型 | 高级 | `FBroHsVIPUserAgentData_GetMainUserAgent` | 官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPUserAgentData_GetMainUserAgent(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。 |
+| 161 | `FBroVIP_UserAgent_取移动设备标记` | `FBroVIP_UserAgent_取移动设备标记(控件名, 参数JSON)` | 文本型 | 高级 | `FBroHsVIPUserAgentData_GetMobile` | 官方接口：DLLEXPORT BOOL TEXPORTS FBroHsVIPUserAgentData_GetMobile(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。 |
+| 162 | `FBroVIP_UserAgent_取设备型号` | `FBroVIP_UserAgent_取设备型号(控件名, 参数JSON)` | 文本型 | 高级 | `FBroHsVIPUserAgentData_GetModel` | 官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPUserAgentData_GetModel(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。 |
+| 163 | `FBroVIP_UserAgent_取平台` | `FBroVIP_UserAgent_取平台(控件名, 参数JSON)` | 文本型 | 高级 | `FBroHsVIPUserAgentData_GetPlatform` | 官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPUserAgentData_GetPlatform(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。 |
+| 164 | `FBroVIP_UserAgent_取平台版本` | `FBroVIP_UserAgent_取平台版本(控件名, 参数JSON)` | 文本型 | 高级 | `FBroHsVIPUserAgentData_GetPlatformVersion` | 官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPUserAgentData_GetPlatformVersion(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。 |
+| 165 | `FBroVIP_UserAgent_取WOW64标记` | `FBroVIP_UserAgent_取WOW64标记(控件名, 参数JSON)` | 文本型 | 高级 | `FBroHsVIPUserAgentData_GetWow64` | 官方接口：DLLEXPORT BOOL TEXPORTS FBroHsVIPUserAgentData_GetWow64(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。 |
+| 166 | `FBroVIP_UserAgent_设置架构` | `FBroVIP_UserAgent_设置架构(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPUserAgentData_SetArchitecture` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetArchitecture(CefRefPtr<FBroVIPUserAgentData> userAgentData, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.architecture 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 167 | `FBroVIP_UserAgent_设置系统位数` | `FBroVIP_UserAgent_设置系统位数(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPUserAgentData_SetBitness` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetBitness(CefRefPtr<FBroVIPUserAgentData> userAgentData, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.bitness 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 168 | `FBroVIP_UserAgent_设置品牌列表` | `FBroVIP_UserAgent_设置品牌列表(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPUserAgentData_SetBrands` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetBrands(CefRefPtr<FBroVIPUserAgentData> userAgentData, CefRefPtr<FBroDoubleString> indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.brands 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 169 | `FBroVIP_UserAgent_设置设备形态列表` | `FBroVIP_UserAgent_设置设备形态列表(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPUserAgentData_SetFormFactors` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetFormFactors(CefRefPtr<FBroVIPUserAgentData> userAgentData, CefRefPtr<FBroCefStringList> indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.formFactors 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 170 | `FBroVIP_UserAgent_设置完整版本` | `FBroVIP_UserAgent_设置完整版本(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPUserAgentData_SetFullVersion` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetFullVersion(CefRefPtr<FBroVIPUserAgentData> userAgentData, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.fullVersion 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 171 | `FBroVIP_UserAgent_设置完整版本列表` | `FBroVIP_UserAgent_设置完整版本列表(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPUserAgentData_SetFullVersionList` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetFullVersionList(CefRefPtr<FBroVIPUserAgentData> userAgentData, CefRefPtr<FBroDoubleString> indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.fullVersionList 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 172 | `FBroVIP_UserAgent_设置主接受语言` | `FBroVIP_UserAgent_设置主接受语言(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPUserAgentData_SetMainAcceptLanguage` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetMainAcceptLanguage(CefRefPtr<FBroVIPUserAgentData> userAgentData, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.mainAcceptLanguage 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 173 | `FBroVIP_UserAgent_设置主平台` | `FBroVIP_UserAgent_设置主平台(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPUserAgentData_SetMainPlatform` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetMainPlatform(CefRefPtr<FBroVIPUserAgentData> userAgentData, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.mainPlatform 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 174 | `FBroVIP_UserAgent_设置主UserAgent` | `FBroVIP_UserAgent_设置主UserAgent(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPUserAgentData_SetMainUserAgent` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetMainUserAgent(CefRefPtr<FBroVIPUserAgentData> userAgentData, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.mainUserAgent 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 175 | `FBroVIP_UserAgent_设置移动设备标记` | `FBroVIP_UserAgent_设置移动设备标记(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPUserAgentData_SetMobile` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetMobile(CefRefPtr<FBroVIPUserAgentData> userAgentData, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.mobile 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 176 | `FBroVIP_UserAgent_设置设备型号` | `FBroVIP_UserAgent_设置设备型号(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPUserAgentData_SetModel` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetModel(CefRefPtr<FBroVIPUserAgentData> userAgentData, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.model 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 177 | `FBroVIP_UserAgent_设置平台` | `FBroVIP_UserAgent_设置平台(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPUserAgentData_SetPlatform` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetPlatform(CefRefPtr<FBroVIPUserAgentData> userAgentData, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.platform 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 178 | `FBroVIP_UserAgent_设置平台版本` | `FBroVIP_UserAgent_设置平台版本(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPUserAgentData_SetPlatformVersion` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetPlatformVersion(CefRefPtr<FBroVIPUserAgentData> userAgentData, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.platformVersion 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 179 | `FBroVIP_UserAgent_设置WOW64标记` | `FBroVIP_UserAgent_设置WOW64标记(控件名, 参数JSON)` | 整数型 | 高级 | `FBroHsVIPUserAgentData_SetWow64` | 官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetWow64(CefRefPtr<FBroVIPUserAgentData> userAgentData, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.wow64 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。 |
+| 180 | `FBroVIP_应用指纹JSON` | `FBroVIP_应用指纹JSON(控件名, JSON)` | 整数型 | 高级 | `LB_FBro_ApplyFingerprintJson` | 通过 UTF-16 JSON 批量应用完整直接指纹配置，覆盖浏览器、屏幕、GPU、WebRTC、时区、电池、位置、设备、Canvas/WebGL/Audio 和 User-Agent Data；不会暴露 Key。 |
+| 181 | `FBroVIP_取已应用配置JSON` | `FBroVIP_取已应用配置JSON(控件名)` | 文本型 | 高级 | `LB_FBro_GetAppliedFingerprintJson` | 取得最近一次成功应用的规范化指纹配置与 User-Agent Data JSON。 |
+| 182 | `FBroVIP_取授权信息JSON` | `FBroVIP_取授权信息JSON()` | 文本型 | 高级 | `LB_FBro_GetVipLicenseInfoJson` | 读取脱敏的 VIP 授权状态、版本、授权范围和有效期；不返回 Key。 |
+| 183 | `FBroVIP_取调用次数` | `FBroVIP_取调用次数(控件名)` | 文本型 | 高级 | `LB_FBro_GetFingerprintCallCount` | 查询 VIP 指纹调用次数。 |
+| 184 | `FBroVIP_清空调用次数` | `FBroVIP_清空调用次数(控件名)` | 整数型 | 高级 | `LB_FBro_ClearFingerprintCallCount` | 清空 VIP 指纹调用次数。 |
+| 185 | `FBroVIP_DOM异步命令` | `FBroVIP_DOM异步命令(控件名, 命令, 参数JSON)` | 长整数型 | 高级 | `LB_FBro_VipDomCommandAsync` | DOM 批量高级分发入口；单项 DOM 命令已经在 DOM 分类中分别公开。 |
+| 186 | `FBroVIP_扩展异步命令` | `FBroVIP_扩展异步命令(控件名, 命令, 参数JSON)` | 长整数型 | 高级 | `LB_FBro_VipExtensionCommandAsync` | 扩展批量高级分发入口；文件路径必须位于生成程序目录内。 |
+| 187 | `FBroVIP_资源规则异步命令` | `FBroVIP_资源规则异步命令(控件名, 命令, 参数JSON)` | 长整数型 | 高级 | `LB_FBro_VipResourceCommandAsync` | 资源与响应规则批量高级分发入口；二进制数据只接受 FBro 受管缓冲句柄。 |
+| 188 | `FBroVIP_开发者工具异步命令` | `FBroVIP_开发者工具异步命令(控件名, 命令, 参数JSON)` | 长整数型 | 高级 | `LB_FBro_VipDevToolsCommandAsync` | DevTools、Runtime 与输入批量高级分发入口；单项命令已经分别公开。 |
+| 189 | `FBroVIP_设置启动代理` | `FBroVIP_设置启动代理(地址, 用户名, 密码)` | 整数型 | 高级 | `LB_FBro_SetVipStartupProxy` | 配置 VIP 启动代理；必须在首个 FBro 运行时初始化前调用，凭据只保存在 Bridge 内存中。 |
+| 190 | `FBroVIP_实例设置新窗口转标签页` | `FBroVIP_实例设置新窗口转标签页(实例句柄, 开关)` | 整数型 | 常用 | `LB_FBro_SetPopupToTab` | 开启后（开关传 1，传 0 关闭），该实例内的新窗口（target=_blank、window.open）在 Chrome 原生UI 实例中自动转为本窗口新标签页（等价官方 C# OnBeforePopup+AddTabAt 示例），不再走"当前页加载"兜底；FBro_实例打开原生UI 弹出的窗口继承来源实例的开关，也可以直接把开关设置在弹窗句柄上。仅进程内实例有效；VIP 控制器不可用时自动回落当前页加载。 |
+| 191 | `FBroVIP_实例应用指纹JSON` | `FBroVIP_实例应用指纹JSON(实例句柄, JSON)` | 整数型 | 常用 | - | 对 FBro_后台创建 / FBro_实例打开原生UI 返回的后台实例或弹窗句柄批量应用完整直接指纹配置，JSON 契约与 FBroVIP_应用指纹JSON 完全一致；指纹设置按浏览器生效，弹窗与来源实例共用缓存目录但是两个浏览器，需要各自应用一次。实例句柄无效返回 -1，浏览器尚未就绪返回 -1（可延迟重试），VIP 授权校验失败返回 -5、VIP 控制器不可用返回 -4。 |
 
 ## 运行、授权与兼容边界
 
