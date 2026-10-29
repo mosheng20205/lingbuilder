@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-24T03:43:55.726Z",
+  "generatedAt": "2026-10-29T04:37:06.744Z",
   "module": {
     "id": "lingbuilder.new_emoji.ui",
     "name": "new_emoji 原生界面库",
-    "version": "2.0.0",
+    "version": "2.1.0",
     "description": "集成 new_emoji Windows 原生 Direct2D/DirectWrite UI DLL，提供中文/emoji 友好的原生控件能力。"
   },
   "commandCount": 4025,

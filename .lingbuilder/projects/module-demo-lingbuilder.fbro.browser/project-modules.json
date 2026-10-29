@@ -8,6 +8,6 @@
   "pinnedVersions": {
     "lingbuilder.win32.basic": "1.1.0",
     "lingbuilder.win32.common-controls": "1.0.0",
-    "lingbuilder.fbro.browser": "2.12.0"
+    "lingbuilder.fbro.browser": "2.13.0"
   }
 }

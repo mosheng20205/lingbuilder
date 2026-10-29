@@ -14,7 +14,7 @@
       "background": "#0F172A",
       "titleBarBackground": "#111827",
       "titleBarForeground": "#F8FAFC",
-      "description": "逐条覆盖 142 条模块命令。",
+      "description": "逐条覆盖 145 条模块命令。",
       "designerBackend": "win32",
       "openPlacement": "center",
       "resizable": true,
@@ -151,7 +151,7 @@
           "name": "命令分组选项卡"
         },
         {
-          "content": "命令 1–18：FBro_创建 至 FBro_发送鼠标移动事件",
+          "content": "命令 1–19：FBro_创建 至 FBro_发送鼠标滚轮事件",
           "x": 58,
           "y": 174,
           "width": 980,
@@ -173,7 +173,7 @@
           "containerSlot": "group-01"
         },
         {
-          "content": "本页覆盖 18 条命令。完整签名、功能、参数、返回值和调用位于 MainWindow.lcpp 与模块命令清单.json。",
+          "content": "本页覆盖 19 条命令。完整签名、功能、参数、返回值和调用位于 MainWindow.lcpp 与模块命令清单.json。",
           "x": 58,
           "y": 274,
           "width": 980,
@@ -220,7 +220,7 @@
           }
         },
         {
-          "content": "命令 19–36：FBro_发送鼠标滚轮事件 至 FBro_执行JS",
+          "content": "命令 20–38：FBro_发送按键事件 至 FBro_取地址",
           "x": 58,
           "y": 174,
           "width": 980,
@@ -242,7 +242,7 @@
           "containerSlot": "group-02"
         },
         {
-          "content": "本页覆盖 18 条命令。完整签名、功能、参数、返回值和调用位于 MainWindow.lcpp 与模块命令清单.json。",
+          "content": "本页覆盖 19 条命令。完整签名、功能、参数、返回值和调用位于 MainWindow.lcpp 与模块命令清单.json。",
           "x": 58,
           "y": 274,
           "width": 980,
@@ -289,7 +289,7 @@
           }
         },
         {
-          "content": "命令 37–54：FBro_取标题 至 FBro_取最近错误",
+          "content": "命令 39–57：FBro_设置代理 至 FBro_取调试端口",
           "x": 58,
           "y": 174,
           "width": 980,
@@ -311,7 +311,7 @@
           "containerSlot": "group-03"
         },
         {
-          "content": "本页覆盖 18 条命令。完整签名、功能、参数、返回值和调用位于 MainWindow.lcpp 与模块命令清单.json。",
+          "content": "本页覆盖 19 条命令。完整签名、功能、参数、返回值和调用位于 MainWindow.lcpp 与模块命令清单.json。",
           "x": 58,
           "y": 274,
           "width": 980,
@@ -358,7 +358,7 @@
           }
         },
         {
-          "content": "命令 55–72：FBro_取进程状态 至 FBro_是否存活",
+          "content": "命令 58–76：FBro_重启进程 至 FBro_取附加信息JSON",
           "x": 58,
           "y": 174,
           "width": 980,
@@ -380,7 +380,7 @@
           "containerSlot": "group-04"
         },
         {
-          "content": "本页覆盖 18 条命令。完整签名、功能、参数、返回值和调用位于 MainWindow.lcpp 与模块命令清单.json。",
+          "content": "本页覆盖 19 条命令。完整签名、功能、参数、返回值和调用位于 MainWindow.lcpp 与模块命令清单.json。",
           "x": 58,
           "y": 274,
           "width": 980,
@@ -427,7 +427,7 @@
           }
         },
         {
-          "content": "命令 73–90：FBro_显示开发者工具窗口 至 FBro_实例取事件数据",
+          "content": "命令 77–95：FBro_后台创建 至 浏览器管理器_新增实例",
           "x": 58,
           "y": 174,
           "width": 980,
@@ -449,7 +449,7 @@
           "containerSlot": "group-05"
         },
         {
-          "content": "本页覆盖 18 条命令。完整签名、功能、参数、返回值和调用位于 MainWindow.lcpp 与模块命令清单.json。",
+          "content": "本页覆盖 19 条命令。完整签名、功能、参数、返回值和调用位于 MainWindow.lcpp 与模块命令清单.json。",
           "x": 58,
           "y": 274,
           "width": 980,
@@ -496,7 +496,7 @@
           }
         },
         {
-          "content": "命令 91–108：FBro_启用JS扩展 至 浏览器管理器_导出Cookie",
+          "content": "命令 96–114：浏览器管理器_切换索引 至 浏览器管理器_取当前插件错误",
           "x": 58,
           "y": 174,
           "width": 980,
@@ -518,7 +518,7 @@
           "containerSlot": "group-06"
         },
         {
-          "content": "本页覆盖 18 条命令。完整签名、功能、参数、返回值和调用位于 MainWindow.lcpp 与模块命令清单.json。",
+          "content": "本页覆盖 19 条命令。完整签名、功能、参数、返回值和调用位于 MainWindow.lcpp 与模块命令清单.json。",
           "x": 58,
           "y": 274,
           "width": 980,
@@ -565,7 +565,7 @@
           }
         },
         {
-          "content": "命令 109–126：浏览器管理器_导入Cookie 至 浏览器管理器_取实例顺序JSON",
+          "content": "命令 115–133：浏览器管理器_取当前下载状态 至 FBro_区域后退",
           "x": 58,
           "y": 174,
           "width": 980,
@@ -587,7 +587,7 @@
           "containerSlot": "group-07"
         },
         {
-          "content": "本页覆盖 18 条命令。完整签名、功能、参数、返回值和调用位于 MainWindow.lcpp 与模块命令清单.json。",
+          "content": "本页覆盖 19 条命令。完整签名、功能、参数、返回值和调用位于 MainWindow.lcpp 与模块命令清单.json。",
           "x": 58,
           "y": 274,
           "width": 980,
@@ -634,7 +634,7 @@
           }
         },
         {
-          "content": "命令 127–142：浏览器管理器_取运行快照JSON 至 FBro_实例打开原生UI",
+          "content": "命令 134–145：FBro_区域前进 至 FBro_实例设置窗口边界",
           "x": 58,
           "y": 174,
           "width": 980,
@@ -656,7 +656,7 @@
           "containerSlot": "group-08"
         },
         {
-          "content": "本页覆盖 16 条命令。完整签名、功能、参数、返回值和调用位于 MainWindow.lcpp 与模块命令清单.json。",
+          "content": "本页覆盖 12 条命令。完整签名、功能、参数、返回值和调用位于 MainWindow.lcpp 与模块命令清单.json。",
           "x": 58,
           "y": 274,
           "width": 980,

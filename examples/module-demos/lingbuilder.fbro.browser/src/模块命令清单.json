@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-24T03:43:55.612Z",
+  "generatedAt": "2026-10-29T04:37:06.630Z",
   "module": {
     "id": "lingbuilder.fbro.browser",
     "name": "FBro指纹浏览器模块",
-    "version": "2.12.0",
+    "version": "2.13.0",
     "description": "通过隔离的 C ABI 桥接层使用 FBro/FBrowser CEF 135 x64，支持进程内、独立进程嵌入和独立顶层窗口三种宿主模式。"
   },
-  "commandCount": 142,
+  "commandCount": 145,
   "commands": [
     {
       "index": 1,
@@ -2977,7 +2977,7 @@
         "LB_FBro_CreateBackground"
       ],
       "signature": "FBro_后台创建(地址, 缓存目录, 附加信息JSON)",
-      "description": "创建无窗口承载的后台浏览器实例并返回实例句柄；事件照常分发，可用 FBro事件_* 与句柄命令操作。附加信息 JSON 传空跳过。",
+      "description": "创建无窗口承载的后台浏览器实例并返回实例句柄；事件照常分发，可用 FBro事件_* 与句柄命令操作。附加信息 JSON 传空跳过。后台创建本身无窗口：要可见的独立顶层浏览器请紧接着 FBro_实例打开原生UI(实例句柄, 地址) 弹出（零设计器控件、数量任意，弹窗与来源实例共用缓存目录=同一指纹档案）。",
       "insertText": "FBro_后台创建(\"https://www.baidu.com\", \"\", \"\")",
       "returnType": "整数型",
       "binding": {
@@ -4437,7 +4437,7 @@
       "index": 142,
       "name": "FBro_实例打开原生UI",
       "signature": "FBro_实例打开原生UI(实例句柄, 地址)",
-      "description": "以 FBro_后台创建 返回的后台实例句柄为会话来源，弹出 Chrome Runtime 独立顶层浏览器（谷歌原生 UI，不嵌入 LingBuilder 窗口，不需要任何设计器控件）；返回弹窗句柄（长整数型），可用 FBro_实例导航 / FBro_实例关闭 继续操作；弹窗与来源实例共用缓存目录=同一指纹档案；实例句柄无效或已关闭返回 0。",
+      "description": "以 FBro_后台创建 返回的后台实例句柄为会话来源，弹出 Chrome Runtime 独立顶层浏览器（谷歌原生 UI，不嵌入 LingBuilder 窗口，不需要任何设计器控件）；返回弹窗句柄（长整数型），可用 FBro_实例导航 / FBro_实例关闭 继续操作；弹窗与来源实例共用缓存目录=同一指纹档案；实例句柄无效或已关闭返回 0。弹窗顶层窗口可用 FBro_实例取窗口句柄 取 HWND、FBro_实例设置窗口边界 移动/缩放到指定屏幕位置。",
       "insertText": "FBro_实例打开原生UI($1, \"https://www.baidu.com\")",
       "returnType": "长整数型",
       "binding": {
@@ -4459,6 +4459,92 @@
         "encoding": "wide"
       },
       "demoInvocation": "FBro_实例打开原生UI(1, \"https://example.com\")"
+    },
+    {
+      "index": 143,
+      "name": "FBro_实例取窗口句柄",
+      "signature": "FBro_实例取窗口句柄(实例句柄)",
+      "description": "返回后台实例/弹窗句柄的顶层（承载）窗口 HWND（长整数型），可交给 窗口_ 类句柄命令或自写 Win32 调用使用；后台实例与弹窗的浏览器都是异步启动，启动完成前返回 0，可延迟重试。弹窗返回 Chrome 原生 UI 顶层窗 HWND；后台实例返回离屏承载窗 HWND（通常无需操作）。",
+      "insertText": "FBro_实例取窗口句柄($1)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "FBro_实例取窗口句柄",
+        "runtimeName": "FBro_实例取窗口句柄",
+        "parameters": [
+          {
+            "name": "实例句柄",
+            "type": "longLong",
+            "description": "FBro_后台创建 / FBro_实例打开原生UI 返回的后台实例或弹窗句柄。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_实例取窗口句柄(1)"
+    },
+    {
+      "index": 144,
+      "name": "FBro_实例取窗口边界JSON",
+      "signature": "FBro_实例取窗口边界JSON(实例句柄)",
+      "description": "返回后台实例/弹窗句柄顶层窗口的外框边界 JSON（{\"x\":..,\"y\":..,\"width\":..,\"height\":..}，逻辑坐标，按窗口所在显示器 DPI 换算，与 FBro_实例设置窗口边界 同一口径可往返）；实例浏览器尚未启动完成或窗口已无效返回 {}。边界控制以弹窗为目标，后台实例的离屏承载窗不具显示意义。",
+      "insertText": "FBro_实例取窗口边界JSON($1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "FBro_实例取窗口边界JSON",
+        "runtimeName": "FBro_实例取窗口边界JSON",
+        "parameters": [
+          {
+            "name": "实例句柄",
+            "type": "longLong",
+            "description": "FBro_后台创建 / FBro_实例打开原生UI 返回的后台实例或弹窗句柄。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_实例取窗口边界JSON(1)"
+    },
+    {
+      "index": 145,
+      "name": "FBro_实例设置窗口边界",
+      "signature": "FBro_实例设置窗口边界(实例句柄, X, Y, 宽度, 高度)",
+      "description": "把后台实例/弹窗句柄的顶层窗口移动并缩放到指定屏幕边界，返回 1 成功、0 失败；X/Y 为屏幕逻辑坐标、宽高为逻辑尺寸（按窗口所在显示器 DPI 自动缩放，宽高必须大于 0），与 FBro_创建区域/EdgeView_置实例大小 同口径。专为 FBro_实例打开原生UI 弹出的独立顶层浏览器设计：后台实例与弹窗的浏览器都异步启动，命令内部自动轮询等顶层窗口就绪（上限约 5 秒），设置后复核一次、边界被内核默认布局覆盖会补设。句柄无效或窗口超时未就绪返回 0；本命令同步等待，批量弹窗请逐个调用；后台实例的离屏承载窗虽可设置但无显示意义，请以弹窗为目标。",
+      "insertText": "FBro_实例设置窗口边界($1, $2, $3, $4, $5)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_实例设置窗口边界",
+        "runtimeName": "FBro_实例设置窗口边界",
+        "parameters": [
+          {
+            "name": "实例句柄",
+            "type": "longLong",
+            "description": "FBro_后台创建 / FBro_实例打开原生UI 返回的后台实例或弹窗句柄；后台实例无顶层窗口返回 0。"
+          },
+          {
+            "name": "X",
+            "type": "int",
+            "description": "顶层窗口外框左上角的屏幕逻辑横坐标，按弹窗所在显示器 DPI 自动缩放。"
+          },
+          {
+            "name": "Y",
+            "type": "int",
+            "description": "顶层窗口外框左上角的屏幕逻辑纵坐标，按弹窗所在显示器 DPI 自动缩放。"
+          },
+          {
+            "name": "宽度",
+            "type": "int",
+            "description": "顶层窗口外框逻辑宽度，必须大于 0。"
+          },
+          {
+            "name": "高度",
+            "type": "int",
+            "description": "顶层窗口外框逻辑高度，必须大于 0。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_实例设置窗口边界(1, 1, 1, 1, 1)"
     }
   ]
 }

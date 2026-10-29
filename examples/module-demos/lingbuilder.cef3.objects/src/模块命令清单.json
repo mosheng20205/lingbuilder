@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-24T03:43:55.530Z",
+  "generatedAt": "2026-10-29T04:37:06.545Z",
   "module": {
     "id": "lingbuilder.cef3.objects",
     "name": "CEF3受管对象模块",
@@ -3925,13 +3925,13 @@
       "signature": "CEF3图像_创建()",
       "description": "在CEF UI线程创建空图像并返回类型化受管句柄。",
       "insertText": "CEF3图像_创建()",
-      "returnType": "长整数型",
+      "returnType": "CEF3图像句柄",
       "visibility": "advanced",
       "binding": {
         "command": "CEF3图像_创建",
         "runtimeName": "CEF3图像_创建",
         "parameters": [],
-        "returnType": "longLong"
+        "returnType": "CEF3图像句柄"
       },
       "demoInvocation": "CEF3图像_创建()"
     },
@@ -3952,13 +3952,13 @@
         "parameters": [
           {
             "name": "图像句柄",
-            "type": "longLong",
+            "type": "CEF3图像句柄",
             "description": "CEF3图像_创建 返回的图像受管句柄。"
           }
         ],
         "returnType": "int"
       },
-      "demoInvocation": "CEF3图像_是否为空(1)"
+      "demoInvocation": "CEF3图像_是否为空(0)"
     },
     {
       "index": 135,
@@ -3977,18 +3977,18 @@
         "parameters": [
           {
             "name": "图像句柄",
-            "type": "longLong",
+            "type": "CEF3图像句柄",
             "description": "CEF3图像_创建 返回的图像受管句柄。"
           },
           {
             "name": "另一图像句柄",
-            "type": "longLong",
+            "type": "CEF3图像句柄",
             "description": "参与比较的另一个图像受管句柄。"
           }
         ],
         "returnType": "int"
       },
-      "demoInvocation": "CEF3图像_是否相同(1, 1)"
+      "demoInvocation": "CEF3图像_是否相同(0, 0)"
     },
     {
       "index": 136,
@@ -4007,7 +4007,7 @@
         "parameters": [
           {
             "name": "图像句柄",
-            "type": "longLong",
+            "type": "CEF3图像句柄",
             "description": "CEF3图像_创建 返回的图像受管句柄。"
           },
           {
@@ -4043,7 +4043,7 @@
         ],
         "returnType": "int"
       },
-      "demoInvocation": "CEF3图像_添加位图(1, 1.0, 1, 1, 1, 1, 1)"
+      "demoInvocation": "CEF3图像_添加位图(0, 1.0, 1, 1, 1, 1, 1)"
     },
     {
       "index": 137,
@@ -4062,7 +4062,7 @@
         "parameters": [
           {
             "name": "图像句柄",
-            "type": "longLong",
+            "type": "CEF3图像句柄",
             "description": "CEF3图像_创建 返回的图像受管句柄。"
           },
           {
@@ -4078,7 +4078,7 @@
         ],
         "returnType": "int"
       },
-      "demoInvocation": "CEF3图像_添加PNG(1, 1.0, 1)"
+      "demoInvocation": "CEF3图像_添加PNG(0, 1.0, 1)"
     },
     {
       "index": 138,
@@ -4097,7 +4097,7 @@
         "parameters": [
           {
             "name": "图像句柄",
-            "type": "longLong",
+            "type": "CEF3图像句柄",
             "description": "CEF3图像_创建 返回的图像受管句柄。"
           },
           {
@@ -4113,7 +4113,7 @@
         ],
         "returnType": "int"
       },
-      "demoInvocation": "CEF3图像_添加JPEG(1, 1.0, 1)"
+      "demoInvocation": "CEF3图像_添加JPEG(0, 1.0, 1)"
     },
     {
       "index": 139,
@@ -4132,13 +4132,13 @@
         "parameters": [
           {
             "name": "图像句柄",
-            "type": "longLong",
+            "type": "CEF3图像句柄",
             "description": "CEF3图像_创建 返回的图像受管句柄。"
           }
         ],
         "returnType": "longLong"
       },
-      "demoInvocation": "CEF3图像_取宽度(1)"
+      "demoInvocation": "CEF3图像_取宽度(0)"
     },
     {
       "index": 140,
@@ -4157,13 +4157,13 @@
         "parameters": [
           {
             "name": "图像句柄",
-            "type": "longLong",
+            "type": "CEF3图像句柄",
             "description": "CEF3图像_创建 返回的图像受管句柄。"
           }
         ],
         "returnType": "longLong"
       },
-      "demoInvocation": "CEF3图像_取高度(1)"
+      "demoInvocation": "CEF3图像_取高度(0)"
     },
     {
       "index": 141,
@@ -4182,7 +4182,7 @@
         "parameters": [
           {
             "name": "图像句柄",
-            "type": "longLong",
+            "type": "CEF3图像句柄",
             "description": "CEF3图像_创建 返回的图像受管句柄。"
           },
           {
@@ -4193,7 +4193,7 @@
         ],
         "returnType": "int"
       },
-      "demoInvocation": "CEF3图像_是否有表示(1, 1.0)"
+      "demoInvocation": "CEF3图像_是否有表示(0, 1.0)"
     },
     {
       "index": 142,
@@ -4212,7 +4212,7 @@
         "parameters": [
           {
             "name": "图像句柄",
-            "type": "longLong",
+            "type": "CEF3图像句柄",
             "description": "CEF3图像_创建 返回的图像受管句柄。"
           },
           {
@@ -4223,7 +4223,7 @@
         ],
         "returnType": "int"
       },
-      "demoInvocation": "CEF3图像_删除表示(1, 1.0)"
+      "demoInvocation": "CEF3图像_删除表示(0, 1.0)"
     },
     {
       "index": 143,
@@ -4242,7 +4242,7 @@
         "parameters": [
           {
             "name": "图像句柄",
-            "type": "longLong",
+            "type": "CEF3图像句柄",
             "description": "CEF3图像_创建 返回的图像受管句柄。"
           },
           {
@@ -4253,7 +4253,7 @@
         ],
         "returnType": "wideString"
       },
-      "demoInvocation": "CEF3图像_取表示信息(1, 1.0)"
+      "demoInvocation": "CEF3图像_取表示信息(0, 1.0)"
     },
     {
       "index": 144,
@@ -4272,7 +4272,7 @@
         "parameters": [
           {
             "name": "图像句柄",
-            "type": "longLong",
+            "type": "CEF3图像句柄",
             "description": "CEF3图像_创建 返回的图像受管句柄。"
           },
           {
@@ -4293,7 +4293,7 @@
         ],
         "returnType": "longLong"
       },
-      "demoInvocation": "CEF3图像_取位图缓冲(1, 1.0, 1, 1)"
+      "demoInvocation": "CEF3图像_取位图缓冲(0, 1.0, 1, 1)"
     },
     {
       "index": 145,
@@ -4312,7 +4312,7 @@
         "parameters": [
           {
             "name": "图像句柄",
-            "type": "longLong",
+            "type": "CEF3图像句柄",
             "description": "CEF3图像_创建 返回的图像受管句柄。"
           },
           {
@@ -4328,7 +4328,7 @@
         ],
         "returnType": "longLong"
       },
-      "demoInvocation": "CEF3图像_取PNG缓冲(1, 1.0, 真)"
+      "demoInvocation": "CEF3图像_取PNG缓冲(0, 1.0, 真)"
     },
     {
       "index": 146,
@@ -4347,7 +4347,7 @@
         "parameters": [
           {
             "name": "图像句柄",
-            "type": "longLong",
+            "type": "CEF3图像句柄",
             "description": "CEF3图像_创建 返回的图像受管句柄。"
           },
           {
@@ -4363,7 +4363,7 @@
         ],
         "returnType": "longLong"
       },
-      "demoInvocation": "CEF3图像_取JPEG缓冲(1, 1.0, 1)"
+      "demoInvocation": "CEF3图像_取JPEG缓冲(0, 1.0, 1)"
     },
     {
       "index": 147,
@@ -4382,13 +4382,13 @@
         "parameters": [
           {
             "name": "图像句柄",
-            "type": "longLong",
+            "type": "CEF3图像句柄",
             "description": "CEF3图像_创建 返回的图像受管句柄。"
           }
         ],
         "returnType": "int"
       },
-      "demoInvocation": "CEF3图像_释放(1)"
+      "demoInvocation": "CEF3图像_释放(0)"
     },
     {
       "index": 148,

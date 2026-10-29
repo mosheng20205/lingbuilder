@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-24T03:43:55.604Z",
+  "generatedAt": "2026-10-29T04:37:06.616Z",
   "module": {
     "id": "lingbuilder.edgeview",
     "name": "EdgeView 浏览器模块",
@@ -7064,7 +7064,7 @@
       "index": 209,
       "name": "EdgeView框架_取信息JSON",
       "signature": "EdgeView框架_取信息JSON(控件名, 框架句柄)",
-      "description": "取得 Frame ID、名称、来源和生命周期信息。",
+      "description": "取得 Frame ID、名称、来源和生命周期信息；框架句柄传 0 返回主文档信息（含当前地址 source 字段）。",
       "insertText": "EdgeView框架_取信息JSON($1, $2)",
       "returnType": "文本型",
       "binding": {
@@ -7087,7 +7087,7 @@
           {
             "name": "框架句柄",
             "type": "handle",
-            "description": "“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄。"
+            "description": "受管 Frame 句柄；“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄；传 0 表示主文档（顶层页面）——WebView2 的框架事件只覆盖 iframe，操作主页面一律传 0。"
           }
         ],
         "returnType": "wideString",
@@ -7099,7 +7099,7 @@
       "index": 210,
       "name": "EdgeView框架_执行脚本异步",
       "signature": "EdgeView框架_执行脚本异步(控件名, 框架句柄, 脚本, 完成处理器)",
-      "description": "在受管 Frame 中异步执行 JavaScript。",
+      "description": "在受管 Frame 中异步执行 JavaScript；框架句柄传 0 表示在主文档执行。",
       "insertText": "EdgeView框架_执行脚本异步($1, $2, \"$3\", &$4)",
       "returnType": "长整数型",
       "binding": {
@@ -7122,7 +7122,7 @@
           {
             "name": "框架句柄",
             "type": "handle",
-            "description": "“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄。"
+            "description": "受管 Frame 句柄；“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄；传 0 表示主文档（顶层页面）——WebView2 的框架事件只覆盖 iframe，操作主页面一律传 0。"
           },
           {
             "name": "脚本",
@@ -7167,7 +7167,7 @@
           {
             "name": "框架句柄",
             "type": "handle",
-            "description": "“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄。"
+            "description": "受管 Frame 句柄；“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄；传 0 表示主文档（顶层页面）——WebView2 的框架事件只覆盖 iframe，操作主页面一律传 0。"
           },
           {
             "name": "消息",
@@ -7207,7 +7207,7 @@
           {
             "name": "框架句柄",
             "type": "handle",
-            "description": "“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄。"
+            "description": "受管 Frame 句柄；“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄；传 0 表示主文档（顶层页面）——WebView2 的框架事件只覆盖 iframe，操作主页面一律传 0。"
           },
           {
             "name": "JSON",
@@ -7247,7 +7247,7 @@
           {
             "name": "框架句柄",
             "type": "handle",
-            "description": "“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄。"
+            "description": "受管 Frame 句柄；“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄；传 0 表示主文档（顶层页面）——WebView2 的框架事件只覆盖 iframe，操作主页面一律传 0。"
           },
           {
             "name": "缓冲句柄",
@@ -7297,7 +7297,7 @@
           {
             "name": "框架句柄",
             "type": "handle",
-            "description": "“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄。"
+            "description": "受管 Frame 句柄；“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄；传 0 表示主文档（顶层页面）——WebView2 的框架事件只覆盖 iframe，操作主页面一律传 0。"
           },
           {
             "name": "选择器",
@@ -7342,7 +7342,7 @@
           {
             "name": "框架句柄",
             "type": "handle",
-            "description": "“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄。"
+            "description": "受管 Frame 句柄；“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄；传 0 表示主文档（顶层页面）——WebView2 的框架事件只覆盖 iframe，操作主页面一律传 0。"
           },
           {
             "name": "选择器",
@@ -7392,7 +7392,7 @@
           {
             "name": "框架句柄",
             "type": "handle",
-            "description": "“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄。"
+            "description": "受管 Frame 句柄；“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄；传 0 表示主文档（顶层页面）——WebView2 的框架事件只覆盖 iframe，操作主页面一律传 0。"
           },
           {
             "name": "选择器",
@@ -7442,7 +7442,7 @@
           {
             "name": "框架句柄",
             "type": "handle",
-            "description": "“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄。"
+            "description": "受管 Frame 句柄；“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄；传 0 表示主文档（顶层页面）——WebView2 的框架事件只覆盖 iframe，操作主页面一律传 0。"
           },
           {
             "name": "选择器",
@@ -7492,7 +7492,7 @@
           {
             "name": "框架句柄",
             "type": "handle",
-            "description": "“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄。"
+            "description": "受管 Frame 句柄；“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄；传 0 表示主文档（顶层页面）——WebView2 的框架事件只覆盖 iframe，操作主页面一律传 0。"
           },
           {
             "name": "选择器",
@@ -7542,7 +7542,7 @@
           {
             "name": "框架句柄",
             "type": "handle",
-            "description": "“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄。"
+            "description": "受管 Frame 句柄；“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄；传 0 表示主文档（顶层页面）——WebView2 的框架事件只覆盖 iframe，操作主页面一律传 0。"
           },
           {
             "name": "选择器",
@@ -7592,7 +7592,7 @@
           {
             "name": "框架句柄",
             "type": "handle",
-            "description": "“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄。"
+            "description": "受管 Frame 句柄；“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄；传 0 表示主文档（顶层页面）——WebView2 的框架事件只覆盖 iframe，操作主页面一律传 0。"
           },
           {
             "name": "选择器",
@@ -7642,7 +7642,7 @@
           {
             "name": "框架句柄",
             "type": "handle",
-            "description": "“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄。"
+            "description": "受管 Frame 句柄；“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄；传 0 表示主文档（顶层页面）——WebView2 的框架事件只覆盖 iframe，操作主页面一律传 0。"
           },
           {
             "name": "选择器",
@@ -7692,7 +7692,7 @@
           {
             "name": "框架句柄",
             "type": "handle",
-            "description": "“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄。"
+            "description": "受管 Frame 句柄；“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄；传 0 表示主文档（顶层页面）——WebView2 的框架事件只覆盖 iframe，操作主页面一律传 0。"
           },
           {
             "name": "选择器",
@@ -7742,7 +7742,7 @@
           {
             "name": "框架句柄",
             "type": "handle",
-            "description": "“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄。"
+            "description": "受管 Frame 句柄；“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄；传 0 表示主文档（顶层页面）——WebView2 的框架事件只覆盖 iframe，操作主页面一律传 0。"
           },
           {
             "name": "选择器",
@@ -7792,7 +7792,7 @@
           {
             "name": "框架句柄",
             "type": "handle",
-            "description": "“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄。"
+            "description": "受管 Frame 句柄；“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄；传 0 表示主文档（顶层页面）——WebView2 的框架事件只覆盖 iframe，操作主页面一律传 0。"
           },
           {
             "name": "选择器",
@@ -7847,7 +7847,7 @@
           {
             "name": "框架句柄",
             "type": "handle",
-            "description": "“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄。"
+            "description": "受管 Frame 句柄；“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄；传 0 表示主文档（顶层页面）——WebView2 的框架事件只覆盖 iframe，操作主页面一律传 0。"
           },
           {
             "name": "选择器",
@@ -7902,7 +7902,7 @@
           {
             "name": "框架句柄",
             "type": "handle",
-            "description": "“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄。"
+            "description": "受管 Frame 句柄；“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄；传 0 表示主文档（顶层页面）——WebView2 的框架事件只覆盖 iframe，操作主页面一律传 0。"
           },
           {
             "name": "选择器",
@@ -7952,7 +7952,7 @@
           {
             "name": "框架句柄",
             "type": "handle",
-            "description": "“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄。"
+            "description": "受管 Frame 句柄；“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄；传 0 表示主文档（顶层页面）——WebView2 的框架事件只覆盖 iframe，操作主页面一律传 0。"
           },
           {
             "name": "选择器",
@@ -8002,7 +8002,7 @@
           {
             "name": "框架句柄",
             "type": "handle",
-            "description": "“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄。"
+            "description": "受管 Frame 句柄；“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄；传 0 表示主文档（顶层页面）——WebView2 的框架事件只覆盖 iframe，操作主页面一律传 0。"
           },
           {
             "name": "选择器",
@@ -8052,7 +8052,7 @@
           {
             "name": "框架句柄",
             "type": "handle",
-            "description": "“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄。"
+            "description": "受管 Frame 句柄；“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄；传 0 表示主文档（顶层页面）——WebView2 的框架事件只覆盖 iframe，操作主页面一律传 0。"
           },
           {
             "name": "选择器",
@@ -8102,7 +8102,7 @@
           {
             "name": "框架句柄",
             "type": "handle",
-            "description": "“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄。"
+            "description": "受管 Frame 句柄；“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄；传 0 表示主文档（顶层页面）——WebView2 的框架事件只覆盖 iframe，操作主页面一律传 0。"
           },
           {
             "name": "选择器",
@@ -8152,7 +8152,7 @@
           {
             "name": "框架句柄",
             "type": "handle",
-            "description": "“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄。"
+            "description": "受管 Frame 句柄；“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄；传 0 表示主文档（顶层页面）——WebView2 的框架事件只覆盖 iframe，操作主页面一律传 0。"
           },
           {
             "name": "选择器",
@@ -8202,7 +8202,7 @@
           {
             "name": "框架句柄",
             "type": "handle",
-            "description": "“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄。"
+            "description": "受管 Frame 句柄；“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄；传 0 表示主文档（顶层页面）——WebView2 的框架事件只覆盖 iframe，操作主页面一律传 0。"
           },
           {
             "name": "选择器",
@@ -8252,7 +8252,7 @@
           {
             "name": "框架句柄",
             "type": "handle",
-            "description": "“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄。"
+            "description": "受管 Frame 句柄；“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄；传 0 表示主文档（顶层页面）——WebView2 的框架事件只覆盖 iframe，操作主页面一律传 0。"
           },
           {
             "name": "选择器",
@@ -8307,7 +8307,7 @@
           {
             "name": "框架句柄",
             "type": "handle",
-            "description": "“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄。"
+            "description": "受管 Frame 句柄；“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄；传 0 表示主文档（顶层页面）——WebView2 的框架事件只覆盖 iframe，操作主页面一律传 0。"
           },
           {
             "name": "选择器",
@@ -8357,7 +8357,7 @@
           {
             "name": "框架句柄",
             "type": "handle",
-            "description": "“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄。"
+            "description": "受管 Frame 句柄；“框架创建”等事件字段 handle 携带的 Frame 受管句柄，或 EdgeView框架_枚举JSON 返回的句柄；传 0 表示主文档（顶层页面）——WebView2 的框架事件只覆盖 iframe，操作主页面一律传 0。"
           },
           {
             "name": "选择器",

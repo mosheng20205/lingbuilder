@@ -229,8 +229,8 @@
 | 206 | `EdgeView对象_取状态JSON` | `EdgeView对象_取状态JSON(对象句柄)` | wideString | 取得受管对象类型、所属控件、generation、线程和生命周期状态。 |
 | 207 | `EdgeView对象_释放` | `EdgeView对象_释放(对象句柄)` | int | 显式释放受管对象；句柄不会被复用。 |
 | 208 | `EdgeView框架_枚举JSON` | `EdgeView框架_枚举JSON(控件名)` | wideString | 枚举当前控件已发现的 Frame 受管句柄和层级信息。 |
-| 209 | `EdgeView框架_取信息JSON` | `EdgeView框架_取信息JSON(控件名, 框架句柄)` | wideString | 取得 Frame ID、名称、来源和生命周期信息。 |
-| 210 | `EdgeView框架_执行脚本异步` | `EdgeView框架_执行脚本异步(控件名, 框架句柄, 脚本, 完成处理器)` | longLong | 在受管 Frame 中异步执行 JavaScript。 |
+| 209 | `EdgeView框架_取信息JSON` | `EdgeView框架_取信息JSON(控件名, 框架句柄)` | wideString | 取得 Frame ID、名称、来源和生命周期信息；框架句柄传 0 返回主文档信息（含当前地址 source 字段）。 |
+| 210 | `EdgeView框架_执行脚本异步` | `EdgeView框架_执行脚本异步(控件名, 框架句柄, 脚本, 完成处理器)` | longLong | 在受管 Frame 中异步执行 JavaScript；框架句柄传 0 表示在主文档执行。 |
 | 211 | `EdgeView框架_发送字符串消息` | `EdgeView框架_发送字符串消息(控件名, 框架句柄, 消息)` | int | 向受管 Frame 发送字符串消息。 |
 | 212 | `EdgeView框架_发送JSON消息` | `EdgeView框架_发送JSON消息(控件名, 框架句柄, JSON)` | int | 向受管 Frame 发送 JSON 消息。 |
 | 213 | `EdgeView框架_发送共享缓冲` | `EdgeView框架_发送共享缓冲(控件名, 框架句柄, 缓冲句柄, 访问模式, 附加JSON)` | int | 把受管共享缓冲发送到指定 Frame。 |

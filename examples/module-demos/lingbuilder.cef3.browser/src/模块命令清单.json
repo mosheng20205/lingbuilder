@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-24T03:43:55.520Z",
+  "generatedAt": "2026-10-29T04:37:06.533Z",
   "module": {
     "id": "lingbuilder.cef3.browser",
     "name": "CEF3浏览器模块",
-    "version": "3.0.0-alpha.5",
+    "version": "3.0.0-alpha.6",
     "description": "基于 Chromium Embedded Framework 3，提供设计器浏览器控件、中文命令和集中式浏览器事件目录。"
   },
-  "commandCount": 102,
+  "commandCount": 105,
   "commands": [
     {
       "index": 1,
@@ -162,9 +162,9 @@
     {
       "index": 6,
       "name": "CEF3_创建弹窗浏览器",
-      "signature": "CEF3_创建弹窗浏览器(实例编号, 地址, 独立缓存目录, 代理地址)",
-      "description": "不依赖设计器控件，用 CEF Chrome Runtime 凭空创建独立顶层浏览器弹窗：不同 实例编号 + 不同 独立缓存目录（独立 profile）实现店铺间 Cookie/缓存隔离，代理地址非空即该弹窗独立出口 IP。实例登记进运行时表，可被 CEF3_枚举实例JSON 列出、由 CEF3_关闭全部实例 统一关闭；实例级 UA 用 CEF3_设置实例用户代理 设置。",
-      "insertText": "CEF3_创建弹窗浏览器(1, \"https://www.example.com\", \".cef3/store-a\", \"\")",
+      "signature": "CEF3_创建弹窗浏览器(实例编号, 地址, 独立缓存目录, 代理地址, 左, 顶, 宽, 高)",
+      "description": "不依赖设计器控件，用 CEF Chrome Runtime 凭空创建独立顶层浏览器弹窗：不同 实例编号 + 不同 独立缓存目录（独立 profile）实现店铺间 Cookie/缓存隔离，代理地址非空即该弹窗独立出口 IP。尾部 左/顶/宽/高 可选（省略或 -1＝保持系统默认）：创建后立即按屏幕物理像素定界，多开平铺直接在创建时带位置尺寸，省去二次摆位。实例登记进运行时表，可被 CEF3_枚举实例JSON 列出、由 CEF3_关闭全部实例 统一关闭；实例级 UA 用 CEF3_设置实例用户代理 设置，事后摆位用 CEF3_置实例窗口边界。",
+      "insertText": "CEF3_创建弹窗浏览器(1, \"https://www.example.com\", \".cef3/store-a\", \"\", 100, 80, 960, 640)",
       "returnType": "整数型",
       "binding": {
         "command": "CEF3_创建弹窗浏览器",
@@ -189,12 +189,32 @@
             "name": "代理地址",
             "type": "wideString",
             "description": "代理地址，如 \"http://127.0.0.1:7890\" 或 \"socks5://127.0.0.1:1080\"。"
+          },
+          {
+            "name": "左",
+            "type": "int",
+            "description": "弹窗左上角屏幕横坐标（物理像素）；可省略，省略或 -1＝保持系统默认位置。多开平铺直接在创建时给出。"
+          },
+          {
+            "name": "顶",
+            "type": "int",
+            "description": "弹窗左上角屏幕纵坐标（物理像素）；可省略，省略或 -1＝保持系统默认位置。"
+          },
+          {
+            "name": "宽",
+            "type": "int",
+            "description": "弹窗外框宽度（物理像素）；可省略，省略或 -1＝保持系统默认尺寸；低于 Chrome 最小窗宽时只会被放大。"
+          },
+          {
+            "name": "高",
+            "type": "int",
+            "description": "弹窗外框高度（物理像素）；可省略，省略或 -1＝保持系统默认尺寸。"
           }
         ],
         "returnType": "int",
         "encoding": "wide"
       },
-      "demoInvocation": "CEF3_创建弹窗浏览器(1, \"https://example.com\", \".\", \"https://example.com\")"
+      "demoInvocation": "CEF3_创建弹窗浏览器(1, \"https://example.com\", \".\", \"https://example.com\", 1, 1, 1, 1)"
     },
     {
       "index": 7,
@@ -845,6 +865,90 @@
     },
     {
       "index": 31,
+      "name": "CEF3_置实例窗口边界",
+      "signature": "CEF3_置实例窗口边界(实例编号, 左, 顶, 宽, 高)",
+      "description": "移动/缩放指定弹窗实例的 Chrome Runtime 顶层窗口，多开平铺的核心命令。坐标一律屏幕物理像素（与 win32 窗口_移动 同口径；与 CEF3_创建区域 的 DIP 语义刻意不同）。左 或 顶 传 -1 整组位置不变，宽 或 高 传 -1 整组尺寸不变；尺寸低于 Chrome 最小窗宽时只会被放大不会报错，落位结果用 CEF3_取实例窗口边界JSON 回读；最大化窗口先还原再设界。仅支持 CEF3_创建弹窗浏览器 的实例：区域实例布局归宿主窗口管、无头实例没有窗口，都返回 0 并给中文诊断。",
+      "insertText": "CEF3_置实例窗口边界(1, 100, 80, 960, 640)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3_置实例窗口边界",
+        "runtimeName": "CEF3_置实例窗口边界",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "EdgeView 实例的正整数编号；后续命令按它指定实例。"
+          },
+          {
+            "name": "左",
+            "type": "int",
+            "description": "新的屏幕横坐标（物理像素）；与 顶 成对生效，任一为 -1 则整组位置不变。"
+          },
+          {
+            "name": "顶",
+            "type": "int",
+            "description": "新的屏幕纵坐标（物理像素）；与 左 成对生效，任一为 -1 则整组位置不变。"
+          },
+          {
+            "name": "宽",
+            "type": "int",
+            "description": "新的外框宽度（物理像素）；与 高 成对生效，任一为 -1 则整组尺寸不变；低于 Chrome 最小窗宽时只会被放大。"
+          },
+          {
+            "name": "高",
+            "type": "int",
+            "description": "新的外框高度（物理像素）；与 宽 成对生效，任一为 -1 则整组尺寸不变。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3_置实例窗口边界(1, 1, 1, 1, 1)"
+    },
+    {
+      "index": 32,
+      "name": "CEF3_取实例窗口边界JSON",
+      "signature": "CEF3_取实例窗口边界JSON(实例编号)",
+      "description": "读取指定弹窗实例 Chrome Runtime 顶层窗口的屏幕边界，返回 {\"x\":…,\"y\":…,\"width\":…,\"height\":…}（屏幕物理像素，键名与 win32 窗口_取边界JSON 一致）。平铺前量屏幕、平铺后校验落位都用它；实例不存在、浏览器尚未创建或实例不是弹窗返回 {} 并给中文诊断。",
+      "insertText": "调试输出(CEF3_取实例窗口边界JSON(1))",
+      "returnType": "文本型",
+      "binding": {
+        "command": "CEF3_取实例窗口边界JSON",
+        "runtimeName": "CEF3_取实例窗口边界JSON",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "EdgeView 实例的正整数编号；后续命令按它指定实例。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3_取实例窗口边界JSON(1)"
+    },
+    {
+      "index": 33,
+      "name": "CEF3_取实例窗口句柄",
+      "signature": "CEF3_取实例窗口句柄(实例编号)",
+      "description": "取得指定弹窗实例 Chrome Runtime 顶层窗口的原生窗口句柄（长整数，0＝尚未创建），可直接接 win32 窗口操作命令：窗口_移动/窗口_置前台/窗口_设置标题/窗口_关闭（逐实例关闭弹窗就靠它）。句柄只在程序进程内有效，不得跨进程传递或持久化。仅支持弹窗实例，区域/无头实例返回 0 并给中文诊断。",
+      "insertText": "局部 长整数型 弹窗句柄 = CEF3_取实例窗口句柄(1)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "CEF3_取实例窗口句柄",
+        "runtimeName": "CEF3_取实例窗口句柄",
+        "parameters": [
+          {
+            "name": "实例编号",
+            "type": "int",
+            "description": "EdgeView 实例的正整数编号；后续命令按它指定实例。"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3_取实例窗口句柄(1)"
+    },
+    {
+      "index": 34,
       "name": "CEF3_关闭全部实例",
       "signature": "CEF3_关闭全部实例()",
       "description": "关闭当前全部 CEF3 浏览器实例（含内嵌控件与独立顶层弹窗）并释放受管句柄，返回关闭数量。",
@@ -859,7 +963,7 @@
       "demoInvocation": "CEF3_关闭全部实例()"
     },
     {
-      "index": 32,
+      "index": 35,
       "name": "CEF3_枚举实例JSON",
       "signature": "CEF3_枚举实例JSON()",
       "description": "返回当前全部 CEF3 实例的 JSON 数组，每项含 controlId/地址/标题/缓存目录/代理，供调用方自省与多实例列表展示。",
@@ -875,7 +979,7 @@
       "demoInvocation": "CEF3_枚举实例JSON()"
     },
     {
-      "index": 33,
+      "index": 36,
       "name": "CEF3_执行JS",
       "aliases": [
         "Runtime.evaluate"
@@ -914,7 +1018,7 @@
       "demoInvocation": "CEF3_执行JS(演示CefBrowser控件, \"演示参数2\")"
     },
     {
-      "index": 34,
+      "index": 37,
       "name": "CEF3_后退",
       "signature": "CEF3_后退(控件名)",
       "description": "指定 CEF3 浏览器控件可以后退时返回上一页，成功返回 1。",
@@ -944,7 +1048,7 @@
       "demoInvocation": "CEF3_后退(演示CefBrowser控件)"
     },
     {
-      "index": 35,
+      "index": 38,
       "name": "CEF3_前进",
       "signature": "CEF3_前进(控件名)",
       "description": "指定 CEF3 浏览器控件可以前进时进入下一页，成功返回 1。",
@@ -974,7 +1078,7 @@
       "demoInvocation": "CEF3_前进(演示CefBrowser控件)"
     },
     {
-      "index": 36,
+      "index": 39,
       "name": "CEF3_刷新",
       "signature": "CEF3_刷新(控件名)",
       "description": "刷新指定 CEF3 浏览器控件的当前网页。",
@@ -1004,7 +1108,7 @@
       "demoInvocation": "CEF3_刷新(演示CefBrowser控件)"
     },
     {
-      "index": 37,
+      "index": 40,
       "name": "CEF3_停止",
       "signature": "CEF3_停止(控件名)",
       "description": "停止指定 CEF3 浏览器控件的当前导航。",
@@ -1034,7 +1138,7 @@
       "demoInvocation": "CEF3_停止(演示CefBrowser控件)"
     },
     {
-      "index": 38,
+      "index": 41,
       "name": "CEF3_取标题",
       "signature": "CEF3_取标题(控件名)",
       "description": "返回指定 CEF3 浏览器控件当前网页标题。",
@@ -1064,7 +1168,7 @@
       "demoInvocation": "CEF3_取标题(演示CefBrowser控件)"
     },
     {
-      "index": 39,
+      "index": 42,
       "name": "CEF3_取地址",
       "signature": "CEF3_取地址(控件名)",
       "description": "返回指定 CEF3 浏览器控件当前网页地址。",
@@ -1094,7 +1198,7 @@
       "demoInvocation": "CEF3_取地址(演示CefBrowser控件)"
     },
     {
-      "index": 40,
+      "index": 43,
       "name": "CEF3_取资源地址",
       "signature": "CEF3_取资源地址(相对路径)",
       "description": "把相对路径解析为随程序一起部署在 exe 同级 assets 目录下的文件地址，返回已按 UTF-8 转义的 file:/// URL，用于加载本地测试页，避免在源码里写死机器特定绝对路径。传入盘符绝对路径、UNC 路径或已带协议的完整地址时原样返回，可重复套用。地址形参是宽字符串指针，因此结果必须先赋给文本型局部变量再传给 CEF3_导航，不能直接内联嵌套。",
@@ -1117,7 +1221,7 @@
       "demoInvocation": "CEF3_取资源地址(\"module-demo-temp.txt\")"
     },
     {
-      "index": 41,
+      "index": 44,
       "name": "CEF3_设置缓存目录",
       "aliases": [
         "CefRequestContext::CreateContext"
@@ -1155,7 +1259,7 @@
       "demoInvocation": "CEF3_设置缓存目录(演示CefBrowser控件, \".\")"
     },
     {
-      "index": 42,
+      "index": 45,
       "name": "CEF3_设置代理",
       "aliases": [
         "CefPreferenceManager::SetPreference"
@@ -1193,7 +1297,7 @@
       "demoInvocation": "CEF3_设置代理(演示CefBrowser控件, \"https://example.com\")"
     },
     {
-      "index": 43,
+      "index": 46,
       "name": "CEF3_设置全局代理",
       "signature": "CEF3_设置全局代理(代理地址)",
       "description": "设置之后新建 CEF3 实例（控件 / 弹窗 / 区域 / 无头）默认使用的 HTTP/HTTPS/SOCKS5 全局代理；实例创建时自带代理优先，传空给 CEF3_设置代理 的显式直连不参与回落，已创建实例不受影响。代理地址传空文本等价于 CEF3_清除全局代理。带认证（用户名/密码）的代理当前不被 CEF3 支持：CEF 150 不把代理 407 挑战投递给客户端（真机验证），需要代理认证请改用 FBro（FBro会话_设置代理认证）或 EdgeView；也禁止把凭据拼进代理地址。成功返回 1。",
@@ -1215,7 +1319,7 @@
       "demoInvocation": "CEF3_设置全局代理(\"https://example.com\")"
     },
     {
-      "index": 44,
+      "index": 47,
       "name": "CEF3_清除全局代理",
       "signature": "CEF3_清除全局代理()",
       "description": "清除 CEF3 全局代理，之后新建实例回到各自的代理设置；已创建实例不变。成功返回 1。",
@@ -1230,7 +1334,7 @@
       "demoInvocation": "CEF3_清除全局代理()"
     },
     {
-      "index": 45,
+      "index": 48,
       "name": "CEF3_取全局代理",
       "signature": "CEF3_取全局代理()",
       "description": "返回当前 CEF3 全局代理地址；未设置返回空文本。",
@@ -1246,7 +1350,7 @@
       "demoInvocation": "CEF3_取全局代理()"
     },
     {
-      "index": 46,
+      "index": 49,
       "name": "CEF3_取实例代理",
       "signature": "CEF3_取实例代理(实例编号)",
       "description": "按实例编号返回设计器无关实例（CEF3_创建弹窗浏览器 / CEF3_创建区域 / CEF3_创建无头浏览器）实际采用的代理地址：实例自带代理优先，未设置时显示全局代理回落值；返回空文本表示该实例按系统代理或直接连接。实例不存在返回空文本并给中文诊断。",
@@ -1268,7 +1372,7 @@
       "demoInvocation": "CEF3_取实例代理(1)"
     },
     {
-      "index": 47,
+      "index": 50,
       "name": "CEF3_创建",
       "signature": "CEF3_创建(控件名)",
       "description": "使用属性面板配置的地址、缓存目录和代理参数初始化指定 CEF3 浏览器控件；传空控件名时初始化当前窗口全部 CEF3 控件。成功返回 1。",
@@ -1298,7 +1402,7 @@
       "demoInvocation": "CEF3_创建(演示CefBrowser控件)"
     },
     {
-      "index": 48,
+      "index": 51,
       "name": "CEF3_执行消息循环工作",
       "aliases": [
         "cef_do_message_loop_work"
@@ -1317,7 +1421,7 @@
       "demoInvocation": "CEF3_执行消息循环工作()"
     },
     {
-      "index": 49,
+      "index": 52,
       "name": "CEF3_关闭",
       "signature": "CEF3_关闭(控件名)",
       "description": "关闭指定 CEF3 浏览器控件并释放 Chromium 资源。",
@@ -1347,7 +1451,7 @@
       "demoInvocation": "CEF3_关闭(演示CefBrowser控件)"
     },
     {
-      "index": 50,
+      "index": 53,
       "name": "CEF3_取最近事件",
       "signature": "CEF3_取最近事件(控件名)",
       "description": "返回最近 CEF3 事件名；当前事件清单共 99 个浏览器回调。",
@@ -1377,7 +1481,7 @@
       "demoInvocation": "CEF3_取最近事件(演示CefBrowser控件)"
     },
     {
-      "index": 51,
+      "index": 54,
       "name": "CEF3_取事件数据",
       "signature": "CEF3_取事件数据(控件名)",
       "description": "返回最近事件的主要文本数据。",
@@ -1407,7 +1511,7 @@
       "demoInvocation": "CEF3_取事件数据(演示CefBrowser控件)"
     },
     {
-      "index": 52,
+      "index": 55,
       "name": "CEF3_取事件字段",
       "signature": "CEF3_取事件字段(控件名, 字段名)",
       "description": "读取最近事件的命名字段，例如 url、frameId、statusCode、progress、commandId。",
@@ -1442,7 +1546,7 @@
       "demoInvocation": "CEF3_取事件字段(演示CefBrowser控件, \"演示参数2\")"
     },
     {
-      "index": 53,
+      "index": 56,
       "name": "CEF3_读资源响应正文",
       "signature": "CEF3_读资源响应正文(控件名, 最大字节数, 完成处理器)",
       "description": "在“资源响应到达”处理器执行期间，为当前资源安装有界正文捕获；完成后触发“资源响应正文到达”，通过 CEF3_取事件字段读取 bodyText、bodyBase64、receivedBytes、truncated 和 error。不会重新发起请求。",
@@ -1483,7 +1587,7 @@
       "demoInvocation": "CEF3_读资源响应正文(演示CefBrowser控件, 1, &模块演示回调)"
     },
     {
-      "index": 54,
+      "index": 57,
       "name": "CEF3_替换资源响应内容",
       "signature": "CEF3_替换资源响应内容(控件名, 查找内容, 替换内容)",
       "description": "为指定 CEF3 浏览器配置响应正文查找替换：之后加载的资源正文中的“查找内容”（按 UTF-8 字节匹配）会被“替换内容”改写，替换内容为空表示删除。二进制安全、流式处理，对整只浏览器全部资源生效；重复调用以最后一次为准。浏览器未就绪时自动排队，导航前配置可覆盖首个页面。只修改响应正文，不改变响应头和状态码。",
@@ -1524,7 +1628,7 @@
       "demoInvocation": "CEF3_替换资源响应内容(演示CefBrowser控件, \"演示参数2\", \"演示参数3\")"
     },
     {
-      "index": 55,
+      "index": 58,
       "name": "CEF3_清除资源响应替换",
       "signature": "CEF3_清除资源响应替换(控件名)",
       "description": "移除指定 CEF3 浏览器当前的响应替换配置，之后加载的资源恢复原始正文；已加载页面不受影响。同时取消尚未生效的排队配置。",
@@ -1555,7 +1659,7 @@
       "demoInvocation": "CEF3_清除资源响应替换(演示CefBrowser控件)"
     },
     {
-      "index": 56,
+      "index": 59,
       "name": "CEF3_设置事件结果",
       "signature": "CEF3_设置事件结果(控件名, 结果)",
       "description": "设置当前同步事件结果：0=默认、1=允许/继续、2=拒绝/取消、3=已处理。",
@@ -1590,7 +1694,7 @@
       "demoInvocation": "CEF3_设置事件结果(演示CefBrowser控件, 1)"
     },
     {
-      "index": 57,
+      "index": 60,
       "name": "CEF3_设置事件返回文本",
       "signature": "CEF3_设置事件返回文本(控件名, 文本)",
       "description": "设置当前事件的返回文本，例如修改后的 URL、下载路径、对话框输入或身份验证信息。",
@@ -1625,7 +1729,7 @@
       "demoInvocation": "CEF3_设置事件返回文本(演示CefBrowser控件, \"演示参数2\")"
     },
     {
-      "index": 58,
+      "index": 61,
       "name": "CEF3_绑定事件",
       "signature": "CEF3_绑定事件(控件名, 事件名, 处理器)",
       "description": "绑定 CEF3 浏览器事件清单（99 项）到当前窗口无参数中文事件或方法；处理器必须使用 &处理器名。",
@@ -1666,7 +1770,7 @@
       "demoInvocation": "CEF3_绑定事件(演示CefBrowser控件, \"演示事件\", &模块演示回调)"
     },
     {
-      "index": 59,
+      "index": 62,
       "name": "CEF3_启用JS扩展",
       "signature": "CEF3_启用JS扩展(控件名, 查询函数名, 取消函数名)",
       "description": "启用页面调用原生的 JS 交互（cefQuery）通道：页面通过 window.查询函数名({request, onSuccess, onFailure}) 发起查询，原生通过「查询请求」事件接收并用 CEF3_查询应答 / CEF3_查询应答失败 应答。通道必须在 CEF 初始化之前配置——请优先使用 CEF3 浏览器控件的 jsQueryFunctions 属性（格式“查询函数名,取消函数名”），本命令仅在初始化前调用有效，初始化后调用返回 0。一个程序可注册多条通道（各通道的查询函数名互不重复），同名重复调用按幂等成功处理；「查询请求」事件的 channelIndex 字段标明来源通道序号（0 起）。",
@@ -1707,7 +1811,7 @@
       "demoInvocation": "CEF3_启用JS扩展(演示CefBrowser控件, \"演示参数2\", \"演示参数3\")"
     },
     {
-      "index": 60,
+      "index": 63,
       "name": "CEF3_查询应答",
       "signature": "CEF3_查询应答(控件名, 查询ID, 结果文本)",
       "description": "应答「查询请求」事件：查询ID 从事件字段 queryId 读取（数字文本，原样传回），结果文本回传给页面 onSuccess。每条查询只能应答一次；未应答的查询 120 秒后自动对页面回错误码 -4。",
@@ -1748,7 +1852,7 @@
       "demoInvocation": "CEF3_查询应答(演示CefBrowser控件, \"演示参数2\", \"演示参数3\")"
     },
     {
-      "index": 61,
+      "index": 64,
       "name": "CEF3_查询应答失败",
       "signature": "CEF3_查询应答失败(控件名, 查询ID, 错误码, 错误文本)",
       "description": "以失败结果应答「查询请求」事件：错误码与错误文本回传给页面 onFailure（错误码 0 视为 -1）。每条查询只能应答一次。",
@@ -1794,7 +1898,7 @@
       "demoInvocation": "CEF3_查询应答失败(演示CefBrowser控件, \"演示参数2\", 1, \"演示参数4\")"
     },
     {
-      "index": 62,
+      "index": 65,
       "name": "CEF3_是否可后退",
       "signature": "CEF3_是否可后退(控件名)",
       "description": "指定 CEF3 浏览器控件可以后退时返回 1。",
@@ -1824,7 +1928,7 @@
       "demoInvocation": "CEF3_是否可后退(演示CefBrowser控件)"
     },
     {
-      "index": 63,
+      "index": 66,
       "name": "CEF3_是否可前进",
       "signature": "CEF3_是否可前进(控件名)",
       "description": "指定 CEF3 浏览器控件可以前进时返回 1。",
@@ -1854,7 +1958,7 @@
       "demoInvocation": "CEF3_是否可前进(演示CefBrowser控件)"
     },
     {
-      "index": 64,
+      "index": 67,
       "name": "CEF3_是否加载中",
       "signature": "CEF3_是否加载中(控件名)",
       "description": "指定 CEF3 浏览器控件正在加载网页时返回 1。",
@@ -1884,7 +1988,7 @@
       "demoInvocation": "CEF3_是否加载中(演示CefBrowser控件)"
     },
     {
-      "index": 65,
+      "index": 68,
       "name": "CEF3_是否有效",
       "aliases": [
         "is_valid"
@@ -1917,7 +2021,7 @@
       "demoInvocation": "CEF3_是否有效(演示CefBrowser控件)"
     },
     {
-      "index": 66,
+      "index": 69,
       "name": "CEF3_是否弹出窗口",
       "aliases": [
         "is_popup"
@@ -1950,7 +2054,7 @@
       "demoInvocation": "CEF3_是否弹出窗口(演示CefBrowser控件)"
     },
     {
-      "index": 67,
+      "index": 70,
       "name": "CEF3_是否同一实例",
       "aliases": [
         "is_same"
@@ -1996,7 +2100,7 @@
       "demoInvocation": "CEF3_是否同一实例(演示CefBrowser控件, 演示CefBrowser控件)"
     },
     {
-      "index": 68,
+      "index": 71,
       "name": "CEF3_是否有文档",
       "aliases": [
         "has_document"
@@ -2029,7 +2133,7 @@
       "demoInvocation": "CEF3_是否有文档(演示CefBrowser控件)"
     },
     {
-      "index": 69,
+      "index": 72,
       "name": "CEF3_是否禁用窗口渲染",
       "aliases": [
         "is_window_rendering_disabled"
@@ -2063,7 +2167,7 @@
       "demoInvocation": "CEF3_是否禁用窗口渲染(演示CefBrowser控件)"
     },
     {
-      "index": 70,
+      "index": 73,
       "name": "CEF3_是否网页全屏",
       "aliases": [
         "is_fullscreen"
@@ -2097,7 +2201,7 @@
       "demoInvocation": "CEF3_是否网页全屏(演示CefBrowser控件)"
     },
     {
-      "index": 71,
+      "index": 74,
       "name": "CEF3_是否使用浏览器视图",
       "aliases": [
         "has_view"
@@ -2131,7 +2235,7 @@
       "demoInvocation": "CEF3_是否使用浏览器视图(演示CefBrowser控件)"
     },
     {
-      "index": 72,
+      "index": 75,
       "name": "CEF3_取打开者浏览器ID",
       "aliases": [
         "get_opener_identifier"
@@ -2165,7 +2269,7 @@
       "demoInvocation": "CEF3_取打开者浏览器ID(演示CefBrowser控件)"
     },
     {
-      "index": 73,
+      "index": 76,
       "name": "CEF3_是否已准备关闭",
       "aliases": [
         "is_ready_to_be_closed"
@@ -2199,7 +2303,7 @@
       "demoInvocation": "CEF3_是否已准备关闭(演示CefBrowser控件)"
     },
     {
-      "index": 74,
+      "index": 77,
       "name": "CEF3_是否渲染进程无响应",
       "aliases": [
         "is_render_process_unresponsive"
@@ -2233,7 +2337,7 @@
       "demoInvocation": "CEF3_是否渲染进程无响应(演示CefBrowser控件)"
     },
     {
-      "index": 75,
+      "index": 78,
       "name": "CEF3_取运行时样式",
       "aliases": [
         "get_runtime_style"
@@ -2267,7 +2371,7 @@
       "demoInvocation": "CEF3_取运行时样式(演示CefBrowser控件)"
     },
     {
-      "index": 76,
+      "index": 79,
       "name": "CEF3_取缩放级别",
       "aliases": [
         "get_zoom_level"
@@ -2300,7 +2404,7 @@
       "demoInvocation": "CEF3_取缩放级别(演示CefBrowser控件)"
     },
     {
-      "index": 77,
+      "index": 80,
       "name": "CEF3_取默认缩放级别",
       "aliases": [
         "get_default_zoom_level"
@@ -2333,7 +2437,7 @@
       "demoInvocation": "CEF3_取默认缩放级别(演示CefBrowser控件)"
     },
     {
-      "index": 78,
+      "index": 81,
       "name": "CEF3_设置缩放级别",
       "aliases": [
         "set_zoom_level"
@@ -2371,7 +2475,7 @@
       "demoInvocation": "CEF3_设置缩放级别(演示CefBrowser控件, 1.0)"
     },
     {
-      "index": 79,
+      "index": 82,
       "name": "CEF3_是否可缩放",
       "aliases": [
         "can_zoom"
@@ -2411,7 +2515,7 @@
       "demoInvocation": "CEF3_是否可缩放(演示CefBrowser控件, 1)"
     },
     {
-      "index": 80,
+      "index": 83,
       "name": "CEF3_执行缩放",
       "aliases": [
         "zoom"
@@ -2451,7 +2555,7 @@
       "demoInvocation": "CEF3_执行缩放(演示CefBrowser控件, 1)"
     },
     {
-      "index": 81,
+      "index": 84,
       "name": "CEF3_尝试关闭",
       "aliases": [
         "try_close_browser"
@@ -2484,7 +2588,7 @@
       "demoInvocation": "CEF3_尝试关闭(演示CefBrowser控件)"
     },
     {
-      "index": 82,
+      "index": 85,
       "name": "CEF3_通知窗口移动或调整大小",
       "aliases": [
         "notify_move_or_resize_started"
@@ -2518,7 +2622,7 @@
       "demoInvocation": "CEF3_通知窗口移动或调整大小(演示CefBrowser控件)"
     },
     {
-      "index": 83,
+      "index": 86,
       "name": "CEF3_通知屏幕信息已改变",
       "aliases": [
         "notify_screen_info_changed"
@@ -2552,7 +2656,7 @@
       "demoInvocation": "CEF3_通知屏幕信息已改变(演示CefBrowser控件)"
     },
     {
-      "index": 84,
+      "index": 87,
       "name": "CEF3_发送捕获丢失事件",
       "aliases": [
         "send_capture_lost_event"
@@ -2586,7 +2690,7 @@
       "demoInvocation": "CEF3_发送捕获丢失事件(演示CefBrowser控件)"
     },
     {
-      "index": 85,
+      "index": 88,
       "name": "CEF3_取消输入法组合文本",
       "aliases": [
         "ime_cancel_composition"
@@ -2620,7 +2724,7 @@
       "demoInvocation": "CEF3_取消输入法组合文本(演示CefBrowser控件)"
     },
     {
-      "index": 86,
+      "index": 89,
       "name": "CEF3_完成输入法组合文本",
       "aliases": [
         "ime_finish_composing_text"
@@ -2660,7 +2764,7 @@
       "demoInvocation": "CEF3_完成输入法组合文本(演示CefBrowser控件, 真)"
     },
     {
-      "index": 87,
+      "index": 90,
       "name": "CEF3_添加单词到词典",
       "aliases": [
         "add_word_to_dictionary"
@@ -2700,7 +2804,7 @@
       "demoInvocation": "CEF3_添加单词到词典(演示CefBrowser控件, \"演示参数2\")"
     },
     {
-      "index": 88,
+      "index": 91,
       "name": "CEF3_替换拼写错误",
       "aliases": [
         "replace_misspelling"
@@ -2740,7 +2844,7 @@
       "demoInvocation": "CEF3_替换拼写错误(演示CefBrowser控件, \"演示参数2\")"
     },
     {
-      "index": 89,
+      "index": 92,
       "name": "CEF3_通知系统拖放结束",
       "aliases": [
         "drag_source_system_drag_ended"
@@ -2775,7 +2879,7 @@
       "demoInvocation": "CEF3_通知系统拖放结束(演示CefBrowser控件)"
     },
     {
-      "index": 90,
+      "index": 93,
       "name": "CEF3_通知拖放目标离开",
       "aliases": [
         "drag_target_drag_leave"
@@ -2810,7 +2914,7 @@
       "demoInvocation": "CEF3_通知拖放目标离开(演示CefBrowser控件)"
     },
     {
-      "index": 91,
+      "index": 94,
       "name": "CEF3_通知隐藏状态",
       "aliases": [
         "was_hidden"
@@ -2850,7 +2954,7 @@
       "demoInvocation": "CEF3_通知隐藏状态(演示CefBrowser控件, 真)"
     },
     {
-      "index": 92,
+      "index": 95,
       "name": "CEF3_退出网页全屏",
       "aliases": [
         "exit_fullscreen"
@@ -2890,7 +2994,7 @@
       "demoInvocation": "CEF3_退出网页全屏(演示CefBrowser控件, 真)"
     },
     {
-      "index": 93,
+      "index": 96,
       "name": "CEF3_强制刷新",
       "aliases": [
         "reload_ignore_cache"
@@ -2923,7 +3027,7 @@
       "demoInvocation": "CEF3_强制刷新(演示CefBrowser控件)"
     },
     {
-      "index": 94,
+      "index": 97,
       "name": "CEF3_页内查找",
       "aliases": [
         "find"
@@ -2977,7 +3081,7 @@
       "demoInvocation": "CEF3_页内查找(演示CefBrowser控件, \"演示参数2\", 真, 真, 真)"
     },
     {
-      "index": 95,
+      "index": 98,
       "name": "CEF3_停止页内查找",
       "aliases": [
         "stop_finding"
@@ -3016,7 +3120,7 @@
       "demoInvocation": "CEF3_停止页内查找(演示CefBrowser控件, 真)"
     },
     {
-      "index": 96,
+      "index": 99,
       "name": "CEF3_设置焦点",
       "aliases": [
         "set_focus"
@@ -3055,7 +3159,7 @@
       "demoInvocation": "CEF3_设置焦点(演示CefBrowser控件, 真)"
     },
     {
-      "index": 97,
+      "index": 100,
       "name": "CEF3_发送鼠标单击事件",
       "aliases": [
         "send_mouse_click_event"
@@ -3120,7 +3224,7 @@
       "demoInvocation": "CEF3_发送鼠标单击事件(演示CefBrowser控件, 1, 1, 1, 1, 真, 1)"
     },
     {
-      "index": 98,
+      "index": 101,
       "name": "CEF3_发送鼠标移动事件",
       "aliases": [
         "send_mouse_move_event"
@@ -3175,7 +3279,7 @@
       "demoInvocation": "CEF3_发送鼠标移动事件(演示CefBrowser控件, 1, 1, 1, 真)"
     },
     {
-      "index": 99,
+      "index": 102,
       "name": "CEF3_发送鼠标滚轮事件",
       "aliases": [
         "send_mouse_wheel_event"
@@ -3235,7 +3339,7 @@
       "demoInvocation": "CEF3_发送鼠标滚轮事件(演示CefBrowser控件, 1, 1, 1, 1, 1)"
     },
     {
-      "index": 100,
+      "index": 103,
       "name": "CEF3_发送触摸事件",
       "aliases": [
         "send_touch_event"
@@ -3320,7 +3424,7 @@
       "demoInvocation": "CEF3_发送触摸事件(演示CefBrowser控件, 1, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1, 1, 1)"
     },
     {
-      "index": 101,
+      "index": 104,
       "name": "CEF3_发送按键事件",
       "aliases": [
         "send_key_event"
@@ -3394,7 +3498,7 @@
       "demoInvocation": "CEF3_发送按键事件(演示CefBrowser控件, 1, 1, 1, 1, 真, 1, 1, 真)"
     },
     {
-      "index": 102,
+      "index": 105,
       "name": "CEF3_是否静音",
       "aliases": [
         "is_audio_muted"

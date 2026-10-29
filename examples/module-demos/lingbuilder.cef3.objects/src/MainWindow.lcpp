@@ -719,7 +719,7 @@
             // 命令ID：CEF3图像_创建
             // [133] CEF3图像_创建()
             // 功能：在CEF UI线程创建空图像并返回类型化受管句柄。
-            // 参数：无；返回：longLong；可见性：advanced
+            // 参数：无；返回：CEF3图像句柄；可见性：advanced
             CEF3图像_创建()
         如果结束
         调试输出("已查看 命令 115–133：CEF3菜单_按索引是否勾选 至 CEF3图像_创建；勾选允许实际执行后会使用演示参数调用。")
@@ -731,73 +731,73 @@
             // 命令ID：CEF3图像_是否为空
             // [134] CEF3图像_是否为空(图像句柄)
             // 功能：判断图像是否不含任何缩放表示。
-            // 参数：图像句柄:longLong；返回：int；可见性：advanced
-            CEF3图像_是否为空(1)
+            // 参数：图像句柄:CEF3图像句柄；返回：int；可见性：advanced
+            CEF3图像_是否为空(0)
             // 命令ID：CEF3图像_是否相同
             // [135] CEF3图像_是否相同(图像句柄, 另一图像句柄)
             // 功能：比较两个CEF图像对象。
-            // 参数：图像句柄:longLong，另一图像句柄:longLong；返回：int；可见性：advanced
-            CEF3图像_是否相同(1, 1)
+            // 参数：图像句柄:CEF3图像句柄，另一图像句柄:CEF3图像句柄；返回：int；可见性：advanced
+            CEF3图像_是否相同(0, 0)
             // 命令ID：CEF3图像_添加位图
             // [136] CEF3图像_添加位图(图像句柄, 缩放, 像素宽度, 像素高度, 颜色类型, 透明类型, 像素缓冲)
             // 功能：从受管BGRA/RGBA像素缓冲添加缩放表示，缓冲大小必须为宽×高×4。
-            // 参数：图像句柄:longLong，缩放:double，像素宽度:int，像素高度:int，颜色类型:int，透明类型:int，像素缓冲:longLong；返回：int；可见性：advanced
-            CEF3图像_添加位图(1, 1.0, 1, 1, 1, 1, 1)
+            // 参数：图像句柄:CEF3图像句柄，缩放:double，像素宽度:int，像素高度:int，颜色类型:int，透明类型:int，像素缓冲:longLong；返回：int；可见性：advanced
+            CEF3图像_添加位图(0, 1.0, 1, 1, 1, 1, 1)
             // 命令ID：CEF3图像_添加PNG
             // [137] CEF3图像_添加PNG(图像句柄, 缩放, PNG缓冲)
             // 功能：从受管PNG缓冲添加缩放表示。
-            // 参数：图像句柄:longLong，缩放:double，PNG缓冲:longLong；返回：int；可见性：advanced
-            CEF3图像_添加PNG(1, 1.0, 1)
+            // 参数：图像句柄:CEF3图像句柄，缩放:double，PNG缓冲:longLong；返回：int；可见性：advanced
+            CEF3图像_添加PNG(0, 1.0, 1)
             // 命令ID：CEF3图像_添加JPEG
             // [138] CEF3图像_添加JPEG(图像句柄, 缩放, JPEG缓冲)
             // 功能：从受管JPEG缓冲添加缩放表示。
-            // 参数：图像句柄:longLong，缩放:double，JPEG缓冲:longLong；返回：int；可见性：advanced
-            CEF3图像_添加JPEG(1, 1.0, 1)
+            // 参数：图像句柄:CEF3图像句柄，缩放:double，JPEG缓冲:longLong；返回：int；可见性：advanced
+            CEF3图像_添加JPEG(0, 1.0, 1)
             // 命令ID：CEF3图像_取宽度
             // [139] CEF3图像_取宽度(图像句柄)
             // 功能：取得图像的设备无关宽度。
-            // 参数：图像句柄:longLong；返回：longLong；可见性：advanced
-            CEF3图像_取宽度(1)
+            // 参数：图像句柄:CEF3图像句柄；返回：longLong；可见性：advanced
+            CEF3图像_取宽度(0)
             // 命令ID：CEF3图像_取高度
             // [140] CEF3图像_取高度(图像句柄)
             // 功能：取得图像的设备无关高度。
-            // 参数：图像句柄:longLong；返回：longLong；可见性：advanced
-            CEF3图像_取高度(1)
+            // 参数：图像句柄:CEF3图像句柄；返回：longLong；可见性：advanced
+            CEF3图像_取高度(0)
             // 命令ID：CEF3图像_是否有表示
             // [141] CEF3图像_是否有表示(图像句柄, 缩放)
             // 功能：判断指定缩放表示是否存在。
-            // 参数：图像句柄:longLong，缩放:double；返回：int；可见性：advanced
-            CEF3图像_是否有表示(1, 1.0)
+            // 参数：图像句柄:CEF3图像句柄，缩放:double；返回：int；可见性：advanced
+            CEF3图像_是否有表示(0, 1.0)
             // 命令ID：CEF3图像_删除表示
             // [142] CEF3图像_删除表示(图像句柄, 缩放)
             // 功能：删除指定缩放表示。
-            // 参数：图像句柄:longLong，缩放:double；返回：int；可见性：advanced
-            CEF3图像_删除表示(1, 1.0)
+            // 参数：图像句柄:CEF3图像句柄，缩放:double；返回：int；可见性：advanced
+            CEF3图像_删除表示(0, 1.0)
             // 命令ID：CEF3图像_取表示信息
             // [143] CEF3图像_取表示信息(图像句柄, 缩放)
             // 功能：以JSON返回最接近缩放表示的实际缩放、像素宽度和高度。
-            // 参数：图像句柄:longLong，缩放:double；返回：wideString；可见性：advanced
-            CEF3图像_取表示信息(1, 1.0)
+            // 参数：图像句柄:CEF3图像句柄，缩放:double；返回：wideString；可见性：advanced
+            CEF3图像_取表示信息(0, 1.0)
             // 命令ID：CEF3图像_取位图缓冲
             // [144] CEF3图像_取位图缓冲(图像句柄, 缩放, 颜色类型, 透明类型)
             // 功能：导出指定缩放表示为受管位图缓冲。
-            // 参数：图像句柄:longLong，缩放:double，颜色类型:int，透明类型:int；返回：longLong；可见性：advanced
-            CEF3图像_取位图缓冲(1, 1.0, 1, 1)
+            // 参数：图像句柄:CEF3图像句柄，缩放:double，颜色类型:int，透明类型:int；返回：longLong；可见性：advanced
+            CEF3图像_取位图缓冲(0, 1.0, 1, 1)
             // 命令ID：CEF3图像_取PNG缓冲
             // [145] CEF3图像_取PNG缓冲(图像句柄, 缩放, 保留透明)
             // 功能：导出指定缩放表示为受管PNG缓冲。
-            // 参数：图像句柄:longLong，缩放:double，保留透明:bool；返回：longLong；可见性：advanced
-            CEF3图像_取PNG缓冲(1, 1.0, 真)
+            // 参数：图像句柄:CEF3图像句柄，缩放:double，保留透明:bool；返回：longLong；可见性：advanced
+            CEF3图像_取PNG缓冲(0, 1.0, 真)
             // 命令ID：CEF3图像_取JPEG缓冲
             // [146] CEF3图像_取JPEG缓冲(图像句柄, 缩放, 质量)
             // 功能：导出指定缩放表示为受管JPEG缓冲，质量范围0到100。
-            // 参数：图像句柄:longLong，缩放:double，质量:int；返回：longLong；可见性：advanced
-            CEF3图像_取JPEG缓冲(1, 1.0, 1)
+            // 参数：图像句柄:CEF3图像句柄，缩放:double，质量:int；返回：longLong；可见性：advanced
+            CEF3图像_取JPEG缓冲(0, 1.0, 1)
             // 命令ID：CEF3图像_释放
             // [147] CEF3图像_释放(图像句柄)
             // 功能：在CEF UI线程释放图像对象受管句柄。
-            // 参数：图像句柄:longLong；返回：int；可见性：advanced
-            CEF3图像_释放(1)
+            // 参数：图像句柄:CEF3图像句柄；返回：int；可见性：advanced
+            CEF3图像_释放(0)
             // 命令ID：CEF3导航项_取当前可见
             // [148] CEF3导航项_取当前可见(控件名)
             // 功能：在CEF UI线程快照当前可见导航项并返回类型化受管句柄。

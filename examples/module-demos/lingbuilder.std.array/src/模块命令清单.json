@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-24T03:43:55.770Z",
+  "generatedAt": "2026-10-29T04:37:06.804Z",
   "module": {
     "id": "lingbuilder.std.array",
     "name": "数组操作模块",

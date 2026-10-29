@@ -1582,6 +1582,17 @@
       "configRoot": "config/memory-migrator",
       "designerPath": ".lingbuilder/projects/memory-migrator/window-designer.json",
       "references": []
+    },
+    {
+      "type": "visual-cpp",
+      "id": "module-demo-lingbuilder.op",
+      "name": "OP 后台图色模块完整演示",
+      "sourceRoot": "examples/module-demos/lingbuilder.op/src",
+      "configRoot": "examples/module-demos/lingbuilder.op/config",
+      "designerPath": ".lingbuilder/projects/module-demo-lingbuilder.op/window-designer.json",
+      "isDefault": false,
+      "references": [],
+      "solutionFolderId": "module-complete-demos"
     }
   ]
 }

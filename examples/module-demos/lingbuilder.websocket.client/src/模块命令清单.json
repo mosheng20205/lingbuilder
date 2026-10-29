@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-24T03:43:55.813Z",
+  "generatedAt": "2026-10-29T04:37:06.848Z",
   "module": {
     "id": "lingbuilder.websocket.client",
     "name": "WebSocket 客户端模块",

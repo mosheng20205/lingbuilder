@@ -1,6 +1,6 @@
 # LingBuilder 全模块演示项目
 
-本目录由 `npm run module:demos -w lingbuilder-electron` 根据实际模块清单生成，共 111 个独立项目。
+本目录由 `npm run module:demos -w lingbuilder-electron` 根据实际模块清单生成，共 112 个独立项目。
 
 每个项目逐条覆盖目标模块全部 binding 命令；命令较多时使用 TabControl 分组。源码包输出到仓库根目录 `exports/`。
 
@@ -17,7 +17,7 @@
 | `lingbuilder.barcode` 条码模块 | `module-demo-lingbuilder.barcode` | 25 | 0 | 2 | `条码模块完整演示.lcpppkg` |
 | `lingbuilder.cdp.client` CDP 客户端模块 | `module-demo-lingbuilder.cdp.client` | 161 | 0 | 9 | `CDP客户端模块完整演示.lcpppkg` |
 | `lingbuilder.cef3.automation` CEF3自动化模块 | `module-demo-lingbuilder.cef3.automation` | 43 | 0 | 3 | `CEF3自动化模块完整演示.lcpppkg` |
-| `lingbuilder.cef3.browser` CEF3浏览器模块 | `module-demo-lingbuilder.cef3.browser` | 102 | 2 | 6 | `CEF3浏览器模块完整演示.lcpppkg` |
+| `lingbuilder.cef3.browser` CEF3浏览器模块 | `module-demo-lingbuilder.cef3.browser` | 105 | 2 | 6 | `CEF3浏览器模块完整演示.lcpppkg` |
 | `lingbuilder.cef3.devtools` CEF3开发者工具模块 | `module-demo-lingbuilder.cef3.devtools` | 8 | 0 | 1 | `CEF3开发者工具模块完整演示.lcpppkg` |
 | `lingbuilder.cef3.events` CEF3事件模块 | `module-demo-lingbuilder.cef3.events` | 6 | 0 | 1 | `CEF3事件模块完整演示.lcpppkg` |
 | `lingbuilder.cef3.network` CEF3网络模块 | `module-demo-lingbuilder.cef3.network` | 26 | 0 | 2 | `CEF3网络模块完整演示.lcpppkg` |
@@ -50,7 +50,7 @@
 | `lingbuilder.database.sqlite` SQLite 数据库模块 | `module-demo-lingbuilder.database.sqlite` | 73 | 0 | 4 | `SQLite数据库模块完整演示.lcpppkg` |
 | `lingbuilder.edgeview` EdgeView 浏览器模块 | `module-demo-lingbuilder.edgeview` | 324 | 2 | 12 | `EdgeView浏览器模块完整演示.lcpppkg` |
 | `lingbuilder.fbro.automation` FBro自动化模块 | `module-demo-lingbuilder.fbro.automation` | 72 | 0 | 4 | `FBro自动化模块完整演示.lcpppkg` |
-| `lingbuilder.fbro.browser` FBro指纹浏览器模块 | `module-demo-lingbuilder.fbro.browser` | 142 | 2 | 8 | `FBro指纹浏览器模块完整演示.lcpppkg` |
+| `lingbuilder.fbro.browser` FBro指纹浏览器模块 | `module-demo-lingbuilder.fbro.browser` | 145 | 2 | 8 | `FBro指纹浏览器模块完整演示.lcpppkg` |
 | `lingbuilder.fbro.events` FBro事件模块 | `module-demo-lingbuilder.fbro.events` | 13 | 0 | 1 | `FBro事件模块完整演示.lcpppkg` |
 | `lingbuilder.fbro.network` FBro高级网络模块 | `module-demo-lingbuilder.fbro.network` | 23 | 0 | 2 | `FBro高级网络模块完整演示.lcpppkg` |
 | `lingbuilder.fbro.objects` FBro受管对象模块 | `module-demo-lingbuilder.fbro.objects` | 227 | 0 | 12 | `FBro受管对象模块完整演示.lcpppkg` |
@@ -85,6 +85,7 @@
 | `lingbuilder.new_emoji.ui` new_emoji 原生界面库 | `module-demo-lingbuilder.new_emoji.ui` | 4025 | 93 | 12 | `新表情原生界面库完整演示.lcpppkg` |
 | `lingbuilder.notify` 消息推送模块 | `module-demo-lingbuilder.notify` | 17 | 0 | 1 | `消息推送模块完整演示.lcpppkg` |
 | `lingbuilder.ocr` 微信OCR识别模块 | `module-demo-lingbuilder.ocr` | 19 | 0 | 1 | `微信OCR识别模块完整演示.lcpppkg` |
+| `lingbuilder.op` OP 后台图色模块 | `module-demo-lingbuilder.op` | 214 | 0 | 11 | `OP后台图色模块完整演示.lcpppkg` |
 | `lingbuilder.opencv` OpenCV 图像处理模块 | `module-demo-lingbuilder.opencv` | 47 | 0 | 3 | `OpenCV图像处理模块完整演示.lcpppkg` |
 | `lingbuilder.process` 进程管理模块 | `module-demo-lingbuilder.process` | 10 | 0 | 1 | `进程管理模块完整演示.lcpppkg` |
 | `lingbuilder.qrcode` 二维码模块 | `module-demo-lingbuilder.qrcode` | 31 | 0 | 2 | `二维码模块完整演示.lcpppkg` |

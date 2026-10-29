@@ -1106,12 +1106,12 @@
             EdgeView框架_枚举JSON(演示EdgeBrowser控件)
             // 命令ID：EdgeView框架_取信息JSON
             // [209] EdgeView框架_取信息JSON(控件名, 框架句柄)
-            // 功能：取得 Frame ID、名称、来源和生命周期信息。
+            // 功能：取得 Frame ID、名称、来源和生命周期信息；框架句柄传 0 返回主文档信息（含当前地址 source 字段）。
             // 参数：控件名:controlRef，框架句柄:handle；返回：wideString；可见性：default
             EdgeView框架_取信息JSON(演示EdgeBrowser控件, 0)
             // 命令ID：EdgeView框架_执行脚本异步
             // [210] EdgeView框架_执行脚本异步(控件名, 框架句柄, 脚本, 完成处理器)
-            // 功能：在受管 Frame 中异步执行 JavaScript。
+            // 功能：在受管 Frame 中异步执行 JavaScript；框架句柄传 0 表示在主文档执行。
             // 参数：控件名:controlRef，框架句柄:handle，脚本:wideString，完成处理器:handler；返回：longLong；可见性：default
             EdgeView框架_执行脚本异步(演示EdgeBrowser控件, 0, "演示参数3", &模块演示回调)
             // 命令ID：EdgeView框架_发送字符串消息

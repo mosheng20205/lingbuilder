@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-24T03:43:55.564Z",
+  "generatedAt": "2026-10-29T04:37:06.576Z",
   "module": {
     "id": "lingbuilder.crypto.hash",
     "name": "哈希摘要模块",

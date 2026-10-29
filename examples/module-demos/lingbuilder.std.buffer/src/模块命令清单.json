@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-24T03:43:55.775Z",
+  "generatedAt": "2026-10-29T04:37:06.809Z",
   "module": {
     "id": "lingbuilder.std.buffer",
     "name": "缓冲区模块",

@@ -14,7 +14,7 @@
       "background": "#0F172A",
       "titleBarBackground": "#111827",
       "titleBarForeground": "#F8FAFC",
-      "description": "逐条覆盖 102 条模块命令。",
+      "description": "逐条覆盖 105 条模块命令。",
       "designerBackend": "win32",
       "openPlacement": "center",
       "resizable": true,
@@ -141,7 +141,7 @@
           "name": "命令分组选项卡"
         },
         {
-          "content": "命令 1–17：CEF3_是否启用崩溃报告 至 CEF3无头_取地址",
+          "content": "命令 1–18：CEF3_是否启用崩溃报告 至 CEF3无头_取主框架",
           "x": 58,
           "y": 174,
           "width": 980,
@@ -163,7 +163,7 @@
           "containerSlot": "group-01"
         },
         {
-          "content": "本页覆盖 17 条命令。完整签名、功能、参数、返回值和调用位于 MainWindow.lcpp 与模块命令清单.json。",
+          "content": "本页覆盖 18 条命令。完整签名、功能、参数、返回值和调用位于 MainWindow.lcpp 与模块命令清单.json。",
           "x": 58,
           "y": 274,
           "width": 980,
@@ -210,7 +210,7 @@
           }
         },
         {
-          "content": "命令 18–34：CEF3无头_取主框架 至 CEF3_后退",
+          "content": "命令 19–36：CEF3无头_取浏览器句柄 至 CEF3_执行JS",
           "x": 58,
           "y": 174,
           "width": 980,
@@ -232,7 +232,7 @@
           "containerSlot": "group-02"
         },
         {
-          "content": "本页覆盖 17 条命令。完整签名、功能、参数、返回值和调用位于 MainWindow.lcpp 与模块命令清单.json。",
+          "content": "本页覆盖 18 条命令。完整签名、功能、参数、返回值和调用位于 MainWindow.lcpp 与模块命令清单.json。",
           "x": 58,
           "y": 274,
           "width": 980,
@@ -279,7 +279,7 @@
           }
         },
         {
-          "content": "命令 35–51：CEF3_前进 至 CEF3_取事件数据",
+          "content": "命令 37–54：CEF3_后退 至 CEF3_取事件数据",
           "x": 58,
           "y": 174,
           "width": 980,
@@ -301,7 +301,7 @@
           "containerSlot": "group-03"
         },
         {
-          "content": "本页覆盖 17 条命令。完整签名、功能、参数、返回值和调用位于 MainWindow.lcpp 与模块命令清单.json。",
+          "content": "本页覆盖 18 条命令。完整签名、功能、参数、返回值和调用位于 MainWindow.lcpp 与模块命令清单.json。",
           "x": 58,
           "y": 274,
           "width": 980,
@@ -348,7 +348,7 @@
           }
         },
         {
-          "content": "命令 52–68：CEF3_取事件字段 至 CEF3_是否有文档",
+          "content": "命令 55–72：CEF3_取事件字段 至 CEF3_是否禁用窗口渲染",
           "x": 58,
           "y": 174,
           "width": 980,
@@ -370,7 +370,7 @@
           "containerSlot": "group-04"
         },
         {
-          "content": "本页覆盖 17 条命令。完整签名、功能、参数、返回值和调用位于 MainWindow.lcpp 与模块命令清单.json。",
+          "content": "本页覆盖 18 条命令。完整签名、功能、参数、返回值和调用位于 MainWindow.lcpp 与模块命令清单.json。",
           "x": 58,
           "y": 274,
           "width": 980,
@@ -417,7 +417,7 @@
           }
         },
         {
-          "content": "命令 69–85：CEF3_是否禁用窗口渲染 至 CEF3_取消输入法组合文本",
+          "content": "命令 73–90：CEF3_是否网页全屏 至 CEF3_添加单词到词典",
           "x": 58,
           "y": 174,
           "width": 980,
@@ -439,7 +439,7 @@
           "containerSlot": "group-05"
         },
         {
-          "content": "本页覆盖 17 条命令。完整签名、功能、参数、返回值和调用位于 MainWindow.lcpp 与模块命令清单.json。",
+          "content": "本页覆盖 18 条命令。完整签名、功能、参数、返回值和调用位于 MainWindow.lcpp 与模块命令清单.json。",
           "x": 58,
           "y": 274,
           "width": 980,
@@ -486,7 +486,7 @@
           }
         },
         {
-          "content": "命令 86–102：CEF3_完成输入法组合文本 至 CEF3_是否静音",
+          "content": "命令 91–105：CEF3_替换拼写错误 至 CEF3_是否静音",
           "x": 58,
           "y": 174,
           "width": 980,
@@ -508,7 +508,7 @@
           "containerSlot": "group-06"
         },
         {
-          "content": "本页覆盖 17 条命令。完整签名、功能、参数、返回值和调用位于 MainWindow.lcpp 与模块命令清单.json。",
+          "content": "本页覆盖 15 条命令。完整签名、功能、参数、返回值和调用位于 MainWindow.lcpp 与模块命令清单.json。",
           "x": 58,
           "y": 274,
           "width": 980,
