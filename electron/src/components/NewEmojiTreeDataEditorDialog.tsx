@@ -25,12 +25,15 @@ export default function NewEmojiTreeDataEditorDialog({
   onClose: () => void;
 }) {
   const properties = control.properties || {};
+  const initialTree = useMemo(() => parseTreeDataJson(properties.treeDataJson), []);
   const initialNodes = useMemo<TreeNodeDraft[]>(() => {
-    const fromJson = parseTreeDataJson(properties.treeDataJson);
-    if (fromJson.ok && fromJson.nodes.length > 0) return fromJson.nodes;
+    if (initialTree.ok && initialTree.nodes.length > 0) return initialTree.nodes;
     return parseTreeSimpleItems(properties.items);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // 根对象上的选项键（indentWidth/iconWidth/rowHeight、defaultExpandedKeys、filterText 等）
+  // 对话框不提供编辑面，但必须原样保留并在保存时合并回写，否则一次节点编辑就把运行时选项清掉。
+  const [treeOptions] = useState<Record<string, unknown>>(() => (initialTree.ok ? initialTree.options : {}));
   const [nodes, setNodes] = useState<TreeNodeDraft[]>(initialNodes);
   const [notice, setNotice] = useState('');
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -124,7 +127,7 @@ export default function NewEmojiTreeDataEditorDialog({
     // 画布预览与基础运行时路径保持一致。
     const finalized = nodes.map((node, index) => ({ ...node, key: node.key.trim() || `node-${index + 1}`, label: node.label.trim() || '节点' }));
     onSave({
-      treeDataJson: serializeTreeDataJson(finalized),
+      treeDataJson: serializeTreeDataJson(finalized, treeOptions),
       items: serializeTreeSimpleItems(finalized)
     });
   };

@@ -298,6 +298,10 @@ export function getRichListEditorSummary(properties: Readonly<Record<string, Win
 // Tree / TreeSelect：树数据 JSON + 简单树节点行
 // treeDataJson 运行时契约（element_treeview.cpp parse_tree_json_items /
 // serialize_tree_json_items）：{"data":[{key,label,icon,children:[...]},...]}。
+// 数据 JSON 根对象另可携带 Tree 行布局选项（2.1.0 起）：indentWidth/iconWidth/rowHeight
+// （逻辑像素，见引擎 docs/components/tree.md）。parseTreeDataJson 会把根对象上除节点数组
+// （data/nodes/children）外的键原样保留在 options 里，serializeTreeDataJson 回写时合并回去
+// ——树数据编辑对话框保存不再丢弃这些运行时选项键（2026-10-29 有损回写修复）。
 // 简单 items 行口径（parse_tree_items）：`文本\t层级\t展开\t勾选\t懒加载\t键\t禁用\t叶子\t图标…`；
 // 设计器历史默认值还用 `> ` 前缀表示下一级。
 // ---------------------------------------------------------------------------
@@ -313,11 +317,19 @@ export interface TreeNodeDraft {
   level: number;
 }
 
-export function parseTreeDataJson(value: unknown): { ok: boolean; nodes: TreeNodeDraft[] } {
+export function parseTreeDataJson(value: unknown): {
+  ok: boolean;
+  nodes: TreeNodeDraft[];
+  /** 对象根上除节点数组（data/nodes/children）外的其余键（indentWidth/iconWidth/rowHeight、
+   *  defaultExpandedKeys、filterText 等），原样保留供 serializeTreeDataJson 回写合并，
+   *  避免树数据编辑对话框一次保存就把运行时选项静默丢掉。 */
+  options: Record<string, unknown>;
+} {
   const raw = readStringListValue(value).join('\n').trim();
-  if (!raw) return { ok: true, nodes: [] };
+  if (!raw) return { ok: true, nodes: [], options: {} };
   const root = parseJsonObject(raw);
   let list: unknown[] | undefined;
+  let options: Record<string, unknown> = {};
   if (root) {
     for (const field of ['data', 'nodes', 'children'] as const) {
       if (Array.isArray(root[field])) {
@@ -325,6 +337,8 @@ export function parseTreeDataJson(value: unknown): { ok: boolean; nodes: TreeNod
         break;
       }
     }
+    options = { ...root };
+    for (const field of ['data', 'nodes', 'children'] as const) delete options[field];
   } else {
     try {
       const parsed = JSON.parse(raw) as unknown;
@@ -333,7 +347,7 @@ export function parseTreeDataJson(value: unknown): { ok: boolean; nodes: TreeNod
       list = undefined;
     }
   }
-  if (!list) return { ok: false, nodes: [] };
+  if (!list) return { ok: false, nodes: [], options: {} };
   const entries = list.map(item => asRecord(item));
 
   const draftOf = (record: Record<string, unknown>, level: number): TreeNodeDraft => ({
@@ -357,16 +371,16 @@ export function parseTreeDataJson(value: unknown): { ok: boolean; nodes: TreeNod
       }
     };
     walk(entries, 0);
-    return { ok: true, nodes };
+    return { ok: true, nodes, options };
   }
   // 扁平层级形态（节点带 level 数字）：直接按 level 展平。
   for (const record of entries) {
     nodes.push(draftOf(record, Math.max(0, intOf(record.level, 0))));
   }
-  return { ok: true, nodes };
+  return { ok: true, nodes, options };
 }
 
-export function serializeTreeDataJson(nodes: TreeNodeDraft[]): string[] {
+export function serializeTreeDataJson(nodes: TreeNodeDraft[], options: Record<string, unknown> = {}): string[] {
   // 规整层级：首个节点为根；任何节点的层级最多比前一个深 1，
   // 避免上游 serialize_node 跳级丢节点。
   const safeLevels: number[] = [];
@@ -399,7 +413,14 @@ export function serializeTreeDataJson(nodes: TreeNodeDraft[]): string[] {
     }
     return { tree, next: index };
   };
-  return [stringifyCompact({ data: buildChildren(0, 0).tree })];
+  // 节点数组永远以 data 输出（运行时 parse_tree_json_items 先读 data 再读 nodes/children）；
+  // 传入 options 里的节点数组同义词直接丢弃，防止旧节点列表借 options 还魂。
+  const extras: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(options)) {
+    if (key === 'data' || key === 'nodes' || key === 'children') continue;
+    extras[key] = value;
+  }
+  return [stringifyCompact({ data: buildChildren(0, 0).tree, ...extras })];
 }
 
 /** 把简单树节点行（`文本\t层级…` 与 `> ` 前缀约定）解析为编辑器节点。 */

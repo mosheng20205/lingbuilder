@@ -105,6 +105,38 @@ test('树数据 JSON 往返一致，层级跳级被规整避免上游丢节点',
   assert.deepEqual(reparsed.nodes.map(node => [node.key, node.level]), [['a', 0], ['b', 1]]);
 });
 
+test('树数据 JSON 根对象选项键在编辑器往返中保留，节点数组同义词不借 options 还魂', () => {
+  // 设计器/代码把行布局选项与运行时选项写在根对象（nodes 拼法也合法）：
+  // 树数据编辑对话框保存时必须原样保留这些键，否则一次节点编辑就静默清掉运行时配置。
+  const stored = ['{"nodes":[{"key":"root","label":"根节点","children":[{"key":"child","label":"子节点"}]}],"indentWidth":20,"iconWidth":28,"rowHeight":38,"defaultExpandedKeys":["root"],"showCheckbox":true}'];
+  const parsed = parseTreeDataJson(stored);
+  assert.equal(parsed.ok, true);
+  assert.deepEqual(parsed.options, { indentWidth: 20, iconWidth: 28, rowHeight: 38, defaultExpandedKeys: ['root'], showCheckbox: true });
+
+  const written = serializeTreeDataJson(parsed.nodes, parsed.options);
+  const reparsed = parseTreeDataJson(written);
+  assert.equal(reparsed.ok, true);
+  assert.deepEqual(reparsed.nodes, parsed.nodes);
+  assert.deepEqual(reparsed.options, parsed.options);
+  const root = JSON.parse(written[0] ?? '{}') as Record<string, unknown>;
+  assert.equal(Array.isArray(root.data), true, '节点数组以 data 键输出（运行时 parse_tree_json_items 先读 data）');
+  assert.equal(root.indentWidth, 20);
+  assert.equal(root.rowHeight, 38);
+
+  // 旧调用形态（不传 options）输出保持 {"data":[...]} 单键，属性面板历史行为不变
+  const bare = JSON.parse(serializeTreeDataJson(parsed.nodes)[0] ?? '{}') as Record<string, unknown>;
+  assert.deepEqual(Object.keys(bare), ['data']);
+
+  // options 混入节点数组同义词时必须丢弃，防止旧节点列表借 options 还魂覆盖 data
+  const guarded = JSON.parse(serializeTreeDataJson(parsed.nodes, { ...parsed.options, nodes: [{ key: 'stale' }] })[0] ?? '{}') as Record<string, unknown>;
+  assert.equal(guarded.nodes, undefined);
+  assert.equal(guarded.indentWidth, 20);
+
+  // 解析失败 / 裸数组形态：options 恒为空对象
+  assert.deepEqual(parseTreeDataJson(['not-json']).options, {});
+  assert.deepEqual(parseTreeDataJson(['[{"key":"a","label":"甲"}]']).options, {});
+});
+
 test('简单树节点行兼容 `>` 前缀与 TAB 层级，序列化字段位与 parse_tree_items 对齐', () => {
   const legacy = ['根节点', '> 子节点 A', '>> 孙节点', '叶子节点\t0\t1\t1'];
   const nodes = parseTreeSimpleItems(legacy);
