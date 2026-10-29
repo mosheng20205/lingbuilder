@@ -2355,3 +2355,10 @@ C++ 解析时前两个合成一个字面反斜杠，第三个与后面的字母 
 - **`FBro_创建区域` 第 9 参「用户代理」未生效**：实测 navigator.userAgent 与 HTTP 头均为默认值（httpbin.org/user-agent 回显实证）。链路断点：宿主侧 `LB_FBro_CreateEx2` 的 UA 走 `StartBrowser` 内 `FBroHsRequestContext_SetPreference("general.useragent.override")`，该调用在请求上下文偏好子系统就绪前发生会被 CEF 静默忽略（返回 BOOL 被丢弃）。0.8.37 生成器已在 `FBro_区域导航` 前自动经宿主 RPC 双通道补设（`applyFingerprint` 的 userAgent 嵌套走官方 VIP UA-Data + `setUserAgent` HTTP 层），待随包验证；桥内 `OnAfterCreated` 也加了 pending 补设（`ua_preference_pending`）。长期看 CreateEx2 的 UA 语义需要在官方内核层确认。
 - **原生 UI 五步多开链崩溃**：`FBro_后台创建 → FBroVIP_实例设置新窗口转标签页 → FBro_实例应用指纹JSON → FBro_实例打开原生UI → 弹窗补指纹` 在「弹窗补指纹」一步崩溃于 FBrowserVIP.dll（0xc0000005 @ 偏移 0x1ad553，官方闭源 DLL 内部，弹窗句柄应用指纹触发）；等加载完成后再应用同样崩溃。修复只能等官方 DLL；教程与示例在 0.8.36 上应使用 `FBro_创建区域` 区域方式多开。
 - **`FBro_区域导航` 在宿主「启动中」态失败**：区域创建（`Start(config, false)` 不等就绪）后立即导航返回 0；教程示例已加「`FBro_区域是否存活` 轮询等待就绪」范式，运行时层可在区域创建后自动挂「就绪即导航」队列。
+
+## FBro 桥事件期句柄/应答通道已知缺陷（2026-10-29 实测，0.8.36，FBro 合集 18~29 制作中发现）
+
+- **「上下文菜单显示前」同步派发未生效，菜单重建不可用**：绑定该事件后处理器能收到（x/y/frameUrl 字段可读），但 ① 事件期句柄 `menuHandle`/`paramsHandle` 在处理器读取前已被回收（`FBro菜单_*`/`FBro右键参数_*` 全部返回 -7/0），② `FBro_设置事件响应JSON` 的菜单 ops 数组（clear/addItem/addSeparator/addSubMenu）不回传到桥（`ApplyMenuModelOperations` 未执行），右键菜单恒为默认项。疑点：`LB_FBRO_EVENT_FLAG_SYNCHRONOUS` 在 Win32 运行时派发层未按 SendMessage 阻塞路径走（见 `OnBeforeContextMenu` 桥注释的预期语义）。右键坐标/框架读取与 `上下文菜单命令` 事件可用。
+- **纯协议请求正文下载事件未派发**：`FBro异步请求_发起` 后 `FBro网络_取下载数据事件` 的预约任务在「任务进行中」与「任务完成后」两种时机都不进入完成态（30 秒观察），正文无法经此通道收取（响应头/状态码不受影响）。`Accept-Encoding: identity` 已设。官方描述的多块十六进制拼接路径无法验证。
+- **`上下文菜单命令`/菜单重建修复方向**：与上条同源（同步派发层）；修复后 ep25 的 ops JSON 教程代码无需改动即可生效。
+- **`FBro缓冲_从文本` 存 UTF-16、`FBro缓冲_转文本` 按 UTF-8 解码**：非 ASCII 内容往返会截断（ASCII 也只出首字符）。属文档语义而非缺陷，教程已按「看字节用转十六进制」口径交付；后续可考虑补「从 UTF-8 字节创建缓冲」命令闭环。
