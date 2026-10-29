@@ -1,8 +1,8 @@
 # LingBuilder 模块封装清单
 
-更新时间：2026-10-19
+更新时间：2026-10-29
 
-本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **108 个内置模块、4626 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
+本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。（门禁总表与基线写回规则见 `docs/QUALITY_GATES.md`；本清单计数行由 `tests/modules.test.ts` 的「模块封装清单覆盖实际内置模块注册表」用例按 `BUILTIN_MODULES` 实算校验。）当前共注册 **108 个内置模块、4629 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
 
 - `schemaVersion: 2`。
 - `contributes.commands` 与 `bindings.commands` 一一对应。
@@ -155,7 +155,7 @@ OpenCV 模块保留基础 GDI+ 图像模块并作为新增高级能力。公开�
 | 已有（1.1.0） | `lingbuilder.win32.basic` | Win32 窗口基础模块 | 245 |
 | 已有 | `lingbuilder.win32.common-controls` | Win32 高级控件模块 | 561 |
 | 已有 | `lingbuilder.edgeview` | EdgeView 浏览器模块 | 321 |
-| 3.0预览 | `lingbuilder.cef3.browser` | CEF3核心浏览器模块（CEF 150 x64） | 64 |
+| 3.0预览 | `lingbuilder.cef3.browser` | CEF3核心浏览器模块（CEF 150 x64） | 105 |
 | 3.0预览 | `lingbuilder.cef3.events` | CEF3事件绑定模块 | 6 |
 | 3.0预览 | `lingbuilder.cef3.objects` | CEF3受管对象、Menu、证书与导航历史模块 | 183 |
 | 3.0预览 | `lingbuilder.cef3.session` | CEF3独立RequestContext、Preference与Cookie会话模块 | 19 |
