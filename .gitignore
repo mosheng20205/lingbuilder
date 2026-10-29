@@ -241,6 +241,7 @@ COMPONENT_CARDS_PLAN.md
 /.lingbuilder/projects/*/*
 !/.lingbuilder/projects/*/window-designer.json
 !/.lingbuilder/projects/*/project-modules.json
+/.lingbuilder-build/
 # 任意层级的 .lingbuilder（examples/src 下的示例与演示工程）同口径：
 # 只放行工程数据，modules/toolchains/cache/ai 等运行数据一律不入库。
 **/.lingbuilder/*
