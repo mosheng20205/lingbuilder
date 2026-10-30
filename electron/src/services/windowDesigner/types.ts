@@ -10,6 +10,7 @@ export type LingControlType =
   | 'ToolBar' | 'StatusBar' | 'ToolTip' | 'ReBar' | 'Pager' | 'RichEdit'
   | 'Animation' | 'VideoPlayer' | 'ColorPicker' | 'FlatScrollBar' | 'ImageList' | 'PropertySheet' | 'FileDialog'
   | 'Clock'
+  | 'FlowPanel' | 'TablePanel'
   | 'ContextMenu' | 'PopupMenu' | 'EdgeBrowser' | 'CefBrowser' | 'FBroBrowser' | 'FBroHeadlessBrowser' | 'EdgeViewHeadlessBrowser' | 'CefHeadlessBrowser';
 
 export interface LingEventBinding {
@@ -149,6 +150,11 @@ export interface LingWindowModel {
   borderStyle?: LingWindowBorderStyle;
   /** 无边框窗口是否允许按住客户区拖动移动；仅 borderStyle 为 none 时生效，默认 false。 */
   borderlessDraggable?: boolean;
+  /**
+   * 内容随窗口等比缩放（布局系统二期）：开启后运行期按 min(宽比, 高比) 对全部控件整体乘法缩放。
+   * 与控件锚定互斥——开启本属性的窗口忽略控件 properties.anchor；缺省 false 保持现状。
+   */
+  scaleContentWithWindow?: boolean;
   /** new_emoji/未来原生 UI 后端共享的精确窗口框架契约。 */
   windowFrame?: LingWindowFrame;
   controls: LingControl[];

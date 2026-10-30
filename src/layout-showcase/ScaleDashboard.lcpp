@@ -1,0 +1,9 @@
+类 ScaleDashboard
+    事件 _ScaleDashboard_创建完毕()
+        调试输出("等比缩放仪表盘创建完毕（scaleContentWithWindow = 真）")
+    结束
+
+    事件 _关闭按钮_被单击()
+        窗口_关闭自身()
+    结束
+结束类

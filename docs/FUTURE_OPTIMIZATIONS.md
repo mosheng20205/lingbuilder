@@ -5,33 +5,92 @@
 - 已修复（2026-10-25）：**月历连点左右箭头后「停止点击仍自动翻月」**（用户反馈）。根因在生成运行时 `LingWindowBase::ControlSubclassProc` 的通用鼠标分支：对非 BUTTON 控件**先 `ReleaseCapture()` 再转发 `WM_LBUTTONUP`**。原生 MonthCal 收到抢先的 `WM_CAPTURECHANGED` 会把这次按压当成「捕获被抢」取消，随后到达的 `WM_LBUTTONUP` 不再收尾 `KillTimer`，左右箭头的内部自动重复定时器（`WM_TIMER` wParam=1，约 250~370ms 一次）就一直翻月；实测 6 次快速连点后松手仍以约 300ms/月无限翻。现统一改为「**先转发给原生控件、再清理我方设置的捕获**」（BUTTON 原本就靠这条顺序保住 `BN_CLICKED`；滑块/滚动条拖动、列表视图框选等共用分支控件同步受益，不再残留按压态）。回归钉子：`electron/tests/windowControlCompleteness.test.ts` 断言该顺序并禁止「转发前抢先释放」写法；真机脚本 `electron/scripts/smoke-monthcal-arrow-repeat.ts`（x64/Win32 双编译 + ①连点后静止 ②ValueChanged 仍派发 ③Click 仍派发）全 PASS。原生对照程序（无子类化）同点击序列不复现，可作后续排查同类捕获问题的基线。
 - 已完成（2026-10-23）：**项目级「启动窗口」+ F5 启动窗口与设计器预览解耦**。`LingWindowProject` 新增 `startupWindowId`（`window-designer.json` 项目级字段），设计器归一化保证其始终有效（缺省/指向已删窗口回落第一个窗口）；设计器窗口页签渲染「启动」徽标、「当前窗口/布局」属性组提供「设为启动窗口」；删除启动窗口自动回落。生成器 `g_startWindowIndex` 改取 `startupWindowId`（`generateMainCpp` 内回退 `windows[0]`），不再取 `selectedWindow`——F5 永远运行定义好的启动窗口，不会因在设计器里预览了另一个窗口而改变。旧项目零迁移成本：字段缺省即回退第一个窗口，行为与「第一个窗口=主窗口」的历史惯例一致。回归：`tests/windowDesigner.test.ts`「F5 启动窗口固定为项目 startupWindowId…」「设计器归一化为缺省或失效的启动窗口…」。遗留：EXE 图标来源仍是生成入口窗口（selectedWindow）而非启动窗口模型（2026-08-04 条目的迁移待办继续有效）；new_emoji 后端仍按所选窗口生成单窗口 exe，启动窗口字段暂不影响该后端。
 - 已完成（2026-10-23）：**`打开窗口` 族裸窗口名引用获得控件引用同级编辑体验**。运行期 `窗口_打开` 本就按「窗口标题或类名」匹配（`WindowSpecMatchesName`）且裸/带引号两形态等价，但编辑器只在「敲了引号后」出窗口清单、裸名不上色。本次：新手模式补全上下文新增 `isWindowTargetBareContext`（`打开窗口(` 后未敲引号即出窗口清单，插入裸名）；新手模式呈现新增 `windowReferences` 上下文，设计器窗口类名/标题按 `control-reference` 同色着色（不存在的不上色，不给假着色）；Monaco 补全同一口径放开裸名上下文，语义着色新增 `getLingCppWindowTargetReferences`（languageService，跳过字符串/注释/文本块/@ 行，仅识别命令与目标同行的单行形态）并入 `controlReference` 语义令牌。回归：`tests/beginnerCompletionContext.test.ts`、`tests/lingcpp.test.ts`（裸名补全/引用区间/呈现着色三用例）。遗留：`打开窗口(不存在的窗口)` 目前只有「不上色 + 运行期调试输出未找到」，尚未生成编辑期诊断；如需对齐 controlRef 的 missing 阻断，须先定严重级别（历史教程大量使用标题文本形态，直接 error 会误伤存量）。
-- 待办（2026-10-23 立项：窗口布局系统落地路线·已定案；源头=B 站观众评论「控件里有布局面板控件吗？表格布局、流式布局啥的」）：
+- 待办（2026-10-23 立项：窗口布局系统落地路线·已定案；**一期 2026-10-29 / 二期 2026-10-30 / 三~四期 2026-10-30 已全部落地并真机验收，四期路线收官**；源头=B 站观众评论「控件里有布局面板控件吗？表格布局、流式布局啥的」）：
+  **三/四期完成记录（2026-10-30，布局系统收官）**：FlowPanel + TablePanel 全链落地。
+  共享规格 `electron/src/services/windowDesigner/flowTableLayout.ts`（computeFlowLayoutRects /
+  computeTableLayoutRects / 轨道解析 fixed/star/auto / collectLayoutPanelChildren；语义=子控件 x/y 由布局
+  接管、流式顺序=兄弟数组顺序、格位=子控件 properties.tableCell、缺格位自动顺序填充、wrap 仅水平换行）。
+  控件注册：win32ControlRegistry 新增 FlowPanel/TablePanel（win32.basic，isContainer，STATIC+WS_EX_CONTROLPARENT
+  同分组框形态）；LingControlType 联合类型 + Win32ControlPropertyValue 扩展 Record 形态（tableCell）。
+  生成器：ControlSpec 尾部追加 `panelCell` 槽（子控件格位编码，DynamicControlSpec 同步 SyncPointers）+
+  serializeControlData 面板分支（data='flow'/'table'，data2=布局参数）+ 面板子控件 anchor 发射抑制 +
+  `isAnchorLayoutEnabledForProject` 排除面板子控件 + 运行时 `ApplyPanelLayout_`（'panel' family 门控；
+  OnWindowCreated 尾部 + WM_SIZE（锚定/等比分派之后）双触发；面板 fields 间距/固定列 DIP→ScaleForDpi 物理
+  域全量换算）+ serializeControlData 里 FBroBrowser 分支换行修复。
+  设计器：画布 `panelLayoutDisplayRects`（布局矩形覆盖，MemoizedDesignerControl displayRect prop +
+  comparator）+ 面板本体预览（虚线框+方向示意+表格列分隔线）+ 属性面板（面板子控件隐藏左距/顶距 + 排列序号
+  提示（树内拖动调序）+ TablePanel「表格格位」编辑器 行/列/跨行/跨列）。
+  回归：`tests/windowDesigner.test.ts` 3 条面板用例（流式换行/行内对齐/垂直单列；轨道 fixed/star/auto+跨列+
+  自动填充；注册+发射+格位编码+anchor 抑制）；旧锚定/等比掩码断言适配 panelCell 尾巴（`, 12 }` → `, 12, L"" }`）。
+  真机：`scripts/smoke-panel-layout.ts` MSVC x64+Win32 双编译 + 拉伸探针（流式换行 y+96px/间距 216px、
+  表格星号列 462/926px 比例 1:2、面板固定不漂移）全绿。**实锤坑（已修）**：① `PanelSpacingField_` 声明 static
+  却引用成员 dpi_（MSVC C2672 假象指向 std::min）；② 面板 fields 间距/固定列 DIP 字面量直接当物理 px
+  （200% 下间距减半、换行阈值失真——ScaleForDpi 全量换算修复）；③ 探针 needle 按 name 找，GetWindowTextW
+  返回 content（name≠content 的控件找不到——锚定冒烟 name=content 相同才碰巧命中）。
+  对外口径兑现：B 站评论问的「表格布局、流式布局」即本四期路线，评论回复可更新为「已全部上线」。
+  **二期完成记录（2026-10-30）**：窗口级等比缩放全链落地。模型 `LingWindowModel.scaleContentWithWindow?: boolean`
+  （缺省 false）；生成器 `WindowSpec` 尾部追加 `bool scaleContent` + `generateWindowSpec` 尾值发射 + 运行时
+  `ApplyScaleLayout_`（'scale' family 门控，等比窗口存在才发射；因子 = min(客户区宽/基线宽, 高/高)，基线 =
+  spec DIP 客户区 × 当前 DPI，全程从 spec 直算无捕获无累积误差，DPI 变化后按新 DPI 重算自洽；豁免类型
+  工具栏/状态栏/Rebar 保持基线）；**互斥**：`generateControlArray` 对等比窗口抑制全部控件 anchor（发射掩码 0）、
+  `isAnchorLayoutEnabledForProject` 对等比窗口整体排除、WM_SIZE 钩子三态分派（if scaleContent → scale else
+  anchor；仅其一时各自零发射）。共享数学 `anchorLayout.ts` `computeWindowScaledRects`（父链相对坐标 × 因子，
+  画布预览与运行时同规格）。设计器：窗口属性「等比缩放」开关（NE 后端隐藏）+「模拟拉伸」预览弹层双算法自动
+  切换（等比窗口显示因子值）+ 控件面板锚定九宫格在等比窗口显示「锚定被忽略」提示替代选择器。回归：
+  `tests/windowDesigner.test.ts` 等比缩放 2 条用例（因子与父链缩放数学/互斥抑制+混合项目分派+缺省零发射）；
+  真机 `scripts/smoke-scale-layout.ts` MSVC x64+Win32 双编译 + 程序化拉伸探针（全部控件比值 = min(宽比,高比)
+  ±3%、工具栏豁免不动）全绿。**实锤坑（已修）**：① `scaleContent` 字段第一次加错了 struct（进 ControlSpec，
+  MSVC C2039 才发现——WindowSpec 与 ControlSpec 尾部形态相似，struct 字段追加必须核对归属）；② 探针比值断言
+  必须用客户区相对坐标（ClientToScreen 扣窗口原点，否则每次启动位置不同稀释比值）；③ ToolBar HWND 无窗口
+  标题（文本在按钮数据里），豁免断言改「存在完全不变控件」判定。
+  **一期完成记录（2026-10-29）**：共享规格 `electron/src/services/windowDesigner/anchorLayout.ts`
+  （`parseAnchorMask`/`computeAnchoredRect`/`anchorStretchPreviewRects`/`computeWindowMinimumClientSize`/
+  豁免类型表），生成器 `lingCppWin32Project.ts`：`ControlSpec` 追加 `anchorMask`（位掩码 1/2/4/8，0=默认零参与）、
+  运行时 `CaptureAnchorLayout_`（创建基线按实际像素矩形捕获，懒捕获于首次 WM_SIZE；父链=窗口/控件/选项卡页面
+  映射）+ `ApplyAnchorLayout_`（WM_SIZE 内先于 SizeChanged 派发；父级变化量传导，选项卡尺寸变化同步页面容器，
+  组合框高度保持基线，帧包裹控件只动帧——帧 subclass 的 WM_SIZE 已有 Layout*Control 同步子窗，强设子窗会破坏
+  inset）+ `WM_GETMINMAXINFO` 拉伸下限钳制 + `anchor` family 门控（无非默认锚定项目整段零发射）。
+  设计器 `WpfDesigner.tsx`：属性面板「锚定」九宫格选择器（写 `properties.anchor`，仅内置 Win32 控件）+ 画布
+  工具栏「模拟拉伸」预览弹层（+0/10/25/50/100% 档位，`anchorStretchPreviewRects` 驱动，不写回坐标）。
+  交付时实现口径微调：锚定存 `properties.anchor`（非 LingControl 顶层字段，随属性面板注册管线）；画布选中态
+  锚定标记未做（九宫格+预览弹层已覆盖需求，留待后续按需补）。回归：`tests/windowDesigner.test.ts` 6 条锚定
+  用例（解析/数学对拍/父链传导/最小尺寸/family 门控零发射/逐组合掩码+工具栏豁免）。真机：`scripts/
+  smoke-anchor-layout.ts` MSVC x64+Win32 双编译 + 程序化拉伸探针（右下按钮跟随/编辑框 left+right 宽度拉伸/
+  列表四向拉伸/固定控件不动）全绿。**实锤坑（已修）**：① `WM_GETMINMAXINFO` 基线（物理 px）与控件尺寸（DIP）
+  混用，≥150% 缩放下下限虚高把窗口撑大（+150 请求被钳到 +1000）；② 组合框/编辑框/列表的帧内子窗有 inset 与
+  整行对齐钳制，锚定只准动帧；③ 探针侧 PowerShell 5.1 无 BOM 按 ANSI 读中文、stdout 默认 GBK、本沙箱
+  FindWindowW 恒 0（连 Progman 都找不到）——EnumWindows 正常，探针统一走 EnumWindows + UTF-8 输出。
+  **对齐/分布工具核实**：`applyDesignerLayout`（六向对齐+等大+横向/纵向等间距分布）与多选工具栏按钮组
+  在本条目立项前已完整存在（`designerOperations.ts` + `WpfDesigner.tsx`），一期无需再交付；快捷键未绑定，
+  留给后续按需评估。
   **现状核实（2026-10-23）**：控件一律设计器绝对坐标（x/y/width/height），无锚定/停靠/随窗口缩放属性；
   生成器 `WM_SIZE` 无通用控件重排（`lingCppWin32Project.ts` 现有 WM_SIZE 分支只服务 EdgeView/CEF 宿主「铺满窗口」、
   无边框圆角区域重算、浏览器外壳边界同步等特例）；容器类仅 分组框/选项卡（子控件同为绝对坐标）与旧项目兼容
   网格容器（legacyOnly）；窗口模型已支持 `resizable`/`borderStyle`（`normal-resizable` 等可调边框），可调窗口
   运行期拖拽缩放时全部控件保持原位不动；new_emoji 后端窗口恒 WS_POPUP 固定尺寸不随用户缩放。
   **定案路线（四期递进，均落 Win32 后端；NE 口径见文末）**：
-  **一期（P0）控件级锚定 + 设计器对齐/分布工具**。
-  锚定：`LingControl` 新增 `anchor?: string`（left/top/right/bottom 组合，缺省 `"left,top"`=固定位置=现状，
+  **一期（P0）控件级锚定 + 设计器对齐/分布工具 —— 已完成（2026-10-29，见上方完成记录）**。
+  原定案要点（存档）：`LingControl` 新增 `anchor?: string`（left/top/right/bottom 组合，缺省 `"left,top"`=固定位置=现状，
   旧项目零迁移）。语义与 WinForms 同构，落成共享规格：设客户区变化量 dx/dy——仅左锚不动、仅右锚 x+=dx、
   左右双锚 width+=dx、上下同理、四锚全开=位置不变宽高双向拉伸。生成器按锚定表在 WM_SIZE 生成 SetWindowPos
   重排（纯生成器产物，不改运行时库），并生成 `WM_GETMINMAXINFO` 最小尺寸钳制防负宽高；窗口内全部控件都是
   默认锚定时零生成（零成本兜底）。设计器：属性面板锚定九宫格选择器、画布选中态锚定标记、「模拟拉伸」预览
   （画布按规格实时重排演示，不写回坐标）。回归：`tests/windowDesigner.test.ts` 逐锚定组合生成代码断言 +
-  缺省零生成断言 + 真机可调窗口拉伸冒烟。落点：`types.ts`、`win32ControlRegistry.ts`、`lingCppWin32Project.ts`、
-  `WpfDesigner.tsx`。
-  对齐/分布（可先于一期上线的小件）：多选工具栏补 左/右/顶/底/水平居中/垂直居中 对齐与 水平/垂直等间距 分布，
-  复用 `buildBatchGeometryChanges` 唯一出口；快捷键进 `docs/KEYBOARD_SHORTCUTS.md`。
-  **二期（P1）窗口级等比缩放**：窗口属性 `scaleContentWithWindow?: boolean`（缺省 false），开启后运行期按
+  缺省零生成断言 + 真机可调窗口拉伸冒烟。
+  对齐/分布（原计划件，立项前已存在）：多选工具栏 左/右/顶/底/水平居中/垂直居中 对齐与 水平/垂直等间距 分布，
+  复用 `buildBatchGeometryChanges`/`applyDesignerLayout` 唯一出口。
+  **二期（P1）窗口级等比缩放 —— 已完成（2026-10-30，见上方完成记录）**。
+  原定案要点（存档）：窗口属性 `scaleContentWithWindow?: boolean`（缺省 false），开启后运行期按
   `min(w/w0, h/h0)` 对全部控件整体乘法缩放（与 NE 引擎既有 `dpi_scale` 乘法惯例同构，NE 未来可调窗口直接
   复用该语义）。与锚定互斥：开启等比缩放的窗口忽略控件 anchor，规则手册写明优先级。
-  **三期（P2）流式布局面板 FlowPanel**：win32.basic 新容器控件（isContainer），属性=方向（横/纵）+自动换行+
+  **三期（P2）流式布局面板 FlowPanel —— 已完成（2026-10-30，见上方三/四期完成记录；语义落地口径：流式顺序=兄弟数组顺序替代 flowOrder 序号属性，重排复用树内拖动）**。
+  原定案要点（存档）：win32.basic 新容器控件（isContainer），属性=方向（横/纵）+自动换行+
   子间距+内边距+水平/垂直对齐。语义定案：流式模式下子控件 x/y 由布局算法接管——属性面板隐藏 x/y、改为显示
   排列序号；子控件按创建顺序流式排列，画布拖拽语义改为调整顺序与间距；画布与生成 C++ 各自实现同一份流式
   算法规格（生成侧为窗口内布局函数，创建完毕与 WM_SIZE 各调一次）。存量兼容：把已有子控件拖入 FlowPanel 时
   按现坐标排序初始化序号；无 FlowPanel 的旧项目零影响。
-  **四期（P2+）表格布局面板 TablePanel**：行/列定义（固定像素/星号权重/自动三种尺寸），子控件格位属性=
+  **四期（P2+）表格布局面板 TablePanel —— 已完成（2026-10-30，见上方三/四期完成记录）**。
+  原定案要点（存档）：行/列定义（固定像素/星号权重/自动三种尺寸），子控件格位属性=
   行+列+跨行+跨列+单元格外边距；星号尺寸=剩余空间按权重比例分配，自动尺寸=按该行/列内容最大值。复用三期
   「画布与运行期同一算法规格」原则；在三期框架上扩展，不另起炉灶。
   **每期通用红线**：布局重排必须生成真实 C++，禁止 IDE 内模拟出与 exe 不一致的结果；画布预览与生成代码

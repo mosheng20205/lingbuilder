@@ -1593,6 +1593,15 @@
       "isDefault": false,
       "references": [],
       "solutionFolderId": "module-complete-demos"
+    },
+    {
+      "type": "visual-cpp",
+      "id": "layout-showcase",
+      "name": "布局演示厅",
+      "sourceRoot": "src/layout-showcase",
+      "designerPath": ".lingbuilder/projects/layout-showcase/window-designer.json",
+      "references": [],
+      "configRoot": "config/layout-showcase"
     }
   ]
 }

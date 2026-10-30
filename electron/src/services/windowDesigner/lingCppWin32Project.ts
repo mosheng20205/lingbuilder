@@ -1,5 +1,7 @@
 import * as fs0 from 'node:fs';
 import { LingCefHeadlessResource, LingClockResource, LingControl, LingDesignerResource, LingEdgeViewHeadlessResource, LingFileDialogResource, LingFbroHeadlessResource, LingMenuResource, LingPropertySheetResource, LingToolTipResource, LingWindowModel, LingWindowProject } from './types';
+import { ANCHOR_LAYOUT_SKIPPED_TYPES, isAnchorLayoutEnabledForProject, parseAnchorMask } from './anchorLayout';
+import { collectLayoutPanelChildren, computeFlowLayoutRects, computeTableLayoutRects, isLayoutPanelType, parseFlowPanelProps, parseTablePanelProps, FLOW_PANEL_TYPE, TABLE_PANEL_TYPE } from './flowTableLayout';
 import { normalizeImageListResourcePath, normalizeImageListResourcePaths } from './imageListResourceModel';
 import {
   getLingWindowSourceFileName,
@@ -12105,6 +12107,12 @@ static HICON CreateLingBuilderWindowIcon(int size) {
     bool hasTagInteger;
     int tagInteger;
     const wchar_t* events;
+    // 锚定位掩码：1=left 2=top 4=right 8=bottom；0=默认固定位置（零参与）。
+    // 语义规格见 anchorLayout.ts，运行期锚定重排与设计器画布共用同一份数学。
+    int anchorMask;
+    // 布局面板子控件格位（TablePanel：行/列/跨行/跨列；flow 子控件为空）。
+    // 空 = 自动顺序填充下一个空格位。非面板子控件恒为空串。
+    const wchar_t* panelCell;
 };
 
 struct DynamicControlSpec {
@@ -12121,6 +12129,7 @@ struct DynamicControlSpec {
     std::wstring option2;
     std::wstring tagText;
     std::wstring events;
+    std::wstring panelCell;
 
     void SyncPointers() {
         value.type = type.c_str();
@@ -12131,6 +12140,7 @@ struct DynamicControlSpec {
         value.data2 = data2.c_str();
         value.tooltip = tooltip.c_str();
         value.containerSlot = containerSlot.c_str();
+        value.panelCell = panelCell.c_str();
         value.option1 = option1.c_str();
         value.option2 = option2.c_str();
         value.tagText = tagText.c_str();
@@ -12225,6 +12235,9 @@ struct WindowSpec {
     bool menuFontItalic;
     bool menuFontUnderline;
     const wchar_t* events;
+    // 内容随窗口等比缩放（布局系统二期）：true 时 WM_SIZE 按 min(宽比,高比) 整体缩放全部控件，
+    // 生成期已抑制本窗口全部控件锚定（两套重排互斥）；缺省 false 保持现状。
+    bool scaleContent;
 };
 
 ${generateWindowBorderHelperCpp()}
@@ -13584,6 +13597,12 @@ ${projectGlobalsDefinition}
 ${pureLogicDll ? '#ifndef LINGBUILDER_PURE_LOGIC_DLL' : ''}
 
 `;
+  // 锚定布局族门控：项目存在非默认锚定控件才发射运行时重排（缺省零发射、零成本兜底）。
+  const anchorFamilyEnabled = isAnchorLayoutEnabledForProject(project);
+  // 等比缩放族门控（布局系统二期）：存在 scaleContentWithWindow 窗口才发射 ApplyScaleLayout_。
+  const scaleContentFamilyEnabled = project.windows.some(window => window.scaleContentWithWindow === true);
+  // 布局面板族门控（布局系统三/四期）：存在 FlowPanel/TablePanel 控件才发射 ApplyPanelLayout_。
+  const panelLayoutFamilyEnabled = project.windows.some(window => window.controls.some(control => isLayoutPanelType(control.type)));
   const windowBaseParts: Array<{ family: string; text: string }> = [
     { family: 'core', text: `class LingWindowBase {
 public:
@@ -14115,7 +14134,7 @@ ${fbroBrowserManagerRuntime.members}
     { family: 'fbro', text: `FBro_创建(nullptr); FBro_创建无头资源(); ` },
     { family: 'edgeview', text: `EdgeView_创建无头资源(); ` },
     { family: 'cef3', text: `LingBuilder_CEF3_创建无头资源(); ` },
-    { family: 'core', text: `时钟_启动默认组件(); WarnUnboundControlEvents(); DispatchWindowEvent(L"Loaded"); WireCompositeControls(); }
+    { family: 'core', text: `时钟_启动默认组件(); WarnUnboundControlEvents(); DispatchWindowEvent(L"Loaded"); WireCompositeControls();${panelLayoutFamilyEnabled ? ' ApplyPanelLayout_();' : ''} }
 ` },
     { family: 'core', text: `    // WireCompositeControls 补一次的原因：WM_CREATE 里那次跑在「创建完毕」之前，用户在
     // 创建完毕 里动态加页/调整选项卡后页窗口不会亮（实踩：TabControl 启动空白，点一次页签才出现）。
@@ -29402,7 +29421,7 @@ private:
                 }
                 if (message == WM_NCDESTROY) RemoveWindowSubclass(hwnd, ControlSubclassProc, subclassId);
             }
-            if (IsType(*control, L"GroupBox") && (
+            if ((IsType(*control, L"GroupBox") || IsType(*control, L"FlowPanel") || IsType(*control, L"TablePanel")) && (
                 message == WM_COMMAND
                 || message == WM_NOTIFY
                 || message == WM_DRAWITEM
@@ -29417,6 +29436,9 @@ private:
                 || message == WM_CTLCOLORLISTBOX
                 || message == WM_CTLCOLORSCROLLBAR
             )) {
+                // 布局面板（FlowPanel/TablePanel）与分组框同构：子控件的 owner-draw/通知消息
+                // 发到 STATIC 父级，必须反射给主窗口（PaintOwnerButton/WM_COMMAND 派发都在主窗口），
+                // 否则面板内 BS_OWNERDRAW 按钮显示为系统白块。
                 return SendMessageW(self->hwnd_, message, wParam, lParam);
             }
             if (message == WM_DRAWITEM) {
@@ -29819,6 +29841,12 @@ private:
             style |= WS_TABSTOP | BS_OWNERDRAW;
         } else if (IsType(control, L"GroupBox")) {
             className = L"STATIC";
+            style |= SS_NOTIFY | WS_CLIPCHILDREN | WS_CLIPSIBLINGS;
+            exStyle |= WS_EX_CONTROLPARENT;
+        } else if (IsType(control, L"FlowPanel") || IsType(control, L"TablePanel")) {
+            // 布局面板（三/四期）：纯视觉容器，子控件位置由 ApplyPanelLayout_ 接管。
+            className = L"STATIC";
+            text = L"";
             style |= SS_NOTIFY | WS_CLIPCHILDREN | WS_CLIPSIBLINGS;
             exStyle |= WS_EX_CONTROLPARENT;
         } else if (IsType(control, L"EdgeBrowser")) {
@@ -30485,7 +30513,7 @@ private:
             control.animatedImage = nullptr;
         }
         runtimeControls_.clear();
-        tabPages_.clear();
+${anchorFamilyEnabled ? '        anchorLayoutEntries_.clear();\n        anchorLayoutCaptured_ = false;\n' : ''}        tabPages_.clear();
         toolbarCommandOwners_.clear(); toolbarCommandValues_.clear(); nextToolbarCommandId_ = 60000;
         for (auto& imageList : imageLists_) ImageList_Destroy(imageList.second);
         imageLists_.clear();
@@ -30494,6 +30522,457 @@ private:
         for (HWND tooltip : tooltipWindows_) if (tooltip) DestroyWindow(tooltip);
         tooltipWindows_.clear();
     }
+${anchorFamilyEnabled ? `
+    // ===== 控件锚定布局（anchorLayout.ts 共享规格的运行时实现；项目无非默认锚定时整段不发射）=====
+    // 语义：父容器尺寸变化量 dx/dy 下——仅 right → x += dx；仅 bottom → y += dy；
+    // left+right → 宽度 += dx；top+bottom → 高度 += dy；四向全开 → 位置不变宽高双向伸缩。
+    // 基线 = 控件创建完成后的实际像素矩形（相对父客户区）；父控件先于子控件创建（重试创建保证），
+    // 重排按创建顺序处理，父级变化量取自本轮已重排的父条目。
+    struct AnchorLayoutEntry {
+        int controlIndex;        // runtimeControls_ 下标
+        int parentControlIndex;  // -1 = 窗口客户区
+        int anchorMask;
+        int baseX, baseY, baseW, baseH; // 基线像素矩形（相对父客户区左上）
+        int lastW, lastH;               // 最近一次重排后的尺寸（子控件父级变化量来源）
+    };
+    std::vector<AnchorLayoutEntry> anchorLayoutEntries_;
+    bool anchorLayoutCaptured_ = false;
+    int anchorBaseClientW_ = 0;
+    int anchorBaseClientH_ = 0;
+
+    static bool AnchorLayoutSkipsType(const ControlSpec& control) {
+        // 工具栏/状态栏/Rebar 有专属创建与带区布局管线，锚定重排不接管。
+        return IsType(control, L"ToolBar") || IsType(control, L"StatusBar")
+            || IsType(control, L"Rebar") || IsType(control, L"ReBar");
+    }
+
+    void CaptureAnchorLayout_() {
+        anchorLayoutEntries_.clear();
+        anchorLayoutCaptured_ = true;
+        RECT client = {};
+        if (!hwnd_ || !IsWindow(hwnd_) || !GetClientRect(hwnd_, &client)) return;
+        anchorBaseClientW_ = client.right - client.left;
+        anchorBaseClientH_ = client.bottom - client.top;
+        std::map<HWND, int> parentIndex;
+        for (size_t i = 0; i < runtimeControls_.size(); ++i) {
+            HWND outer = runtimeControls_[i].frameHwnd ? runtimeControls_[i].frameHwnd : runtimeControls_[i].hwnd;
+            if (outer) parentIndex[outer] = static_cast<int>(i);
+        }
+        // 选项卡页面容器不是 RuntimeControl：映射到所属选项卡控件，页面尺寸随选项卡同变。
+        std::map<HWND, int> tabPageOwner;
+        for (const RuntimeTabPage& page : tabPages_) {
+            if (!page.hwnd) continue;
+            for (size_t i = 0; i < runtimeControls_.size(); ++i) {
+                const ControlSpec* spec = FindControl(runtimeControls_[i].id);
+                if (spec && spec->id == page.tabControlId) { tabPageOwner[page.hwnd] = static_cast<int>(i); break; }
+            }
+        }
+        for (size_t i = 0; i < runtimeControls_.size(); ++i) {
+            const RuntimeControl& runtime = runtimeControls_[i];
+            const ControlSpec* spec = FindControl(runtime.id);
+            if (!spec || spec->anchorMask == 0 || AnchorLayoutSkipsType(*spec)) continue;
+            HWND outer = runtime.frameHwnd ? runtime.frameHwnd : runtime.hwnd;
+            if (!outer || !IsWindow(outer)) continue;
+            HWND parentHwnd = GetParent(outer);
+            if (!parentHwnd) continue;
+            int parentEntry = -1;
+            const bool parentIsWindow = parentHwnd == hwnd_;
+            if (!parentIsWindow) {
+                auto found = parentIndex.find(parentHwnd);
+                if (found != parentIndex.end()) {
+                    const ControlSpec* parentSpec = FindControl(runtimeControls_[static_cast<size_t>(found->second)].id);
+                    // 工具栏/状态栏/Rebar 的子项由专属管线布局，不参与锚定。
+                    if (!parentSpec || AnchorLayoutSkipsType(*parentSpec)) continue;
+                    parentEntry = found->second;
+                } else {
+                    auto page = tabPageOwner.find(parentHwnd);
+                    if (page == tabPageOwner.end()) continue;
+                    parentEntry = page->second;
+                }
+            }
+            RECT windowRect = {};
+            if (!GetWindowRect(outer, &windowRect)) continue;
+            POINT topLeft = { windowRect.left, windowRect.top };
+            ScreenToClient(parentHwnd, &topLeft);
+            AnchorLayoutEntry entry;
+            entry.controlIndex = static_cast<int>(i);
+            entry.parentControlIndex = parentIsWindow ? -1 : parentEntry;
+            entry.anchorMask = spec->anchorMask;
+            entry.baseX = topLeft.x;
+            entry.baseY = topLeft.y;
+            entry.baseW = windowRect.right - windowRect.left;
+            entry.baseH = windowRect.bottom - windowRect.top;
+            entry.lastW = entry.baseW;
+            entry.lastH = entry.baseH;
+            anchorLayoutEntries_.push_back(entry);
+        }
+    }
+
+    const AnchorLayoutEntry* FindAnchorEntryByControlIndex_(int controlIndex) const {
+        for (const AnchorLayoutEntry& entry : anchorLayoutEntries_) {
+            if (entry.controlIndex == controlIndex) return &entry;
+        }
+        return nullptr;
+    }
+
+    void ApplyAnchorLayout_(int newClientWidth, int newClientHeight) {
+        if (!hwnd_ || !IsWindow(hwnd_)) return;
+        if (!anchorLayoutCaptured_) {
+            if (runtimeControls_.empty()) return;
+            CaptureAnchorLayout_();
+        }
+        if (anchorLayoutEntries_.empty()) return;
+        if (IsIconic(hwnd_)) return;
+        if (newClientWidth <= 0 || newClientHeight <= 0) return;
+        const int totalDx = newClientWidth - anchorBaseClientW_;
+        const int totalDy = newClientHeight - anchorBaseClientH_;
+        for (AnchorLayoutEntry& entry : anchorLayoutEntries_) {
+            int parentDx = totalDx;
+            int parentDy = totalDy;
+            if (entry.parentControlIndex >= 0) {
+                const RuntimeControl& parentRuntime = runtimeControls_[static_cast<size_t>(entry.parentControlIndex)];
+                HWND parentHwnd = parentRuntime.frameHwnd ? parentRuntime.frameHwnd : parentRuntime.hwnd;
+                if (!parentHwnd || !IsWindow(parentHwnd)) continue;
+                const AnchorLayoutEntry* parentEntry = FindAnchorEntryByControlIndex_(entry.parentControlIndex);
+                if (parentEntry) {
+                    parentDx = parentEntry->lastW - parentEntry->baseW;
+                    parentDy = parentEntry->lastH - parentEntry->baseH;
+                } else {
+                    parentDx = 0;
+                    parentDy = 0;
+                }
+            }
+            const int mask = entry.anchorMask;
+            const bool stretchWidth = (mask & 1) != 0 && (mask & 4) != 0;
+            const bool stretchHeight = (mask & 2) != 0 && (mask & 8) != 0;
+            int nx = entry.baseX;
+            int ny = entry.baseY;
+            int nw = entry.baseW;
+            int nh = entry.baseH;
+            if (stretchWidth) nw = entry.baseW + parentDx;
+            else if ((mask & 4) != 0) nx = entry.baseX + parentDx;
+            if (stretchHeight) nh = entry.baseH + parentDy;
+            else if ((mask & 8) != 0) ny = entry.baseY + parentDy;
+            nw = std::max(0, nw);
+            nh = std::max(0, nh);
+            const ControlSpec* spec = FindControl(runtimeControls_[static_cast<size_t>(entry.controlIndex)].id);
+            // 组合框 HWND 高度含下拉区，改高会改变下拉可见行数——高度保持基线。
+            if (spec && (IsType(*spec, L"ComboBox") || IsType(*spec, L"ComboBoxEx"))) nh = entry.baseH;
+            entry.lastW = nw;
+            entry.lastH = nh;
+            RuntimeControl& runtime = runtimeControls_[static_cast<size_t>(entry.controlIndex)];
+            HWND outer = runtime.frameHwnd ? runtime.frameHwnd : runtime.hwnd;
+            if (!outer || !IsWindow(outer)) continue;
+            SetWindowPos(outer, nullptr, nx, ny, nw, nh, SWP_NOZORDER | SWP_NOACTIVATE);
+            // 帧包裹控件（编辑框/列表族）只动帧：帧 subclass 的 WM_SIZE 已有 Layout*Control
+            // 同步子窗口（含边框 inset），强设子窗会破坏既有内缩关系。
+            // 选项卡尺寸变化时页面容器必须同步（平时仅创建期/隐藏表头切换会重排页面）。
+            if (spec && IsType(*spec, L"TabControl")) {
+                RECT pageRect = {};
+                if (GetClientRect(outer, &pageRect) && !runtime.hideTabHeader) {
+                    TabCtrl_AdjustRect(outer, FALSE, &pageRect);
+                }
+                for (RuntimeTabPage& page : tabPages_) {
+                    if (page.tabControlId != spec->id) continue;
+                    page.contentRect = pageRect;
+                    if (page.hwnd && IsWindow(page.hwnd)) {
+                        SetWindowPos(page.hwnd, nullptr, pageRect.left, pageRect.top,
+                            std::max(0L, pageRect.right - pageRect.left),
+                            std::max(0L, pageRect.bottom - pageRect.top),
+                            SWP_NOZORDER | SWP_NOACTIVATE);
+                    }
+                }
+            }
+        }
+        RedrawWindow(hwnd_, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN);
+    }
+` : ''}
+${scaleContentFamilyEnabled ? `
+    // ===== 窗口级等比缩放（scaleContentWithWindow；anchorLayout.ts computeWindowScaledRects 同规格）=====
+    // 因子 = min(当前客户区宽/基线客户区宽, 高/高)，基线 = spec DIP 客户区 × 当前 DPI。
+    // 生成期已抑制等比窗口内全部控件锚定，两套重排互斥；全程从 spec 直算（DIP×DPI×因子），
+    // 无基线捕获、无累积误差，DPI 变化后按新 DPI 重算即自洽。
+    void ApplyScaleLayout_(int newClientWidth, int newClientHeight) {
+        if (!hwnd_ || !IsWindow(hwnd_) || IsIconic(hwnd_)) return;
+        if (newClientWidth <= 0 || newClientHeight <= 0) return;
+        const double baseWidth = static_cast<double>(ScaleForDpi(spec_.width, dpi_));
+        const double baseHeight = static_cast<double>(ScaleForDpi(spec_.height, dpi_));
+        if (baseWidth <= 0.0 || baseHeight <= 0.0) return;
+        const double factor = std::min(static_cast<double>(newClientWidth) / baseWidth, static_cast<double>(newClientHeight) / baseHeight);
+        for (size_t i = 0; i < runtimeControls_.size(); ++i) {
+            const ControlSpec* spec = FindControl(runtimeControls_[i].id);
+            if (!spec) continue;
+            // 工具栏/状态栏/Rebar 有专属创建与带区布局管线（anchorLayout.ts 豁免表同口径），保持基线位置尺寸。
+            if (IsType(*spec, L"ToolBar") || IsType(*spec, L"StatusBar") || IsType(*spec, L"Rebar") || IsType(*spec, L"ReBar")) continue;
+            HWND outer = runtimeControls_[i].frameHwnd ? runtimeControls_[i].frameHwnd : runtimeControls_[i].hwnd;
+            if (!outer || !IsWindow(outer)) continue;
+            // spec->x/y 已是相对父控件坐标，父先于子创建并同因子缩放，父子相对关系自动保持。
+            const int nx = static_cast<int>(std::llround(ScaleForDpi(spec->x, dpi_) * factor));
+            const int ny = static_cast<int>(std::llround(ScaleForDpi(spec->y, dpi_) * factor));
+            const int nw = std::max(0, static_cast<int>(std::llround(ScaleForDpi(spec->width, dpi_) * factor)));
+            const int nh = std::max(0, static_cast<int>(std::llround(ScaleForDpi(spec->height, dpi_) * factor)));
+            SetWindowPos(outer, nullptr, nx, ny, nw, nh, SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+        RedrawWindow(hwnd_, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN);
+    }
+` : ''}
+${panelLayoutFamilyEnabled ? `
+    // ===== 布局面板（FlowPanel/TablePanel，flowTableLayout.ts 共享规格的运行时实现）=====
+    // 子控件位置由面板接管：每次面板矩形变化（窗口 WM_SIZE 经锚定/等比重排面板之后）全量重排。
+    // 算法在物理像素域运行（子控件设计尺寸与间距/内边距均 ScaleForDpi），与 TS 画布预览同公式。
+    struct PanelChildRef { const ControlSpec* spec; RuntimeControl* runtime; };
+
+    // 面板 fields 里的间距/内边距是 DIP 字面量，必须 ScaleForDpi 换算到物理域（与子控件尺寸同口径），
+    // 否则 ≥150% 缩放下间距视觉减半、换行阈值失真。
+    int PanelSpacingField_(const std::vector<std::wstring>& fields, int index, int fallback) {
+        if (static_cast<int>(fields.size()) <= index) return fallback;
+        const int parsed = _wtoi(fields[static_cast<size_t>(index)].c_str());
+        return parsed > 0 ? ScaleForDpi(std::min(200, parsed), dpi_) : 0;
+    }
+
+    void ApplyPanelLayout_() {
+        if (!hwnd_ || !IsWindow(hwnd_)) return;
+        const UINT dpi = dpi_ ? dpi_ : 96;
+        auto forEachSpec = [&](auto&& callback) {
+            for (int i = 0; i < spec_.controlCount; ++i) callback(spec_.controls[i]);
+            for (auto& dynamic : dynamicControlSpecs_) { dynamic.SyncPointers(); callback(dynamic.value); }
+        };
+        forEachSpec([&](const ControlSpec& panelSpec) {
+            if (!IsType(panelSpec, L"FlowPanel") && !IsType(panelSpec, L"TablePanel")) return;
+            RuntimeControl* panelRuntime = FindRuntimeControl(panelSpec.id);
+            if (!panelRuntime || !panelRuntime->hwnd || !IsWindow(panelRuntime->hwnd)) return;
+            RECT panelRect = {};
+            if (!GetClientRect(panelRuntime->hwnd, &panelRect)) return;
+            const int panelWidth = panelRect.right - panelRect.left;
+            const int panelHeight = panelRect.bottom - panelRect.top;
+            std::vector<PanelChildRef> children;
+            forEachSpec([&](const ControlSpec& childSpec) {
+                if (childSpec.parentId != panelSpec.id) return;
+                RuntimeControl* childRuntime = FindRuntimeControl(childSpec.id);
+                if (childRuntime && childRuntime->hwnd && IsWindow(childRuntime->hwnd)) {
+                    children.push_back({ &childSpec, childRuntime });
+                }
+            });
+            if (children.empty()) return;
+            auto trackOrigin = [](const std::vector<int>& sizes, int gap, int padding, int index) {
+                int origin = padding;
+                for (int i = 0; i < index; ++i) origin += sizes[i] + gap;
+                return origin;
+            };
+            if (IsType(panelSpec, L"FlowPanel")) {
+                const auto panelFields = DecodeControlRecords(panelSpec.data2 && panelSpec.data2[0] ? panelSpec.data2 : L"", 6);
+                const std::vector<std::wstring> fields = panelFields.empty() ? std::vector<std::wstring>() : panelFields[0];
+                const bool vertical = !fields.empty() && fields[0] == L"vertical";
+                const bool wrap = fields.size() < 2 || fields[1] != L"0";
+                const int hgap = PanelSpacingField_(fields, 2, ScaleForDpi(8, dpi));
+                const int vgap = PanelSpacingField_(fields, 3, ScaleForDpi(8, dpi));
+                const int padding = PanelSpacingField_(fields, 4, ScaleForDpi(8, dpi));
+                const int align = fields.size() > 5 ? (fields[5] == L"center" ? 1 : fields[5] == L"end" ? 2 : 0) : 0;
+                struct FlowRect { HWND outer; int x; int y; int w; int h; };
+                std::vector<FlowRect> flowRects;
+                // 与 TS computeFlowLayoutRects 同公式：水平方向 wrap 逐行、行内次轴（垂直）对齐
+                // 参照行内最大高度；垂直方向单列顺序排（不换列，超出面板被裁剪），no-wrap 时
+                // align 按次轴可用空间水平对齐。align: 0=start 1=center 2=end。
+                const int contentExtent = (vertical ? panelHeight : panelWidth) - padding * 2;
+                size_t rowBegin = 0;
+                int cursor = padding;
+                int rowCross = padding;
+                int rowExtent = 0;
+                auto flushRow = [&]() {
+                    for (size_t i = rowBegin; i < flowRects.size(); ++i) {
+                        FlowRect& rect = flowRects[i];
+                        const int childExtent = vertical ? rect.w : rect.h;
+                        int offset = 0;
+                        if (align == 1) offset = std::max(0, (rowExtent - childExtent) / 2);
+                        else if (align == 2) offset = std::max(0, rowExtent - childExtent);
+                        if (vertical) rect.x = rowCross + offset;
+                        else rect.y = rowCross + offset;
+                    }
+                    rowBegin = flowRects.size();
+                };
+                for (PanelChildRef& child : children) {
+                    FlowRect rect;
+                    rect.outer = child.runtime->frameHwnd ? child.runtime->frameHwnd : child.runtime->hwnd;
+                    rect.w = ScaleForDpi(std::max(0, child.spec->width), dpi);
+                    rect.h = ScaleForDpi(std::max(0, child.spec->height), dpi);
+                    const int mainExtent = vertical ? rect.h : rect.w;
+                    const bool overflow = wrap && !vertical && flowRects.size() > rowBegin
+                        && cursor - padding + mainExtent > contentExtent + 1;
+                    if (overflow) {
+                        flushRow();
+                        cursor = padding;
+                        rowCross += rowExtent + vgap;
+                        rowExtent = 0;
+                    }
+                    if (vertical) {
+                        int offsetX = 0;
+                        if (!wrap) offsetX = align == 1 ? std::max(0, (contentExtent - rect.w) / 2) : align == 2 ? std::max(0, contentExtent - rect.w) : 0;
+                        rect.x = padding + offsetX;
+                        rect.y = cursor;
+                    } else {
+                        rect.x = cursor;
+                        rect.y = rowCross;
+                    }
+                    flowRects.push_back(rect);
+                    cursor += mainExtent + (vertical ? vgap : hgap);
+                    rowExtent = std::max(rowExtent, vertical ? rect.w : rect.h);
+                }
+                flushRow();
+                for (const FlowRect& rect : flowRects) {
+                    SetWindowPos(rect.outer, nullptr, rect.x, rect.y, rect.w, rect.h, SWP_NOZORDER | SWP_NOACTIVATE);
+                }
+            } else {
+                const std::vector<std::wstring> fields = DecodeControlRecords(panelSpec.data2 && panelSpec.data2[0] ? panelSpec.data2 : L"", 5)
+                    .empty() ? std::vector<std::wstring>() : DecodeControlRecords(panelSpec.data2, 5)[0];
+                auto parseTracks = [&](const std::wstring& joined, int fallbackCount) {
+                    std::vector<std::wstring> tracks;
+                    std::wstring current;
+                    for (wchar_t ch : joined) {
+                        if (ch == L',') { tracks.push_back(current); current.clear(); }
+                        else current.push_back(ch);
+                    }
+                    tracks.push_back(current);
+                    while (!tracks.empty() && tracks.back().empty()) tracks.pop_back();
+                    if (tracks.empty()) for (int i = 0; i < std::max(1, fallbackCount); ++i) tracks.push_back(L"auto");
+                    return tracks;
+                };
+                const std::wstring columnText = fields.size() > 0 ? fields[0] : L"";
+                const std::wstring rowText = fields.size() > 1 ? fields[1] : L"";
+                const int hgap = PanelSpacingField_(fields, 2, ScaleForDpi(8, dpi));
+                const int vgap = PanelSpacingField_(fields, 3, ScaleForDpi(8, dpi));
+                const int padding = PanelSpacingField_(fields, 4, ScaleForDpi(8, dpi));
+                const std::vector<std::wstring> columnDefs = parseTracks(columnText, 1);
+                const std::vector<std::wstring> rowDefs = parseTracks(rowText, 1);
+                const int columnCount = static_cast<int>(columnDefs.size());
+                const int rowCount = static_cast<int>(rowDefs.size());
+                // 格位两遍解析：显式格位先占位（markCell），自动子控件按数组顺序填下一个空格位。
+                std::vector<std::vector<bool>> occupied(static_cast<size_t>(rowCount), std::vector<bool>(static_cast<size_t>(columnCount), false));
+                auto markCell = [&](int row, int col, int rowSpan, int colSpan) {
+                    for (int r = row; r < std::min(row + rowSpan, rowCount); ++r)
+                        for (int c = col; c < std::min(col + colSpan, columnCount); ++c) occupied[static_cast<size_t>(r)][static_cast<size_t>(c)] = true;
+                };
+                struct FullCell { PanelChildRef* child; int row; int col; int rowSpan; int colSpan; };
+                std::vector<FullCell> full;
+                int cursorRow = 0;
+                int cursorCol = 0;
+                for (PanelChildRef& child : children) {
+                    int row = 0, col = 0, rowSpan = 1, colSpan = 1;
+                    if (child.spec->panelCell && child.spec->panelCell[0]) {
+                        const auto records = DecodeControlRecords(child.spec->panelCell, 4);
+                        if (!records.empty()) {
+                            const auto& fields4 = records[0];
+                            if (fields4.size() > 0) row = _wtoi(fields4[0].c_str());
+                            if (fields4.size() > 1) col = _wtoi(fields4[1].c_str());
+                            if (fields4.size() > 2) rowSpan = std::max(1, _wtoi(fields4[2].c_str()));
+                            if (fields4.size() > 3) colSpan = std::max(1, _wtoi(fields4[3].c_str()));
+                        }
+                    }
+                    if (row > 0 && col > 0) {
+                        row = std::min(row - 1, rowCount - 1);
+                        col = std::min(col - 1, columnCount - 1);
+                    } else {
+                        row = -1; col = -1;
+                    }
+                    if (row >= 0) {
+                        markCell(row, col, rowSpan, colSpan);
+                        full.push_back({ &child, row, col, rowSpan, colSpan });
+                    } else {
+                        // 自动顺序填充：找下一个空格位。
+                        bool placed = false;
+                        while (cursorRow < rowCount) {
+                            if (!occupied[static_cast<size_t>(cursorRow)][static_cast<size_t>(cursorCol)]) {
+                                const int useRowSpan = std::min(rowSpan, rowCount - cursorRow);
+                                const int useColSpan = std::min(colSpan, columnCount - cursorCol);
+                                markCell(cursorRow, cursorCol, useRowSpan, useColSpan);
+                                full.push_back({ &child, cursorRow, cursorCol, useRowSpan, useColSpan });
+                                placed = true;
+                                cursorCol += 1;
+                                if (cursorCol >= columnCount) { cursorCol = 0; cursorRow += 1; }
+                                break;
+                            }
+                            cursorCol += 1;
+                            if (cursorCol >= columnCount) { cursorCol = 0; cursorRow += 1; }
+                        }
+                        if (!placed) continue;
+                    }
+                }
+                std::vector<int> autoWidths(static_cast<size_t>(columnCount), 0);
+                std::vector<int> autoHeights(static_cast<size_t>(rowCount), 0);
+                for (const FullCell& cell : full) {
+                    if (cell.colSpan == 1) autoWidths[static_cast<size_t>(cell.col)] = std::max(autoWidths[static_cast<size_t>(cell.col)], ScaleForDpi(cell.child->spec->width, dpi));
+                    if (cell.rowSpan == 1) autoHeights[static_cast<size_t>(cell.row)] = std::max(autoHeights[static_cast<size_t>(cell.row)], ScaleForDpi(cell.child->spec->height, dpi));
+                }
+                auto resolveTracks = [&](const std::vector<std::wstring>& defs, int extent, int gap, int pad, const std::vector<int>& autoSizes) {
+                    const int count = static_cast<int>(defs.size());
+                    std::vector<int> tracks(static_cast<size_t>(count), 0);
+                    std::vector<double> weights(static_cast<size_t>(count), 0.0);
+                    int fixedTotal = 0;
+                    int autoTotal = 0;
+                    bool hasStar = false;
+                    for (int i = 0; i < count; ++i) {
+                        std::wstring def = defs[static_cast<size_t>(i)];
+                        auto trimInPlace = [](std::wstring& value) {
+                            size_t start = value.find_first_not_of(L" \\t");
+                            size_t end = value.find_last_not_of(L" \\t");
+                            value = start == std::wstring::npos ? L"" : value.substr(start, end - start + 1);
+                        };
+                        trimInPlace(def);
+                        if (!def.empty() && def.back() == L'*') {
+                            hasStar = true;
+                            double weight = 1.0;
+                            if (def.size() > 1) {
+                                try { weight = std::stod(def.substr(0, def.size() - 1)); } catch (...) { weight = 1.0; }
+                            }
+                            weights[static_cast<size_t>(i)] = weight > 0 ? weight : 1.0;
+                        } else if (def == L"auto" || def.empty()) {
+                            const int value = i < static_cast<int>(autoSizes.size()) ? autoSizes[static_cast<size_t>(i)] : 0;
+                            tracks[static_cast<size_t>(i)] = std::max(0, value);
+                            autoTotal += std::max(0, value);
+                        } else {
+                            try { tracks[static_cast<size_t>(i)] = std::max(0, ScaleForDpi(static_cast<int>(std::llround(std::stod(def))), dpi)); } catch (...) { tracks[static_cast<size_t>(i)] = 0; }
+                            fixedTotal += tracks[static_cast<size_t>(i)];
+                        }
+                    }
+                    const int gapTotal = count > 1 ? (count - 1) * gap : 0;
+                    if (hasStar) {
+                        const int availableForStar = std::max(0, extent - pad * 2 - gapTotal - fixedTotal - autoTotal);
+                        const double weightSum = [&]() {
+                            double sum = 0; for (double w : weights) sum += w; return sum;
+                        }();
+                        if (weightSum > 0) {
+                            int distributed = 0;
+                            int lastStar = -1;
+                            for (int i = count - 1; i >= 0; --i) if (weights[static_cast<size_t>(i)] > 0) { lastStar = i; break; }
+                            for (int i = 0; i < count; ++i) {
+                                if (weights[static_cast<size_t>(i)] <= 0) continue;
+                                int value = i == lastStar ? availableForStar - distributed : static_cast<int>(std::llround(availableForStar * weights[static_cast<size_t>(i)] / weightSum));
+                                value = std::max(0, value);
+                                tracks[static_cast<size_t>(i)] += value;
+                                distributed += value;
+                            }
+                        }
+                    }
+                    return tracks;
+                };
+                const std::vector<int> columnWidths = resolveTracks(columnDefs, panelWidth, hgap, padding, autoWidths);
+                const std::vector<int> rowHeights = resolveTracks(rowDefs, panelHeight, vgap, padding, autoHeights);
+                for (const FullCell& cell : full) {
+                    const int x = trackOrigin(columnWidths, hgap, padding, cell.col);
+                    const int y = trackOrigin(rowHeights, vgap, padding, cell.row);
+                    int width = 0;
+                    for (int c = cell.col; c < std::min(cell.col + cell.colSpan, columnCount); ++c) width += columnWidths[static_cast<size_t>(c)];
+                    width += (cell.colSpan - 1) * hgap;
+                    int height = 0;
+                    for (int r = cell.row; r < std::min(cell.row + cell.rowSpan, rowCount); ++r) height += rowHeights[static_cast<size_t>(r)];
+                    height += (cell.rowSpan - 1) * vgap;
+                    HWND outer = cell.child->runtime->frameHwnd ? cell.child->runtime->frameHwnd : cell.child->runtime->hwnd;
+                    SetWindowPos(outer, nullptr, x, y, std::max(0, width), std::max(0, height), SWP_NOZORDER | SWP_NOACTIVATE);
+                }
+            }
+            RedrawWindow(panelRuntime->hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN);
+        });
+    }
+` : ''}
 
     LRESULT OnMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         static const UINT findMessage = RegisterWindowMessageW(FINDMSGSTRINGW);
@@ -30824,6 +31303,50 @@ ${comWndProcCase}
             moveBaselineReady_ = true;
             return 0;
         }
+${anchorFamilyEnabled ? `        case WM_GETMINMAXINFO: {
+            // 锚定拉伸下限（anchorLayout.ts computeWindowMinimumClientSize 同一公式）：
+            // left+right / top+bottom 拉伸控件在新客户区下宽高不得为负；仅 right/bottom 跟随不设限。
+            // 全程物理像素域：基线客户区（捕获值，捕获前用 spec DIP 换算）− 控件尺寸（DIP → ScaleForDpi）。
+            // 单位混用会让下限虚高把窗口撑大（DPI 缩放 ≥150% 时实锤）。
+            MINMAXINFO* info = reinterpret_cast<MINMAXINFO*>(lParam);
+            if (info) {
+                const UINT dpi = dpi_ ? dpi_ : 96;
+                const int baseClientW = (anchorLayoutCaptured_ && anchorBaseClientW_ > 0) ? anchorBaseClientW_ : ScaleForDpi(spec_.width, dpi);
+                const int baseClientH = (anchorLayoutCaptured_ && anchorBaseClientH_ > 0) ? anchorBaseClientH_ : ScaleForDpi(spec_.height, dpi);
+                int minClientW = 0;
+                int minClientH = 0;
+                for (int i = 0; i < spec_.controlCount; ++i) {
+                    const ControlSpec& control = spec_.controls[i];
+                    if (control.anchorMask == 0 || control.parentId != 0) continue;
+                    if ((control.anchorMask & 1) != 0 && (control.anchorMask & 4) != 0) {
+                        minClientW = std::max(minClientW, baseClientW - ScaleForDpi(control.width, dpi));
+                    }
+                    if ((control.anchorMask & 2) != 0 && (control.anchorMask & 8) != 0) {
+                        minClientH = std::max(minClientH, baseClientH - ScaleForDpi(control.height, dpi));
+                    }
+                }
+                if (minClientW > 0 || minClientH > 0) {
+                    RECT windowRect = {};
+                    RECT clientRect = {};
+                    int chromeW = 0;
+                    int chromeH = 0;
+                    if (GetWindowRect(hwnd_, &windowRect) && GetClientRect(hwnd_, &clientRect)) {
+                        chromeW = (windowRect.right - windowRect.left) - (clientRect.right - clientRect.left);
+                        chromeH = (windowRect.bottom - windowRect.top) - (clientRect.bottom - clientRect.top);
+                    }
+                    if (minClientW > 0) {
+                        const int minWidth = minClientW + chromeW;
+                        if (minWidth > info->ptMinTrackSize.x) info->ptMinTrackSize.x = minWidth;
+                    }
+                    if (minClientH > 0) {
+                        const int minHeight = minClientH + chromeH;
+                        if (minHeight > info->ptMinTrackSize.y) info->ptMinTrackSize.y = minHeight;
+                    }
+                }
+            }
+            return 0;
+        }
+` : ''}
         case WM_SIZE:
             {
                 int nextWidth = static_cast<int>(LOWORD(lParam));
@@ -30834,7 +31357,7 @@ ${comWndProcCase}
                 eventWidth_ = nextWidth;
                 eventHeight_ = nextHeight;
                 windowState_ = nextState;
-                if (sizeBaselineReady_ && sizeChanged) {
+${scaleContentFamilyEnabled && anchorFamilyEnabled ? `                // 布局重排先于 SizeChanged 派发：用户事件处理器读到的是重排后的控件位置。\n                // 等比缩放窗口生成期已抑制全部锚定，两套重排按窗口属性互斥分派。\n                if (spec_.scaleContent) ApplyScaleLayout_(nextWidth, nextHeight);\n                else ApplyAnchorLayout_(nextWidth, nextHeight);\n` : scaleContentFamilyEnabled ? '                if (spec_.scaleContent) ApplyScaleLayout_(nextWidth, nextHeight);\n' : anchorFamilyEnabled ? '                // 锚定重排先于 SizeChanged 派发：用户事件处理器读到的是重排后的控件位置。\n                ApplyAnchorLayout_(nextWidth, nextHeight);\n' : ''}${panelLayoutFamilyEnabled ? '                // 面板自身经锚定/等比重排后，面板内子控件按布局算法跟随。\n                ApplyPanelLayout_();\n' : ''}                if (sizeBaselineReady_ && sizeChanged) {
                     DispatchWindowEvent(L"SizeChanged");
                     RedrawWindow(hwnd_, nullptr, nullptr,
                         RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
@@ -31914,6 +32437,9 @@ ${uiaCleanupLine}
   const printerFamilyEnabled = userCodeCalls(/打印机_/u);
   const familyEnabledByFlag: Record<string, boolean> = {
     core: true,
+    anchor: anchorFamilyEnabled,
+    scale: scaleContentFamilyEnabled,
+    panel: panelLayoutFamilyEnabled,
     edgeview: edgeviewFamilyEnabled,
     fbro: fbroFamilyEnabled,
     cef3: cef3FamilyEnabled,
@@ -34413,6 +34939,9 @@ function toMessageBoxFlagsExpression(flagCode: number): string {
 
 function generateControlArray(window: LingWindowModel, windowIndex: number, program: LingCppProgram, resources: LingDesignerResource[]): string {
   const visibleControls = [...reconcileRebarBands(getRuntimeControls(window))];
+  // 等比缩放窗口与锚定互斥（规则手册口径）：整窗乘法缩放接管布局，控件 anchor 全部忽略，
+  // 发射期直接把 anchor 归零（缺省掩码），不依赖运行时判断。
+  const suppressAnchors = window.scaleContentWithWindow === true;
   const controlIds = new Map(visibleControls.map((control, index) => [control.id, index + 1001]));
   // 源码常规命名「_控件名_事件中文后缀」的自动接线：设计器未绑定但源码已定义的事件
   // 必须并入控件派发表，运行行为优先服从中文代码编辑器（与 AGENTS 事件语义一致）。
@@ -34452,9 +34981,13 @@ function generateControlArray(window: LingWindowModel, windowIndex: number, prog
       }
       const parent = control.parentId ? visibleControls.find(item => item.id === control.parentId) : undefined;
       const tooltipResource = resources.find((resource): resource is LingToolTipResource => resource.type === 'ToolTip' && resource.targetControlId === control.id);
-      const effectiveControl = tooltipResource
+      let effectiveControl = tooltipResource
         ? { ...control, properties: { ...(control.properties || {}), toolTip: tooltipResource.text, toolTipDelay: tooltipResource.initialDelay } }
         : control;
+      if (suppressAnchors && effectiveControl.properties?.anchor !== undefined) {
+        effectiveControl = { ...effectiveControl, properties: { ...(effectiveControl.properties || {}) } };
+        delete effectiveControl.properties.anchor;
+      }
       return generateControlSpec(effectiveControl, id, parent ? controlIds.get(parent.id) || 0 : 0, parent, controlIds, window.background,
         getConventionalControlEventBindings(effectiveControl.type, effectiveControl.name)
           .map(candidate => {
@@ -34639,7 +35172,7 @@ function generateWindowSpec(window: LingWindowModel, windowIndex: number, progra
     .map(([eventName, handler]) => `${eventName}=${handler.trim()}`)
     .join('\n');
   // resizable 与 borderStyle 派生保持一致（固定类/无边框不可拖拽调宽），供后续运行时消费
-  return `    { ${windowIndex}, L"${escapeWideString(window.className)}", L"${escapeWideString(window.title)}", ${Math.max(360, int(window.width))}, ${Math.max(220, int(window.height - captionHeight))}, ${toColorRef(window.background)}, ${toColorRef(titleBarBackground)}, ${toColorRef(titleBarForeground)}, ${cornerPreference}, L"${escapeWideString(iconStyle)}", L"${escapeWideString(iconPath)}", L"${escapeWideString(openPlacement)}", ${openX}, ${openY}, ${deriveLingWindowBorderStyle(borderStyle)}, ${window.maximizable !== false}, ${borderStyleCxx}, ${window.borderlessDraggable === true}, g_controls_${windowIndex}, ${visibleCount}, L"${escapeWideString(menuItemsStr)}", ${toColorRef(window.menuBackground || '#ffffff')}, ${toColorRef(window.menuForeground || '#000000')}, L"${escapeWideString(menuFont.family)}", ${menuFont.size}, ${menuFont.bold}, ${menuFont.italic}, ${menuFont.underline}, L"${escapeWideString(events)}" }`;
+  return `    { ${windowIndex}, L"${escapeWideString(window.className)}", L"${escapeWideString(window.title)}", ${Math.max(360, int(window.width))}, ${Math.max(220, int(window.height - captionHeight))}, ${toColorRef(window.background)}, ${toColorRef(titleBarBackground)}, ${toColorRef(titleBarForeground)}, ${cornerPreference}, L"${escapeWideString(iconStyle)}", L"${escapeWideString(iconPath)}", L"${escapeWideString(openPlacement)}", ${openX}, ${openY}, ${deriveLingWindowBorderStyle(borderStyle)}, ${window.maximizable !== false}, ${borderStyleCxx}, ${window.borderlessDraggable === true}, g_controls_${windowIndex}, ${visibleCount}, L"${escapeWideString(menuItemsStr)}", ${toColorRef(window.menuBackground || '#ffffff')}, ${toColorRef(window.menuForeground || '#000000')}, L"${escapeWideString(menuFont.family)}", ${menuFont.size}, ${menuFont.bold}, ${menuFont.italic}, ${menuFont.underline}, L"${escapeWideString(events)}", ${window.scaleContentWithWindow === true} }`;
 }
 
 function generateControlSpec(
@@ -34742,7 +35275,19 @@ function generateControlSpec(
   const hasTagInteger = typeof control.tagInteger === 'number' && Number.isInteger(control.tagInteger)
     && control.tagInteger >= -2147483648 && control.tagInteger <= 2147483647;
   const tagInteger = hasTagInteger ? control.tagInteger! : 0;
-  return `    { ${id}, ${parentId}, L"${control.type}", L"${escapeWideString(control.name)}", L"${escapeWideString(controlText)}", ${int(x)}, ${int(y)}, ${int(control.width)}, ${int(control.height)}, ${font.size}, L"${escapeWideString(font.family)}", ${font.bold ? 'true' : 'false'}, ${font.italic ? 'true' : 'false'}, ${font.underline ? 'true' : 'false'}, ${cornerRadius}, ${listBorderWidth}, ${toColorRef(listBorderColor)}, ${toColorRef(listSelectionStart)}, ${toColorRef(listSelectionEnd)}, ${toColorRef(listSelectionBorder)}, ${listSelectionCornerRadius}, ${listItemHeight}, ${listItemSpacing}, ${listHeaderHeight}, ${listContentPadding}, ${listScrollBarVisibility}, ${listScrollBarWidth}, ${toColorRef(listScrollBarTrack)}, ${toColorRef(listScrollBarThumb)}, ${treeBorderWidth}, ${toColorRef(treeBorderColor)}, ${treeNodeSpacing}, ${treeNodePadding}, ${toColorRef(background)}, ${control.background === 'transparent' ? 'true' : 'false'}, ${toColorRef(control.foreground, 'RGB(0, 0, 0)')}, ${toColorRef(selectedColor)}, ${toColorRef(selectedMarkColor)}, ${control.isEnabled ? 'true' : 'false'}, L"${escapeWideString(data)}", L"${escapeWideString(data2)}", L"${escapeWideString(tooltip)}", ${tooltipDelay}, L"${escapeWideString(containerSlot)}", L"${escapeWideString(option1)}", L"${escapeWideString(option2)}", ${minimum}, ${maximum}, ${value}, ${selectedIndex}, ${flags}, L"${escapeWideString(tagText)}", ${hasTagInteger ? 'true' : 'false'}, ${tagInteger}, L"${escapeWideString(events)}" }`;
+  const anchorMask = ANCHOR_LAYOUT_SKIPPED_TYPES.has(control.type) || (parent && isLayoutPanelType(parent.type))
+    ? 0
+    : parseAnchorMask(control.properties?.anchor);
+  // TablePanel 子控件格位（行/列/跨行/跨列，1 起；缺省 0 = 自动顺序填充）。
+  const rawCell = parent && parent.type === TABLE_PANEL_TYPE && control.properties?.tableCell
+    && typeof control.properties.tableCell === 'object' && !Array.isArray(control.properties.tableCell)
+    ? control.properties.tableCell as Record<string, unknown>
+    : undefined;
+  const cellField = (key: string, fallback: number) => String(Math.max(key === 'row' || key === 'col' ? 0 : 1, Math.trunc(Number(rawCell?.[key]) || fallback)));
+  const panelCell = rawCell
+    ? encodeControlRecords([[cellField('row', 0), cellField('col', 0), cellField('rowSpan', 1), cellField('colSpan', 1)]])
+    : '';
+  return `    { ${id}, ${parentId}, L"${control.type}", L"${escapeWideString(control.name)}", L"${escapeWideString(controlText)}", ${int(x)}, ${int(y)}, ${int(control.width)}, ${int(control.height)}, ${font.size}, L"${escapeWideString(font.family)}", ${font.bold ? 'true' : 'false'}, ${font.italic ? 'true' : 'false'}, ${font.underline ? 'true' : 'false'}, ${cornerRadius}, ${listBorderWidth}, ${toColorRef(listBorderColor)}, ${toColorRef(listSelectionStart)}, ${toColorRef(listSelectionEnd)}, ${toColorRef(listSelectionBorder)}, ${listSelectionCornerRadius}, ${listItemHeight}, ${listItemSpacing}, ${listHeaderHeight}, ${listContentPadding}, ${listScrollBarVisibility}, ${listScrollBarWidth}, ${toColorRef(listScrollBarTrack)}, ${toColorRef(listScrollBarThumb)}, ${treeBorderWidth}, ${toColorRef(treeBorderColor)}, ${treeNodeSpacing}, ${treeNodePadding}, ${toColorRef(background)}, ${control.background === 'transparent' ? 'true' : 'false'}, ${toColorRef(control.foreground, 'RGB(0, 0, 0)')}, ${toColorRef(selectedColor)}, ${toColorRef(selectedMarkColor)}, ${control.isEnabled ? 'true' : 'false'}, L"${escapeWideString(data)}", L"${escapeWideString(data2)}", L"${escapeWideString(tooltip)}", ${tooltipDelay}, L"${escapeWideString(containerSlot)}", L"${escapeWideString(option1)}", L"${escapeWideString(option2)}", ${minimum}, ${maximum}, ${value}, ${selectedIndex}, ${flags}, L"${escapeWideString(tagText)}", ${hasTagInteger ? 'true' : 'false'}, ${tagInteger}, L"${escapeWideString(events)}", ${anchorMask}, L"${escapeWideString(panelCell)}" }`;
 }
 
 function controlColorProperty(control: LingControl, key: string, fallback: string): string {
@@ -35020,6 +35565,15 @@ function serializeControlData(control: LingControl, controlIds: Map<string, numb
       ]))
     ]);
     return [encodeControlRecords(columns), encodeControlRecords(rows)];
+  }
+  // 布局面板（三/四期）：data 槽放类型标识，data2 槽放布局参数（运行期 ApplyPanelLayout_ 解码）。
+  if (control.type === 'FlowPanel') {
+    const flow = parseFlowPanelProps(properties as Record<string, unknown>);
+    return ['flow', encodeControlFields([flow.orientation, flow.wrap ? '1' : '0', String(flow.hgap), String(flow.vgap), String(flow.padding), flow.align])];
+  }
+  if (control.type === 'TablePanel') {
+    const table = parseTablePanelProps(properties as Record<string, unknown>);
+    return ['table', encodeControlFields([table.columns.join(','), table.rows.join(','), String(table.hgap), String(table.vgap), String(table.padding)])];
   }
   if (control.type === 'FBroBrowser') {
     const url = typeof properties.url === 'string' ? properties.url : '';

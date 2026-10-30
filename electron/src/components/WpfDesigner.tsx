@@ -151,6 +151,8 @@ import {
   reparentControls
 } from '../services/windowDesigner/controlHierarchy';
 import { applyDesignerLayout, buildBatchGeometryChanges, createNextRebarBand, DesignerHistory, nudgeControls, reconcileRebarBands, reorderDesignerControls, updateControlWithDescendants, updateControlsWithDescendants, type DesignerHistoryAvailability, type DesignerLayoutOperation } from '../services/windowDesigner/designerOperations';
+import { ANCHOR_BOTTOM, ANCHOR_LEFT, ANCHOR_RIGHT, ANCHOR_TOP, anchorMaskToValue, anchorStretchPreviewRects, computeWindowScaledRects, ANCHOR_LAYOUT_SKIPPED_TYPES, parseAnchorMask } from '../services/windowDesigner/anchorLayout';
+import { collectLayoutPanelChildren, computeFlowLayoutRects, computeTableLayoutRects, isLayoutPanelType, parseFlowPanelProps, parseTablePanelProps, FLOW_PANEL_TYPE, TABLE_PANEL_TYPE } from '../services/windowDesigner/flowTableLayout';
 import { CommandService, createCommandService } from '../services/commands/commandService';
 import type { CommandContext } from '../services/commands/types';
 import { DESIGNER_CANVAS_CONTEXT_MENU, DESIGNER_CONTROL_CONTEXT_MENU, DESIGNER_RESOURCE_CONTEXT_MENU, getMenuService, type ResolvedMenuCommandItem } from '../services/menus';
@@ -264,6 +266,8 @@ interface DesignerControlRenderProps {
   navigationRef?: (element: HTMLElement | null) => void;
   /** 图像列表资源清单：Win32 TabControl 页签图标画布预览消费，与 F5 运行结果保持一致。 */
   imageLists?: LingImageListResource[];
+  /** 布局面板（FlowPanel/TablePanel）子控件的显示矩形覆盖（窗口绝对坐标，与运行 exe 同规格）。 */
+  displayRect?: { x: number; y: number; width: number; height: number };
 }
 const WINDOW_ROOT_DROP_TARGET = '__layout_window_root__';
 const LINGBUILDER_WINDOW_ICON_PREVIEW = new URL('../../../image/lingbuilder-ide-icon-v2.png', import.meta.url).href;
@@ -361,7 +365,8 @@ const DEDICATED_CONTROL_PREVIEW_TYPES = new Set<LingControlType>([
   'Button', 'TextBox', 'Label', 'SysLink', 'CheckBox', 'RadioButton', 'ListBox',
   'ProgressBar', 'ComboBox', 'ComboBoxEx', 'GroupBox', 'Image', 'AnimatedImage',
   'VideoPlayer', 'ListView', 'DataGrid', 'Header', 'TreeView', 'TabControl', 'StatusBar', 'ReBar',
-  'IPAddress', 'TrackBar', 'UpDown', 'Upload', 'DragUpload', 'RichEdit', 'ColorPicker', 'EdgeBrowser', 'CefBrowser', 'FBroBrowser'
+  'IPAddress', 'TrackBar', 'UpDown', 'Upload', 'DragUpload', 'RichEdit', 'ColorPicker', 'EdgeBrowser', 'CefBrowser', 'FBroBrowser',
+  'FlowPanel', 'TablePanel'
 ]);
 
 export function hasDedicatedControlPreview(type: LingControlType): boolean {
@@ -754,6 +759,9 @@ const WpfDesigner = React.forwardRef<WpfDesignerHandle, WpfDesignerProps>(functi
   const [zoomMode, setZoomMode] = useState<DesignerZoomMode>('fit');
   const [manualZoom, setManualZoom] = useState(1);
   const [fitScale, setFitScale] = useState(1);
+  // 锚定「模拟拉伸」预览：整窗重排演示弹层，纯展示不写回坐标（语义与生成 C++ 同规格）。
+  const [anchorStretchPreviewOpen, setAnchorStretchPreviewOpen] = useState(false);
+  const [anchorStretchPercent, setAnchorStretchPercent] = useState(25);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const canvasFrameRef = useRef<HTMLDivElement>(null);
@@ -900,6 +908,22 @@ const WpfDesigner = React.forwardRef<WpfDesignerHandle, WpfDesignerProps>(functi
     () => orderControlsForDesignerPainting(activeWindow.controls),
     [activeWindow.controls]
   );
+  // 布局面板（三/四期）子控件显示矩形：画布按布局算法显示（与运行 exe 同规格），子控件 x/y 设计值不参与显示。
+  const panelLayoutDisplayRects = useMemo(() => {
+    const map = new Map<string, { x: number; y: number; width: number; height: number }>();
+    for (const panel of activeWindow.controls) {
+      if (!isLayoutPanelType(panel.type)) continue;
+      const children = collectLayoutPanelChildren(activeWindow.controls, panel.id);
+      if (children.length === 0) continue;
+      const rects = panel.type === FLOW_PANEL_TYPE
+        ? computeFlowLayoutRects(panel.width, panel.height, children, parseFlowPanelProps(panel.properties as Record<string, unknown>))
+        : computeTableLayoutRects(panel.width, panel.height, children, parseTablePanelProps(panel.properties as Record<string, unknown>));
+      for (const [childId, rect] of rects) {
+        map.set(childId, { x: panel.x + rect.x, y: panel.y + rect.y, width: rect.width, height: rect.height });
+      }
+    }
+    return map;
+  }, [activeWindow.controls]);
   const windowContentOffset = getDesignerWindowContentOffset(activeWindow);
   windowContentOffsetRef.current = windowContentOffset;
 
@@ -3587,6 +3611,127 @@ const WpfDesigner = React.forwardRef<WpfDesignerHandle, WpfDesignerProps>(functi
       <div className="flex-1 flex overflow-hidden min-h-0">
         {toolboxHost ? createPortal(controlToolbox, toolboxHost) : null}
 
+        {anchorStretchPreviewOpen && activeWindow.controls.length > 0 ? createPortal((() => {
+          const previewClientWidth = Math.max(1, activeWindow.width);
+          const previewClientHeight = Math.max(1, activeWindow.height - windowContentOffset);
+          const previewDx = Math.round(previewClientWidth * anchorStretchPercent / 100);
+          const previewDy = Math.round(previewClientHeight * anchorStretchPercent / 100);
+          const scaleMode = activeWindow.scaleContentWithWindow === true;
+          const previewRects = scaleMode
+            ? computeWindowScaledRects(activeWindow, previewClientWidth + previewDx, previewClientHeight + previewDy).rects
+            : anchorStretchPreviewRects(activeWindow, previewDx, previewDy);
+          const stretchedWidth = previewClientWidth + Math.max(0, previewDx);
+          const stretchedHeight = previewClientHeight + Math.max(0, previewDy);
+          const previewScale = Math.min(1, 560 / stretchedWidth, 360 / stretchedHeight);
+          const previewHighlight = (control: LingControl): 'selected' | 'layout' | 'plain' => {
+            if (control.id === selectedControlId) return 'selected';
+            if (scaleMode) return ANCHOR_LAYOUT_SKIPPED_TYPES.has(control.type) ? 'plain' : 'layout';
+            return !ANCHOR_LAYOUT_SKIPPED_TYPES.has(control.type) && parseAnchorMask(control.properties?.anchor) !== 0 ? 'layout' : 'plain';
+          };
+          const hasAnchoredControls = scaleMode || activeWindow.controls.some(control =>
+            !ANCHOR_LAYOUT_SKIPPED_TYPES.has(control.type)
+            && control.type !== ('MenuBar' as any)
+            && control.type !== ('MenuItem' as any)
+            && parseAnchorMask(control.properties?.anchor) !== 0);
+          return (
+            <div
+              role="dialog"
+              aria-label="模拟拉伸预览"
+              className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 p-8"
+              onClick={() => setAnchorStretchPreviewOpen(false)}
+            >
+              <div
+                className={`flex max-h-full max-w-3xl flex-col gap-3 rounded-lg border p-4 shadow-2xl ${
+                  isDarkMode ? 'border-[#3c3c44] bg-[#1b1b20] text-slate-200' : 'border-slate-300 bg-white text-slate-800'
+                }`}
+                onClick={event => event.stopPropagation()}
+              >
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <div className="text-sm font-bold">模拟拉伸预览{scaleMode ? '（等比缩放）' : ''}</div>
+                    <div className="mt-0.5 text-[10px] leading-4 text-slate-500">
+                      {scaleMode
+                        ? '本窗口已开启「内容随窗口等比缩放」：全部控件按 min(宽比, 高比) 整体缩放，控件锚定被忽略。纯展示，不写回控件坐标。'
+                        : '演示窗口客户区变大时锚定控件的跟随效果；纯展示，不写回控件坐标。与运行 exe 时 WM_SIZE 重排同规格。'}
+                    </div>
+                  </div>
+                  <button type="button" onClick={() => setAnchorStretchPreviewOpen(false)} className="rounded px-2 py-1 text-xs hover:bg-slate-500/15" aria-label="关闭模拟拉伸预览">关闭</button>
+                </div>
+                <div className="flex flex-wrap items-center gap-1 text-[11px]">
+                  <span className="mr-1 text-slate-500">客户区拉伸</span>
+                  {[0, 10, 25, 50, 100].map(percent => (
+                    <button
+                      key={percent}
+                      type="button"
+                      onClick={() => setAnchorStretchPercent(percent)}
+                      aria-pressed={anchorStretchPercent === percent}
+                      className={`rounded border px-2 py-0.5 ${
+                        anchorStretchPercent === percent
+                          ? 'border-amber-500 bg-amber-500/20 text-amber-500'
+                          : isDarkMode ? 'border-[#3c3c44] hover:bg-slate-500/15' : 'border-slate-300 hover:bg-slate-100'
+                      }`}
+                    >
+                      {percent === 0 ? '基线' : `+${percent}%`}
+                    </button>
+                  ))}
+                  {!hasAnchoredControls && (
+                    <span className="ml-2 rounded bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-500">
+                      当前窗口还没有锚定控件：在设计器选中控件后，在属性面板「锚定」九宫格里设置
+                    </span>
+                  )}
+                </div>
+                <div className={`overflow-auto rounded border p-3 ${isDarkMode ? 'border-[#2b2b34] bg-[#101014]' : 'border-slate-200 bg-slate-50'}`}>
+                  <div
+                    className="relative"
+                    style={{
+                      width: `${stretchedWidth * previewScale}px`,
+                      height: `${stretchedHeight * previewScale}px`
+                    }}
+                  >
+                    <div
+                      className="absolute border border-dashed border-slate-500/70"
+                      style={{ left: 0, top: 0, width: `${previewClientWidth * previewScale}px`, height: `${previewClientHeight * previewScale}px` }}
+                      title="基线客户区（设计器尺寸）"
+                    />
+                    {activeWindow.controls.map(control => {
+                      if (control.type === ('MenuBar' as any) || control.type === ('MenuItem' as any)) return null;
+                      const rect = previewRects.get(control.id);
+                      if (!rect) return null;
+                      const highlight = previewHighlight(control);
+                      const highlightClass = highlight === 'selected'
+                        ? 'border-amber-400 bg-amber-500/30 text-amber-100'
+                        : highlight === 'layout'
+                          ? 'border-sky-400 bg-sky-500/25 text-sky-100'
+                          : 'border-slate-500/60 bg-slate-500/15 text-slate-300';
+                      return (
+                        <div
+                          key={control.id}
+                          title={`${control.name}（${scaleMode ? '等比缩放' : highlight === 'layout' ? '锚定' : '固定位置'}）`}
+                          className={`absolute rounded-sm border text-[8px] leading-none ${highlightClass}`}
+                          style={{
+                            left: `${rect.x * previewScale}px`,
+                            top: `${rect.y * previewScale}px`,
+                            width: `${Math.max(2, rect.width * previewScale)}px`,
+                            height: `${Math.max(2, rect.height * previewScale)}px`
+                          }}
+                        >
+                          <span className="pointer-events-none absolute left-0.5 top-0.5 max-w-full truncate">{control.name}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div className="flex items-center gap-4 text-[10px] text-slate-500">
+                  <span><span className="mr-1 inline-block h-2 w-3 rounded-sm border border-sky-400 bg-sky-500/25 align-middle" />{scaleMode ? '等比缩放控件' : '锚定控件'}</span>
+                  <span><span className="mr-1 inline-block h-2 w-3 rounded-sm border border-slate-500/60 bg-slate-500/15 align-middle" />{scaleMode ? '专属管线控件（不缩放）' : '固定位置（默认）'}</span>
+                  <span><span className="mr-1 inline-block h-2 w-3 rounded-sm border border-dashed border-slate-500/70 align-middle" />基线客户区</span>
+                  <span className="ml-auto font-mono">{previewClientWidth}×{previewClientHeight} → {stretchedWidth}×{stretchedHeight}{scaleMode ? `（因子 ${(computeWindowScaledRects(activeWindow, previewClientWidth + previewDx, previewClientHeight + previewDy).factor).toFixed(3)}）` : ''}</span>
+                </div>
+              </div>
+            </div>
+          );
+        })(), document.body) : null}
+
         <div ref={canvasViewportRef} className={`wpf-designer-canvas-viewport flex-1 p-6 flex flex-col overflow-auto items-center justify-start relative select-none ${
           isDarkMode ? 'bg-[#101014]' : 'bg-slate-100/50'
         }`}>
@@ -3600,6 +3745,15 @@ const WpfDesigner = React.forwardRef<WpfDesignerHandle, WpfDesignerProps>(functi
             }`}>
               <button type="button" onClick={undoDesigner} title="撤销设计操作 Ctrl+Z" className="rounded px-1 py-0.5 hover:bg-slate-500/15">撤销</button><button type="button" onClick={redoDesigner} title="重做设计操作 Ctrl+Y" className="rounded px-1 py-0.5 hover:bg-slate-500/15">重做</button>
               {([['align-left','左齐'],['align-top','顶齐'],['align-right','右齐'],['align-bottom','底齐'],['align-hcenter','水平居中'],['align-vcenter','垂直居中'],['distribute-horizontal','横向分布'],['distribute-vertical','纵向分布'],['same-width','等宽'],['same-height','等高']] as Array<[DesignerLayoutOperation,string]>).map(([operation,label]) => <button key={operation} type="button" disabled={(operation === 'distribute-horizontal' || operation === 'distribute-vertical' ? selectedControlIds.length < 3 : selectedControlIds.length < 2)} title={(operation === 'distribute-horizontal' || operation === 'distribute-vertical') && selectedControlIds.length < 3 ? `${label}至少需要三个控件` : label} onClick={() => applyLayoutOperation(operation)} className="rounded px-1 py-0.5 hover:bg-slate-500/15 disabled:opacity-30">{label}</button>)}
+              <button
+                type="button"
+                onClick={() => setAnchorStretchPreviewOpen(true)}
+                title="模拟拉伸预览：演示窗口变宽变高时锚定控件的跟随效果（不写回坐标）"
+                aria-label="模拟拉伸预览"
+                className="rounded px-1 py-0.5 hover:bg-slate-500/15"
+              >
+                模拟拉伸
+              </button>
               <button
                 type="button"
                 onClick={() => setCanvasZoom(canvasScale - 0.1)}
@@ -3860,6 +4014,7 @@ const WpfDesigner = React.forwardRef<WpfDesignerHandle, WpfDesignerProps>(functi
                   onReorderRebarBand={control.type === 'ReBar' ? (fromIndex, toIndex) => stableHandleReorderRebarBand(control.id, fromIndex, toIndex) : undefined}
                   navigationRef={registerDesignerNavigationTarget('control', control.id)}
                   imageLists={imageListResources}
+                  displayRect={panelLayoutDisplayRects.get(control.id)}
                 />
               );
             })}
@@ -4361,6 +4516,7 @@ const WpfDesigner = React.forwardRef<WpfDesignerHandle, WpfDesignerProps>(functi
                     projectId={projectId}
                     control={selectedControl}
                     controls={activeWindow.controls}
+                    windowScaledContent={activeWindow.scaleContentWithWindow === true}
                     imageLists={(project.resources || []).filter((resource): resource is LingImageListResource => resource.type === 'ImageList')}
                     isDarkMode={isDarkMode}
                     moduleControl={selectedModuleControl}
@@ -5058,7 +5214,8 @@ function renderControl(
   onSelectTabPage?: (pageId: string) => void,
   onReorderRebarBand?: (fromIndex: number, toIndex: number) => void,
   navigationRef?: (element: HTMLElement | null) => void,
-  imageLists?: LingImageListResource[]
+  imageLists?: LingImageListResource[],
+  displayRect?: { x: number; y: number; width: number; height: number }
 ) {
   const isCollapsed = !isEffectivelyVisible && ancestorsVisible;
   const isHiddenByAncestor = !ancestorsVisible;
@@ -5105,10 +5262,10 @@ function renderControl(
           : isSelected ? 'ring-1 ring-amber-500 z-40' : 'hover:ring-1 hover:ring-slate-500 z-20'
       } ${isCollapsed ? 'opacity-30 border border-dashed border-red-500' : ''}`}
       style={{
-        left: `${control.x}px`,
-        top: `${control.y + contentOffset}px`,
-        width: `${control.width}px`,
-        height: `${control.height}px`,
+        left: `${displayRect ? displayRect.x : control.x}px`,
+        top: `${(displayRect ? displayRect.y : control.y) + contentOffset}px`,
+        width: `${displayRect ? displayRect.width : control.width}px`,
+        height: `${displayRect ? displayRect.height : control.height}px`,
         visibility: isHiddenByAncestor ? 'hidden' : undefined
       }}
     >
@@ -5636,8 +5793,52 @@ function renderControl(
 
         {control.type === 'TreeView' && <TreeViewDesignerPreview control={control} isEnabled={isEffectivelyEnabled} />}
 
-        {control.type === 'GroupBox' && (() => {
-          const showBorder = control.properties?.showBorder !== false;
+        {(control.type === 'FlowPanel' || control.type === 'TablePanel') && (() => {
+          const flow = control.type === 'FlowPanel';
+          const flowProps = flow ? parseFlowPanelProps(control.properties as Record<string, unknown>) : null;
+          const tableProps = flow ? null : parseTablePanelProps(control.properties as Record<string, unknown>);
+          const vertical = Boolean(flowProps && flowProps.orientation === 'vertical');
+          const previewPadding = flowProps ? flowProps.padding : tableProps!.padding;
+          const previewHgap = flowProps ? flowProps.hgap : tableProps!.hgap;
+          return (
+            <div
+              className="h-full w-full overflow-hidden"
+              style={{
+                backgroundColor: control.background === 'transparent' ? 'transparent' : control.background,
+                border: '1px dashed rgba(100, 116, 139, 0.85)',
+                backgroundImage: flow && vertical
+                  ? 'repeating-linear-gradient(0deg, rgba(148,163,184,0.14) 0px, rgba(148,163,184,0.14) 1px, transparent 1px, transparent 24px)'
+                  : flow
+                    ? 'repeating-linear-gradient(90deg, rgba(148,163,184,0.14) 0px, rgba(148,163,184,0.14) 1px, transparent 1px, transparent 24px)'
+                    : undefined,
+                opacity: isEffectivelyEnabled ? 1 : 0.5
+              }}
+            >
+              {tableProps && (() => {
+                let cursor = previewPadding;
+                return resolveTableTrackPreview(control.width, tableProps.columns, previewPadding, previewHgap).map((width, index, all) => {
+                  const left = cursor;
+                  cursor += width + previewHgap;
+                  if (index === all.length - 1) return null;
+                  return (
+                    <div
+                      key={index}
+                      className="absolute top-0 bottom-0"
+                      style={{ left: `${left + width + previewHgap / 2}px`, width: '1px', backgroundColor: 'rgba(148,163,184,0.28)' }}
+                    />
+                  );
+                });
+              })()}
+              <span className="pointer-events-none absolute left-1 top-1 rounded bg-slate-900/70 px-1 py-0.5 text-[8px] font-bold text-sky-300">
+                {flowProps
+                  ? `流式布局 · ${vertical ? '纵向' : '横向'}${flowProps.wrap ? ' · 换行' : ''}`
+                  : tableProps ? `表格布局 · ${tableProps.columns.length} 列 × ${tableProps.rows.length} 行` : ''}
+              </span>
+            </div>
+          );
+        })()}
+
+        {control.type === 'GroupBox' && (() => {          const showBorder = control.properties?.showBorder !== false;
           const borderWidth = showBorder ? Math.max(0, Math.min(8, Number(control.properties?.borderWidth ?? 1))) : 0;
           const borderColor = String(control.properties?.borderColor ?? '#64748B');
           const titleAlign = control.properties?.titleAlign === 'center' || control.properties?.titleAlign === 'right'
@@ -5727,7 +5928,8 @@ const MemoizedDesignerControl = React.memo(
       props.onSelectTabPage,
       props.onReorderRebarBand,
       props.navigationRef,
-      props.imageLists
+      props.imageLists,
+      props.displayRect
     );
   },
   (previous, next) => (
@@ -5741,6 +5943,7 @@ const MemoizedDesignerControl = React.memo(
     && previous.isEffectivelyEnabled === next.isEffectivelyEnabled
     && previous.ancestorsVisible === next.ancestorsVisible
     && previous.imageLists === next.imageLists
+    && previous.displayRect === next.displayRect
   )
 );
 
@@ -5979,8 +6182,103 @@ function PropertyRow({
   );
 }
 
-function openDesignerSelectPicker(event: React.MouseEvent<HTMLSelectElement>): void {
-  if (event.button !== 0 || typeof event.currentTarget.showPicker !== 'function') return;
+/** 表格面板画布预览的列宽示意解析：固定=字面数字；auto=0（不示意）；星号=按面板宽均分剩余。 */
+function resolveTableTrackPreview(panelWidth: number, definitions: string[], padding: number, gap: number): number[] {
+  const count = Math.max(1, definitions.length);
+  const fixed: number[] = [];
+  const weights: number[] = [];
+  let fixedTotal = 0;
+  let weightSum = 0;
+  for (const definition of definitions) {
+    const text = String(definition ?? '').trim();
+    const starMatch = /^(\d+(?:\.\d+)?)?\s*\*$/u.exec(text);
+    if (starMatch) {
+      const weight = starMatch[1] ? Number.parseFloat(starMatch[1]) : 1;
+      weights.push(Number.isFinite(weight) && weight > 0 ? weight : 1);
+      weightSum += weights[weights.length - 1];
+      fixed.push(0);
+    } else if (/^auto$/iu.test(text)) {
+      weights.push(0);
+      fixed.push(0);
+    } else {
+      const parsed = Number.parseFloat(text);
+      const value = Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : 0;
+      weights.push(0);
+      fixed.push(value);
+      fixedTotal += value;
+    }
+  }
+  const gapTotal = count > 1 ? (count - 1) * gap : 0;
+  const starSpace = Math.max(0, panelWidth - padding * 2 - gapTotal - fixedTotal);
+  return fixed.map((value, index) => value + (weights[index] > 0 && weightSum > 0 ? Math.round(starSpace * weights[index] / weightSum) : 0));
+}
+
+/** 锚定九宫格单元掩码：列=水平模式（左固定/左右拉伸/靠右），行=垂直模式（上固定/上下拉伸/靠底）。 */
+function anchorGridCellMask(row: number, col: number): number {
+  const horizontal = col === 1 ? ANCHOR_LEFT | ANCHOR_RIGHT : col === 2 ? ANCHOR_RIGHT : 0;
+  const vertical = row === 1 ? ANCHOR_TOP | ANCHOR_BOTTOM : row === 2 ? ANCHOR_BOTTOM : 0;
+  return horizontal | vertical;
+}
+
+function anchorGridCellFromMask(mask: number): { row: number; col: number } {
+  const col = (mask & ANCHOR_RIGHT) ? ((mask & ANCHOR_LEFT) ? 1 : 2) : 0;
+  const row = (mask & ANCHOR_BOTTOM) ? ((mask & ANCHOR_TOP) ? 1 : 2) : 0;
+  return { row, col };
+}
+
+const ANCHOR_CELL_TITLES: ReadonlyArray<ReadonlyArray<string>> = [
+  ['固定位置（默认）', '水平拉伸：左右边距固定', '靠右：距右缘固定'],
+  ['垂直拉伸：上下边距固定', '四向拉伸：位置不变宽高伸缩', '垂直拉伸并靠右'],
+  ['靠底：距下缘固定', '水平拉伸并靠底', '靠右下：距右下角固定']
+];
+
+/** 控件锚定九宫格选择器：语义与 anchorLayout.ts / 生成 C++ ApplyAnchorLayout_ 同一规格。 */
+function AnchorNineGridSelector({
+  anchorMask,
+  isDarkMode,
+  onChange
+}: {
+  anchorMask: number;
+  isDarkMode: boolean;
+  onChange: (mask: number) => void;
+}) {
+  const current = anchorGridCellFromMask(anchorMask);
+  return (
+    <div className="px-2 py-1">
+      <div className={`mb-1 text-[10px] leading-4 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+        锚定（窗口拉伸时的跟随方式）
+      </div>
+      <div role="radiogroup" aria-label="锚定方式" className="grid w-[72px] grid-cols-3 gap-0.5">
+        {Array.from({ length: 9 }, (_, index) => {
+          const row = Math.floor(index / 3);
+          const col = index % 3;
+          const mask = anchorGridCellMask(row, col);
+          const selected = current.row === row && current.col === col;
+          return (
+            <button
+              key={index}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              aria-label={ANCHOR_CELL_TITLES[row][col]}
+              title={ANCHOR_CELL_TITLES[row][col]}
+              onClick={() => onChange(mask)}
+              className={`h-5 w-full rounded-sm border transition-colors ${
+                selected
+                  ? 'border-amber-500 bg-amber-500/40'
+                  : isDarkMode
+                    ? 'border-[#3c3c44] bg-[#1b1b20] hover:bg-[#25252c]'
+                    : 'border-slate-300 bg-white hover:bg-slate-100'
+              }`}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function openDesignerSelectPicker(event: React.MouseEvent<HTMLSelectElement>): void {  if (event.button !== 0 || typeof event.currentTarget.showPicker !== 'function') return;
   try {
     event.currentTarget.focus();
     event.currentTarget.showPicker();
@@ -6141,6 +6439,26 @@ function WindowProperties({
         {window.controls.length > 0 && <div className="px-2 pb-1 text-[9px] leading-4 text-slate-500">窗口已有控件，后端已锁定；新建窗口可选择另一后端。</div>}
         <NumberField label="宽度" value={window.width} min={360} isDarkMode={isDarkMode} onChange={value => onChange({ width: value })} />
         <NumberField label="高度" value={window.height} min={240} isDarkMode={isDarkMode} onChange={value => onChange({ height: value })} />
+        {migrateDesignerBackend(window.designerBackend, newEmojiAvailable) !== 'new-emoji' && (
+          <>
+            <PropertyRow label="等比缩放" isDarkMode={isDarkMode}>
+              <label className="flex cursor-pointer items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={window.scaleContentWithWindow === true}
+                  onChange={event => onChange({ scaleContentWithWindow: event.target.checked })}
+                  aria-label="内容随窗口等比缩放"
+                />
+                <span>内容随窗口等比缩放</span>
+              </label>
+            </PropertyRow>
+            {window.scaleContentWithWindow === true && (
+              <div className="px-2 pb-1 text-[9px] leading-4 text-slate-500">
+                开启后运行期按 min(宽比, 高比) 整体缩放全部控件（工具栏/状态栏除外）；与控件锚定互斥，本窗口内控件锚定被忽略。
+              </div>
+            )}
+          </>
+        )}
       </PropertyGroup>
       <PropertyGroup title="当前窗口 / 打开位置" isDarkMode={isDarkMode}>
         <PropertyRow label="打开位置" isDarkMode={isDarkMode}>
@@ -7023,6 +7341,7 @@ function ControlProperties({
   projectId,
   control,
   controls,
+  windowScaledContent,
   imageLists,
   isDarkMode,
   moduleControl,
@@ -7037,6 +7356,7 @@ function ControlProperties({
   projectId: string;
   control: LingControl | null;
   controls: LingControl[];
+  windowScaledContent?: boolean;
   imageLists: LingImageListResource[];
   isDarkMode: boolean;
   moduleControl?: ModuleDesignerControlContribution;
@@ -7109,6 +7429,19 @@ function ControlProperties({
   ));
   const controlDefinition = getWin32ControlDefinition(control.type);
   const supportsRuntimeTags = Boolean(moduleControl?.runtimeControl || (controlDefinition && getWin32RuntimeControlContract(controlDefinition)));
+  // 锚定一期只落 Win32 后端内置控件：NE 模块控件（designerType）与工具栏/状态栏/Rebar
+  // 等专属管线类型不参与，运行期动态创建的控件也不参与（生成器侧同口径豁免）。
+  const anchorEditorAvailable = Boolean(controlDefinition)
+    && !control.designerType
+    && !ANCHOR_LAYOUT_SKIPPED_TYPES.has(control.type)
+    && control.type !== ('MenuBar' as any)
+    && control.type !== ('MenuItem' as any);
+  // 布局面板（三/四期）：子控件 x/y 由面板布局接管，属性面板隐藏坐标、按面板类型给编辑器。
+  const layoutPanelParent = controls.find(item => item.id === control.parentId && isLayoutPanelType(item.type));
+  const layoutSiblings = layoutPanelParent
+    ? controls.filter(item => item.parentId === layoutPanelParent.id)
+    : [];
+  const layoutSiblingIndex = layoutPanelParent ? layoutSiblings.findIndex(item => item.id === control.id) : -1;
   const updateTagText = (value: string) => {
     const normalized = normalizeControlTagText(value);
     const conflict = findControlTagConflict(controls, control.id, 'text', normalized);
@@ -7255,8 +7588,19 @@ function ControlProperties({
             </select>
           </PropertyRow>
         )}
-        <NumberField label="左距" value={control.x} min={0} isDarkMode={isDarkMode} onChange={value => onChange({ x: value })} />
-        <NumberField label="顶距" value={control.y} min={0} isDarkMode={isDarkMode} onChange={value => onChange({ y: value })} />
+        {layoutPanelParent ? (
+          <div role="note" className={`rounded border px-2 py-1 text-[10px] leading-4 ${isDarkMode ? 'border-sky-500/25 bg-sky-500/5 text-sky-400' : 'border-sky-500/30 bg-sky-500/5 text-sky-600'}`}>
+            本控件在「{layoutPanelParent.name}」（{layoutPanelParent.type === FLOW_PANEL_TYPE ? '流式布局' : '表格布局'}面板）内：位置由面板布局接管，左距/顶距不参与显示。
+            {layoutPanelParent.type === FLOW_PANEL_TYPE
+              ? `当前排列序号 ${layoutSiblingIndex + 1}/${layoutSiblings.length}，在上方控件树中拖动可调整顺序。`
+              : '在下方「表格格位」中设置行列位置。'}
+          </div>
+        ) : (
+          <>
+            <NumberField label="左距" value={control.x} min={0} isDarkMode={isDarkMode} onChange={value => onChange({ x: value })} />
+            <NumberField label="顶距" value={control.y} min={0} isDarkMode={isDarkMode} onChange={value => onChange({ y: value })} />
+          </>
+        )}
         <NumberField label="宽度" value={control.width} min={20} isDarkMode={isDarkMode} onChange={value => onChange({ width: value })} />
         <NumberField
           label={control.type === 'MonthCalendar' ? '月历高度' : control.type === 'DateTimePicker' ? '选择框高度' : '高度'}
@@ -7265,6 +7609,63 @@ function ControlProperties({
           isDarkMode={isDarkMode}
           onChange={value => onChange({ height: value })}
         />
+        {layoutPanelParent && layoutPanelParent.type === TABLE_PANEL_TYPE && (() => {
+          const cell = (control.properties?.tableCell && typeof control.properties.tableCell === 'object'
+            ? control.properties.tableCell
+            : {}) as { row?: number; col?: number; rowSpan?: number; colSpan?: number };
+          const updateCell = (key: 'row' | 'col' | 'rowSpan' | 'colSpan', raw: string) => {
+            const parsed = Number.parseInt(raw, 10);
+            const nextCell = { ...cell };
+            if (!Number.isFinite(parsed) || parsed < (key === 'row' || key === 'col' ? 0 : 1)) delete nextCell[key];
+            else nextCell[key] = parsed;
+            const hasValue = Object.keys(nextCell).length > 0;
+            const nextProperties = { ...(control.properties || {}) };
+            if (hasValue) nextProperties.tableCell = nextCell;
+            else delete nextProperties.tableCell;
+            onChange({ properties: nextProperties });
+          };
+          return (
+            <PropertyGroup title="表格格位（1 起留空自动排布）" isDarkMode={isDarkMode}>
+              <div className="grid grid-cols-2 gap-1 px-2 py-1">
+                {([['row', '行'], ['col', '列'], ['rowSpan', '跨行'], ['colSpan', '跨列']] as Array<[keyof typeof cell, string]>).map(([key, label]) => (
+                  <label key={key} className="flex items-center gap-1 text-[10px]">
+                    <span className="w-8 shrink-0 text-slate-500">{label}</span>
+                    <input
+                      type="number"
+                      min={key === 'row' || key === 'col' ? 0 : 1}
+                      value={typeof cell[key] === 'number' ? String(cell[key]) : ''}
+                      placeholder={key === 'row' || key === 'col' ? '自动' : '1'}
+                      aria-label={`表格格位${label}`}
+                      onChange={event => updateCell(key, event.target.value)}
+                      className={`w-full min-w-0 rounded border px-1 py-0.5 text-[11px] outline-none focus:border-amber-500 ${isDarkMode ? 'border-[#3c3c44] bg-[#1b1b20] text-slate-200' : 'border-slate-300 bg-white text-slate-800'}`}
+                    />
+                  </label>
+                ))}
+              </div>
+            </PropertyGroup>
+          );
+        })()}
+        {anchorEditorAvailable && (
+          windowScaledContent ? (
+            <div className="px-2 py-1 text-[10px] leading-4 text-slate-500">
+              本窗口已开启「内容随窗口等比缩放」：全部控件随窗口整体缩放，控件锚定被忽略（可在窗口属性中关闭等比缩放后再设锚定）。
+            </div>
+          ) : (
+            <PropertyRow label="锚定" isDarkMode={isDarkMode}>
+              <AnchorNineGridSelector
+                anchorMask={parseAnchorMask(control.properties?.anchor)}
+                isDarkMode={isDarkMode}
+                onChange={mask => {
+                  const nextProperties = { ...(control.properties || {}) };
+                  const value = anchorMaskToValue(mask);
+                  if (value) nextProperties.anchor = value;
+                  else delete nextProperties.anchor;
+                  onChange({ properties: nextProperties });
+                }}
+              />
+            </PropertyRow>
+          )
+        )}
       </PropertyGroup>
 
       {supportsRuntimeTags && (

@@ -59,6 +59,20 @@ import {
   saveWindowDesignerState
 } from '../src/services/windowDesigner/windowDesignerService';
 import { generateLingCppNativeWin32Project, type GenerateLingCppNativeWin32ProjectOptions } from '../src/services/windowDesigner/lingCppWin32Project';
+import {
+  anchorMaskToValue,
+  anchorStretchPreviewRects,
+  computeAnchoredRect,
+  computeWindowMinimumClientSize,
+  computeWindowScaledRects,
+  isAnchorLayoutEnabledForProject,
+  parseAnchorMask,
+  ANCHOR_BOTTOM,
+  ANCHOR_LEFT,
+  ANCHOR_RIGHT,
+  ANCHOR_TOP
+} from '../src/services/windowDesigner/anchorLayout';
+import { computeFlowLayoutRects, computeTableLayoutRects } from '../src/services/windowDesigner/flowTableLayout';
 import { normalizeImageListResourcePath, normalizeImageListResourcePaths } from '../src/services/windowDesigner/imageListResourceModel';
 import { generateNativeWin32Project } from '../src/services/windowDesigner/nativeWin32Project';
 import { writeGeneratedProjectFiles } from '../src/services/windowDesigner/generatedProjectFileService';
@@ -1626,7 +1640,8 @@ test('分组框转发嵌套组合框的自绘、颜色和选择消息', () => {
   }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
 
   assert.match(cpp, /\{ 1002, 1001, L"ComboBox"/u);
-  const forwardingStart = cpp.indexOf('if (IsType(*control, L"GroupBox") && (');
+  // 分组框与布局面板（FlowPanel/TablePanel）共用同一条消息反射分支（面板内 owner-draw 按钮/通知必须反射主窗口）。
+  const forwardingStart = cpp.indexOf('if ((IsType(*control, L"GroupBox") || IsType(*control, L"FlowPanel") || IsType(*control, L"TablePanel")) && (');
   const forwardingEnd = cpp.indexOf(')) {', forwardingStart);
   assert.ok(forwardingStart >= 0 && forwardingEnd > forwardingStart);
   const forwardingBranch = cpp.slice(forwardingStart, forwardingEnd);
@@ -6641,4 +6656,388 @@ test('外部重载干净基线口径：normalize 后再 save 内容不再变化�
   );
   // 钉住根因：磁盘原始 JSON 与规范化结果确实不同（旧口径必然误判脏）。
   assert.notEqual(JSON.stringify(reloaded.project), JSON.stringify(rawProject));
+});
+
+// ===== 控件锚定布局（anchorLayout.ts 共享规格 + 生成器 anchor family）=====
+
+test('锚定：parseAnchorMask 解析/容错/默认归零口径', () => {
+  assert.equal(parseAnchorMask(undefined), 0);
+  assert.equal(parseAnchorMask(''), 0);
+  assert.equal(parseAnchorMask('left,top'), 0);
+  assert.equal(parseAnchorMask('left'), 0);
+  assert.equal(parseAnchorMask('top'), 0);
+  assert.equal(parseAnchorMask('right'), ANCHOR_RIGHT);
+  assert.equal(parseAnchorMask('bottom'), ANCHOR_BOTTOM);
+  assert.equal(parseAnchorMask('right,bottom'), ANCHOR_RIGHT | ANCHOR_BOTTOM);
+  assert.equal(parseAnchorMask('left,right'), ANCHOR_LEFT | ANCHOR_RIGHT);
+  assert.equal(parseAnchorMask('top,bottom'), ANCHOR_TOP | ANCHOR_BOTTOM);
+  assert.equal(parseAnchorMask('left,top,right,bottom'), ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT | ANCHOR_BOTTOM);
+  assert.equal(parseAnchorMask('RIGHT , Bottom'), ANCHOR_RIGHT | ANCHOR_BOTTOM);
+  assert.equal(parseAnchorMask('右,下'), ANCHOR_RIGHT | ANCHOR_BOTTOM);
+  assert.equal(parseAnchorMask('右、下'), ANCHOR_RIGHT | ANCHOR_BOTTOM);
+  assert.equal(parseAnchorMask('right,bottom,left'), ANCHOR_LEFT | ANCHOR_RIGHT | ANCHOR_BOTTOM);
+  // 未知词元整体非法 → 默认，不产生半截锚定。
+  assert.equal(parseAnchorMask('right,bottom,fill'), 0);
+  assert.equal(parseAnchorMask(42), 0);
+  assert.equal(anchorMaskToValue(0), '');
+  assert.equal(anchorMaskToValue(ANCHOR_RIGHT), 'right');
+  assert.equal(anchorMaskToValue(ANCHOR_RIGHT | ANCHOR_BOTTOM), 'right,bottom');
+  assert.equal(anchorMaskToValue(ANCHOR_LEFT | ANCHOR_RIGHT), 'left,right');
+  assert.equal(anchorMaskToValue(ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT | ANCHOR_BOTTOM), 'left,top,right,bottom');
+});
+
+test('锚定：computeAnchoredRect 六种语义分支（生成 C++ 同规格数学）', () => {
+  const base = { x: 100, y: 80, width: 200, height: 120 };
+  // 默认（0）：不动
+  assert.deepEqual(computeAnchoredRect(base, 0, 30, 20), { x: 100, y: 80, width: 200, height: 120 });
+  // 仅 right：x 跟随、宽不变
+  assert.deepEqual(computeAnchoredRect(base, ANCHOR_RIGHT, 30, 20), { x: 130, y: 80, width: 200, height: 120 });
+  // 仅 bottom：y 跟随、高不变
+  assert.deepEqual(computeAnchoredRect(base, ANCHOR_BOTTOM, 30, 20), { x: 100, y: 100, width: 200, height: 120 });
+  // left+right：宽度拉伸
+  assert.deepEqual(computeAnchoredRect(base, ANCHOR_LEFT | ANCHOR_RIGHT, 30, 20), { x: 100, y: 80, width: 230, height: 120 });
+  // top+bottom：高度拉伸
+  assert.deepEqual(computeAnchoredRect(base, ANCHOR_TOP | ANCHOR_BOTTOM, 30, 20), { x: 100, y: 80, width: 200, height: 140 });
+  // 四向全开：位置不变、宽高双向拉伸
+  assert.deepEqual(
+    computeAnchoredRect(base, ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT | ANCHOR_BOTTOM, 30, 20),
+    { x: 100, y: 80, width: 230, height: 140 }
+  );
+  // right+bottom 组合：双向跟随
+  assert.deepEqual(
+    computeAnchoredRect(base, ANCHOR_RIGHT | ANCHOR_BOTTOM, 30, 20),
+    { x: 130, y: 100, width: 200, height: 120 }
+  );
+  // 负 delta 拉伸不下探到负宽高
+  assert.equal(computeAnchoredRect(base, ANCHOR_LEFT | ANCHOR_RIGHT, -500, 0).width, 0);
+  assert.equal(computeAnchoredRect(base, ANCHOR_TOP | ANCHOR_BOTTOM, 0, -500).height, 0);
+});
+
+test('锚定：anchorStretchPreviewRects 父链变化量传播（分组框子控件）', () => {
+  const group: LingControl = {
+    id: 'group', type: 'GroupBox', name: '分组框1', content: '分组',
+    x: 40, y: 40, width: 300, height: 200, fontSize: 12, background: '#111111', foreground: '#ffffff',
+    isEnabled: true, visibility: 'Visible', properties: { anchor: 'left,top,right,bottom' }
+  } as LingControl;
+  const child: LingControl = {
+    id: 'child', parentId: 'group', type: 'Button', name: '按钮1', content: '确定',
+    x: 60, y: 80, width: 100, height: 30, fontSize: 12, background: '#222222', foreground: '#ffffff',
+    isEnabled: true, visibility: 'Visible', properties: { anchor: 'right,bottom' }
+  } as LingControl;
+  const fixed: LingControl = {
+    id: 'fixed', type: 'Button', name: '按钮2', content: '固定',
+    x: 10, y: 10, width: 80, height: 24, fontSize: 12, background: '#333333', foreground: '#ffffff',
+    isEnabled: true, visibility: 'Visible'
+  } as LingControl;
+  const rects = anchorStretchPreviewRects({ controls: [group, child, fixed] } as LingWindowModel, 100, 50);
+  // 分组框四向拉伸：宽 +100 高 +50
+  assert.deepEqual(rects.get('group'), { x: 40, y: 40, width: 400, height: 250 });
+  // 子控件 right+bottom：相对分组框变化量跟随
+  assert.deepEqual(rects.get('child'), { x: 160, y: 130, width: 100, height: 30 });
+  // 默认控件保持原矩形
+  assert.deepEqual(rects.get('fixed'), { x: 10, y: 10, width: 80, height: 24 });
+});
+
+test('锚定：computeWindowMinimumClientSize 只对拉伸控件产生客户区下限', () => {
+  const minimum = computeWindowMinimumClientSize({
+    width: 800,
+    height: 600,
+    borderStyle: 'normal-resizable',
+    menuItems: undefined,
+    controls: [
+      // 仅 right 跟随不设限；固定控件与容器内控件（parentId）不产生窗口级约束。
+      { id: 'a', type: 'Button', name: '靠右', x: 700, y: 10, width: 80, height: 24, properties: { anchor: 'right' } },
+      { id: 'b', type: 'TextBox', name: '编辑框1', x: 100, y: 0, width: 300, height: 30, properties: { anchor: 'left,right' } },
+      { id: 'v', type: 'ListBox', name: '列表1', x: 0, y: 60, width: 200, height: 400, properties: { anchor: 'top,bottom' } },
+      { id: 'd', parentId: 'a', type: 'Button', name: '容器内', x: 0, y: 0, width: 600, height: 500, properties: { anchor: 'left,top,right,bottom' } }
+    ]
+  } as unknown as Parameters<typeof computeWindowMinimumClientSize>[0]);
+  // left+right 宽 300 → 客户区最小 500；top+bottom 高 400 → 客户区最小 (600-28)-400=172。
+  assert.equal(minimum.width, 500);
+  assert.equal(minimum.height, 172);
+});
+
+test('锚定：isAnchorLayoutEnabledForProject 与生成器 family 门控（缺省零发射）', () => {
+  const baseWindow = {
+    id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口',
+    width: 640, height: 480, background: '#202028', description: '', controls: [] as LingControl[]
+  };
+  const plainProject = { schemaVersion: 2, id: 'anchor-off', name: '无锚定', windows: [baseWindow] } as LingWindowProject;
+  assert.equal(isAnchorLayoutEnabledForProject(plainProject), false);
+  const anchoredProject: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'anchor-on',
+    name: '锚定演示',
+    windows: [{
+      ...baseWindow,
+      controls: [{
+        id: 'btn', type: 'Button', name: '按钮1', content: '确定',
+        x: 400, y: 400, width: 120, height: 35, fontSize: 12,
+        background: '#007ACC', foreground: '#ffffff', isEnabled: true, visibility: 'Visible',
+        properties: { anchor: 'right,bottom' }
+      }]
+    }]
+  };
+  assert.equal(isAnchorLayoutEnabledForProject(anchoredProject), true);
+
+  const source = `类 主窗口
+    事件 创建完毕()
+        调试输出("就绪")
+    结束
+结束类`;
+  const flatten = (project: LingWindowProject) => generateLingCppNativeWin32Project(project, { lingCppSourceCode: source })
+    .files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
+
+  // 无锚定项目：运行时重排/最小尺寸钳制整段零发射（零成本兜底），ControlSpec 字段仍在（核心结构）。
+  const plainCpp = flatten(plainProject);
+  assert.match(plainCpp, /int anchorMask;/u);
+  assert.doesNotMatch(plainCpp, /void ApplyAnchorLayout_\(int newClientWidth/u);
+  assert.doesNotMatch(plainCpp, /void CaptureAnchorLayout_\(\) \{/u);
+  assert.doesNotMatch(plainCpp, /case WM_GETMINMAXINFO:/u);
+  assert.doesNotMatch(plainCpp, /ApplyAnchorLayout_\(nextWidth, nextHeight\);/u);
+
+  // 锚定项目：发射捕获/重排/MINMAXINFO/WM_SIZE 钩子，且 ControlSpec 掩码 = right|bottom = 12。
+  const anchoredCpp = flatten(anchoredProject);
+  assert.match(anchoredCpp, /struct AnchorLayoutEntry \{/u);
+  assert.match(anchoredCpp, /void CaptureAnchorLayout_\(\) \{/u);
+  assert.match(anchoredCpp, /void ApplyAnchorLayout_\(int newClientWidth, int newClientHeight\) \{/u);
+  assert.match(anchoredCpp, /ApplyAnchorLayout_\(nextWidth, nextHeight\);/u);
+  assert.match(anchoredCpp, /case WM_GETMINMAXINFO:/u);
+  assert.match(anchoredCpp, /L"按钮1"[^\n]*, 12, L"" \}/u);
+});
+
+test('锚定：逐锚定组合 ControlSpec 掩码发射与工具栏豁免', () => {
+  const source = `类 主窗口
+    事件 创建完毕()
+        调试输出("就绪")
+    结束
+结束类`;
+  const buildControl = (id: string, name: string, anchor: string, type: LingControl['type'] = 'Button'): LingControl => ({
+    id, type, name, content: '确定',
+    x: 10, y: 10, width: 100, height: 30, fontSize: 12,
+    background: '#007ACC', foreground: '#ffffff', isEnabled: true, visibility: 'Visible',
+    properties: { anchor }
+  } as LingControl);
+  const flatten = (controls: LingControl[]) => generateLingCppNativeWin32Project({
+    schemaVersion: 2,
+    id: 'anchor-matrix',
+    name: '锚定矩阵',
+    windows: [{ id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 800, height: 600, background: '#202028', description: '', controls }]
+  }, { lingCppSourceCode: source }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
+
+  const matrix: Array<[string, string, number]> = [
+    ['按钮A', 'left,right', ANCHOR_LEFT | ANCHOR_RIGHT],
+    ['按钮B', 'top,bottom', ANCHOR_TOP | ANCHOR_BOTTOM],
+    ['按钮C', 'left,top,right,bottom', ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT | ANCHOR_BOTTOM],
+    ['按钮D', 'right', ANCHOR_RIGHT]
+  ];
+  const cpp = flatten(matrix.map(([name, anchor], index) => buildControl(`btn-${index}`, name, anchor)));
+  for (const [name, , mask] of matrix) {
+    assert.match(cpp, new RegExp(`L"${name}"[^\\n]*, ${mask}, L"" \\}`, 'u'), `${name} 应发射掩码 ${mask}`);
+  }
+  // 工具栏类型被豁免：即使带了 anchor 属性也不发射非零掩码、不启用锚定运行时。
+  const toolBarCpp = flatten([buildControl('tb', '工具栏1', 'right,bottom', 'ToolBar')]);
+  assert.doesNotMatch(toolBarCpp, /void ApplyAnchorLayout_\(int newClientWidth/u);
+  assert.match(toolBarCpp, /L"ToolBar"[^\n]*, 0, L"" \}/u);
+});
+
+// ===== 窗口级等比缩放（布局系统二期：scaleContentWithWindow）=====
+
+test('等比缩放：computeWindowScaledRects 因子与父链相对坐标缩放', () => {
+  const group: LingControl = {
+    id: 'group', type: 'GroupBox', name: '分组框1', content: '分组',
+    x: 40, y: 40, width: 300, height: 200, fontSize: 12, background: '#111111', foreground: '#ffffff',
+    isEnabled: true, visibility: 'Visible'
+  } as LingControl;
+  const child: LingControl = {
+    id: 'child', parentId: 'group', type: 'Button', name: '按钮1', content: '确定',
+    x: 60, y: 80, width: 100, height: 30, fontSize: 12, background: '#222222', foreground: '#ffffff',
+    isEnabled: true, visibility: 'Visible'
+  } as LingControl;
+  const toolbar: LingControl = {
+    id: 'tb', type: 'ToolBar', name: '工具栏1', content: '',
+    x: 0, y: 0, width: 480, height: 34, fontSize: 12, background: '#333333', foreground: '#ffffff',
+    isEnabled: true, visibility: 'Visible'
+  } as LingControl;
+  // 窗口 800×600（普通标题 → 客户区 800×572）；客户区拉到 1000×800：
+  // factor = min(1000/800, 800/572) = 1.25（宽度受限）。
+  const { factor, rects } = computeWindowScaledRects({
+    width: 800, height: 600, borderStyle: 'normal-resizable', menuItems: undefined,
+    controls: [group, child, toolbar]
+  } as unknown as Parameters<typeof computeWindowScaledRects>[0], 1000, 800);
+  assert.ok(Math.abs(factor - 1.25) < 1e-9, `因子应为 1.25，实际 ${factor}`);
+  // 分组框：位置与尺寸整体 ×1.25
+  assert.deepEqual(rects.get('group'), { x: 50, y: 50, width: 375, height: 250 });
+  // 子控件：父新位置 (50,50) + 父内偏移 (20,40)×1.25 = (75,100)
+  assert.deepEqual(rects.get('child'), { x: 75, y: 100, width: 125, height: 38 });
+  // 工具栏豁免：保持基线矩形
+  assert.deepEqual(rects.get('tb'), { x: 0, y: 0, width: 480, height: 34 });
+});
+
+test('等比缩放：窗口开关与生成器发射（互斥抑制锚定 + 混合项目分派）', () => {
+  const source = `类 主窗口
+    事件 创建完毕()
+        调试输出("就绪")
+    结束
+结束类`;
+  const buildWindow = (scale: boolean, anchor: boolean) => ({
+    id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口',
+    width: 800, height: 600, background: '#202028', description: '',
+    ...(scale ? { scaleContentWithWindow: true } : {}),
+    controls: [{
+      id: 'btn', type: 'Button', name: '按钮1', content: '确定',
+      x: 400, y: 400, width: 120, height: 35, fontSize: 12,
+      background: '#007ACC', foreground: '#ffffff', isEnabled: true, visibility: 'Visible',
+      ...(anchor ? { properties: { anchor: 'right,bottom' } } : {})
+    }]
+  } as LingWindowModel);
+  const flatten = (window: LingWindowModel) => generateLingCppNativeWin32Project({
+    schemaVersion: 2, id: 'scale-smoke', name: '等比缩放冒烟', windows: [window]
+  }, { lingCppSourceCode: source }).files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
+
+  // 等比缩放窗口（控件残留 anchor 属性）：互斥生效——anchorMask 发射 0、锚定运行时不发射。
+  const scaleCpp = flatten(buildWindow(true, true));
+  assert.equal(isAnchorLayoutEnabledForProject({ schemaVersion: 2, id: 'x', name: 'x', windows: [buildWindow(true, true)] } as LingWindowProject), false);
+  assert.match(scaleCpp, /void ApplyScaleLayout_\(int newClientWidth, int newClientHeight\) \{/u);
+  assert.match(scaleCpp, /if \(spec_\.scaleContent\) ApplyScaleLayout_\(nextWidth, nextHeight\);/u);
+  assert.doesNotMatch(scaleCpp, /void ApplyAnchorLayout_\(int newClientWidth/u);
+  assert.doesNotMatch(scaleCpp, /L"按钮1"[^\n]*, 12, L"" \}/u);
+
+  // 无等比缩放窗口：ApplyScaleLayout_ 零发射，WindowSpec 尾值 false。
+  const plainCpp = flatten(buildWindow(false, false));
+  assert.doesNotMatch(plainCpp, /void ApplyScaleLayout_\(int newClientWidth/u);
+  assert.doesNotMatch(plainCpp, /if \(spec_\.scaleContent\)/u);
+
+  // 混合项目无法用单窗口构造，改为直接验证双窗口项目：窗口A等比 + 窗口B锚定 → 分派 else。
+  const mixedProject: LingWindowProject = {
+    schemaVersion: 2, id: 'scale-mixed', name: '混合布局',
+    windows: [
+      { ...buildWindow(true, false), id: 'win-a', className: '缩放窗口' },
+      { ...buildWindow(false, true), id: 'win-b', className: '锚定窗口', controls: [{ ...buildWindow(false, true).controls[0], id: 'btn-b', name: '按钮B' }] }
+    ]
+  };
+  assert.equal(isAnchorLayoutEnabledForProject(mixedProject), true);
+  const mixedCpp = generateLingCppNativeWin32Project(mixedProject, { lingCppSourceCode: source })
+    .files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
+  assert.match(mixedCpp, /void ApplyScaleLayout_\(int newClientWidth/u);
+  assert.match(mixedCpp, /void ApplyAnchorLayout_\(int newClientWidth/u);
+  assert.match(mixedCpp, /if \(spec_\.scaleContent\) ApplyScaleLayout_\(nextWidth, nextHeight\);\n\s*else ApplyAnchorLayout_\(nextWidth, nextHeight\);/u);
+});
+
+// ===== 布局面板（三/四期：FlowPanel + TablePanel）=====
+
+test('布局面板：FlowPanel 流式算法（换行/行内对齐/垂直单列）', () => {
+  const children = [
+    { id: 'a', width: 100, height: 30 },
+    { id: 'b', width: 100, height: 50 },
+    { id: 'c', width: 100, height: 30 },
+    { id: 'd', width: 100, height: 30 }
+  ];
+  // 面板 400×200、padding 8、hgap/vgap 8：内容宽 384 → 第 1 行 a+b(100+8+100=208) + c 超(316>384? 不，208+8+100=316 ≤ 384) → 三项都在第一行？100*3+16=316 ≤384 ✓，d 换行。
+  const rects = computeFlowLayoutRects(400, 200, children, {
+    orientation: 'horizontal', wrap: true, hgap: 8, vgap: 8, padding: 8, align: 'start'
+  });
+  assert.deepEqual(rects.get('a'), { id: 'a', x: 8, y: 8, width: 100, height: 30 });
+  assert.deepEqual(rects.get('b'), { id: 'b', x: 116, y: 8, width: 100, height: 50 });
+  assert.deepEqual(rects.get('c'), { id: 'c', x: 224, y: 8, width: 100, height: 30 });
+  // d 换行：y = 8 + 行高50 + vgap8 = 66
+  assert.deepEqual(rects.get('d'), { id: 'd', x: 8, y: 66, width: 100, height: 30 });
+  // 行内垂直居中：align=center 时行 1 内 a/c 相对行高 50 居中 → y = 8 + 10 = 18
+  const centered = computeFlowLayoutRects(400, 200, children, {
+    orientation: 'horizontal', wrap: true, hgap: 8, vgap: 8, padding: 8, align: 'center'
+  });
+  assert.equal(centered.get('a')!.y, 18);
+  assert.equal(centered.get('b')!.y, 8);
+  // 垂直方向：单列顺序排，wrap 无换列语义
+  const vertical = computeFlowLayoutRects(400, 200, children, {
+    orientation: 'vertical', wrap: true, hgap: 8, vgap: 8, padding: 8, align: 'start'
+  });
+  assert.deepEqual(vertical.get('b'), { id: 'b', x: 8, y: 8 + 30 + 8, width: 100, height: 50 });
+});
+
+test('布局面板：TablePanel 轨道解析与格位（固定/星号/auto/跨列/自动填充）', () => {
+  const children = [
+    { id: 'a', width: 100, height: 30 },
+    { id: 'b', width: 120, height: 40 },
+    { id: 'c', width: 90, height: 20, tableCell: { row: 2, col: 1, colSpan: 2 } }
+  ];
+  const rects = computeTableLayoutRects(600, 200, children, {
+    columns: ['150', '*', 'auto'],
+    rows: ['auto', '60'],
+    hgap: 10, vgap: 10, padding: 12
+  });
+  // 列 3 auto：单轨子控件中 col=2 只有 c 跨列不参与 → auto=0；
+  // 星号列 2 = 600 - 24(padding) - 20(gaps) - 150(fixed) - 0(auto) = 406
+  const a = rects.get('a')!;
+  assert.equal(a.x, 12);
+  assert.equal(a.y, 12);
+  // 行 1 auto：max(a.h=30, b.h=40) = 40
+  assert.equal(a.height, 40);
+  assert.equal(rects.get('b')!.x, 12 + 150 + 10);
+  assert.equal(rects.get('b')!.width, 406);
+  // c 跨列 (row2,col1,span2)：x=12, 宽=150+10+406=566；行高 60
+  const c = rects.get('c')!;
+  assert.equal(c.x, 12);
+  assert.equal(c.width, 150 + 10 + 406);
+  assert.equal(c.y, 12 + 40 + 10);
+  assert.equal(c.height, 60);
+  // 全 auto 列：按子控件设计宽最大值
+  const autoRects = computeTableLayoutRects(600, 200, [
+    { id: 'x', width: 80, height: 20 },
+    { id: 'y', width: 130, height: 20 }
+  ], { columns: ['auto', 'auto'], rows: ['auto'], hgap: 6, vgap: 6, padding: 4 });
+  assert.equal(autoRects.get('x')!.width, 80);
+  assert.equal(autoRects.get('y')!.x, 4 + 80 + 6);
+  assert.equal(autoRects.get('y')!.width, 130);
+});
+
+test('布局面板：控件注册与生成发射（family 门控/双触发点/格位编码/anchor 抑制）', () => {
+  const definitions = getCreatableWin32ControlDefinitions().map(item => item.type);
+  assert.ok(definitions.includes('FlowPanel'), 'FlowPanel 应在可创建控件清单');
+  assert.ok(definitions.includes('TablePanel'), 'TablePanel 应在可创建控件清单');
+  const flow = getWin32ControlsForModule('lingbuilder.win32.basic').find(item => item.type === 'FlowPanel');
+  const table = getWin32ControlsForModule('lingbuilder.win32.basic').find(item => item.type === 'TablePanel');
+  assert.equal(flow?.isContainer, true);
+  assert.equal(table?.isContainer, true);
+
+  const mkControl = (id: string, overrides: Record<string, unknown>): LingControl => ({
+    id, type: 'Button', name: id, content: '确定',
+    x: 0, y: 0, width: 100, height: 30, fontSize: 12,
+    background: '#007ACC', foreground: '#ffffff', isEnabled: true, visibility: 'Visible',
+    ...overrides
+  } as LingControl);
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'panel-gen',
+    name: '面板生成',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口',
+      width: 800, height: 600, background: '#202028', description: '',
+      controls: [
+        mkControl('panel', { type: 'FlowPanel', properties: { orientation: 'horizontal', wrap: true, hgap: 8, vgap: 8, padding: 8, align: 'start' } }),
+        mkControl('b1', { parentId: 'panel', name: '流式按钮' }),
+        mkControl('b2', { parentId: 'panel', name: '带锚按钮', properties: { anchor: 'right,bottom' } }),
+        mkControl('tpanel', { type: 'TablePanel', properties: { columns: ['120', '*'], rows: ['40', 'auto'], hgap: 6, vgap: 6, padding: 10 } }),
+        mkControl('c1', { parentId: 'tpanel', name: '格位框', properties: { tableCell: { row: 2, col: 1, colSpan: 2 } } }),
+        mkControl('c2', { parentId: 'tpanel', name: '自动按钮' })
+      ]
+    }]
+  };
+  const source = `类 主窗口
+    事件 创建完毕()
+        调试输出("ok")
+    结束
+结束类`;
+  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source })
+    .files.reduce((acc, file) => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp' ? acc + file.content + '\n' : acc, '');
+  assert.match(cpp, /void ApplyPanelLayout_\(\) \{/u);
+  assert.match(cpp, /WireCompositeControls\(\); ApplyPanelLayout_\(\);/u);
+  assert.match(cpp, /ApplyPanelLayout_\(\);\s*\n\s*if \(sizeBaselineReady_ && sizeChanged\)/u);
+  assert.match(cpp, /L"flow", L"[^"]*horizontal[^"]*"/u);
+  assert.match(cpp, /L"table", L"[^"]*120,\*,?[^"]*"/u);
+  assert.match(cpp, /L"格位框"[^\n]*L"1:21:11:11:2" \}/u);
+  // 面板子控件 anchor 被抑制（发射 0），且不虚启用锚定门控（面板子控件不算锚定参与者——
+  // 这里项目里没有其他锚定控件，锚定运行时不应发射）。
+  assert.doesNotMatch(cpp, /L"带锚按钮"[^\n]*, 12 \}/u);
+  assert.doesNotMatch(cpp, /void ApplyAnchorLayout_\(int newClientWidth/u);
 });
