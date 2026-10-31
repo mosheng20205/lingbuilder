@@ -244,6 +244,7 @@ button:disabled{cursor:not-allowed;opacity:.4}
         <button class="batch-btn" id="batchShot" type="button"><svg class="icon sm"><use href="#i-camera"/></svg>批量截图</button>
         <span class="tool-sep" style="background:rgba(255,255,255,.12)"></span>
         <button class="batch-btn" id="btnGroups" type="button" title="分组：按序列号保存/应用勾选集合"><svg class="icon sm"><use href="#i-grid"/></svg>分组</button>
+        <button class="batch-btn" id="btnFind" type="button" title="批量找图点击：模板匹配→坐标换算→真实点击"><svg class="icon sm"><use href="#i-search"/></svg>找图点击</button>
         <input class="batch-input" id="launchPkg" type="text" placeholder="App 包名（可下拉选择）" spellcheck="false" list="appPkgList">
         <datalist id="appPkgList"></datalist>
         <button class="batch-btn" id="btnAppList" type="button" title="从第一台在线手机拉取已装应用列表"><svg class="icon sm"><use href="#i-phone"/></svg>拉取</button>
@@ -262,14 +263,33 @@ button:disabled{cursor:not-allowed;opacity:.4}
   <div class="help-panel">
     <header><strong>手机端安装与连接指引（USB 直传）</strong><button class="tool" type="button" data-close-help aria-label="关闭"><svg class="icon"><use href="#i-x"/></svg></button></header>
     <div class="help-body">
-      <p><b>1. 安装投屏伴侣 APK（v1.4.6 起，必须）</b></p>
-      <p>安装包在本工程源码目录：<code>lingbuilder-companion-v1.4.6.apk</code>（与 MainWindow.lcpp 同目录）。v1.4.3 及更早缺包可见性声明——「启动App」对第三方应用恒报「未安装或无启动入口」；v1.4.4 及更早没有剪贴板指令（中文粘贴不可用）；v1.4.5 及更早没有应用列表指令（启动App 无下拉）；v1.2.6~v1.4.0 没有部分 USB 推帧代码。用微信/QQ/数据线任意方式发到手机安装（允许「未知来源/安装未知应用」）。首次安装只此一次，之后插线即用。</p>
+      <p><b>1. 安装投屏伴侣 APK（v1.4.7 起，必须）</b></p>
+      <p>安装包在本工程源码目录：<code>lingbuilder-companion-v1.4.7.apk</code>（与 MainWindow.lcpp 同目录）。v1.4.3 及更早缺包可见性声明——「启动App」对第三方应用恒报「未安装或无启动入口」；v1.4.4 及更早没有剪贴板指令（中文粘贴不可用）；v1.4.5 及更早没有应用列表指令（启动App 无下拉）；<b>v1.4.6 及更早没有按需截图与 USB 控制模式（批量找图不可用）</b>；v1.2.6~v1.4.0 没有部分 USB 推帧代码。用微信/QQ/数据线任意方式发到手机安装（允许「未知来源/安装未知应用」）。首次安装只此一次，之后插线即用。</p>
       <p><b>2. 首次授权（每台一次）</b></p>
       <p>手机上打开「LingBuilder 投屏伴侣」→ 点「开始投屏」→ 系统弹窗选「立即开始」。建议加入后台白名单（MIUI：最近任务卡片上锁；鸿蒙：电池-启动管理改手动允许），否则后台被杀后需要重新打开。</p>
       <p><b>3. 插线即用</b></p>
       <p>数据线插上电脑即自动出现在本页并排队接通，无需任何网络（手机不连 Wi-Fi 也能投屏和群控，移动数据照常用）。多台并发请用<b>带独立供电的 USB Hub</b>；普通模式下打开会切换配件模式，每台需数秒，属正常现象。</p>
       <p><b>4. 黑屏 / 无画面时</b></p>
       <p>磁贴显示「USB 已通 · 等手机侧投屏」= 电脑到手机的 USB 链路已通，但手机上的投屏会话没在跑：解锁手机，打开投屏伴侣重新「开始投屏」，或点磁贴「唤醒」按钮。拔线重插会自动重新接通。</p>
+    </div>
+  </div>
+</div>
+<div class="help-overlay" id="fdOverlay" hidden>
+  <div class="help-scrim" data-close-fd></div>
+  <div class="help-panel" style="width:460px">
+    <header><strong>批量找图点击（不依赖持续投屏）</strong><button class="tool" type="button" data-close-fd aria-label="关闭"><svg class="icon"><use href="#i-x"/></svg></button></header>
+    <div class="help-body">
+      <p style="margin:6px 0 2px">选择一张<b>小模板图</b>（要点的按钮/图标的截图），对<b>目标集合（勾选∩已接通）</b>逐台执行：发唤醒+截图 → 模板匹配 → 坐标换算 → 真实点击 → 汇总。手机上<b>无需持续投屏</b>（伴侣 v1.4.7+ 的控制模式或投屏推流都可用）。</p>
+      <input type="file" id="fdFile" accept="image/png,image/jpeg" style="margin-top:10px;font-size:11.5px;color:var(--text-2)">
+      <div style="display:flex;align-items:center;gap:8px;margin-top:12px">
+        <label style="font-size:11.5px;color:var(--text-2)">容差（0~50，越大越宽松）</label>
+        <input class="batch-input" id="fdTolerance" type="text" value="12" spellcheck="false" style="width:70px;height:30px">
+      </div>
+      <div id="fdPreview" style="margin-top:10px;font-size:11px;color:var(--muted);min-height:18px"></div>
+      <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end">
+        <button class="btn" type="button" data-close-fd>取消</button>
+        <button class="btn primary" id="fdStart" type="button" disabled>开始批量找图</button>
+      </div>
     </div>
   </div>
 </div>
@@ -677,6 +697,41 @@ button:disabled{cursor:not-allowed;opacity:.4}
     return {x:x, y:y};
   }
 
+  // ===== 批量找图点击（泵状态机）：模板图上传 → 逐台截图匹配点击 → 汇总 =====
+  var fdHex = '';
+  $('btnFind').addEventListener('click', function(){
+    $('fdFile').value = '';
+    $('fdPreview').textContent = '未选择模板图';
+    $('fdStart').disabled = true;
+    fdHex = '';
+    $('fdOverlay').hidden = false;
+  });
+  document.addEventListener('click', function(e){ if (e.target.closest('[data-close-fd]')) $('fdOverlay').hidden = true; });
+  $('fdFile').addEventListener('change', function(){
+    var f = this.files && this.files[0];
+    if (!f) return;
+    if (f.size > 200 * 1024){ showToast('模板图太大（限 200KB）——请截取按钮/图标小图', false); return; }
+    var reader = new FileReader();
+    reader.onload = function(){
+      var bin = atob(String(reader.result).split(',')[1] || '');
+      var hex = '';
+      for (var i = 0; i < bin.length; i++){
+        hex += ('0' + bin.charCodeAt(i).toString(16)).slice(-2);
+      }
+      fdHex = hex;
+      $('fdPreview').textContent = '已选择 ' + f.name + '（' + Math.round(f.size/1024) + 'KB）';
+      $('fdStart').disabled = false;
+    };
+    reader.readAsDataURL(f);
+  });
+  $('fdStart').addEventListener('click', function(){
+    if (!fdHex){ showToast('先选择模板图', false); return; }
+    var tol = Math.max(0, Math.min(50, parseInt($('fdTolerance').value, 10) || 12));
+    post({action:'findClickBatch', hex: fdHex, tolerance: tol});
+    $('fdOverlay').hidden = true;
+    showToast('批量找图已启动：逐台唤醒+截图+匹配+点击（看顶栏汇总）');
+  });
+
   // ===== 设备分组（按序列号记忆）：保存当前勾选 / 应用 / 删除 =====
   var groups = {};
   try { groups = JSON.parse(localStorage.getItem('md_groups') || '{}'); } catch (_) { groups = {}; }
@@ -920,6 +975,15 @@ button:disabled{cursor:not-allowed;opacity:.4}
       try {
         var m = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
         if (m && m.event === 'notify' && m.text) showToast(m.text, m.ok !== false);
+        if (m && m.event === 'findSummary' && m.results){
+          var hit = m.hit | 0, total = m.total | 0;
+          var lines = (m.results || []).map(function(r){ return r.r && r.r.indexOf('已点击') >= 0 ? ('槽' + r.slot + ' ' + (r.name||'') + ' ✓') : (r.r ? ('槽' + r.slot + ' ' + (r.name||'') + ' ✗ ' + r.r) : ''); }).filter(Boolean);
+          showToast('找图汇总：命中 ' + hit + '/' + total, hit > 0);
+          var q = $('queueText');
+          q.hidden = false;
+          q.textContent = '找图 ' + hit + '/' + total;
+          console.log('[findSummary]', lines.join(' | '));
+        }
         if (m && m.event === 'appList' && m.json){
           try {
             var parsed = JSON.parse(m.json);

@@ -37,6 +37,10 @@ class ScreenStream(
     }
 
     private val mainHandler = Handler(context.mainLooper)
+    /** 1.4.7：最近一帧 JPEG 缓存（screenshot 按需截图指令的数据源；控制模式不推流时也持续刷新）。 */
+    @Volatile
+    var lastJpeg: ByteArray? = null
+        private set
     private var workerThread: HandlerThread? = null
     private var workerHandler: Handler? = null
     private var projectionCallback: MediaProjection.Callback? = null
@@ -205,6 +209,7 @@ class ScreenStream(
             bitmap.compress(Bitmap.CompressFormat.JPEG, quality, out)
             bitmap.recycle()
             val jpeg = out.toByteArray()
+            lastJpeg = jpeg
             onFrame(jpeg)
             sentFrames.incrementAndGet()
             // 统计窗口内实际发送帧率

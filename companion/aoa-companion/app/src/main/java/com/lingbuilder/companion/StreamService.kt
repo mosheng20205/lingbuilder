@@ -34,6 +34,9 @@ class StreamService : Service() {
         const val ACTION_USB_DIRECT = "com.lingbuilder.companion.USB_DIRECT"
         /** 1.4.3：USB 直传自动重试（主界面轻量通道让位后由状态轮询触发；失败静默不弹 toast）。 */
         const val ACTION_AUTO_USB = "com.lingbuilder.companion.AUTO_USB"
+        /** 1.4.7：USB 控制模式（不推流）启动 extra——投屏授权照走，但不建 WS 不推帧，
+         *  仅保持 USB 通道 + lastJpeg 缓存供 screenshot 按需截图（找图群控不依赖持续推流）。 */
+        const val EXTRA_ON_DEMAND = "ondemand"
         /** 1.4.1：openAccessory 前的程序化授权回执 action（服务私有）。 */
         const val ACTION_USB_PERMISSION = "com.lingbuilder.companion.USB_PERMISSION_SVC"
         const val EXTRA_RESULT_CODE = "resultCode"
@@ -336,6 +339,7 @@ class StreamService : Service() {
         val savedQuality = prefs.getInt(KEY_QUALITY, 70).coerceIn(40, 90)
 
         serverError = ""
+        val onDemand = intent.getBooleanExtra(EXTRA_ON_DEMAND, false)
         val mediaProjectionManager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         val projection = try {
             mediaProjectionManager.getMediaProjection(resultCode, resultData)
@@ -345,26 +349,31 @@ class StreamService : Service() {
             return
         }
 
-        val wsServer = WsServer(
-            port = serverPort,
-            tokenProvider = { currentToken(this) },
-            onClientConnected = { clientCount = server?.clients?.size ?: 0 },
-            onClientDisconnected = { clientCount = server?.clients?.size ?: 0 },
-            onTextMessage = { _, text -> handleControlMessage(text) },
-        )
-        server = wsServer
-        wsServer.start()
-        if (!wsServer.isRunning()) {
-            serverError = "WebSocket 服务端启动失败（端口 $serverPort 可能被占用），请换端口后重试"
-            stopSelf()
-            return
+        if (!onDemand) {
+            val wsServer = WsServer(
+                port = serverPort,
+                tokenProvider = { currentToken(this) },
+                onClientConnected = { clientCount = server?.clients?.size ?: 0 },
+                onClientDisconnected = { clientCount = server?.clients?.size ?: 0 },
+                onTextMessage = { _, text -> handleControlMessage(text) },
+            )
+            server = wsServer
+            wsServer.start()
+            if (!wsServer.isRunning()) {
+                serverError = "WebSocket 服务端启动失败（端口 $serverPort 可能被占用），请换端口后重试"
+                stopSelf()
+                return
+            }
         }
 
         val stream = ScreenStream(
             this, projection,
             onFrame = { jpeg ->
-                lastFps = streamFpsSnapshot()
-                dispatchFrame(jpeg)
+                // 1.4.7 控制模式：不推流（lastJpeg 缓存由 ScreenStream 内部完成），帧仅按 screenshot 指令单发
+                if (!onDemand) {
+                    lastFps = streamFpsSnapshot()
+                    dispatchFrame(jpeg)
+                }
             },
             onScreenChanged = { broadcastScreenChanged() },
         ).also {
@@ -399,6 +408,22 @@ class StreamService : Service() {
             }
         }
 
+        // 1.4.7 控制模式（不推流）不启信标（无 WS 地址可广播），直接完成会话装配。
+        if (onDemand) {
+            running = true
+            instance = this
+            val filter = IntentFilter().apply {
+                addAction(UsbManager.ACTION_USB_ACCESSORY_ATTACHED)
+                addAction(UsbManager.ACTION_USB_ACCESSORY_DETACHED)
+            }
+            usbReceiver = usbReceiverImpl
+            registerReceiver(usbReceiverImpl, filter)
+            registerReceiver(usbPermissionReceiver, IntentFilter(ACTION_USB_PERMISSION))
+            try { accessorySerial = usbManager.accessoryList?.firstOrNull()?.serial ?: "" } catch (_: Exception) {}
+            maybeAutoOpenUsbDirect()
+            AppLog.d("服务", "USB 控制模式已启动（不推流，按需截图）")
+            return
+        }
         // 投屏自动发现信标（v1.3.0）：会话存活期间每 3 秒广播连接串，PC 查看器免手抄自动接入。
         // ws 地址动态构造（端口各机不同、配对码可刷新），拿不到本机局域网 IP 时不广播。
         beacon = BeaconBroadcaster(
@@ -512,6 +537,21 @@ class StreamService : Service() {
                         } else {
                             replyControl("{\"type\":\"result\",\"cmd\":\"listApps\",\"target\":\"\",\"ok\":false,\"error\":\"枚举应用失败\"}")
                         }
+                    }
+                }
+                "screenshot" -> {
+                    // 1.4.7：按需截图——把 lastJpeg 经当前数据通道单发一帧（PC 泵照常收帧落盘）。
+                    // 投屏推流与 USB 控制模式（不推流）都可用；均未运行时回执中文错误。
+                    val stream = screenStream
+                    val shot = stream?.lastJpeg
+                    val channel = usbChannel
+                    if (shot == null) {
+                        replyControl("{\"type\":\"result\",\"cmd\":\"screenshot\",\"target\":\"\",\"ok\":false,\"error\":\"无可用的屏幕画面：请先开始投屏，或在伴侣上点「USB 控制模式」\"}")
+                    } else if (channel == null || !channel.isActive) {
+                        replyControl("{\"type\":\"result\",\"cmd\":\"screenshot\",\"target\":\"\",\"ok\":false,\"error\":\"USB 数据通道未激活\"}")
+                    } else {
+                        channel.sendVideoFrame(shot)
+                        replyControl("{\"type\":\"result\",\"cmd\":\"screenshot\",\"target\":\"\",\"ok\":true}")
                     }
                 }
                 "setClipboard" -> {

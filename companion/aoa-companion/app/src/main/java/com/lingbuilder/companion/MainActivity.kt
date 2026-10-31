@@ -119,6 +119,10 @@ class MainActivity : Activity() {
         findViewById<Button>(R.id.btnApply).setOnClickListener { onApplyClicked() }
         findViewById<Button>(R.id.btnLog).setOnClickListener { showLogDialog() }
         // 1.4.1：USB 直传显式开关——开关动作在 StreamService（ACTION_USB_DIRECT），状态在轮询里刷
+        // 1.4.7：USB 控制模式（不推流）——授权后仅保持 USB 通道 + 按需截图，供找图群控
+        findViewById<Button>(R.id.btnCtl).setOnClickListener {
+            requestProjection(201)
+        }
         findViewById<Button>(R.id.btnUsb).setOnClickListener {
             startService(
                 Intent(this, StreamService::class.java).setAction(StreamService.ACTION_USB_DIRECT),
@@ -427,14 +431,14 @@ class MainActivity : Activity() {
         if (requestCode == 100) requestProjection()
     }
 
-    private fun requestProjection() {
+    private fun requestProjection(requestCode: Int = 200) {
         val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        startActivityForResult(manager.createScreenCaptureIntent(), 200)
+        startActivityForResult(manager.createScreenCaptureIntent(), requestCode)
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != 200) return
+        if (requestCode != 200 && requestCode != 201) return
         if (resultCode != Activity.RESULT_OK || data == null) {
             Toast.makeText(this, "未授予投屏权限，无法开始", Toast.LENGTH_SHORT).show()
             return
@@ -445,6 +449,7 @@ class MainActivity : Activity() {
             .setAction(StreamService.ACTION_START)
             .putExtra(StreamService.EXTRA_RESULT_CODE, resultCode)
             .putExtra(StreamService.EXTRA_RESULT_DATA, data)
+        if (requestCode == 201) service.putExtra(StreamService.EXTRA_ON_DEMAND, true)
         startForegroundService(service)
     }
 
