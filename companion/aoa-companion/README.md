@@ -3,10 +3,42 @@
 安卓侧伴生应用：把手机屏幕实时推流给电脑上的 LingBuilder「AOA 可视点击器」示例工程，
 配合 `lingbuilder.aoahid` 模块实现「看得见、点得准」的电脑操作手机体验。
 
-- **产物**：`lingbuilder-companion-v1.4.0.apk`（仓库根 `companion/` 目录按版本归档）
+- **产物**：`lingbuilder-companion-v1.4.7.apk`（仓库根 `companion/` 目录按版本归档）
 - **系统要求**：Android 8.0（API 26）及以上；MIUI/EMUI 等 ROM 需允许后台运行
 - **零第三方 SDK**：WebSocket 服务端为本仓库手写 RFC 6455 实现（`WsServer.kt`），
   无广告、无统计、无网络出站（只在本机 8788 端口等服务）
+- **当前形态（v1.4.7）**：**USB 直传专用**——投屏/截图/指令/触控配套全部走 USB 数据通道，
+  手机**不需要连接 Wi-Fi**；v1.4.7 起支持「USB 控制模式」（不推流，仅按需截图），
+  找图群控完全不依赖投屏画面流。历史 Wi-Fi 信标/推流链路保留但已非主路径。
+
+## 1.4.2 ~ 1.4.7：USB 直传自动接通 + 纯 USB 形态闭环（2026-10-23 ~ 10-31）
+
+v1.3.2 把投屏定案为「全走 Wi-Fi」，与 PC 端后来的纯 USB 形态冲突（帧全涌向无客户端的
+WS = 黑屏）。v1.4.2 起逐步把 USB 直传恢复为主路径并补齐全套控制指令：
+
+| 版本 | 内容 |
+| --- | --- |
+| **1.4.2** | `maybeAutoOpenUsbDirect()`：投屏会话运行 + 配件在位 → **自动接通 USB 直传**（触发点 = 配件 ATTACHED 广播 + startStream 尾部；auto 失败静默留痕防 toast 风暴，手动按钮保留）。恢复被 1.3.2 停用的 USB 推帧，`tryOpenUsbChannel` 保持 no-op |
+| **1.4.3** | 前台让位：主界面轻量通道在投屏运行时由 statusPoller 自动 close（只挡新开不关已开是半个修复——服务 USB 直传会被前台 fd 锁死）+ `ACTION_AUTO_USB` 触发重试；`usbDirectError` 上「USB 直传」按钮文案（失败原因可见化） |
+| **1.4.4** | 清单增补 `<queries>`（MAIN+LAUNCHER）：修复 **Android 11+ 包可见性过滤**导致 `launchApp` 对第三方应用恒报「未安装或无启动入口」（设置等系统白名单应用不受影响——这是判别指纹） |
+| **1.4.5** | `setClipboard` 指令：主线程 ClipboardManager 写入，中文输入两步路径的第一步（PC 注入 Ctrl+V 完成粘贴） |
+| **1.4.6** | `listApps` 指令：`queryIntentActivities` 枚举有 LAUNCHER 入口的已装应用（排除自身），PC「启动App」变下拉选择 |
+| **1.4.7** | **`screenshot` 按需截图指令**（`lastJpeg` 帧缓存经数据通道单发一帧）+ **USB 控制模式**（`EXTRA_ON_DEMAND`：投屏授权照走但不建 WS 不启信标不推帧，仅保持 USB 通道 + 帧缓存）——找图群控**完全不依赖投屏画面流** |
+
+**USB 控制模式用法**（找图群控推荐）：伴侣主界面点「USB 控制模式（不推流 · 按需截图 ·
+找图群控）」→ 系统投屏授权「立即开始」（每次会话一次，系统限制）→ 完成。此后 PC 端
+发 `{"cmd":"screenshot"}` 按需取帧，触控/指令/找图全链不依赖推流；不推流时 PC 端磁贴
+保持「未推流」状态属预期。
+
+**新增指令协议**（控制通道 JSON，回执统一 `{"type":"result","cmd":..,"ok":..[,"error":..]}`）：
+
+```json
+{"cmd":"setClipboard","text":"任意中文"}      // 写系统剪贴板
+{"cmd":"listApps"}                           // → {"type":"appList","apps":[{"pkg":"..","label":".."}..]}
+{"cmd":"screenshot"}                         // 经数据通道单发一帧 JPEG（lastJpeg）
+```
+
+
 
 ## 1.4.0 新增：queryScreen 坐标回映射协议
 
@@ -84,8 +116,8 @@ PC 侧参考实现：`src/aoa-viewer/功能/坐标映射.lcpp`（缓存 + 换算
 
 ## 安装
 
-1. 把 `lingbuilder-companion-v1.3.0.apk` 复制到手机安装（需允许「安装未知来源应用」）。
-2. 手机与电脑连接**同一个 Wi-Fi**（或电脑有线、手机 Wi-Fi 的同网段）。
+1. 把 `lingbuilder-companion-v1.4.7.apk` 复制到手机安装（需允许「安装未知来源应用」；同签名覆盖升级）。
+2. USB 数据线连接电脑即可——**不需要 Wi-Fi**（历史 WS 推流链路保留作备用，纯 USB 形态用不到）。
 
 ## 使用流程
 
@@ -96,6 +128,11 @@ PC 侧参考实现：`src/aoa-viewer/功能/坐标映射.lcpp`（缓存 + 换算
 3. 在电脑 LingBuilder「AOA 可视点击器」工程里填入连接串连接；
    1 秒内应看到手机画面。
 4. 不带正确配对码的连接会被直接拒绝（HTTP 403）。
+
+**USB 主路径（推荐，v1.4.2+）**：插上数据线后无需上述任何抄码动作——
+PC 端自动打开设备（普通模式自动切配件）→ 伴侣收到配件附着事件自动接通 USB 直传 →
+画面走 USB bulk。手机不连 Wi-Fi、移动数据独立照常使用。找图群控可改点
+「USB 控制模式（不推流）」。
 
 ## 设置项
 
@@ -134,8 +171,15 @@ PC 侧也可以在会话中动态下发：`{"cmd":"setScale","value":0.5}`、
 
   ```bash
   cd companion/aoa-companion
-  gradle assembleRelease   # release 包已用 debug 密钥签名，可直接安装
+  JAVA_HOME=T:/android-build/jdk-17.0.2 /t/android-build/gradle-8.10.2/bin/gradle assembleRelease
+  # release 包已用 debug 密钥签名，可直接覆盖安装
   ```
+
+- 版本推进点：`app/build.gradle` 的 versionCode/versionName；USB 直传行为集中在
+  `StreamService.kt`（`maybeAutoOpenUsbDirect` / `openUsbDirect(auto)` / `ACTION_AUTO_USB` /
+  `screenshot` / `setClipboard` / `listApps` / `EXTRA_ON_DEMAND`）。改完必须同步
+  PC 端 `src/aoa-viewer/开发者使用说明.md`、`mirrordesk.html` 帮助面板与
+  `src/aoa-viewer/README.md` 的版本要求（六处全链同步，缺一处就是下一次版本漂移）。
 
 - 源码结构：
   - `WsServer.kt` — 手写 RFC 6455 服务端（握手/帧收发/掩码/心跳/关闭）+ 有界发送队列
