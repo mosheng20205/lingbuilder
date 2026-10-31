@@ -1,5 +1,9 @@
 # LingBuilder 投屏伴侣（AOA 配套 APK）
 
+> **本文档只讲 APK 工程。** 全链部署、故障排查手册、USB 群控方案（§8）都在
+> **[`src/aoa-viewer/开发者使用说明.md`](../../src/aoa-viewer/开发者使用说明.md)**
+> （PC 查看器工程目录，随分享包分发）——两份文档互相引用，各管一半。
+
 安卓侧伴生应用：把手机屏幕实时推流给电脑上的 LingBuilder「AOA 可视点击器」示例工程，
 配合 `lingbuilder.aoahid` 模块实现「看得见、点得准」的电脑操作手机体验。
 
