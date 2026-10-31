@@ -1,0 +1,274 @@
+{
+  "id": "datagrid-thread-demo",
+  "name": "数据表格多线程示例",
+  "resources": [],
+  "schemaVersion": 2,
+  "windows": [
+    {
+      "background": "#1f2937",
+      "className": "MainWindow",
+      "controls": [
+        {
+          "background": "transparent",
+          "content": "DataGrid 多线程读写与勾选批量删除示例",
+          "fontBold": true,
+          "fontFamily": "Microsoft YaHei UI",
+          "fontItalic": false,
+          "fontSize": 14,
+          "fontUnderline": false,
+          "foreground": "#F8FAFC",
+          "height": 26,
+          "id": "title-label",
+          "isEnabled": true,
+          "name": "标题",
+          "type": "Label",
+          "visibility": "Visible",
+          "width": 560,
+          "x": 20,
+          "y": 14
+        },
+        {
+          "background": "#172033",
+          "content": "状态：就绪，尚未启动任务。",
+          "fontFamily": "Microsoft YaHei UI",
+          "fontItalic": false,
+          "fontSize": 12,
+          "fontUnderline": false,
+          "foreground": "#A7F3D0",
+          "height": 24,
+          "id": "status-label",
+          "isEnabled": true,
+          "name": "状态行",
+          "type": "Label",
+          "visibility": "Visible",
+          "width": 860,
+          "x": 20,
+          "y": 46
+        },
+        {
+          "background": "#172033",
+          "content": "勾选：0 行",
+          "fontFamily": "Microsoft YaHei UI",
+          "fontItalic": false,
+          "fontSize": 12,
+          "fontUnderline": false,
+          "foreground": "#7DD3FC",
+          "height": 24,
+          "id": "check-label",
+          "isEnabled": true,
+          "name": "勾选信息",
+          "type": "Label",
+          "visibility": "Visible",
+          "width": 860,
+          "x": 20,
+          "y": 74
+        },
+        {
+          "background": "#0F172A",
+          "content": "",
+          "events": {
+            "CheckBoxChanged": "_任务表格_选择框被改变"
+          },
+          "fontFamily": "Microsoft YaHei UI",
+          "fontItalic": false,
+          "fontSize": 12,
+          "fontUnderline": false,
+          "foreground": "#E2E8F0",
+          "height": 344,
+          "id": "datagrid-main",
+          "isEnabled": true,
+          "name": "任务表格",
+          "properties": {
+            "dataGridColumns": [
+              {
+                "id": "select",
+                "title": "选择",
+                "type": "checkbox",
+                "width": 64
+              },
+              {
+                "id": "name",
+                "title": "名称",
+                "type": "text",
+                "width": 320
+              },
+              {
+                "id": "progress",
+                "title": "进度",
+                "type": "progress",
+                "width": 300
+              },
+              {
+                "id": "status",
+                "title": "状态",
+                "type": "text",
+                "width": 140
+              }
+            ],
+            "dataGridRows": [],
+            "selectionMode": "multiRow"
+          },
+          "type": "DataGrid",
+          "visibility": "Visible",
+          "width": 860,
+          "x": 20,
+          "y": 104
+        },
+        {
+          "background": "#2563EB",
+          "content": "启动多线程任务",
+          "events": {
+            "Click": "_启动任务按钮_被单击"
+          },
+          "fontFamily": "Microsoft YaHei UI",
+          "fontItalic": false,
+          "fontSize": 12,
+          "fontUnderline": false,
+          "foreground": "#F8FAFC",
+          "height": 34,
+          "id": "btn-start",
+          "isEnabled": true,
+          "name": "启动任务按钮",
+          "properties": {
+            "buttonStyle": "push"
+          },
+          "type": "Button",
+          "visibility": "Visible",
+          "width": 150,
+          "x": 20,
+          "y": 460
+        },
+        {
+          "background": "#0E7490",
+          "content": "勾选前3行",
+          "events": {
+            "Click": "_勾选演示行按钮_被单击"
+          },
+          "fontFamily": "Microsoft YaHei UI",
+          "fontItalic": false,
+          "fontSize": 12,
+          "fontUnderline": false,
+          "foreground": "#F8FAFC",
+          "height": 34,
+          "id": "btn-check-demo",
+          "isEnabled": true,
+          "name": "勾选演示行按钮",
+          "properties": {
+            "buttonStyle": "push"
+          },
+          "type": "Button",
+          "visibility": "Visible",
+          "width": 110,
+          "x": 186,
+          "y": 460
+        },
+        {
+          "background": "#2563EB",
+          "content": "全选",
+          "events": {
+            "Click": "_全选按钮_被单击"
+          },
+          "fontFamily": "Microsoft YaHei UI",
+          "fontItalic": false,
+          "fontSize": 12,
+          "fontUnderline": false,
+          "foreground": "#F8FAFC",
+          "height": 34,
+          "id": "btn-check-all",
+          "isEnabled": true,
+          "name": "全选按钮",
+          "properties": {
+            "buttonStyle": "push"
+          },
+          "type": "Button",
+          "visibility": "Visible",
+          "width": 90,
+          "x": 312,
+          "y": 460
+        },
+        {
+          "background": "#0E7490",
+          "content": "全不选",
+          "events": {
+            "Click": "_全不选按钮_被单击"
+          },
+          "fontFamily": "Microsoft YaHei UI",
+          "fontItalic": false,
+          "fontSize": 12,
+          "fontUnderline": false,
+          "foreground": "#F8FAFC",
+          "height": 34,
+          "id": "btn-uncheck-all",
+          "isEnabled": true,
+          "name": "全不选按钮",
+          "properties": {
+            "buttonStyle": "push"
+          },
+          "type": "Button",
+          "visibility": "Visible",
+          "width": 90,
+          "x": 418,
+          "y": 460
+        },
+        {
+          "background": "#B45309",
+          "content": "删除勾选行",
+          "events": {
+            "Click": "_删除勾选行按钮_被单击"
+          },
+          "fontFamily": "Microsoft YaHei UI",
+          "fontItalic": false,
+          "fontSize": 12,
+          "fontUnderline": false,
+          "foreground": "#F8FAFC",
+          "height": 34,
+          "id": "btn-delete-checked",
+          "isEnabled": true,
+          "name": "删除勾选行按钮",
+          "properties": {
+            "buttonStyle": "push"
+          },
+          "type": "Button",
+          "visibility": "Visible",
+          "width": 120,
+          "x": 524,
+          "y": 460
+        },
+        {
+          "background": "#475569",
+          "content": "追加10行",
+          "events": {
+            "Click": "_追加行按钮_被单击"
+          },
+          "fontFamily": "Microsoft YaHei UI",
+          "fontItalic": false,
+          "fontSize": 12,
+          "fontUnderline": false,
+          "foreground": "#F8FAFC",
+          "height": 34,
+          "id": "btn-append",
+          "isEnabled": true,
+          "name": "追加行按钮",
+          "properties": {
+            "buttonStyle": "push"
+          },
+          "type": "Button",
+          "visibility": "Visible",
+          "width": 120,
+          "x": 660,
+          "y": 460
+        }
+      ],
+      "description": "DataGrid 多线程读写与勾选批量删除演示主窗口",
+      "designerBackend": "win32",
+      "events": {
+        "Loaded": "_MainWindow_创建完毕"
+      },
+      "fileName": "MainWindow.xml",
+      "height": 560,
+      "id": "main-window",
+      "title": "DataGrid 多线程读写与勾选批量删除示例",
+      "width": 900
+    }
+  ]
+}

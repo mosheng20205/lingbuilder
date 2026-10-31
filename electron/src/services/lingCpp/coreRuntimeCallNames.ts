@@ -26,6 +26,7 @@ export const CORE_RUNTIME_CALL_NAMES: ReadonlySet<string> = new Set<string>([
   "写入调试输出",
   // —— DataGrid（表格）运行时族：设计器控件贡献，不来自模块 manifest，按 dataGridNativeRuntime.ts 模板同步 ——
   "表格_删除列",
+  "表格_删除勾选行",
   "表格_删除行",
   "表格_加载TSV",
   "表格_取事件列ID",
@@ -51,6 +52,8 @@ export const CORE_RUNTIME_CALL_NAMES: ReadonlySet<string> = new Set<string>([
   "表格_取请求起始行",
   "表格_取进度",
   "表格_取进度状态",
+  "表格_取勾选行数",
+  "表格_取勾选行键",
   "表格_取选中行数",
   "表格_取选中行键",
   "表格_取逻辑",

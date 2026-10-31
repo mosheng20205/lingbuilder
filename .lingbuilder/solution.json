@@ -1602,6 +1602,15 @@
       "designerPath": ".lingbuilder/projects/layout-showcase/window-designer.json",
       "references": [],
       "configRoot": "config/layout-showcase"
+    },
+    {
+      "type": "visual-cpp",
+      "id": "datagrid-thread-demo",
+      "name": "数据表格多线程示例",
+      "sourceRoot": "src/datagrid-thread-demo",
+      "configRoot": "config/datagrid-thread-demo",
+      "designerPath": ".lingbuilder/projects/datagrid-thread-demo/window-designer.json",
+      "references": []
     }
   ]
 }

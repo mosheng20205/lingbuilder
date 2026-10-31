@@ -176,6 +176,8 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.match(String(client.getInstructions() || ''), /clearAllData:true 清空该档案全部数据/u, 'instructions 必须写明 clearAllData 只用于槽位重置、多开保登录态不要发');
     assert.match(String(client.getInstructions() || ''), /语言一致性红线/u, 'instructions 必须写明 mainAcceptLanguage/languages/acceptLanguages 三键同源裸逗号列表红线');
     assert.match(String(client.getInstructions() || ''), /裸单标签 Accept-Language/u, 'instructions 必须警示只发首标签会出站裸单标签头、被检测站判语言不匹配');
+    assert.match(String(client.getInstructions() || ''), /LINGBUILDER_FBRO_ACCEPT_LANGUAGE/u, 'instructions 必须写明桥 2.9.6 进程默认语言 env 覆盖口（无 VIP 修正出站 Accept-Language）');
+    assert.match(String(client.getInstructions() || ''), /LINGBUILDER_FBRO_LOCALE/u, 'instructions 必须写明进程默认区域 env 覆盖口 LINGBUILDER_FBRO_LOCALE');
     assert.match(String(client.getInstructions() || ''), /缓存目录语义/u, 'instructions 必须写明 FBro 缓存目录被收进内核根缓存 Temp<N> 数据窗格的语义（2026-10-29 桥 2.9.5）');
     assert.match(String(client.getInstructions() || ''), /profile-<名>-<路径哈希>/u, 'instructions 必须写明根外绝对路径重定位为稳定哈希目录、跨重启同目录');
     assert.match(String(client.getInstructions() || ''), /桥自动把历史档案迁入新根/u, 'instructions 必须写明内核换 Temp<N> 根时桥自动迁移登录态');
@@ -353,6 +355,9 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.match(String(client.getInstructions() || ''), /编辑框_滚动到底/u, 'instructions 必须给出多行编辑框滚动到底命令');
     assert.match(String(client.getInstructions() || ''), /无需控件获得焦点/u, 'instructions 必须写明滚动到底无需焦点（EM_SCROLLCARET 无焦点失效）');
     assert.match(String(client.getInstructions() || ''), /表格_滚动到行/u, 'instructions 必须给出数据表格滚动到行命令');
+    assert.match(String(client.getInstructions() || ''), /表格_删除勾选行/u, 'instructions 必须给出数据表格勾选批量删除命令');
+    assert.match(String(client.getInstructions() || ''), /表格_取勾选行键/u, 'instructions 必须给出勾选行键聚合读取命令');
+    assert.match(String(client.getInstructions() || ''), /禁止在工作线程直接调任何 表格_\* 命令/u, 'instructions 必须钉住表格命令只在界面线程调用的红线');
     assert.match(String(client.getInstructions() || ''), /列表视图_取每页行数/u, 'instructions 必须点名列表视图既有滚动能力族');
     assert.match(String(client.getInstructions() || ''), /组合框\/单行编辑框\/分组框等其余控件没有滚动命令/u, 'instructions 必须钉住滚动命令的适用控件边界');
     assert.match(String(client.getInstructions() || ''), /20 条\/分钟限流/u, 'instructions 必须写明三平台限流口径');

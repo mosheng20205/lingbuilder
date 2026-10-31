@@ -21,10 +21,10 @@ const groups = [
   { id: 'rows-import', title: '3 行与导入', start: 20, end: 34, note: '包含行操作、批量更新、TSV、CSV 和 Excel。破坏性操作后可重新按 F5。' },
   { id: 'typed-cells', title: '4 基础单元格', start: 34, end: 44, note: '每个按钮只读写一个强类型单元格接口，固定演示行键为 order-1001。' },
   { id: 'rich-cells', title: '5 特殊单元格', start: 44, end: 58, note: '分别体验图片、进度、组合框和多按钮单元格覆盖。' },
-  { id: 'editing', title: '6 编辑选择', start: 58, end: 70, note: '开始、提交、取消编辑以及当前单元格、行选择、撤销和重做均为独立按钮。' },
-  { id: 'query', title: '7 排序筛选', start: 70, end: 77, note: '排序、筛选和搜索会立即反映在左侧静态表格中。' },
-  { id: 'validation-virtual', title: '8 校验虚拟', start: 77, end: 86, note: '校验拒绝只能在“正在验证”事件中调用；虚拟请求由下方表格滚动触发。' },
-  { id: 'events', title: '9 事件上下文', start: 86, end: 92, note: '事件上下文接口只能在表格事件处理器中读取；请按页面提示操作左侧表格。' }
+  { id: 'editing', title: '6 编辑选择', start: 58, end: 73, note: '开始、提交、取消编辑以及当前单元格、行选择、勾选统计与勾选批量删除均为独立按钮。' },
+  { id: 'query', title: '7 排序筛选', start: 73, end: 80, note: '排序、筛选和搜索会立即反映在左侧静态表格中。' },
+  { id: 'validation-virtual', title: '8 校验虚拟', start: 80, end: 89, note: '校验拒绝只能在“正在验证”事件中调用；虚拟请求由下方表格滚动触发。' },
+  { id: 'events', title: '9 事件上下文', start: 89, end: 95, note: '事件上下文接口只能在表格事件处理器中读取；请按页面提示操作左侧表格。' }
 ];
 
 function createControlBase(id: string, type: string, name: string, content: string, x: number, y: number, width: number, height: number) {
@@ -51,7 +51,7 @@ function demoColumn(command: string): string {
   if (/进度/u.test(command)) return 'progress';
   if (/组合框|选项/u.test(command)) return 'status';
   if (/按钮/u.test(command)) return 'actions';
-  if (/选择框/u.test(command)) return 'select';
+  if (/选择框|勾选/u.test(command)) return 'select';
   if (/开关|逻辑/u.test(command)) return 'enabled';
   if (/日期/u.test(command)) return 'date';
   if (/整数/u.test(command)) return 'quantity';
@@ -207,12 +207,12 @@ async function main() {
     });
     if (group.id === 'events') {
       const eventCards = [
-        '86 取事件行键：单击表格行或改变当前单元格时读取。',
-        '87 取事件列ID：单击、排序或筛选列时读取。',
-        '88 取事件按钮ID：点击“操作”列中的按钮时读取。',
-        '89 取事件旧值：开始编辑或提交编辑时读取。',
-        '90 取事件新值：提交、Switch、组合框改变时读取。',
-        '80 拒绝本次编辑：把订单号改成“禁止”即可触发。'
+        '92 取事件行键：单击表格行或改变当前单元格时读取。',
+        '93 取事件列ID：单击、排序或筛选列时读取。',
+        '94 取事件按钮ID：点击“操作”列中的按钮时读取。',
+        '95 取事件旧值：开始编辑或提交编辑时读取。',
+        '96 取事件新值：提交、Switch、组合框改变时读取。',
+        '86 拒绝本次编辑：把订单号改成“禁止”即可触发。'
       ];
       eventCards.forEach((content, index) => controls.push({
         ...createControlBase(`event-card-${index + 1}`, 'Label', `事件说明${index + 1}`, content, tabX + 24, tabY + 165 + index * 52, 560, 38),
@@ -243,7 +243,7 @@ async function main() {
 
   project.windows = [{
     ...oldWindow,
-    title: 'Win32 DataGrid 新手逐项实验室（92 条接口）',
+    title: `Win32 DataGrid 新手逐项实验室（${DATA_GRID_API.length} 条接口）`,
     width: 1550,
     height: 860,
     description: '使用 9 个选项卡逐项演示 DataGrid；每个普通接口按钮只调用一条表格命令。',

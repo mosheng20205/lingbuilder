@@ -335,8 +335,8 @@ test('image modes preserve tile and keep contain as the compatible default', () 
 });
 
 test('DataGrid catalog keeps contributions, bindings and member metadata aligned', () => {
-  // 2026-10-19 程序化滚动批次 +1（表格_滚动到行），93 条
-  assert.equal(DATA_GRID_API.length, 93);
+  // 2026-10-31 勾选批量批次 +3（表格_取勾选行数/取勾选行键/删除勾选行），96 条
+  assert.equal(DATA_GRID_API.length, 96);
   assert.deepEqual(DATA_GRID_COMMANDS.map(item => item.name), DATA_GRID_BINDINGS.map(item => item.command));
   assert.equal(new Set(DATA_GRID_API.map(item => item.name)).size, DATA_GRID_API.length);
   DATA_GRID_API.forEach(item => {
@@ -344,6 +344,47 @@ test('DataGrid catalog keeps contributions, bindings and member metadata aligned
     assert.equal(item.parameters[0].type, 'controlRef');
   });
   ['表格_取进度状态', '表格_取行是否选中', '表格_导入Excel', '表格_导出Excel'].forEach(name => assert.ok(DATA_GRID_API.some(item => item.name === name), `缺少接口：${name}`));
+});
+
+test('checkbox batch commands are declared, bound to the native runtime and callable from source', () => {
+  const names = ['表格_取勾选行数', '表格_取勾选行键', '表格_删除勾选行'];
+  names.forEach(name => assert.ok(DATA_GRID_API.some(item => item.name === name), `缺少接口：${name}`));
+  const checked = DATA_GRID_API.find(item => item.name === '表格_删除勾选行')!;
+  assert.deepEqual(checked.parameters.map(item => item.name), ['控件名', '列ID']);
+  assert.equal(checked.returnType, '逻辑型');
+  const model: LingWindowProject = {
+    schemaVersion: 2, id: 'datagrid-checked', name: 'DataGrid checked batch',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 720, height: 520, background: '#202028', description: '',
+      controls: [{
+        id: 'grid', type: 'DataGrid', name: '任务表格', content: '', x: 20, y: 20, width: 640, height: 360,
+        fontSize: 12, background: '#0F172A', foreground: '#E2E8F0', isEnabled: true, visibility: 'Visible',
+        properties: {
+          ...createDefaultControlProperties('DataGrid'),
+          dataGridColumns: [
+            { id: 'select', title: '选择', type: 'checkbox', width: 70 },
+            { id: 'title', title: '任务', type: 'text', width: 200 },
+            { id: 'progress', title: '进度', type: 'progress', width: 140 }
+          ], dataGridRows: []
+        }, events: {}
+      }]
+    }]
+  };
+  const source = [
+    '类 主窗口 : 公开 窗体',
+    '事件 _按钮1_被单击()',
+    '调试输出(表格_取勾选行数(任务表格, "select"))',
+    '调试输出(表格_取勾选行键(任务表格, "select", 0))',
+    '表格_删除勾选行(任务表格, "select")',
+    '结束',
+    '结束类'
+  ].join('\n');
+  const generated = generateLingCppNativeWin32Project(model, { lingCppSourceCode: source });
+  assert.deepEqual(generated.blockingDiagnostics, []);
+  const cpp = generated.files.find(file => file.relativePath === 'lingbuilder_runtime.h')!.content;
+  assert.match(cpp, /目标列不是选择框列。/u);
+  assert.match(cpp, /DataGridCheckedDisplayRows/u);
+  assert.match(cpp, /虚拟模式数据不在控件内/u);
 });
 
 test('DataGrid appears in advanced toolbox and preview renders special cells', () => {

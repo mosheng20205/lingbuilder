@@ -616,12 +616,16 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       // 左/顶/宽/高 与 置实例窗口边界 5 参，int 无 controlRef；创建时定界走
       // LB_CEF3_BrowserSetWindowBounds，屏幕物理像素、-1＝该组不变）
       //（实算摘要 e0fa5f9a/dd9f0664）。
+      // 基线 2026-10-31 写回（DataGrid 勾选批量批次）：win32.common-controls 新增
+      // 表格_取勾选行数 / 表格_取勾选行键 / 表格_删除勾选行 三命令
+      //（+3 命令 +7 参数 +3 controlRef，均为 控件名 controlRef + 列ID/索引）
+      //（实算摘要 23a92f49/53f19874）。
       modules: 108,
-      commands: 4629,
-      parameters: 8617,
-      controlReferences: 1499,
-      commandDigest: 'e0fa5f9a',
-      parameterDigest: 'dd9f0664'
+      commands: 4632,
+      parameters: 8624,
+      controlReferences: 1502,
+      commandDigest: '23a92f49',
+      parameterDigest: '53f19874'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -1188,12 +1192,15 @@ test('工作区已安装模块全部通过 controlRef 清单和示例门禁', as
       // 基线 2026-10-29 二写回（CEF3 弹窗窗口边界批次）：内置 +3 命令 +11 参数
       //（cef3.browser 3.0.0-alpha.6 弹窗定位三命令 + 创建弹窗浏览器尾部 4 可选参，
       // 见内置夹具注释）；磁盘侧无独立变化（实算摘要 549b9c4d/94d3b725）。
+      // 基线 2026-10-31 写回（DataGrid 勾选批量批次）：内置 +3 命令 +7 参数 +3 controlRef
+      //（win32.common-controls 表格勾选批量三命令，见内置夹具注释）；磁盘侧无独立变化
+      //（实算摘要 083f0254/fb8a4639）。
       modules: 122,
-      commands: 8767,
-      parameters: 20989,
-      commandDigest: '549b9c4d',
-      controlReferences: 5281,
-      parameterDigest: '94d3b725'
+      commands: 8770,
+      parameters: 20996,
+      commandDigest: '083f0254',
+      controlReferences: 5284,
+      parameterDigest: 'fb8a4639'
   }, '内置、官方和当前工作区第三方模块的每个方法与参数都必须进入全量审计');
   // OpenCV 以内置清单为准：本机未装 SDK 时磁盘上的同名清单是只有骨架的占位包（0 命令、无 targets）。
   const manifest = BUILTIN_MODULES.find(module => module.id === OPENCV_MODULE_ID) || auditedManifests.get('lingbuilder.opencv.sdk');
@@ -2774,7 +2781,7 @@ test('模块封装清单覆盖实际内置模块注册表', async () => {
   assert.match(checklist, /51 个模块、336 条命令/u);
   assert.match(checklist, /`lingbuilder\.std\.encoding` \| 编码转换模块 \| 32/u);
   assert.match(checklist, /`lingbuilder\.win32\.basic` \| Win32 窗口基础模块 \| 245/u);
-  assert.match(checklist, /`lingbuilder\.win32\.common-controls` \| Win32 高级控件模块 \| 561/u);
+  assert.match(checklist, /`lingbuilder\.win32\.common-controls` \| Win32 高级控件模块 \| 564/u);
   for (const manifest of BUILTIN_MODULES) {
     assert.ok(checklist.includes(`\`${manifest.id}\``), `封装清单缺少 ${manifest.id}`);
   }
