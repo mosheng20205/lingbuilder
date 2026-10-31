@@ -21,6 +21,16 @@
 
     <uses-feature android:name="android.hardware.usb.accessory" />
 
+    <!-- 1.4.4：Android 11+ 包可见性声明（targetSdk 30+ 必需）——launchApp 查询
+         getLaunchIntentForPackage(第三方包名) 依赖能看到对方；缺此声明时除系统白名单
+         （设置等）外的所有第三方应用都查不到，回执恒为「未安装或无启动入口」。 -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"

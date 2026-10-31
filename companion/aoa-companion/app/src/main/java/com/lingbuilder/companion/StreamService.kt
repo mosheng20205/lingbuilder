@@ -483,6 +483,30 @@ class StreamService : Service() {
                 "ping" -> replyControl(
                     "{\"type\":\"pong\",\"uptime\":" + android.os.SystemClock.elapsedRealtime() + "}",
                 )
+                "setClipboard" -> {
+                    // 1.4.5：PC 侧中文输入路径的第一步——把文本写进系统剪贴板
+                    //（{"cmd":"setClipboard","text":"..."} → {"type":"result","cmd":"setClipboard","ok":true}）。
+                    // 粘贴动作由 PC 经 AOA 键盘注入 Ctrl+V 完成（HID 组合键）。
+                    val text = obj.optString("text", "")
+                    if (text.isEmpty()) {
+                        replyControl("{\"type\":\"result\",\"cmd\":\"setClipboard\",\"target\":\"\",\"ok\":false,\"error\":\"text 参数为空\"}")
+                    } else {
+                        mainHandler.post {
+                            val err = try {
+                                val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                cm.setPrimaryClip(android.content.ClipData.newPlainText("lb", text))
+                                null
+                            } catch (e: Exception) {
+                                "写入剪贴板失败：" + (e.message ?: e.javaClass.simpleName)
+                            }
+                            val sb = StringBuilder("{\"type\":\"result\",\"cmd\":\"setClipboard\",\"target\":\"\",\"ok\":")
+                            sb.append(if (err == null) "true" else "false")
+                            if (err != null) sb.append(",\"error\":\"").append(org.json.JSONObject.quote(err).trim('"')).append('"')
+                            sb.append('}')
+                            replyControl(sb.toString())
+                        }
+                    }
+                }
                 "usbDirect" -> {
                     // 1.4.1：PC 侧显式开关 USB 直传（{"cmd":"usbDirect","on":true|false}）。
                     // 回执经 replyControl 双路广播；在 USB 通道读循环线程上到达，post 到主线程执行。

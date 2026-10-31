@@ -88,6 +88,11 @@ button:disabled{cursor:not-allowed;opacity:.4}
 .search input{width:150px;border:0;outline:0;background:transparent;color:var(--text);font-size:11px}
 
 /* 设备墙 */
+.notice-bar{flex:none;display:flex;align-items:center;gap:8px;margin:10px 16px 0;padding:9px 12px;
+  border:1px solid rgba(251,146,60,.4);border-radius:10px;background:rgba(251,146,60,.1);
+  color:#FDBA74;font-size:11.5px;line-height:1.6}
+.notice-bar .icon{color:#FB923C;flex:none}
+:root[data-theme="light"] .notice-bar{border-color:rgba(234,88,12,.35);background:rgba(234,88,12,.08);color:#C2410C}
 .wall-scroll{flex:1;min-height:0;overflow-y:auto;padding:14px 16px 16px;scrollbar-width:thin}
 .wall-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(232px,1fr));gap:12px;align-content:start}
 .wall-tile{position:relative;display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--border);
@@ -107,6 +112,12 @@ button:disabled{cursor:not-allowed;opacity:.4}
 .badge.queue{color:#FDBA74;border-color:rgba(251,146,60,.4)}
 .tile-bottom{flex:none;padding:8px 10px;background:var(--surface);border-top:1px solid var(--border)}
 .tile-title{display:flex;align-items:center;gap:6px;min-width:0}
+.tile-check{width:13px;height:13px;accent-color:var(--primary);cursor:pointer;flex:none;margin:0}
+.batch-input{height:28px;padding:0 8px;border:1px solid rgba(255,255,255,.12);border-radius:7px;
+  background:rgba(255,255,255,.05);color:#EAF3F1;font-size:10.5px;width:175px;outline:0}
+.batch-input::placeholder{color:#6E827E}
+:root[data-theme="light"] .batch-input{border-color:var(--border-strong);background:var(--surface);color:var(--text)}
+:root[data-theme="light"] .batch-input::placeholder{color:var(--faint)}
 .tile-title strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--text)}
 .tile-meta{display:flex;align-items:center;gap:8px;margin-top:4px;font-size:10px;color:var(--muted);
   font-variant-numeric:tabular-nums;font-family:var(--mono);min-height:14px}
@@ -153,6 +164,9 @@ button:disabled{cursor:not-allowed;opacity:.4}
   transition:opacity .18s,transform .18s;white-space:nowrap}
 .toast.is-visible{opacity:1;transform:translate(-50%,0)}
 .toast .icon{color:#5EEAD4}
+.toast.is-fail{border-color:rgba(239,68,68,.45);background:#1a1114}
+.toast.is-fail .icon{color:#F87171}
+:root[data-theme="light"] .toast.is-fail{background:#FDF0EF;border-color:rgba(239,68,68,.4)}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{transition-duration:.01ms!important;animation-duration:.01ms!important}}
 </style>
 </head>
@@ -211,6 +225,8 @@ button:disabled{cursor:not-allowed;opacity:.4}
       </div>
     </div>
 
+    <div class="notice-bar" id="noticeBar" hidden><svg class="icon sm"><use href="#i-bolt"/></svg><span id="noticeText"></span></div>
+
     <div class="wall-scroll">
       <div class="wall-grid" id="wallGrid"></div>
       <div class="wall-empty" id="wallEmpty">
@@ -226,6 +242,13 @@ button:disabled{cursor:not-allowed;opacity:.4}
         <button class="batch-btn" id="batchSync" type="button"><svg class="icon sm"><use href="#i-monitor"/></svg>同步操控</button>
         <button class="batch-btn" id="batchWake" type="button"><svg class="icon sm"><use href="#i-sun"/></svg>全部唤醒</button>
         <button class="batch-btn" id="batchShot" type="button"><svg class="icon sm"><use href="#i-camera"/></svg>批量截图</button>
+        <span class="tool-sep" style="background:rgba(255,255,255,.12)"></span>
+        <input class="batch-input" id="launchPkg" type="text" placeholder="App 包名，如 com.tencent.mm" spellcheck="false">
+        <button class="batch-btn" id="batchLaunch" type="button"><svg class="icon sm"><use href="#i-plug"/></svg>启动App</button>
+        <span class="tool-sep" style="background:rgba(255,255,255,.12)"></span>
+        <button class="batch-btn" id="btnRecord" type="button"><svg class="icon sm"><use href="#i-record"/></svg>录制</button>
+        <button class="batch-btn" id="btnReplay" type="button"><svg class="icon sm"><use href="#i-bolt"/></svg>回放</button>
+        <button class="batch-btn" id="btnReplayStop" type="button" title="停止全部回放"><svg class="icon sm"><use href="#i-x"/></svg>停止</button>
       </div>
     </div>
   </main>
@@ -236,14 +259,52 @@ button:disabled{cursor:not-allowed;opacity:.4}
   <div class="help-panel">
     <header><strong>手机端安装与连接指引（USB 直传）</strong><button class="tool" type="button" data-close-help aria-label="关闭"><svg class="icon"><use href="#i-x"/></svg></button></header>
     <div class="help-body">
-      <p><b>1. 安装投屏伴侣 APK（v1.4.3 起，必须）</b></p>
-      <p>安装包在本工程源码目录：<code>lingbuilder-companion-v1.4.3.apk</code>（与 MainWindow.lcpp 同目录；旧版没有 USB 推帧代码，纯 USB 画面必须 v1.4.3+）。用微信/QQ/数据线任意方式发到手机，在手机上点开安装（允许「未知来源/安装未知应用」）。首次安装只此一次，之后插线即用。</p>
+      <p><b>1. 安装投屏伴侣 APK（v1.4.5 起，必须）</b></p>
+      <p>安装包在本工程源码目录：<code>lingbuilder-companion-v1.4.5.apk</code>（与 MainWindow.lcpp 同目录）。v1.4.3 及更早缺包可见性声明——「启动App」对第三方应用恒报「未安装或无启动入口」；v1.4.4 及更早没有剪贴板指令（中文粘贴不可用）；v1.2.6~v1.4.0 没有部分 USB 推帧代码。用微信/QQ/数据线任意方式发到手机安装（允许「未知来源/安装未知应用」）。首次安装只此一次，之后插线即用。</p>
       <p><b>2. 首次授权（每台一次）</b></p>
       <p>手机上打开「LingBuilder 投屏伴侣」→ 点「开始投屏」→ 系统弹窗选「立即开始」。建议加入后台白名单（MIUI：最近任务卡片上锁；鸿蒙：电池-启动管理改手动允许），否则后台被杀后需要重新打开。</p>
       <p><b>3. 插线即用</b></p>
       <p>数据线插上电脑即自动出现在本页并排队接通，无需任何网络（手机不连 Wi-Fi 也能投屏和群控，移动数据照常用）。多台并发请用<b>带独立供电的 USB Hub</b>；普通模式下打开会切换配件模式，每台需数秒，属正常现象。</p>
       <p><b>4. 黑屏 / 无画面时</b></p>
       <p>磁贴显示「USB 已通 · 等手机侧投屏」= 电脑到手机的 USB 链路已通，但手机上的投屏会话没在跑：解锁手机，打开投屏伴侣重新「开始投屏」，或点磁贴「唤醒」按钮。拔线重插会自动重新接通。</p>
+    </div>
+  </div>
+</div>
+<div class="help-overlay" id="rpOverlay" hidden>
+  <div class="help-scrim" data-close-rp></div>
+  <div class="help-panel" style="width:400px">
+    <header><strong>回放群控剧本</strong><button class="tool" type="button" data-close-rp aria-label="关闭"><svg class="icon"><use href="#i-x"/></svg></button></header>
+    <div class="help-body">
+      <p style="margin:6px 0 2px">对<b>全部已接通设备</b>异步回放 <code>群控剧本.csv</code>（录制生成于 exe 目录）。每台独立任务，进度显示在页面横幅。</p>
+      <label style="display:block;margin-top:10px;font-size:11.5px;color:var(--text-2)">倍速（1=原速，1.5=1.5 倍速）</label>
+      <input class="batch-input" id="rpSpeed" type="text" value="1" spellcheck="false" style="width:100px;height:32px;font-size:13px">
+      <label style="display:block;margin-top:10px;font-size:11.5px;color:var(--text-2)">循环次数（≥1）</label>
+      <input class="batch-input" id="rpLoops" type="text" value="1" spellcheck="false" style="width:100px;height:32px;font-size:13px">
+      <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end">
+        <button class="btn" type="button" data-close-rp>取消</button>
+        <button class="btn primary" id="rpStart" type="button">开始回放</button>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="help-overlay" id="kbOverlay" hidden>
+  <div class="help-scrim" data-close-kb></div>
+  <div class="help-panel" style="width:440px">
+    <header><strong>文本输入 · <span id="kbSlotName">槽位</span></strong><button class="tool" type="button" data-close-kb aria-label="关闭"><svg class="icon"><use href="#i-x"/></svg></button></header>
+    <div class="help-body">
+      <p style="margin:6px 0 2px">先在磁贴画面<b>点一下目标输入框</b>（让手机获得焦点），再在这里输入发送。仅支持<b>英文/数字/英文符号</b>（中文请用手机输入法手打）。</p>
+      <input class="batch-input" id="kbText" type="text" placeholder="要输入的文本（英文/数字/符号）" spellcheck="false"
+        style="width:100%;height:36px;font-size:14px;margin-top:8px">
+      <label style="display:flex;align-items:center;gap:7px;margin-top:12px;font-size:11.5px;color:var(--text-2);cursor:pointer">
+        <input type="checkbox" id="kbBroadcast" style="accent-color:var(--primary)"> 同时发送到全部已接通设备
+      </label>
+      <p style="margin:10px 0 0;font-size:11px;color:var(--muted)">输入中文？<b>中文用下面的粘贴按钮</b>：写入手机剪贴板 → 手机输入框长按/PC 发 Ctrl+V 粘贴（需伴侣 v1.4.5+）。</p>
+      <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end">
+        <button class="btn" type="button" id="kbPaste" title="把上面文本写入手机剪贴板（支持中文），再点磁贴画面后发 Ctrl+V"><svg class="icon sm"><use href="#i-check"/></svg>粘贴中文到剪贴板</button>
+        <span style="flex:1"></span>
+        <button class="btn" type="button" data-close-kb>取消</button>
+        <button class="btn primary" id="kbSend" type="button">发送（英文/数字）</button>
+      </div>
     </div>
   </div>
 </div>
@@ -274,17 +335,33 @@ button:disabled{cursor:not-allowed;opacity:.4}
   }
 
   var toastTimer = null;
-  function showToast(text){
+  function showToast(text, ok){
+    var isOk = (ok !== false);
     $('toastText').textContent = text;
+    $('toast').classList.toggle('is-fail', !isOk);
+    $('toast').querySelector('use').setAttribute('href', isOk ? '#i-check' : '#i-x');
     $('toast').classList.add('is-visible');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function(){ $('toast').classList.remove('is-visible'); }, 2200);
+    toastTimer = setTimeout(function(){ $('toast').classList.remove('is-visible'); }, 2600);
   }
 
-  // ===== 状态：原生桥推送（泵每 ~0.5s 发 {event:'status',data:{queue,auto,slots:[...]}}）=====
+  // ===== 状态：原生桥推送（泵每 ~0.5s 发 {event:'status',data:{queue,auto,debugCount,drvCount,slots:[...]}}）=====
   function applyStatus(data){
     autoOn = !(data && data.auto === false);
     updateAutoBtn();
+    // 接入障碍横幅：调试态（FF48 复合，免调试无法接管）/ 缺驱动（全新机器没装 WinUSB）
+    var dbg = (data && data.debugCount) | 0;
+    var drv = (data && data.drvCount) | 0;
+    var bar = $('noticeBar');
+    var msgs = [];
+    if (dbg > 0) msgs.push('检测到 ' + dbg + ' 台手机开着「USB 调试」——免调试接入要求关闭它：手机设置 → 开发者选项 → 关闭 USB 调试，然后重插数据线');
+    if (drv > 0) msgs.push('检测到 ' + drv + ' 台手机缺 WinUSB 驱动——按「安装指引」第 1 步安装随包驱动（pnputil /add-driver lingbuilder-aoa.inf /install）后重插');
+    if (msgs.length){
+      bar.hidden = false;
+      $('noticeText').textContent = msgs.join('；');
+    } else {
+      bar.hidden = true;
+    }
     attachQueue = (data && data.queue) | 0;
     var seen = {};
     (data && data.slots || []).forEach(function(s){
@@ -361,7 +438,7 @@ button:disabled{cursor:not-allowed;opacity:.4}
         '<div class="tile-badge"></div>'+
       '</div>'+
       '<div class="tile-bottom">'+
-        '<div class="tile-title"><span class="status-dot"></span><strong>槽位 '+n+'</strong></div>'+
+        '<div class="tile-title"><input type="checkbox" class="tile-check" data-check title="勾选后「同步操控」只广播本机（不勾选=广播全部已接通）"><span class="status-dot"></span><strong>槽位 '+n+'</strong></div>'+
         '<div class="tile-meta"><span class="meta-text">未连接</span></div>'+
         '<div class="tile-tools">'+
           '<button class="tool" type="button" data-act="receive" data-tip="接通（USB 直传 + 触控）">'+icon('i-plug')+'</button>'+
@@ -376,7 +453,8 @@ button:disabled{cursor:not-allowed;opacity:.4}
           '<button class="tool" type="button" disabled data-act="rotate" data-tip="旋转（下一版）">'+icon('i-rotate')+'</button>'+
           '<button class="tool" type="button" disabled data-act="volume" data-tip="音量（下一版）">'+icon('i-volume')+'</button>'+
           '<button class="tool" type="button" disabled data-act="record" data-tip="录制（下一版）">'+icon('i-record')+'</button>'+
-          '<button class="tool" type="button" disabled data-act="ime" data-tip="键盘（下一版）">'+icon('i-keyboard')+'</button>'+
+          '<button class="tool" type="button" data-act="ime" data-tip="文本输入（英文/数字，打进手机输入框）">'+icon('i-keyboard')+'</button>'+
+          '<button class="tool" type="button" data-act="paste" data-tip="粘贴：手机剪贴板内容粘贴到当前输入框（Ctrl+V）">'+icon('i-check')+'</button>'+
         '</div>'+
       '</div>'+
     '</div>';
@@ -582,6 +660,68 @@ button:disabled{cursor:not-allowed;opacity:.4}
     return {x:x, y:y};
   }
 
+  // ===== 录制回放（路线图 #5）：录制进程级单例，回放按台异步 + 进度横幅 =====
+  var recording = false;
+  $('btnRecord').addEventListener('click', function(){
+    if (!recording){
+      post({action:'recStart'});
+      recording = true;
+      this.classList.add('on');
+      this.innerHTML = icon('i-record') + '停止录制';
+      showToast('录制中：在磁贴上做操作，动作写进 群控剧本.csv');
+    } else {
+      post({action:'recStop'});
+      recording = false;
+      this.classList.remove('on');
+      this.innerHTML = icon('i-record') + '录制';
+      showToast('录制已停止——点「回放」批量执行（剧本在 exe 目录）');
+    }
+  });
+  $('btnReplay').addEventListener('click', function(){ $('rpOverlay').hidden = false; });
+  document.addEventListener('click', function(e){ if (e.target.closest('[data-close-rp]')) $('rpOverlay').hidden = true; });
+  $('rpStart').addEventListener('click', function(){
+    var speed = Math.max(1, parseInt($('rpSpeed').value, 10) || 1);
+    var loops = Math.max(1, parseInt($('rpLoops').value, 10) || 1);
+    $('rpSpeed').value = String(speed); $('rpLoops').value = String(loops);
+    post({action:'replayStart', speed: speed, loops: loops});
+    $('rpOverlay').hidden = true;
+  });
+  $('btnReplayStop').addEventListener('click', function(){
+    post({action:'replayStop'});
+    showToast('已请求停止全部回放');
+  });
+
+  // ===== 文本输入弹窗（AOA 键盘注入）：先点手机输入框再发送 =====
+  var kbSlot = 0;
+  function openKb(n){
+    kbSlot = n;
+    $('kbSlotName').textContent = '槽位 ' + n;
+    $('kbText').value = '';
+    $('kbBroadcast').checked = false;
+    $('kbOverlay').hidden = false;
+    setTimeout(function(){ $('kbText').focus(); }, 60);
+  }
+  function closeKb(){ $('kbOverlay').hidden = true; }
+  function sendKb(){
+    var text = ($('kbText').value || '');
+    if (!text){ showToast('先输入要发送的文本'); return; }
+    if (/[^\x00-\x7F]/.test(text)){ showToast('仅支持英文/数字/英文符号——中文会被手机端拒绝', false); return; }
+    post({slot:kbSlot, action:'inputText', text:text, broadcast: $('kbBroadcast').checked ? 1 : 0});
+    showToast('文本已发送（槽位 ' + kbSlot + ($('kbBroadcast').checked ? ' 及全部' : '') + '）');
+    closeKb();
+  }
+  $('kbSend').addEventListener('click', sendKb);
+  $('kbText').addEventListener('keydown', function(e){ if (e.key === 'Enter') sendKb(); });
+  // 中文路径（1.4.5+）：文本写进手机剪贴板；粘贴由磁贴「⌨」旁的粘贴键或 PC 发 Ctrl+V 完成
+  $('kbPaste').addEventListener('click', function(){
+    var text = ($('kbText').value || '');
+    if (!text){ showToast('先输入要粘贴的文本（支持中文）'); return; }
+    post({slot:kbSlot, action:'pasteText', text:text, broadcast: $('kbBroadcast').checked ? 1 : 0});
+    showToast('已写入手机剪贴板——下一步：点磁贴输入框获焦点，再点磁贴工具条「粘贴」按钮');
+    closeKb();
+  });
+  document.addEventListener('click', function(e){ if (e.target.closest('[data-close-kb]')) closeKb(); });
+
   // ===== 工具条与顶栏动作 =====
   document.addEventListener('click', function(e){
     var g = e.target.closest('[data-group]');
@@ -592,6 +732,7 @@ button:disabled{cursor:not-allowed;opacity:.4}
       if (!tile) return;
       var n = Number(tile.dataset.slot);
       var act = t.dataset.act;
+      if (act === 'ime'){ openKb(n); return; }
       post({slot:n, action:act});
       var tips = {receive:'槽位 '+n+' 已排队接通（USB 直传）',
         home:'已发主页指令', back:'已发返回指令', wake:'已发唤醒指令', notif:'已下拉通知栏',
@@ -624,15 +765,46 @@ button:disabled{cursor:not-allowed;opacity:.4}
     post({action:'disconnectAll'});
     showToast('已全部断开（自动接入已挂起）');
   });
-  // 同步操控：开启后任一磁贴的手势会广播到所有已接通触控的槽位（群控）
+  // 同步操控：开启后任一磁贴的手势会广播到目标集合（默认全部已接通；勾选后=只广播勾选槽位）
   var syncMode = false;
+  var checkedSet = {};   // slot -> bool（磁贴勾选框，空集合=广播全部）
+  function checkedCount(){
+    return order.filter(function(n){ return checkedSet[n]; }).length;
+  }
+  function updateSyncStateText(){
+    if (!syncMode){ $('syncState').textContent = '（关）'; return; }
+    var n = checkedCount();
+    $('syncState').textContent = n > 0 ? '（开·广播勾选 ' + n + ' 台）' : '（开·广播全部已接通）';
+  }
   $('batchSync').addEventListener('click', function(){
     syncMode = !syncMode;
     this.classList.toggle('on', syncMode);
-    $('syncState').textContent = syncMode ? '（开·已接通触控的槽位同步跟随）' : '（关）';
+    updateSyncStateText();
     post({action:'syncMode', on: syncMode ? 1 : 0});
-    showToast(syncMode ? '同步操控已开启：在任一画面点按/滑动，所有已接通的手机同步跟随' : '同步操控已关闭');
+    showToast(syncMode ? '同步操控已开启：在任一画面点按/滑动，目标手机同步跟随（勾选磁贴可限定范围）' : '同步操控已关闭');
   });
+  document.addEventListener('change', function(e){
+    var cb = e.target.closest('.tile-check');
+    if (!cb) return;
+    var tile = cb.closest('[data-slot]');
+    if (!tile) return;
+    var n = Number(tile.dataset.slot);
+    if (cb.checked) checkedSet[n] = true; else delete checkedSet[n];
+    post({action:'syncSet', list: order.filter(function(k){ return checkedSet[k]; }).join(',')});
+    updateSyncStateText();
+  });
+  // 批量启动 App（控制通道 launchApp 广播）
+  $('batchLaunch').addEventListener('click', function(){
+    var pkg = ($('launchPkg').value || '').trim();
+    if (!pkg){ showToast('先输入 App 包名（如 com.tencent.mm）'); return; }
+    post({action:'batchLaunch', package: pkg});
+    try { localStorage.setItem('md_launch_pkg', pkg); } catch (_) {}
+    showToast('已广播启动：' + pkg);
+  });
+  try {
+    var savedPkg = localStorage.getItem('md_launch_pkg');
+    if (savedPkg) $('launchPkg').value = savedPkg;
+  } catch (_) {}
   $('batchShot').addEventListener('click', function(){
     post({action:'batchShot'});
     showToast('批量截图已保存到 exe 目录');
@@ -659,7 +831,12 @@ button:disabled{cursor:not-allowed;opacity:.4}
     window.chrome.webview.addEventListener('message', function(e){
       try {
         var m = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-        if (m && m.event === 'notify' && m.text) showToast(m.text);
+        if (m && m.event === 'notify' && m.text) showToast(m.text, m.ok !== false);
+        if (m && m.event === 'replayStatus' && m.status){
+          var q = $('queueText');
+          q.hidden = false;
+          q.textContent = '回放: ' + m.status;
+        }
         if (m && m.event === 'status' && m.data) applyStatus(m.data);
         if (m && m.event === 'frameBase' && m.base) frameBase = m.base;
       } catch (_) {}
@@ -670,6 +847,7 @@ button:disabled{cursor:not-allowed;opacity:.4}
   render();
   updateAutoBtn();
   updateAttachBtn();
+  updateSyncStateText();
   post({action:'getFrameBase'});
   setInterval(refreshFrames, 220);
   setInterval(function(){
