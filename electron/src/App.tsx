@@ -17,6 +17,7 @@ import {
   X,
   ChevronRight,
   Hammer,
+  Package,
   Code,
   Sparkles,
   FolderPlus,
@@ -8285,6 +8286,20 @@ void DisplayStatus() {
             >
               <span className="text-[11px]">重新运行</span>
               <RefreshCw className={`w-4 h-4 shrink-0 ${isDarkMode ? 'text-indigo-400' : 'text-indigo-600'}`} />
+            </button>
+            <button
+              id="btn-export-installer"
+              onClick={() => { void executeWorkbenchCommand('workbench.action.project.exportInstaller', activeProjectId); }}
+              disabled={isSaving || isBuilding || activeProjectIsDllOutput}
+              className={`flex items-center gap-1 px-1.5 py-1 rounded transition-all active:scale-95 whitespace-nowrap ${
+                isDarkMode ? 'text-slate-200 hover:bg-[#2d2d30]' : 'text-slate-700 hover:bg-slate-100'
+              } ${isSaving || isBuilding || activeProjectIsDllOutput ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+              title={activeProjectIsDllOutput
+                ? "一键导出安装包已禁用：动态库（DLL）项目没有可安装的 exe 产物"
+                : "一键导出安装包 (把当前项目最近一次成功构建的产物打包为 NSIS 安装程序 setup.exe，需先构建；与右键项目「导出安装包…」是同一个功能)"}
+            >
+              <span className="text-[11px]">一键导出安装包</span>
+              <Package className={`w-4 h-4 shrink-0 ${isDarkMode ? 'text-violet-400' : 'text-violet-600'}`} />
             </button>
             <button
               onClick={handleEnvCheck}
