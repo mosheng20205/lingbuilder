@@ -483,6 +483,37 @@ class StreamService : Service() {
                 "ping" -> replyControl(
                     "{\"type\":\"pong\",\"uptime\":" + android.os.SystemClock.elapsedRealtime() + "}",
                 )
+                "listApps" -> {
+                    // 1.4.6：枚举有启动入口的已装应用（{"cmd":"listApps"} → {"type":"appList","apps":[...]}），
+                    // PC 端填充「启动App」下拉。包可见性 <queries> 声明已含 MAIN+LAUNCHER，Android 11+ 可枚举。
+                    mainHandler.post {
+                        val json = try {
+                            val pm = applicationContext.packageManager
+                            val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+                            val infos = pm.queryIntentActivities(intent, 0)
+                            val arr = StringBuilder("[")
+                            var first = true
+                            for (info in infos) {
+                                val pkg = info.activityInfo?.packageName ?: continue
+                                if (pkg == applicationContext.packageName) continue
+                                val label = try { info.loadLabel(pm)?.toString() ?: pkg } catch (_: Exception) { pkg }
+                                if (!first) arr.append(",")
+                                first = false
+                                arr.append("{\"pkg\":\"").append(org.json.JSONObject.quote(pkg).trim('"'))
+                                arr.append("\",\"label\":\"").append(org.json.JSONObject.quote(label).trim('"')).append("\"}")
+                            }
+                            arr.append("]")
+                            "{\"type\":\"appList\",\"apps\":" + arr + "}"
+                        } catch (e: Exception) {
+                            null
+                        }
+                        if (json != null) {
+                            replyControl(json)
+                        } else {
+                            replyControl("{\"type\":\"result\",\"cmd\":\"listApps\",\"target\":\"\",\"ok\":false,\"error\":\"枚举应用失败\"}")
+                        }
+                    }
+                }
                 "setClipboard" -> {
                     // 1.4.5：PC 侧中文输入路径的第一步——把文本写进系统剪贴板
                     //（{"cmd":"setClipboard","text":"..."} → {"type":"result","cmd":"setClipboard","ok":true}）。
