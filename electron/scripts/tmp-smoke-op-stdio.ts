@@ -45,14 +45,15 @@ async function readUntil(proc: ReturnType<typeof spawn>, predicate: (message: an
   });
 }
 
+let stderrText = '';
+
 async function main(): Promise<void> {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lb-op-stdio-'));
   const proc = spawn(process.execPath, [cliPath, 'ai-server', '--workspace', workspaceRoot, '--port', '0', '--mcp'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, LINGBUILDER_AI_BRIDGE_TOKEN: 'op-smoke-token-0123456789' }
   });
-  let stderr = '';
-  proc.stderr!.on('data', chunk => { stderr += chunk.toString('utf8'); });
+  proc.stderr!.on('data', chunk => { stderrText += chunk.toString('utf8'); });
   try {
     send(proc, { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'op-smoke', version: '1.0' } } });
     const init = await readUntil(proc, message => message.id === 1 && message.result);
@@ -85,6 +86,6 @@ async function main(): Promise<void> {
 
 main().catch(error => {
   console.error('SMOKE FAILED:', error.message);
-  if (stderr) console.error(stderr.slice(0, 2000));
+  if (stderrText) console.error(stderrText.slice(0, 2000));
   process.exit(1);
 });

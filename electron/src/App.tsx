@@ -7721,7 +7721,9 @@ void DisplayStatus() {
                   <div
                     role="note"
                     aria-label={`${updateBadgePayload.channel === 'preview' ? '预览版' : '新版本'} v${updateBadgePayload.latestVersion ?? ''} 更新日志`}
-                    className="absolute left-0 top-full z-[90] pt-1.5"
+                    // 必须显式 no-drag：app-region 会被后代继承，缺了它面板落在标题栏拖拽区内，
+                    // 鼠标移入时渲染层收不到鼠标事件、外层 onMouseLeave 立即触发把面板关掉。
+                    className="window-no-drag absolute left-0 top-full z-[90] pt-1.5"
                   >
                     <div className={`w-80 max-w-[min(20rem,90vw)] rounded-md border p-3 text-left shadow-2xl ${
                       isDarkMode ? 'border-[#3b3b43] bg-[#1e1e24] text-slate-200' : 'border-slate-200 bg-white text-slate-800'

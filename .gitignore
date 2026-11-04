@@ -223,6 +223,7 @@ COMPONENT_CARDS_PLAN.md
 
 # 根级一次性探针源码与 scripts/tmp 批量基线脚本（不入库）
 /inc_probe.cpp
+/page.jpg
 /electron/scripts/tmp/
 /electron/.zcode-tmp/
 
