@@ -233,6 +233,13 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
   assert.match(String(client.getInstructions() || ''), /界面线程/u, 'instructions 必须给出跨线程封送声明语法（v6.2）');
   assert.match(String(client.getInstructions() || ''), /封送\+`回传 类型` 同现是声明期中文阻断/u, 'instructions 必须钉住封送禁非空返回红线（v6.2）');
   assert.match(String(client.getInstructions() || ''), /载荷=参数值拷贝快照/u, 'instructions 必须钉住封送载荷快照语义（v6.2）');
+  assert.match(String(client.getInstructions() || ''), /第三方 \.h 头文件接入工作流/u, 'instructions 必须给出第三方 .h 头文件接入工作流（v7）');
+  assert.match(String(client.getInstructions() || ''), /legacyEncodingDecoded/u, 'instructions 必须说明 file.read 旧编码自动解码标注（v7）');
+  assert.match(String(client.getInstructions() || ''), /ASCII 薄包装头/u, 'instructions 必须给出中文名符号的 ASCII 薄包装配方（v7）');
+  assert.match(String(client.getInstructions() || ''), /一行 shim \.cpp/u, 'instructions 必须说明头文件库函数命令的 shim 源码要求（v7）');
+  assert.match(String(client.getInstructions() || ''), /自动转码为 UTF-8 副本/u, 'instructions 必须说明物化期 GBK/GB18030 自动转码口径（v7）');
+  assert.match(String(client.getInstructions() || ''), /纯类库可只有「头文件 =」不带「源码 =」/u, 'instructions 必须钉住纯类库免源码边界（v7）');
+  assert.match(String(client.getInstructions() || ''), /必须 ASCII 标识符，中文 C\+\+ 符号声明期中文诊断拒绝/u, 'instructions 必须钉住中文 C++ 符号名硬墙（v7）');
   assert.match(String(client.getInstructions() || ''), /颜色一律 RRGGBB/u, 'instructions 必须钉住 RRGGBB 颜色红线（大漠迁移）');
   assert.match(String(client.getInstructions() || ''), /右下边界是开区间/u, 'instructions 必须钉住截图开区间红线');
   assert.match(String(client.getInstructions() || ''), /后台_找图全部/u, 'instructions 必须给出多模板命中区分口径');
@@ -456,6 +463,7 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     const diagnosticsToolMeta = tools.tools.find(tool => tool.name === 'lingbuilder.lingcpp.diagnostics');
     assert.match(String(diagnosticsToolMeta?.description || ''), /designerInventory/u, 'diagnostics 工具描述必须声明组件表视图');
     assert.match(String(diagnosticsToolMeta?.description || ''), /codeOrganization/u, 'diagnostics 工具描述必须声明代码组织视图');
+    assert.match(String(tools.tools.find(tool => tool.name === 'lingbuilder.file.read')?.description || ''), /legacyEncodingDecoded/u, 'file.read 必须声明 GBK/GB18030 旧编码自动解码与标注（2026-11-04 v7）');
     assert.match(String(tools.tools.find(tool => tool.name === 'lingbuilder.edit.propose')?.description || ''), /designerInventory/u, 'edit.propose 必须引导外部 AI 先查组件表再写控件引用');
     const editTool = tools.tools.find(tool => tool.name === 'lingbuilder.edit.propose');
     const editProperties = (editTool?.inputSchema as any)?.properties || {};
@@ -977,6 +985,24 @@ test('AI Bridge rejects workspace path traversal', async () => {
     () => service.readFile('../outside.md'),
     /路径越界/
   );
+});
+
+test('AI Bridge file.read 按 GBK 回退解码旧编码文件并标注 legacyEncodingDecoded（v7）', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  // 「中文」的 GBK 字节（Node 无 GBK 编码器，手工拼字节；0xD6D0=中 0xCEC4=文）。
+  await fs.writeFile(path.join(workspaceRoot, 'thirdparty.h'), Buffer.concat([
+    Buffer.from('#pragma once\r\n// gbk note: ', 'utf8'),
+    Buffer.from([0xd6, 0xd0, 0xce, 0xc4]),
+    Buffer.from('\r\ninline int probe(int a) { return a + 1; }\r\n', 'utf8')
+  ]));
+  const legacy = await service.readFile('thirdparty.h');
+  assert.equal(legacy.legacyEncodingDecoded, 'gbk');
+  assert.ok(legacy.content.includes('中文'), `GBK 解码内容缺中文：${legacy.content}`);
+  // 坏字节（0xFF 非 UTF-8 亦非 GBK/GB18030）保留原解码错误。
+  await fs.writeFile(path.join(workspaceRoot, 'broken.h'), Buffer.from([0x23, 0x41, 0xff, 0x42, 0x0a]));
+  await assert.rejects(() => service.readFile('broken.h'), /合法的 UTF-8/u);
+  await service.shutdown();
 });
 
 test('workspace path policy blocks link escape and AI Bridge does not traverse links', async t => {

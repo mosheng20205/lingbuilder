@@ -79,6 +79,23 @@ start "" "无头Cookie收割机.exe"
 > 之后新开的资源管理器/终端里的进程都能继承（个别机器需重启一次资源管理器）。
 > 两者都是明文存储，优先级仍建议在 IDE 设置里保存、用「运行」启动。
 
+### 进程默认语言/区域环境变量（2026-10-31 桥 2.9.6 起）
+
+与 Key 无关的另一个环境变量口：桥默认给内核进程设 `locale=zh-CN`、`Accept-Language=zh-CN,zh,en`，
+可在启动脚本里一并覆盖（非敏感变量，读后不删）：
+
+```bat
+set LINGBUILDER_FBRO_ACCEPT_LANGUAGE=zh-HK,zh-TW,zh
+set LINGBUILDER_FBRO_LOCALE=zh-HK
+```
+
+- 须在**首个 FBro 浏览器命令执行前**设置（随启动脚本设置最稳）。
+- 这是无 VIP 修正出站 `Accept-Language` 头的唯一通道；`FBro_创建区域` 的用户代理参数只改
+  JS 层 `navigator.userAgent`，不改 HTTP 头。
+- 有 VIP 指纹时，指纹 JSON 的 `languages/acceptLanguages/userAgent.mainAcceptLanguage` 三键
+  优先生效，env 只是进程级兜底。
+- 语言/时区要与出口 IP 匹配（多开防关联）。
+
 ---
 
 ## 五、日志怎么读（本次已加诊断）

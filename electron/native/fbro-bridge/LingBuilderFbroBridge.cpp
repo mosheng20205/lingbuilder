@@ -130,6 +130,13 @@ std::wstring g_startup_extension_status;
 std::wstring g_startup_extension_id;
 std::wstring g_startup_extension_event_path;
 std::wstring g_startup_extension_error;
+// 进程默认区域/接受语言（CefSettings 用）。可用环境变量 LINGBUILDER_FBRO_LOCALE /
+// LINGBUILDER_FBRO_ACCEPT_LANGUAGE 覆盖；两者非敏感（与 VIP Key 不同），读取后不删除，
+// 子进程分支会在自身进程里再读一次。默认值与历史行为完全一致。
+std::wstring g_default_locale = L"zh-CN";
+std::wstring g_default_accept_language = L"zh-CN,zh,en";
+std::string g_default_locale_ansi = "zh-CN";
+std::string g_default_accept_language_ansi = "zh-CN,zh,en";
 std::wstring g_startup_switches_json;
 std::wstring g_startup_command_line;
 std::wstring g_vip_proxy_url;
@@ -211,6 +218,10 @@ struct BrowserState {
   std::wstring profile;
   std::wstring title;
   std::wstring user_agent;
+  // LB_FBro_SetProxy 存下的代理认证凭据：GetAuthCredentials（代理 407）时
+  // 自动应答，纯代码窗口没有事件处理器也能走通带认证代理。
+  std::wstring proxy_credential_user;
+  std::wstring proxy_credential_pass;
   // StartBrowser 阶段请求上下文偏好未就绪时 SetPreference 会静默失败，
   // 置 pending 后在 OnAfterCreated（上下文必然就绪）补设一次。
   bool ua_preference_pending = false;
@@ -2599,6 +2610,36 @@ class BridgeBrowserEvent final : public FBroHsBroEvent {
                           const CefString& realm, const CefString& scheme,
                           CefRefPtr<CefAuthCallback> callback) override {
     if (!callback) return false;
+    // LB_FBro_SetProxy 存过代理凭据时自动应答 407：纯代码窗口（多开台等）
+    // 没有事件处理器，不能把认证派发给应用层后 Cancel——那会让带认证代理
+    // 永远连不上（页面=無法連上這個網站）。无凭据时保持原事件派发语义。
+    {
+      std::lock_guard<std::recursive_mutex> lock(g_mutex);
+      BrowserState* state = Find(handle_);
+      if (state && is_proxy && !state->proxy_credential_user.empty()) {
+        callback->Continue(CefString(state->proxy_credential_user),
+                           CefString(state->proxy_credential_pass));
+        if (HANDLE f = ::CreateFileW(L".fbro-auth-debug.log", FILE_APPEND_DATA,
+                                     FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+                                     OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+            f != INVALID_HANDLE_VALUE) {
+          const std::wstring line = L"auth: proxy 407 已自动应答 host=" + std::wstring(host.ToWString())
+                                    + L" user_len=" + std::to_wstring(state->proxy_credential_user.size())
+                                    + L"
+";
+          const int size = ::WideCharToMultiByte(CP_UTF8, 0, line.c_str(),
+                                                 static_cast<int>(line.size()), nullptr, 0,
+                                                 nullptr, nullptr);
+          std::string utf8(static_cast<std::size_t>(size), ' ');
+          if (size > 0) ::WideCharToMultiByte(CP_UTF8, 0, line.c_str(), size, utf8.data(), size,
+                                              nullptr, nullptr);
+          DWORD written = 0;
+          ::WriteFile(f, utf8.data(), static_cast<DWORD>(utf8.size()), &written, nullptr);
+          ::CloseHandle(f);
+        }
+        return true;
+      }
+    }
     return DispatchManagedBrowserEvent(handle_, L"GetAuthCredentials",
         BuildSafeFieldsJson({
             {L"originUrl", origin_url.ToWString()}, {L"isProxy", is_proxy ? L"1" : L"0"},
@@ -5189,6 +5230,25 @@ int __stdcall LB_FBro_GetStartupCommandLine(wchar_t* result, size_t capacity) {
   return CopyResult(g_startup_command_line, result, capacity);
 }
 
+// 从环境变量刷新进程默认区域/接受语言。供浏览器进程（LB_FBro_InitializeEx）与
+// CEF 子进程（LB_FBro_RunCefSubprocessIfRequested）两条初始化路径调用。
+void RefreshDefaultLocaleFromEnvironment() {
+  wchar_t locale_buffer[128]{};
+  if (GetEnvironmentVariableW(L"LINGBUILDER_FBRO_LOCALE", locale_buffer,
+                              static_cast<DWORD>(_countof(locale_buffer))) > 0 &&
+      locale_buffer[0] != L'\0') {
+    g_default_locale = locale_buffer;
+  }
+  wchar_t accept_language_buffer[512]{};
+  if (GetEnvironmentVariableW(L"LINGBUILDER_FBRO_ACCEPT_LANGUAGE", accept_language_buffer,
+                              static_cast<DWORD>(_countof(accept_language_buffer))) > 0 &&
+      accept_language_buffer[0] != L'\0') {
+    g_default_accept_language = accept_language_buffer;
+  }
+  g_default_locale_ansi = ToAnsi(g_default_locale);
+  g_default_accept_language_ansi = ToAnsi(g_default_accept_language);
+}
+
 int __stdcall LB_FBro_InitializeEx(const LB_FBRO_INITIALIZE_OPTIONS_V1* options) {
   if (g_initialized) return 1;
   if (!options || options->struct_size < sizeof(LB_FBRO_INITIALIZE_OPTIONS_V1)
@@ -5300,6 +5360,7 @@ int __stdcall LB_FBro_InitializeEx(const LB_FBRO_INITIALIZE_OPTIONS_V1* options)
     g_startup_extension_directory.assign(startup_extension, startup_extension_length);
   }
   SecureZeroMemory(startup_extension, sizeof(startup_extension));
+  RefreshDefaultLocaleFromEnvironment();
   FBroInitSettings settings{};
   settings.no_sandbox = TRUE;
   settings.browser_subprocess_path = const_cast<char*>(subprocess_ansi.c_str());
@@ -5309,8 +5370,8 @@ int __stdcall LB_FBro_InitializeEx(const LB_FBRO_INITIALIZE_OPTIONS_V1* options)
   settings.command_line_args_disabled = FALSE;
   settings.cache_path = const_cast<char*>(cache_ansi.c_str());
   settings.persist_session_cookies = TRUE;
-  settings.locale = const_cast<char*>("zh-CN");
-  settings.accept_language_list = const_cast<char*>("zh-CN,zh,en");
+  settings.locale = const_cast<char*>(g_default_locale_ansi.c_str());
+  settings.accept_language_list = const_cast<char*>(g_default_accept_language_ansi.c_str());
   settings.log_file = const_cast<char*>(log_ansi.c_str());
   settings.log_severity = LOGSEVERITY_DEFAULT;
   settings.resources_dir_path = const_cast<char*>(runtime_ansi.c_str());
@@ -5389,6 +5450,7 @@ int __stdcall LB_FBro_RunCefSubprocessIfRequested(void) {
   const std::string log_ansi = ToAnsi((g_root_cache_directory / L"fbro.log").wstring());
   const std::string locales_ansi = ToAnsi((g_runtime_directory / L"locales").wstring());
   FBroSetV8DefaultsHeapSize(4, 2048);
+  RefreshDefaultLocaleFromEnvironment();
   FBroInitSettings settings{};
   settings.no_sandbox = TRUE;
   settings.browser_subprocess_path = const_cast<char*>(subprocess_ansi.c_str());
@@ -5397,8 +5459,8 @@ int __stdcall LB_FBro_RunCefSubprocessIfRequested(void) {
   settings.windowless_rendering_enabled = FALSE;
   settings.command_line_args_disabled = FALSE;
   settings.cache_path = const_cast<char*>(cache_ansi.c_str());
-  settings.locale = const_cast<char*>("zh-CN");
-  settings.accept_language_list = const_cast<char*>("zh-CN,zh,en");
+  settings.locale = const_cast<char*>(g_default_locale_ansi.c_str());
+  settings.accept_language_list = const_cast<char*>(g_default_accept_language_ansi.c_str());
   settings.log_file = const_cast<char*>(log_ansi.c_str());
   settings.log_severity = LOGSEVERITY_DEFAULT;
   settings.resources_dir_path = const_cast<char*>(runtime_ansi.c_str());
@@ -8776,6 +8838,19 @@ int __stdcall LB_FBro_ExecuteJs(LB_FBRO_HANDLE browser, const wchar_t* script, w
 }
 int __stdcall LB_FBro_SetProxy(LB_FBRO_HANDLE browser, const wchar_t* proxy,
                                const wchar_t* username, const wchar_t* password) {
+  {
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    BrowserState* state = Find(browser);
+    if (state) {
+      if (proxy && *proxy) {
+        state->proxy_credential_user = username ? username : L"";
+        state->proxy_credential_pass = password ? password : L"";
+      } else {
+        state->proxy_credential_user.clear();
+        state->proxy_credential_pass.clear();
+      }
+    }
+  }
   return WithBrowser(browser, [=](auto value) {
     if (proxy && *proxy) FBroHsBrowser_SetProxy(value, CefString(proxy), CefString(username ? username : L""), CefString(password ? password : L""));
     else FBroHsBrowser_ClearProxy(value);
