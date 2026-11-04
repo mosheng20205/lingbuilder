@@ -57,6 +57,15 @@ function getBuiltinContainerLayout(type: string) {
   if (type === 'GroupBox') {
     return { mode: 'absolute' as const, coordinateSpace: 'window' as const, adapterId: 'win32.groupbox.absolute' };
   }
+  // FlowPanel/TablePanel 的流式/表格重排算法在 flowTableLayout.ts（画布与生成器共用），
+  // 设计器模型坐标仍按窗口绝对坐标存储；此处声明的是剪贴板粘贴规划协议，与 new_emoji 容器
+  // （2026-09-15 转正）同口径按 absolute/window 声明，避免设计器输出「未声明 layout」兼容提示。
+  if (type === 'FlowPanel') {
+    return { mode: 'absolute' as const, coordinateSpace: 'window' as const, adapterId: 'win32.flowpanel.absolute' };
+  }
+  if (type === 'TablePanel') {
+    return { mode: 'absolute' as const, coordinateSpace: 'window' as const, adapterId: 'win32.tablepanel.absolute' };
+  }
   if (type === 'TabControl') {
     return { mode: 'slots' as const, coordinateSpace: 'window' as const, adapterId: 'win32.tab.slots' };
   }

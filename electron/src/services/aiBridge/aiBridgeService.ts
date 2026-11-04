@@ -68,7 +68,9 @@ import { BuildPipelineService } from '../build/buildPipeline';
 import { createProtobufCodeGeneratorProvider } from '../build/protobufProvider';
 import { createWindowsMsvcBuildTarget, runProjectCodeGenerators, type ProjectCodeGeneratorResult } from '../build/projectCodeGeneratorService';
 import { WorkspacePathPolicy } from '../workspace/workspacePathPolicy';
-import { decodeTextFile, encodeTextFile } from '../files/textFileService';
+import { decodeTextFile, detectTextFileEol, encodeTextFile, resolveTextFileEol } from '../files/textFileService';
+import { LEGACY_TEXT_SOURCE_ENCODINGS } from '../files/encodingConversion';
+import type { LegacyTextSourceEncoding } from '../files/encodingConversion';
 import type { TextFileFormat } from '../files/types';
 import { generateLingCppNativeWin32Project } from '../windowDesigner/lingCppWin32Project';
 import { createProjectDllDeclarationModuleFromSources, getProjectDllCommandsDiagnostics, isProjectDllCommandsFilePath } from '../lingCpp/projectDllCommandService';
@@ -173,6 +175,18 @@ const WRITABLE_EXTENSIONS = new Set([
 ]);
 
 const execFileAsync = promisify(execFile);
+
+/** GBK/GB18030 严格解码回退（2026-11-04 v7）：两个编码都失败返回 undefined（交还原解码错误）。 */
+function decodeLegacyEncodingBuffer(bytes: Buffer): { encoding: LegacyTextSourceEncoding; content: string } | undefined {
+  for (const encoding of LEGACY_TEXT_SOURCE_ENCODINGS) {
+    try {
+      return { encoding, content: new TextDecoder(encoding, { fatal: true }).decode(bytes) };
+    } catch {
+      // 试下一个编码
+    }
+  }
+  return undefined;
+}
 
 /**
  * MCP 工具共享的设计器上下文解析结果：
@@ -417,10 +431,26 @@ export class AiBridgeService {
     };
   }
 
-  async readFile(filePath: string): Promise<{ filePath: string; content: string; format: TextFileFormat }> {
+  async readFile(filePath: string): Promise<{ filePath: string; content: string; format: TextFileFormat; legacyEncodingDecoded?: LegacyTextSourceEncoding }> {
     try {
       const absolutePath = await this.resolveReadablePath(filePath);
-      const snapshot = decodeTextFile(await fs.readFile(absolutePath));
+      const bytes = await fs.readFile(absolutePath);
+      let snapshot: ReturnType<typeof decodeTextFile>;
+      try {
+        snapshot = decodeTextFile(bytes);
+      } catch (decodeError) {
+        // GBK/GB18030 回退解码（2026-11-04 v7）：外部 AI 读第三方旧编码文件（如炫语言生态 .h）时
+        // 不再直接报错，内容按旧编码解码返回并标注 legacyEncodingDecoded。edit.apply 回写按
+        // UTF-8 落盘——旧编码文件被 AI 编辑后自动转为 UTF-8（与编译链 /utf-8 口径一致）。
+        const legacy = decodeLegacyEncodingBuffer(bytes);
+        if (!legacy) throw decodeError;
+        return {
+          filePath: await this.pathPolicy.toWorkspaceRelative(absolutePath),
+          content: legacy.content,
+          format: { encoding: 'utf8', eol: resolveTextFileEol(detectTextFileEol(legacy.content)) },
+          legacyEncodingDecoded: legacy.encoding
+        };
+      }
       return {
         filePath: await this.pathPolicy.toWorkspaceRelative(absolutePath),
         content: snapshot.content,
