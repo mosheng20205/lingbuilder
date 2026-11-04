@@ -12,6 +12,10 @@ constexpr int OptSetCharsetName = 7;
 constexpr int OptReadTimeout = 11;
 constexpr int OptWriteTimeout = 12;
 constexpr int OptSslEnforce = 38;
+// MYSQL_OPT_SSL_VERIFY_SERVER_CERT：随包 libmariadb 3.4.10 构建（CMake DEFAULT_SSL_VERIFY_SERVER_CERT 默认 ON）
+// 默认校验服务器证书链，MySQL 8 初始化生成的自签名证书会报 2026「The certificate is NOT trusted」；
+// 连接前显式设置该选项（真=校验，假=跳过链校验，TLS 加密保留），两个方向都不再依赖库默认值。
+constexpr int OptSslVerifyServerCert = 21;
 
 struct MYSQL; struct MYSQL_STMT; struct MYSQL_RES;
 typedef char LB_MyBool;
@@ -327,7 +331,7 @@ static bool CloseConnection(long long id) {
     return true;
 }
 
-static long long OpenConnection(const wchar_t* operation, const wchar_t* host, int port, const wchar_t* user, const wchar_t* password, const wchar_t* database, int timeoutSeconds, bool enableSsl) {
+static long long OpenConnection(const wchar_t* operation, const wchar_t* host, int port, const wchar_t* user, const wchar_t* password, const wchar_t* database, int timeoutSeconds, bool enableSsl, bool verifyCert) {
     {
         std::lock_guard<std::mutex> lock(moduleMutex);
         if (!LoadLibraryUnlocked(L"")) {
@@ -367,6 +371,11 @@ static long long OpenConnection(const wchar_t* operation, const wchar_t* host, i
     if (result == 0 && enableSsl) {
         const unsigned int enforce = 1;
         result = fn_options(raw, OptSslEnforce, &enforce);
+    }
+    if (result == 0) {
+        // MARIADB_OPTION_BOOL 按 my_bool（char）读取，必须传 1 字节变量而不是整型。
+        const LB_MyBool verify = verifyCert ? 1 : 0;
+        result = fn_options(raw, OptSslVerifyServerCert, &verify);
     }
     if (result != 0) {
         FailServer(operation, raw);
@@ -452,11 +461,14 @@ static bool BeginParameterBind(const std::shared_ptr<Statement>& statementValue,
 }
 
 long long MySQL_连接(const wchar_t* host, int port, const wchar_t* user, const wchar_t* password, const wchar_t* database) {
-    return LingBuilderMysql::OpenConnection(L"连接 MySQL 服务器", host, port, user, password, database, 0, false);
+    // 简版连接不强制 TLS 也不校验证书（连得上优先，对齐 MySQL 官方 C API 默认）；
+    // 需要加密或证书校验时用 MySQL_连接扩展。
+    return LingBuilderMysql::OpenConnection(L"连接 MySQL 服务器", host, port, user, password, database, 0, false, false);
 }
 
-long long MySQL_连接扩展(const wchar_t* host, int port, const wchar_t* user, const wchar_t* password, const wchar_t* database, int timeoutSeconds, bool enableSsl) {
-    return LingBuilderMysql::OpenConnection(L"连接 MySQL 服务器", host, port, user, password, database, timeoutSeconds, enableSsl);
+// 旧 7 参调用省略尾部实参时由 C++ 默认值兜底（真=校验证书，与 1.0 行为一致）。
+long long MySQL_连接扩展(const wchar_t* host, int port, const wchar_t* user, const wchar_t* password, const wchar_t* database, int timeoutSeconds, bool enableSsl, bool verifyCert = true) {
+    return LingBuilderMysql::OpenConnection(L"连接 MySQL 服务器", host, port, user, password, database, timeoutSeconds, enableSsl, verifyCert);
 }
 
 bool MySQL_加载运行库(const wchar_t* path) {

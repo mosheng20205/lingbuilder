@@ -37,7 +37,7 @@ async function main(): Promise<void> {
     name: 'MySQL 模块原生冒烟测试',
     windows: [{
       id: 'main-window', fileName: 'MainWindow.xml', className: 'MainWindow', title: 'MySQL 模块原生冒烟测试',
-      width: 420, height: 180, background: '#202028', description: '验证 MySQL 1.0 运行时', controls: []
+      width: 420, height: 180, background: '#202028', description: '验证 MySQL 1.1 运行时', controls: []
     }]
   };
   const generated = generateLingCppNativeWin32Project(project, {
@@ -47,7 +47,10 @@ async function main(): Promise<void> {
     enabledModules
   });
   if (generated.blockingDiagnostics.length) throw new Error(generated.blockingDiagnostics.join('\n'));
-  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const mainCpp = generated.files
+    .filter(file => file.relativePath === 'lingbuilder_runtime.h' || file.relativePath === 'main.cpp')
+    .map(file => file.content)
+    .join('\n');
   for (const required of [
     'namespace LingBuilderMysql',
     'long long MySQL_连接',
@@ -103,7 +106,7 @@ async function main(): Promise<void> {
     server: `${smokeHost}:${smokePort}/${smokeDatabase}`,
     compiledPlatforms: ['Win32', 'x64'],
     runtimePlatform: 'x64',
-    checks: ['动态加载', '密码连接与错误密码失败路径', 'utf8mb4 中文', '参数化绑定', 'NULL/BLOB/文本', '逐行读取与列名', '事务提交与回滚', '查询首值', '错误码诊断', '资源释放与卸载']
+    checks: ['动态加载', '密码连接与错误密码失败路径', 'TLS强制加密连接（SSL证书校验=假）与Ssl_cipher验证', 'utf8mb4 中文', '参数化绑定', 'NULL/BLOB/文本', '逐行读取与列名', '事务提交与回滚', '查询首值', '错误码诊断', '资源释放与卸载']
   }, null, 2));
 }
 
@@ -159,6 +162,16 @@ function createSource(): string {
     `        @ database = ${reconnect};`,
     check('database != 0 && std::wstring(MySQL_查询首值(database, L"SELECT COUNT(*) FROM lb_mysql_smoke")) == L"2"'),
     check('MySQL_关闭连接(database)'),
+    // 1.1 TLS 场景：强制加密 + SSL证书校验=假。MySQL 8 默认自签名证书的连接失败场景由此档位覆盖；
+    // 连接成功本身就证明 TLS 已真实建立（强制 TLS 失败会返回 0），Ssl_cipher 查询再做一次正向验证。
+    `        @ long long tlsConnection = MySQL_连接扩展(L"${smokeHost}", ${smokePort}, L"${smokeUser}", L"${smokePassword}", dbName.c_str(), 15, true, false);`,
+    check('tlsConnection != 0', 'std::wstring(L"TLS强制+不校验证书 连接失败：") + MySQL_取错误()'),
+    check("std::wstring(MySQL_查询首值(tlsConnection, L\"SELECT VARIABLE_VALUE FROM information_schema.SESSION_STATUS WHERE VARIABLE_NAME = 'Ssl_cipher'\")) != L\"\"", 'std::wstring(L"TLS连接已建立但 Ssl_cipher 为空：") + MySQL_取错误()'),
+    check('MySQL_关闭连接(tlsConnection)'),
+    // 旧 7 参调用（省略 SSL证书校验）必须照常编译；连接结果按服务器证书配置而定（MariaDB 11.4+ 有
+    // 指纹绑定特性可通过校验，MySQL 8 自签名会报 2026），因此只关连接、不断言成败。
+    `        @ long long legacyConnection = MySQL_连接扩展(L"${smokeHost}", ${smokePort}, L"${smokeUser}", L"${smokePassword}", dbName.c_str(), 15, true);`,
+    '        @ MySQL_关闭连接(legacyConnection);',
     '        @ std::ofstream report("mysql-smoke-result.txt", std::ios::binary | std::ios::trunc); report << (ok ? "OK" : "FAIL") << "\\n" << smokeFailStep << "\\n" << LB_WideToUtf8(smokeFailError.c_str()) << "\\n" << LB_WideToUtf8(smokeFailNote.c_str()) << "\\n" << MySQL_取错误码() << "\\n";',
     '        @ ExitProcess(ok ? 0 : 2);',
     '    结束',

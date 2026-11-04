@@ -620,12 +620,18 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       // 表格_取勾选行数 / 表格_取勾选行键 / 表格_删除勾选行 三命令
       //（+3 命令 +7 参数 +3 controlRef，均为 控件名 controlRef + 列ID/索引）
       //（实算摘要 23a92f49/53f19874）。
+      // 基线 2026-11-01 写回（MySQL TLS 证书校验批次）：database.mysql 1.1.0 的
+      // MySQL_连接扩展 新增尾部可选参数 SSL证书校验（bool，默认真），
+      // +1 参数，命令与控件参数不变（实算摘要 227b2394/ee770cab）。
+      // 基线 2026-11-05 复核（UDP IPv6 双栈批次）：lingbuilder.net.udp 仅改写
+      // UDP_绑定/UDP_发送文本 描述与返回说明补 IPv6 双栈口径，命令/参数/控件
+      // 计数与摘要均不变（审计摘要不含描述文本，实算 227b2394/ee770cab 确认）。
       modules: 108,
       commands: 4632,
-      parameters: 8624,
+      parameters: 8625,
       controlReferences: 1502,
-      commandDigest: '23a92f49',
-      parameterDigest: '53f19874'
+      commandDigest: '227b2394',
+      parameterDigest: 'ee770cab'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -674,11 +680,24 @@ test('Win32 内置容器贡献声明与设计器布局注册表保持一致', ()
   assert.deepEqual(basic?.contributes?.designerControls?.find(control => control.type === 'GroupBox')?.layout, {
     mode: 'absolute', coordinateSpace: 'window', adapterId: 'win32.groupbox.absolute'
   });
+  assert.deepEqual(basic?.contributes?.designerControls?.find(control => control.type === 'FlowPanel')?.layout, {
+    mode: 'absolute', coordinateSpace: 'window', adapterId: 'win32.flowpanel.absolute'
+  });
+  assert.deepEqual(basic?.contributes?.designerControls?.find(control => control.type === 'TablePanel')?.layout, {
+    mode: 'absolute', coordinateSpace: 'window', adapterId: 'win32.tablepanel.absolute'
+  });
   assert.deepEqual(commonControls?.contributes?.designerControls?.find(control => control.type === 'TabControl')?.layout, {
     mode: 'slots', coordinateSpace: 'window', adapterId: 'win32.tab.slots'
   });
   assert.equal(validateModuleManifest(basic).diagnostics.length, 0);
   assert.equal(validateModuleManifest(commonControls).diagnostics.length, 0);
+});
+
+test('内置模块容器控件必须显式声明 layout 贡献', () => {
+  const undeclared = BUILTIN_MODULES.flatMap(module => (module.contributes?.designerControls || [])
+    .filter(control => control.isContainer && !control.layout)
+    .map(control => `${module.id}/${control.type}`));
+  assert.deepEqual(undeclared, [], '以下容器控件未声明 layout，设计器会输出兼容提示：');
 });
 
 test('Win32 32 个公开可视控件声明类型化运行时创建和标记查找契约', () => {
@@ -771,7 +790,9 @@ test('模块源目录中的 controlRef 补全、示例和代码片段全部保�
   // 2026-10-17 写回 69→70：新增消息推送模块 notifyModule.ts（全部文本/数值/布尔参数，无 controlRef 字面量；全量字面量扫描 0 违规）。
   // 2026-10-20 写回 70→71：新增微信OCR识别模块 ocrModules.ts（18 命令全部为文本/数值/布尔/句柄参数，无 controlRef 字面量；全量字面量扫描 0 违规）。
   // 2026-10-24 写回 74→77：新增 OP 后台图色模块 opModules.ts/opModuleCommands.ts/opModuleCommands2.ts（214 命令全部为文本/数值/布尔/字节集/byRef 出参，无 controlRef 字面量；全量字面量扫描 0 违规）。
-  assert.equal(sourceFiles.length, 77, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围（2026-10-24 +opModules×3）');
+  // 2026-11-01 写回 77→78：并行会话 2026-10-27 C++ 源码库批次新增 projectCppSourceMaterializeService.ts
+  //（当时漏改本计数；MySQL TLS 证书校验批次重新确认全量字面量扫描 0 违规后补写回）。
+  assert.equal(sourceFiles.length, 78, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围（2026-11-01 补写回 +projectCppSourceMaterializeService）');
   assert.deepEqual(violations, []);
 
   const unsafe = 'const command = { insertText: \'控件_设置文本("操作结果", "$2")\' };';
@@ -1195,12 +1216,15 @@ test('工作区已安装模块全部通过 controlRef 清单和示例门禁', as
       // 基线 2026-10-31 写回（DataGrid 勾选批量批次）：内置 +3 命令 +7 参数 +3 controlRef
       //（win32.common-controls 表格勾选批量三命令，见内置夹具注释）；磁盘侧无独立变化
       //（实算摘要 083f0254/fb8a4639）。
+      // 基线 2026-11-01 写回（MySQL TLS 证书校验批次）：内置 database.mysql 1.1.0
+      // MySQL_连接扩展 +1 可选参数 SSL证书校验，磁盘侧无独立变化
+      //（实算摘要 e6492c3d/88e6f9bc）。
       modules: 122,
       commands: 8770,
-      parameters: 20996,
-      commandDigest: '083f0254',
+      parameters: 20997,
+      commandDigest: 'e6492c3d',
       controlReferences: 5284,
-      parameterDigest: 'fb8a4639'
+      parameterDigest: '88e6f9bc'
   }, '内置、官方和当前工作区第三方模块的每个方法与参数都必须进入全量审计');
   // OpenCV 以内置清单为准：本机未装 SDK 时磁盘上的同名清单是只有骨架的占位包（0 命令、无 targets）。
   const manifest = BUILTIN_MODULES.find(module => module.id === OPENCV_MODULE_ID) || auditedManifests.get('lingbuilder.opencv.sdk');
@@ -2478,11 +2502,11 @@ test('SQLite 2.3 提供多连接、参数化查询、事务、WAL、备份、多
   assert.match(algorithmMainCpp, /SQLite_打开加密连接\(L"data\/legacy\.db", L"旧密码", 2, 5000\)/u);
 });
 
-test('MySQL 1.0 提供密码连接、参数化查询、事务和完整错误闭环', () => {
+test('MySQL 1.1 提供密码连接、参数化查询、事务和完整错误闭环', () => {
   const manifest = DATA_MEDIA_MODULES.find(module => module.id === 'lingbuilder.database.mysql')!;
   const commandNames = manifest.contributes?.commands?.map(command => command.name) || [];
   const bindingNames = manifest.bindings?.commands?.map(binding => binding.command) || [];
-  assert.equal(manifest.version, '1.0.0');
+  assert.equal(manifest.version, '1.1.0');
   assert.equal(commandNames.length, 43);
   assert.deepEqual(bindingNames, commandNames);
   assert.deepEqual(manifest.contributes?.types?.map(type => [type.name, type.cppType]), [
@@ -2508,8 +2532,12 @@ test('MySQL 1.0 提供密码连接、参数化查询、事务和完整错误闭�
   );
   assert.deepEqual(
     manifest.bindings?.commands?.find(binding => binding.command === 'MySQL_连接扩展')?.parameters?.map(parameter => parameter.type),
-    ['wideString', 'int', 'wideString', 'wideString', 'wideString', 'int', 'bool']
+    ['wideString', 'int', 'wideString', 'wideString', 'wideString', 'int', 'bool', 'bool']
   );
+  const sslVerifyParameter = manifest.bindings?.commands?.find(binding => binding.command === 'MySQL_连接扩展')?.parameters?.[7];
+  assert.equal(sslVerifyParameter?.name, 'SSL证书校验');
+  assert.equal(sslVerifyParameter?.optional, true);
+  assert.equal(sslVerifyParameter?.defaultValue, true);
   assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'MySQL_连接')?.returnType, 'MySQL连接');
   assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'MySQL_准备')?.returnType, 'MySQL语句');
   assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'MySQL_取列字节集')?.returnType, 'bytes');
@@ -2530,6 +2558,7 @@ test('MySQL 1.0 提供密码连接、参数化查询、事务和完整错误闭�
       '类 MainWindow',
       '    事件 _MainWindow_创建完毕()',
       '        局部 MySQL连接 数据库 = MySQL_连接("127.0.0.1", 3306, "root", "机密密码", "test")',
+      '        局部 MySQL连接 加密库 = MySQL_连接扩展("127.0.0.1", 3306, "root", "机密密码", "test", 10, 真, 假)',
       '        局部 MySQL语句 写入 = MySQL_准备(数据库, "INSERT INTO users(name, score) VALUES(?, ?)")',
       '        MySQL_绑定文本(写入, 1, "中文张三")',
       '        MySQL_绑定整数(写入, 2, 95)',
@@ -2548,7 +2577,7 @@ test('MySQL 1.0 提供密码连接、参数化查询、事务和完整错误闭�
   for (const runtimeSymbol of [
     'namespace LingBuilderMysql',
     'long long MySQL_连接(const wchar_t* host, int port, const wchar_t* user, const wchar_t* password, const wchar_t* database)',
-    'long long MySQL_连接扩展(const wchar_t* host, int port, const wchar_t* user, const wchar_t* password, const wchar_t* database, int timeoutSeconds, bool enableSsl)',
+    'long long MySQL_连接扩展(const wchar_t* host, int port, const wchar_t* user, const wchar_t* password, const wchar_t* database, int timeoutSeconds, bool enableSsl, bool verifyCert = true)',
     'long long MySQL_准备(long long connectionId, const wchar_t* sql)',
     'int MySQL_语句步进(long long statementId)',
     'const wchar_t* MySQL_取列文本(long long statementId, int columnIndex)',
@@ -2556,11 +2585,13 @@ test('MySQL 1.0 提供密码连接、参数化查询、事务和完整错误闭�
     'bool MySQL_开始事务(long long connectionId)',
     'LoadLibraryW(path && path[0] ? path : L"libmariadb.dll")',
     'OptSslEnforce = 38',
+    'OptSslVerifyServerCert = 21',
     'std::string charset = "utf8mb4"'
   ]) {
     assert.ok(mainCpp.includes(runtimeSymbol), `MySQL 生成运行时缺少 ${runtimeSymbol}`);
   }
   assert.match(mainCpp, /MySQL_连接\(L"127\.0\.0\.1", 3306, L"root", L"机密密码", L"test"\)/u);
+  assert.match(mainCpp, /MySQL_连接扩展\(L"127\.0\.0\.1", 3306, L"root", L"机密密码", L"test", 10, true, false\)/u);
   assert.match(mainCpp, /MySQL_绑定文本\(写入, 1, L"中文张三"\)/u);
 });
 

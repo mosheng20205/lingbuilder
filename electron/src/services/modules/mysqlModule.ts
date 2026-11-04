@@ -3,7 +3,7 @@ import { createStandardModule, StandardCommandSpec } from './standardLibraryModu
 import { LingBuilderModuleManifest, ModuleCommandBindingParameter, ModuleCommandValueType } from './types';
 
 type MySqlParameter = ModuleCommandBindingParameter & { type: ModuleCommandValueType; description: string };
-type MySqlCommandOptions = Pick<StandardCommandSpec, 'category' | 'example' | 'returnDescription' | 'visibility'>;
+type MySqlCommandOptions = Pick<StandardCommandSpec, 'category' | 'example' | 'returnDescription' | 'visibility'> & Partial<Pick<StandardCommandSpec, 'insertText'>>;
 
 function snippetArgument(parameter: MySqlParameter, index: number): string {
   if (parameter.type === 'controlRef' || parameter.type === 'handler') {
@@ -50,16 +50,16 @@ const columnIndex: MySqlParameter = { name: '列索引', type: 'int', descriptio
 
 export const MYSQL_MODULE_ID = 'lingbuilder.database.mysql';
 
-/** 随附运行库（third_party/mariadb，MariaDB Connector/C 3.4.10 Schannel 构建）的 SHA-256 基线；详见 third_party/mariadb/NOTICE.md。 */
+/** 随附运行库（third_party/mariadb，MariaDB Connector/C 3.4.10 Schannel 构建、认证客户端插件全 STATIC 内嵌）的 SHA-256 基线；详见 third_party/mariadb/NOTICE.md。 */
 export const MYSQL_BUNDLED_RUNTIME_SHA256 = {
-  x86: '981dbecc0a31b440e061ec719dd7812941861231ba210af5e7813a064a1d4d80',
-  x64: '9208622a558ad6623671d05371424468bcaa5f9246122686d30ec1b6ddd2485c'
+  x86: '886f44fc62b419969c1eef63ffe8be1b445aec79e47db8374fe20d6fd937b8ab',
+  x64: '2dde40960eb41f5573aaf4fdd2d3b71d61fe7fb9f27b961f2974d506e9db023f'
 } as const;
 
 const mysqlStandardModule = createStandardModule({
   id: MYSQL_MODULE_ID,
   name: 'MySQL 数据库模块',
-  version: '1.0.0',
+  version: '1.1.0',
   category: '数据库',
   description: '原生协议直连 MySQL/MariaDB 服务器：密码连接、utf8mb4 中文、参数化预编译语句、强类型结果读取、事务和中文错误诊断。',
   tags: ['数据库', 'MySQL', 'MariaDB', '事务', '预编译语句', '参数化查询'],
@@ -67,7 +67,7 @@ const mysqlStandardModule = createStandardModule({
     { name: 'MySQL连接', description: '进程内不复用的受管 MySQL 连接 ID；不暴露 MYSQL 指针，仅供本模块命令使用。', cppType: 'long long' },
     { name: 'MySQL语句', description: '归属于单个连接的受管预编译语句 ID；不暴露 MYSQL_STMT 指针。', cppType: 'long long' }
   ],
-  docs: [{ title: 'MySQL 数据库模块 1.0 使用说明', path: 'docs/modules/mysql/README.md' }],
+  docs: [{ title: 'MySQL 数据库模块 1.1 使用说明', path: 'docs/modules/mysql/README.md' }],
   snippets: [
     {
       label: 'MySQL 参数化查询',
@@ -117,7 +117,7 @@ const mysqlStandardModule = createStandardModule({
       { name: '用户名', type: 'wideString', description: 'MySQL 登录账号名，账号权限决定后续可访问的数据库和表。' },
       { name: '密码', type: 'wideString', description: '账号密码；连接失败时不会写日志或诊断输出该密码。' },
       { name: '数据库', type: 'wideString', description: '连接后选用的数据库；空文本表示暂不选择。' }
-    ], 'MySQL连接', '用原生协议连接 MySQL/MariaDB 服务器并校验密码；成功后自动把字符集协商为 utf8mb4。', {
+    ], 'MySQL连接', '用原生协议连接 MySQL/MariaDB 服务器并校验密码；成功后自动把字符集协商为 utf8mb4。1.1 起不强制 TLS、不校验服务器证书（连得上优先，可直连 MySQL 8 默认自签名证书配置）；需要加密或证书校验请用 MySQL_连接扩展。', {
       category: '连接', example: 'MySQL_连接("127.0.0.1", 3306, "root", "密码", "test")', returnDescription: '成功返回非 0 的 MySQL连接，失败返回 0，可通过 MySQL_取错误 查看原因。'
     }),
     mysqlCommand('MySQL_连接扩展', [
@@ -127,9 +127,13 @@ const mysqlStandardModule = createStandardModule({
       { name: '密码', type: 'wideString', description: '登录密码，只在连接期间使用，不写入日志或诊断输出。' },
       { name: '数据库', type: 'wideString', description: '连接后选用的数据库；空文本表示暂不选择。' },
       { name: '连接超时秒', type: 'int', description: 'TCP 连接与读写超时秒数，范围 1～86400。' },
-      { name: '启用SSL', type: 'bool', description: '真表示使用 TLS 加密连接（Schannel）；服务器不支持时回退行为由服务器配置决定。' }
-    ], 'MySQL连接', '带超时和 TLS 开关的扩展连接；其余行为与 MySQL_连接 一致。', {
-      category: '连接', example: 'MySQL_连接扩展("127.0.0.1", 3306, "root", "密码", "test", 10, 假)', returnDescription: '成功返回非 0 的 MySQL连接，失败返回 0。'
+      { name: '启用SSL', type: 'bool', description: '真表示强制使用 TLS 加密连接（Schannel），服务器不支持 TLS 时连接失败。' },
+      { name: 'SSL证书校验', type: 'bool', optional: true, defaultValue: true, description: '真（默认，与 1.0 行为一致）校验服务器证书链；假跳过链校验但仍保留 TLS 加密，用于 MySQL 8 初始化生成的自签名证书（错误码 2026 证书不受信任）。' }
+    ], 'MySQL连接', '带超时、TLS 开关和证书校验开关的扩展连接；其余行为与 MySQL_连接 一致。', {
+      category: '连接',
+      // SSL证书校验 是 1.1 起的尾部可选参数，补全片段保持 1.0 的 7 参形态，与 web.http 可选参数口径一致。
+      insertText: 'MySQL_连接扩展("$1", 3306, "$2", "$3", "$4", 0, 假)',
+      example: 'MySQL_连接扩展("127.0.0.1", 3306, "root", "密码", "test", 10, 真, 假)', returnDescription: '成功返回非 0 的 MySQL连接，失败返回 0。'
     }),
     mysqlCommand('MySQL_关闭连接', [connection()], 'bool', '释放连接所属全部语句后关闭连接。失效句柄返回假。', { category: '连接' }),
     mysqlCommand('MySQL_关闭全部', [], 'void', '释放所有语句、关闭所有连接并卸载运行库。', { category: '连接' }),
