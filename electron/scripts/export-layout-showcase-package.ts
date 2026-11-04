@@ -95,7 +95,7 @@ async function exportAndVerifyPackage() {
   await fs.mkdir(outputRoot, { recursive: true });
   const exportPath = path.join(outputRoot, packageName);
   const service = createLcppSourcePackageService(workspaceRoot);
-  const ideVersion = '0.8.38';
+  const ideVersion = '0.8.42';
   const exported = await service.exportProject(validation.project.id, exportPath, ideVersion);
   const preview = await service.inspectPackage(exportPath);
   const importParent = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-layout-showcase-import-'));

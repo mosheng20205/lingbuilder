@@ -85,6 +85,8 @@ export class DesignerContainerLayoutRegistry {
     this.registerContainer('GroupBox', { mode: 'absolute', coordinateSpace: 'window', adapterId: 'win32.groupbox.absolute' });
     this.registerContainer('Grid', { mode: 'absolute', coordinateSpace: 'window', adapterId: 'win32.grid.absolute' });
     this.registerContainer('Pager', { mode: 'absolute', coordinateSpace: 'window', adapterId: 'win32.pager.absolute' });
+    this.registerContainer('FlowPanel', { mode: 'absolute', coordinateSpace: 'window', adapterId: 'win32.flowpanel.absolute' });
+    this.registerContainer('TablePanel', { mode: 'absolute', coordinateSpace: 'window', adapterId: 'win32.tablepanel.absolute' });
     this.registerContainer('TabControl', { mode: 'slots', coordinateSpace: 'window', adapterId: 'win32.tab.slots' });
     this.registerContainer('ReBar', { mode: 'slots', coordinateSpace: 'window', adapterId: 'win32.rebar.bands' });
   }

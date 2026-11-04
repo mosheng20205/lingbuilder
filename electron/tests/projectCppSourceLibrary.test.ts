@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
+import { materializeProjectCppSourceLibraries } from '../src/services/modules/projectCppSourceMaterializeService';
 import {
   PROJECT_CPP_SOURCE_LIBRARY_FILE_NAME,
   PROJECT_CPP_SOURCE_MODULE_ID,
@@ -920,4 +924,131 @@ test('v6.2 生成器：封送回调发射 PostMessage 闭包，main.cpp 带封�
   const plainAllGenerated = plainGenerated.files.map(file => file.content).join('\n');
   assert.ok(!plainAllGenerated.includes('WM_LINGBUILDER_CPPSRC_MARSHAL'), '未用封送不应发射封送窗口运行时');
   assert.ok(plainMainCpp.includes('[this](int p0, const wchar_t* p1) { return this->任务进度(p0, p1); }'), '未封送回调应维持线程透传直调 lambda');
+});
+
+// ===== v7（2026-11-04）物化期编码自动处置 =====
+// 「中文」的 GBK 字节（D6 D0 CE C4）；构造 GBK 样本只能手工拼字节（Node 无 GBK 编码器）。
+const GBK_ZHONGWEN_BYTES = Buffer.from([0xd6, 0xd0, 0xce, 0xc4]);
+
+test('v7 物化：GBK 编码头文件自动转码为 UTF-8 副本，原文件字节保持不动', async () => {
+  const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'cppsrc-gbk-header-'));
+  const gbkHeader = Buffer.concat([
+    Buffer.from('#pragma once\r\n// gbk comment: ', 'utf8'),
+    GBK_ZHONGWEN_BYTES,
+    Buffer.from('\r\ninline int gbk_probe(int a) { return a + 1; }\r\n', 'utf8')
+  ]);
+  await fs.mkdir(path.join(workspace, 'cpp'), { recursive: true });
+  await fs.writeFile(path.join(workspace, 'cpp', 'gbk_header.h'), gbkHeader);
+  const declaration = [
+    '包 项目C++源码库',
+    '',
+    'C++源码库 编码库',
+    '  头文件 = cpp/gbk_header.h',
+    '  整数型 探针(整数型 a) = gbk_probe',
+    '结束C++源码库'
+  ].join('\n');
+  const materialized = await materializeProjectCppSourceLibraries({
+    cppLibraries: parseLingCpp(declaration).program.cppLibraries || [],
+    sourceRootAbsolute: workspace,
+    buildDir: workspace,
+    sourceDir: workspace,
+    binDir: workspace,
+    exportDir: workspace,
+    logs: []
+  });
+  assert.equal(materialized.blocking.length, 0);
+  assert.ok(materialized.notes.some(note => note.includes('已自动按 GBK')), `notes 缺转码说明：${materialized.notes.join(' / ')}`);
+  const target = await fs.readFile(path.join(workspace, 'modules', PROJECT_CPP_SOURCE_MODULE_ID, 'sources', 'cpp', 'gbk_header.h'));
+  assert.ok(target.includes(Buffer.from('中文', 'utf8')), '转码副本缺 UTF-8 中文字节');
+  assert.ok(!target.includes(GBK_ZHONGWEN_BYTES), '转码副本不应残留 GBK 字节');
+  const original = await fs.readFile(path.join(workspace, 'cpp', 'gbk_header.h'));
+  assert.ok(original.equals(gbkHeader), '用户原文件字节被改动');
+});
+
+test('v7 物化：包含目录内 GBK 头文件副本自动转码并汇总计数', async () => {
+  const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'cppsrc-gbk-incdir-'));
+  await fs.mkdir(path.join(workspace, 'cpp', 'inc'), { recursive: true });
+  await fs.writeFile(
+    path.join(workspace, 'cpp', 'inc', 'gbk_dep.h'),
+    Buffer.concat([Buffer.from('#pragma once\r\n// gbk dep: ', 'utf8'), GBK_ZHONGWEN_BYTES, Buffer.from('\r\ninline int dep_probe(int a) { return a; }\r\n', 'utf8')])
+  );
+  await fs.writeFile(path.join(workspace, 'cpp', 'shim.cpp'), '// shim\r\n', 'utf8');
+  const declaration = [
+    '包 项目C++源码库',
+    '',
+    'C++源码库 依赖库',
+    '  源码 = cpp/shim.cpp',
+    '  包含目录 = cpp/inc',
+    '  整数型 依赖探针(整数型 a) = dep_probe',
+    '结束C++源码库'
+  ].join('\n');
+  const materialized = await materializeProjectCppSourceLibraries({
+    cppLibraries: parseLingCpp(declaration).program.cppLibraries || [],
+    sourceRootAbsolute: workspace,
+    buildDir: workspace,
+    sourceDir: workspace,
+    binDir: workspace,
+    exportDir: workspace,
+    logs: []
+  });
+  assert.equal(materialized.blocking.length, 0);
+  assert.ok(materialized.notes.some(note => note.includes('包含目录内已自动将 1 个非 UTF-8 文件转码为 UTF-8 副本')), `notes 缺包含目录转码汇总：${materialized.notes.join(' / ')}`);
+  const target = await fs.readFile(path.join(workspace, 'modules', PROJECT_CPP_SOURCE_MODULE_ID, 'sources', 'cpp', 'inc', 'gbk_dep.h'));
+  assert.ok(target.includes(Buffer.from('中文', 'utf8')), '包含目录转码副本缺 UTF-8 中文字节');
+});
+
+test('v7 物化：既非 UTF-8 也非 GBK 的坏字节保留中文阻断', async () => {
+  const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'cppsrc-bad-bytes-'));
+  await fs.mkdir(path.join(workspace, 'cpp'), { recursive: true });
+  // 0xFF 不是合法 UTF-8 起始字节；GBK/GB18030 字节范围最大到 0xFE，0xFF 同样非法（0x80 在 CP936 是欧元符特例，不能用）。
+  await fs.writeFile(path.join(workspace, 'cpp', 'bad.h'), Buffer.from([0x23, 0x41, 0xff, 0x42, 0x0a]));
+  const declaration = [
+    '包 项目C++源码库',
+    '',
+    'C++源码库 坏编码库',
+    '  头文件 = cpp/bad.h',
+    '  整数型 坏探针(整数型 a) = bad_probe',
+    '结束C++源码库'
+  ].join('\n');
+  const materialized = await materializeProjectCppSourceLibraries({
+    cppLibraries: parseLingCpp(declaration).program.cppLibraries || [],
+    sourceRootAbsolute: workspace,
+    buildDir: workspace,
+    sourceDir: workspace,
+    binDir: workspace,
+    exportDir: workspace,
+    logs: []
+  });
+  assert.ok(materialized.blocking.some(text => text.includes('bad.h') && text.includes('无法自动转码')), `坏字节应阻断：${materialized.blocking.join(' / ')}`);
+});
+
+test('v7 物化：UTF-16 LE BOM 头文件原样透传（MSVC 认 BOM）', async () => {
+  const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'cppsrc-utf16-header-'));
+  const utf16Header = Buffer.concat([
+    Buffer.from([0xff, 0xfe]),
+    Buffer.from('#pragma once\r\ninline int utf16_probe(int a) { return a; }\r\n', 'utf16le')
+  ]);
+  await fs.mkdir(path.join(workspace, 'cpp'), { recursive: true });
+  await fs.writeFile(path.join(workspace, 'cpp', 'utf16_header.h'), utf16Header);
+  const declaration = [
+    '包 项目C++源码库',
+    '',
+    'C++源码库 宽编码库',
+    '  头文件 = cpp/utf16_header.h',
+    '  整数型 宽探针(整数型 a) = utf16_probe',
+    '结束C++源码库'
+  ].join('\n');
+  const materialized = await materializeProjectCppSourceLibraries({
+    cppLibraries: parseLingCpp(declaration).program.cppLibraries || [],
+    sourceRootAbsolute: workspace,
+    buildDir: workspace,
+    sourceDir: workspace,
+    binDir: workspace,
+    exportDir: workspace,
+    logs: []
+  });
+  assert.equal(materialized.blocking.length, 0);
+  assert.ok(materialized.notes.some(note => note.includes('UTF-16')), `notes 缺 UTF-16 透传说明：${materialized.notes.join(' / ')}`);
+  const target = await fs.readFile(path.join(workspace, 'modules', PROJECT_CPP_SOURCE_MODULE_ID, 'sources', 'cpp', 'utf16_header.h'));
+  assert.ok(target.equals(utf16Header), 'UTF-16 文件应原样透传不被转码');
 });
