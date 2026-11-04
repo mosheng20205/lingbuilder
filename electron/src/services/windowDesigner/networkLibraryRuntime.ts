@@ -39,14 +39,39 @@ const wchar_t* TCP_接收文本(int maximumBytes) { if (g_lbTcpSocket == INVALID
 `;
 
 const UDP_RUNTIME = String.raw`
-static SOCKET g_lbUdpSocket = INVALID_SOCKET; static std::wstring g_lbUdpError; static std::wstring g_lbUdpSource; static int g_lbUdpSourcePort = 0; static bool g_lbUdpReuseAddr = false; static bool g_lbUdpBroadcast = false;
+static SOCKET g_lbUdpSocket = INVALID_SOCKET; static int g_lbUdpSocketFamily = AF_INET; static std::wstring g_lbUdpError; static std::wstring g_lbUdpSource; static int g_lbUdpSourcePort = 0; static bool g_lbUdpReuseAddr = false; static bool g_lbUdpBroadcast = false;
 void UDP_关闭() { if (g_lbUdpSocket != INVALID_SOCKET) { closesocket(g_lbUdpSocket); g_lbUdpSocket = INVALID_SOCKET; } }
 const wchar_t* UDP_取错误() { return LB_ReturnText(g_lbUdpError); } const wchar_t* UDP_取来源地址() { return LB_ReturnText(g_lbUdpSource); } int UDP_取来源端口() { return g_lbUdpSourcePort; }
+// 双栈套接字收到的 IPv4 对端表现为 IPv4-mapped 地址（::ffff:a.b.c.d），归一化回点分十进制，
+// 保证既有 IPv4 用户在 UDP_取来源地址 看到的格式不变；原生 IPv6 对端仍走数字形式。
+static std::wstring LB_UdpSourceHost(sockaddr_storage& source) {
+    if (source.ss_family == AF_INET6) {
+        sockaddr_in6* v6 = reinterpret_cast<sockaddr_in6*>(&source);
+        if (IN6_IS_ADDR_V4MAPPED(&v6->sin6_addr)) {
+            const UCHAR* legacyBytes = reinterpret_cast<const UCHAR*>(&v6->sin6_addr) + 12;
+            wchar_t text[INET_ADDRSTRLEN] = {};
+            if (InetNtopW(AF_INET, legacyBytes, text, _countof(text))) return text;
+        }
+    }
+    wchar_t host[NI_MAXHOST] = {};
+    if (GetNameInfoW(reinterpret_cast<sockaddr*>(&source), static_cast<int>(sizeof(source)), host, _countof(host), nullptr, 0, NI_NUMERICHOST) == 0) return host;
+    return L"";
+}
 // 广播/端口复用开关都记在标志位上：UDP_绑定 会关闭并重建套接字，开关必须在重建后的套接字上重放，
 // 这样 UDP_允许广播 在绑定前后调用效果一致（命令契约如此承诺）。
+// 套接字按 AF_INET6 + IPV6_V6ONLY=0 双栈创建：同一套接字可发送 IPv4/IPv6 目标，
+// 绑定后同一端口可同时接收两族数据报；无 IPv6 栈的机器自动降级 IPv4-only。
 static bool LB_EnsureUdpSocket() {
     if (g_lbUdpSocket != INVALID_SOCKET) return true; if (!LB_EnsureSockets()) return false;
-    g_lbUdpSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP); if (g_lbUdpSocket == INVALID_SOCKET) return false;
+    g_lbUdpSocketFamily = AF_INET;
+    g_lbUdpSocket = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
+    if (g_lbUdpSocket != INVALID_SOCKET) {
+        g_lbUdpSocketFamily = AF_INET6;
+        const BOOL v6only = FALSE; setsockopt(g_lbUdpSocket, IPPROTO_IPV6, IPV6_V6ONLY, reinterpret_cast<const char*>(&v6only), sizeof(v6only));
+    } else {
+        g_lbUdpSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    }
+    if (g_lbUdpSocket == INVALID_SOCKET) return false;
     if (g_lbUdpReuseAddr) { const BOOL reuse = TRUE; setsockopt(g_lbUdpSocket, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&reuse), sizeof(reuse)); }
     if (g_lbUdpBroadcast) { const BOOL broadcast = TRUE; setsockopt(g_lbUdpSocket, SOL_SOCKET, SO_BROADCAST, reinterpret_cast<const char*>(&broadcast), sizeof(broadcast)); }
     return true;
@@ -63,17 +88,43 @@ bool UDP_允许端口复用(bool allowed) {
     if (g_lbUdpSocket != INVALID_SOCKET) { const BOOL value = allowed ? TRUE : FALSE; setsockopt(g_lbUdpSocket, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&value), sizeof(value)); }
     return true;
 }
-bool UDP_绑定(int port) { UDP_关闭(); g_lbUdpError.clear(); if (!LB_EnsureUdpSocket() || port < 0 || port > 65535) return false; sockaddr_in address = {}; address.sin_family = AF_INET; address.sin_addr.s_addr = htonl(INADDR_ANY); address.sin_port = htons(static_cast<u_short>(port)); if (bind(g_lbUdpSocket, reinterpret_cast<sockaddr*>(&address), sizeof(address)) == SOCKET_ERROR) { g_lbUdpError = L"UDP 端口绑定失败。"; UDP_关闭(); return false; } return true; }
+// 双栈套接字绑定 in6addr_any（IPV6_V6ONLY=0）：同一端口同时接收 IPv4 与 IPv6 数据报；
+// 降级到 IPv4-only 套接字时按 sockaddr_in 绑定，行为与历史版本一致。
+bool UDP_绑定(int port) { UDP_关闭(); g_lbUdpError.clear(); if (!LB_EnsureUdpSocket() || port < 0 || port > 65535) return false;
+    sockaddr_in6 address6 = {}; address6.sin6_family = AF_INET6; address6.sin6_addr = in6addr_any; address6.sin6_port = htons(static_cast<u_short>(port));
+    sockaddr_in address4 = {}; address4.sin_family = AF_INET; address4.sin_addr.s_addr = htonl(INADDR_ANY); address4.sin_port = htons(static_cast<u_short>(port));
+    const bool dualStack = g_lbUdpSocketFamily == AF_INET6;
+    const sockaddr* bound = dualStack ? reinterpret_cast<const sockaddr*>(&address6) : reinterpret_cast<const sockaddr*>(&address4);
+    if (bind(g_lbUdpSocket, bound, dualStack ? static_cast<int>(sizeof(address6)) : static_cast<int>(sizeof(address4))) == SOCKET_ERROR) { g_lbUdpError = L"UDP 端口绑定失败。"; UDP_关闭(); return false; } return true; }
 
 int UDP_发送文本(const wchar_t* host, int port, const wchar_t* text) {
-    if (!LB_EnsureUdpSocket() || port <= 0 || port > 65535) return -1; ADDRINFOW hints = {}; hints.ai_family = AF_INET; hints.ai_socktype = SOCK_DGRAM; hints.ai_protocol = IPPROTO_UDP; ADDRINFOW* address = nullptr; const std::wstring service = std::to_wstring(port);
-    if (GetAddrInfoW(host, service.c_str(), &hints, &address) != 0 || !address) { g_lbUdpError = L"UDP 主机解析失败。"; return -1; } const std::string bytes = LB_WideToUtf8(text); int result = sendto(g_lbUdpSocket, bytes.data(), static_cast<int>(bytes.size()), 0, address->ai_addr, static_cast<int>(address->ai_addrlen)); FreeAddrInfoW(address); if (result < 0) g_lbUdpError = L"UDP 发送失败。"; return result;
+    if (!LB_EnsureUdpSocket() || port <= 0 || port > 65535) return -1;
+    // AF_UNSPEC 双栈解析；解析出多个地址时优先 IPv4（与历史行为一致——UDP 发送是
+    // fire-and-forget，试发无法证伪路由，必须确定性选族），只有 AAAA-only 主机名或
+    // IPv6 字面量才走 IPv6；要强制 IPv6 直接传 IPv6 字面量地址。
+    ADDRINFOW hints = {}; hints.ai_family = AF_UNSPEC; hints.ai_socktype = SOCK_DGRAM; hints.ai_protocol = IPPROTO_UDP; ADDRINFOW* addresses = nullptr; const std::wstring service = std::to_wstring(port);
+    if (GetAddrInfoW(host, service.c_str(), &hints, &addresses) != 0 || !addresses) { g_lbUdpError = L"UDP 主机解析失败。"; return -1; }
+    ADDRINFOW* target = nullptr;
+    for (ADDRINFOW* candidate = addresses; candidate; candidate = candidate->ai_next) { if (candidate->ai_family == AF_INET) { target = candidate; break; } }
+    if (!target) target = addresses;
+    const std::string bytes = LB_WideToUtf8(text); int result = -1;
+    if (target->ai_family == AF_INET) {
+        // 双栈套接字发 IPv4 目标必须用 IPv4-mapped 形式（Winsock 双栈契约），数据报仍按 IPv4 发出。
+        const sockaddr_in* legacy = reinterpret_cast<const sockaddr_in*>(target->ai_addr);
+        sockaddr_in6 mapped = {}; mapped.sin6_family = AF_INET6; mapped.sin6_port = htons(static_cast<u_short>(port));
+        UCHAR* mappedBytes = reinterpret_cast<UCHAR*>(&mapped.sin6_addr);
+        std::memcpy(mappedBytes + 12, &legacy->sin_addr, 4); mappedBytes[10] = 0xFF; mappedBytes[11] = 0xFF;
+        result = sendto(g_lbUdpSocket, bytes.data(), static_cast<int>(bytes.size()), 0, reinterpret_cast<const sockaddr*>(&mapped), static_cast<int>(sizeof(mapped)));
+    } else {
+        result = sendto(g_lbUdpSocket, bytes.data(), static_cast<int>(bytes.size()), 0, target->ai_addr, static_cast<int>(target->ai_addrlen));
+    }
+    FreeAddrInfoW(addresses); if (result < 0) g_lbUdpError = L"UDP 发送失败。"; return result;
 }
 
 const wchar_t* UDP_接收文本(int maximumBytes, int timeoutMs) {
     if (!LB_EnsureUdpSocket()) return LB_ReturnText(L""); DWORD timeout = static_cast<DWORD>((std::max)(1, timeoutMs)); setsockopt(g_lbUdpSocket, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeout), sizeof(timeout));
     std::vector<char> buffer(static_cast<size_t>((std::max)(1, (std::min)(maximumBytes, 65507)))); sockaddr_storage source = {}; int sourceSize = sizeof(source); int count = recvfrom(g_lbUdpSocket, buffer.data(), static_cast<int>(buffer.size()), 0, reinterpret_cast<sockaddr*>(&source), &sourceSize);
-    if (count < 0) { g_lbUdpError = L"UDP 接收失败或超时。"; return LB_ReturnText(L""); } wchar_t host[NI_MAXHOST] = {}; wchar_t service[NI_MAXSERV] = {}; GetNameInfoW(reinterpret_cast<sockaddr*>(&source), sourceSize, host, _countof(host), service, _countof(service), NI_NUMERICHOST | NI_NUMERICSERV); g_lbUdpSource = host; g_lbUdpSourcePort = _wtoi(service);
+    if (count < 0) { g_lbUdpError = L"UDP 接收失败或超时。"; return LB_ReturnText(L""); } wchar_t service[NI_MAXSERV] = {}; GetNameInfoW(reinterpret_cast<sockaddr*>(&source), sourceSize, nullptr, 0, service, _countof(service), NI_NUMERICSERV); g_lbUdpSource = LB_UdpSourceHost(source); g_lbUdpSourcePort = _wtoi(service);
     return LB_ReturnText(LB_Utf8ToWide(std::string(buffer.data(), static_cast<size_t>(count))));
 }
 `;

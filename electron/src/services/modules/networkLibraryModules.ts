@@ -50,10 +50,10 @@ const udp = createStandardModule({
   id: 'lingbuilder.net.udp', name: 'UDP通信模块', category: '网络',
   description: '提供 UDP 绑定、广播开关、端口复用、UTF-8 数据报发送接收和关闭能力，可支撑局域网自动发现与局域网文本消息。', tags: ['UDP', 'Socket', '广播'],
   commands: [
-    command('UDP_绑定', [{ name: '端口', type: 'int', description: '要绑定的本机 UDP 端口，0 到 65535；0 表示由系统分配端口，绑定在本机全部接口上。'}], 'bool', '在本机全部接口绑定 UDP 端口。'),
+    command('UDP_绑定', [{ name: '端口', type: 'int', description: '要绑定的本机 UDP 端口，0 到 65535；0 表示由系统分配端口，绑定在本机全部接口上。绑定是 IPv4/IPv6 双栈，同一端口可同时接收两族数据报。'}], 'bool', '在本机全部接口绑定 UDP 端口（IPv4/IPv6 双栈，同一端口同时收两族数据报）。'),
     command('UDP_允许广播', [{ name: '允许', type: 'bool', description: '传真开启 SO_BROADCAST；发送到 255.255.255.255 等广播地址前必须先开启，否则 Windows 直接拒绝发送。默认关闭。'}], 'bool', '允许 UDP 套接字发送广播数据报（局域网自动发现的前提）；绑定前后调用均可。'),
     command('UDP_允许端口复用', [{ name: '允许', type: 'bool', description: '传真开启 SO_REUSEADDR；必须在 UDP_绑定 之前调用才生效。开启后同一台机器的多个程序可以绑定同一 UDP 端口，广播包每个套接字都能收到，适合本机多开联调。默认关闭。'}], 'bool', '允许多个程序绑定同一 UDP 端口（本机多开联调必需）。'),
-    command('UDP_发送文本', [{ name: '主机', type: 'wideString', description: '目标主机名或地址；只按 IPv4 解析，解析失败返回 -1。'}, { name: '端口', type: 'int', description: '目标端口，1 到 65535；超范围返回 -1。'}, { name: '内容', type: 'wideString', description: '数据报正文，按 UTF-8 编码为一条数据报发出，不保证到达也不自动分片重发。'}], 'int', '发送一条 UTF-8 UDP 数据报。'),
+    command('UDP_发送文本', [{ name: '主机', type: 'wideString', description: '目标主机名或 IP 地址；按 IPv4 和 IPv6 双栈解析，域名同时有 A 和 AAAA 记录时优先 IPv4，只有 IPv6 字面量（如 ::1）或 AAAA-only 域名才走 IPv6，解析失败返回 -1。'}, { name: '端口', type: 'int', description: '目标端口，1 到 65535；超范围返回 -1。'}, { name: '内容', type: 'wideString', description: '数据报正文，按 UTF-8 编码为一条数据报发出，不保证到达也不自动分片重发。'}], 'int', '发送一条 UTF-8 UDP 数据报（支持 IPv4 与 IPv6 目标）。'),
     command('UDP_接收文本', [{ name: '最大字节数', type: 'int', description: '单个数据报最多接收的字节数，上限 65507；小于 1 时按 1 处理，超出部分会被丢弃。'}, { name: '超时毫秒', type: 'int', description: '等待数据报的超时毫秒数；小于 1 时按 1 处理，超时返回空文本。'}], 'wideString', '接收一条 UDP 数据报，超时返回空文本。'),
     command('UDP_取来源地址', [], 'wideString', '返回最近数据报来源 IP。'),
     command('UDP_取来源端口', [], 'int', '返回最近数据报来源端口。'),
