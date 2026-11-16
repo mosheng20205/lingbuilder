@@ -4463,16 +4463,16 @@ test('generateLingCppNativeWin32Project emits OOP Win32 class code and event wir
   assert.ok(mainCpp.includes('TextBoxFrameSubclassProc'));
   assert.ok(mainCpp.includes('LayoutTextBoxControl'));
   assert.ok(mainCpp.includes('GetTextMetricsW(hdc, &metrics)'));
-  assert.ok(mainCpp.includes('FillRgn(drawDc, outerRegion, borderBrush)'));
+  // 编辑框外框圆角走 GDI+ 抗锯齿路径（HRGN/FillRgn 是 1-bit 掩码，region 画法必然锯齿）。
+  assert.ok(mainCpp.includes('DrawAntiAliasedRoundedRectangle(drawDc, rect, cornerDiameter / 2,'));
+  assert.ok(mainCpp.includes('control->background, borderColor, true, 1.0f)'));
+  assert.ok(mainCpp.includes('if (borderBrush && outerRegion) FillRgn(drawDc, outerRegion, borderBrush)'));
   // 分组框(CS_PARENTDC)的绘制校验会吞掉兄弟外框的更新区域：外框必须带 GetDC 空裁剪回退。
   assert.ok(mainCpp.includes('drawDc = GetDC(hwnd);'));
   assert.ok(mainCpp.includes('GetFocus() == runtime->hwnd'));
   assert.ok(mainCpp.includes('RGB(14, 165, 233)'));
   assert.ok(mainCpp.includes('RGB(51, 65, 85)'));
-  assert.ok(mainCpp.includes('int borderWidth = 1;'));
   assert.ok(mainCpp.includes('cornerDiameter = std::max(ScaleForDpi(8, self->dpi_), 4)'));
-  assert.ok(mainCpp.includes('rect.left + borderWidth, rect.top + borderWidth'));
-  assert.ok(mainCpp.includes('rect.right - borderWidth, rect.bottom - borderWidth'));
   assert.ok(mainCpp.includes('SetFocus(runtime->hwnd)'));
   assert.ok(mainCpp.includes('InvalidateRect(runtime->frameHwnd, nullptr, FALSE)'));
   assert.ok(mainCpp.includes('if (ownerDraw) InvalidateRect(hwnd, nullptr, FALSE)'));

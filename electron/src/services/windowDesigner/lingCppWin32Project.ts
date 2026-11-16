@@ -28586,27 +28586,21 @@ private:
                 COLORREF borderColor = GetFocus() == runtime->hwnd
                     ? RGB(14, 165, 233)
                     : IsWindowEnabled(runtime->hwnd) ? RGB(51, 65, 85) : RGB(63, 63, 70);
-                HBRUSH borderBrush = CreateSolidBrush(borderColor);
-                HRGN outerRegion = CreateRoundRectRgn(
-                    rect.left, rect.top, rect.right, rect.bottom,
-                    cornerDiameter, cornerDiameter
-                );
-                if (borderBrush && outerRegion) FillRgn(drawDc, outerRegion, borderBrush);
-                int borderWidth = 1;
-                if (rect.right - rect.left > borderWidth * 2 && rect.bottom - rect.top > borderWidth * 2) {
-                    HRGN innerRegion = CreateRoundRectRgn(
-                        rect.left + borderWidth, rect.top + borderWidth,
-                        rect.right - borderWidth, rect.bottom - borderWidth,
-                        std::max(2, cornerDiameter - borderWidth * 2),
-                        std::max(2, cornerDiameter - borderWidth * 2)
+                // 圆角走 GDI+ 抗锯齿路径（与按钮/列表选中高亮同一画法）。HRGN 是 1-bit
+                // 掩码、FillRgn 无边缘过渡，region 画法的圆角必然是像素阶梯锯齿。
+                // 半径传 cornerDiameter/2：区域画法入参是直径，路径画法是半径，外观不变。
+                if (!DrawAntiAliasedRoundedRectangle(drawDc, rect, cornerDiameter / 2,
+                    control->background, borderColor, true, 1.0f)) {
+                    // GDI+ 初始化失败时回退 GDI Region 画法，保证外框仍有圆角。
+                    HBRUSH borderBrush = CreateSolidBrush(borderColor);
+                    HRGN outerRegion = CreateRoundRectRgn(
+                        rect.left, rect.top, rect.right, rect.bottom,
+                        cornerDiameter, cornerDiameter
                     );
-                    if (innerRegion) {
-                        if (runtime->brush) FillRgn(drawDc, innerRegion, runtime->brush);
-                        DeleteObject(innerRegion);
-                    }
+                    if (borderBrush && outerRegion) FillRgn(drawDc, outerRegion, borderBrush);
+                    if (outerRegion) DeleteObject(outerRegion);
+                    if (borderBrush) DeleteObject(borderBrush);
                 }
-                if (outerRegion) DeleteObject(outerRegion);
-                if (borderBrush) DeleteObject(borderBrush);
                 if (emptyPaint) {
                     ReleaseDC(hwnd, drawDc);
                     ValidateRect(hwnd, nullptr);
