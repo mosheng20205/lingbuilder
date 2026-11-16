@@ -4,7 +4,7 @@ import test from 'node:test';
 import { ModuleCommerceService } from '../src/modules/module-commerce.service.js';
 import { PaymentProviderService } from '../src/modules/payment-provider.service.js';
 import { moduleSigningPublicKey } from '../src/modules/module-signing-key.js';
-import { DEFAULT_UPGRADE_PRICE_MINOR, ProMembershipService, SPONSOR_ACTIVITY_DEADLINE, SPONSOR_LEGACY_BASELINE, SPONSOR_PERPETUAL_THRESHOLD_MINOR } from '../src/pro/pro-membership.service.js';
+import { DEFAULT_UPGRADE_PRICE_MINOR, ProMembershipService, SPONSOR_ACTIVITY_DEADLINE, SPONSOR_PERPETUAL_THRESHOLD_MINOR, SPONSOR_YEARLY_THRESHOLD_MINOR } from '../src/pro/pro-membership.service.js';
 
 const ACTOR = { id: 'admin-1', email: 'admin@lingbuilder.test', role: 'operator', mfa: true } as any;
 
@@ -59,7 +59,9 @@ function createPrisma(options: { users?: any[]; sponsors?: SponsorSeed[]; member
 const PRODUCT = { id: 'product-1', moduleId: 'lingbuilder.new_emoji.ui', name: 'NewEmoji UI', enabled: true, listed: true, policyVersion: 1 };
 const USER = { id: 'user-1', email: 'sponsor@example.com', status: 'ACTIVE' };
 const BEFORE_DEADLINE = new Date('2026-10-01T12:00:00+08:00');
-const AFTER_DEADLINE = new Date('2026-12-01T12:00:00+08:00');
+// 新活动截止 2026-12-12：12-01 仍在活动期内，12-15 已过期（旧常量名沿用，语义跟随新截止日）。
+const IN_CAMPAIGN = new Date('2026-12-01T12:00:00+08:00');
+const AFTER_DEADLINE = new Date('2026-12-15T12:00:00+08:00');
 
 test('赞助聚合：多笔按QQ合计，截止后与停用记录不计入档位', async () => {
   const prisma = createPrisma({ sponsors: [
@@ -75,28 +77,28 @@ test('赞助聚合：多笔按QQ合计，截止后与停用记录不计入档位
   assert.equal(qq10000.count, 3);
   assert.equal(qq10000.eligibleMinor, 9900);
   assert.equal(qq10000.totalMinor, 109800);
-  assert.equal(qq10000.eligibleTier, 'perpetual');
+  assert.equal(qq10000.eligibleTier, 'yearly');
   assert.equal(rows.find(row => row.qqNumber === '20000')!.eligibleTier, 'none');
-  assert.equal(rows.find(row => row.qqNumber === '30000')!.eligibleTier, 'yearly');
+  assert.equal(rows.find(row => row.qqNumber === '30000')!.eligibleTier, 'none');
 });
 
-test('赞助转入：≥99 自动定档买断并记录累计金额与审计', async () => {
+test('赞助转入：≥199 自动定档永久买断并记录累计金额与审计', async () => {
   const prisma = createPrisma({ users: [USER], sponsors: [
-    { qqNumber: '888888', amountCents: 3000, sponsoredAt: BEFORE_DEADLINE },
-    { qqNumber: '888888', amountCents: 6900, sponsoredAt: BEFORE_DEADLINE }
+    { qqNumber: '888888', amountCents: 10000, sponsoredAt: BEFORE_DEADLINE },
+    { qqNumber: '888888', amountCents: 9900, sponsoredAt: IN_CAMPAIGN }
   ] });
   const service = new ProMembershipService(prisma as never);
-  const result = await service.create({ email: USER.email, source: 'sponsor_activity', sponsorQq: '888888', tier: 'auto', note: '双11赞助活动转入' }, ACTOR);
+  const result = await service.create({ email: USER.email, source: 'sponsor_activity', sponsorQq: '888888', tier: 'auto', note: '赞助 Pro 活动转入' }, ACTOR);
   assert.equal(result.membership.tier, 'perpetual');
   assert.equal(result.membership.source, 'sponsor_activity');
   assert.equal(result.membership.endsAt, null);
-  assert.equal(result.membership.paidMinor, 9900);
+  assert.equal(result.membership.paidMinor, 19900);
   const admin = prisma.state.audits.find(row => row.kind === 'admin');
   assert.equal(admin.action, 'pro.membership.create');
 });
 
-test('赞助转入：<99 定档一年且到期时间为 365 天后', async () => {
-  const prisma = createPrisma({ users: [USER], sponsors: [{ qqNumber: '777777', amountCents: 5000, sponsoredAt: BEFORE_DEADLINE }] });
+test('赞助转入：≥99 且不足 199 定档一年且到期时间为 365 天后', async () => {
+  const prisma = createPrisma({ users: [USER], sponsors: [{ qqNumber: '777777', amountCents: 9900, sponsoredAt: IN_CAMPAIGN }] });
   const service = new ProMembershipService(prisma as never);
   const result = await service.create({ email: USER.email, source: 'sponsor_activity', sponsorQq: '777777' }, ACTOR);
   assert.equal(result.membership.tier, 'yearly');
@@ -108,31 +110,34 @@ test('赞助转入拒绝：无资格QQ、活动后赞助、档位不符、QQ 已
   const prisma = createPrisma({ users: [USER, { id: 'user-2', email: 'other@example.com', status: 'ACTIVE' }], sponsors: [
     { qqNumber: '111111', amountCents: 1000, sponsoredAt: BEFORE_DEADLINE },
     { qqNumber: '222222', amountCents: 99000, sponsoredAt: AFTER_DEADLINE },
-    { qqNumber: '333333', amountCents: 5000, sponsoredAt: BEFORE_DEADLINE },
+    { qqNumber: '333333', amountCents: 9900, sponsoredAt: BEFORE_DEADLINE },
     { qqNumber: '444001', amountCents: 1, sponsoredAt: new Date('2026-10-25T12:00:00+08:00') }
   ], memberships: [{ id: 'pro-taken', userId: 'user-2', tier: 'YEARLY', source: 'SPONSOR_ACTIVITY', sponsorQq: '333333', startsAt: new Date(), endsAt: null, revokedAt: null }] });
   const service = new ProMembershipService(prisma as never);
   await assert.rejects(service.create({ email: USER.email, source: 'sponsor_activity', sponsorQq: '999999' }, ACTOR), /不符合转入条件/u);
   await assert.rejects(service.create({ email: USER.email, source: 'sponsor_activity', sponsorQq: '222222' }, ACTOR), /不符合转入条件/u);
-  await assert.rejects(service.create({ email: USER.email, source: 'sponsor_activity', sponsorQq: '444001' }, ACTOR), /规则收紧之后/u);
+  await assert.rejects(service.create({ email: USER.email, source: 'sponsor_activity', sponsorQq: '444001' }, ACTOR), /未达到活动最低档/u);
   await assert.rejects(service.create({ email: USER.email, source: 'sponsor_activity', sponsorQq: '333333', tier: 'perpetual' }, ACTOR), /不能自选其它档位/u);
   await assert.rejects(service.create({ email: USER.email, source: 'sponsor_activity', sponsorQq: '333333' }, ACTOR), /只能绑定一个账号/u);
 });
 
-test('2026-10-24 收紧（不溯及既往）：收紧后新增的小额赞助不再赠送一年，存量赞助者与满 99 档不受影响', async () => {
-  const AFTER_BASELINE = new Date('2026-10-25T12:00:00+08:00');
+test('赞助 Pro 活动档位：≥199 永久、≥99 一年、不足 99 不符合，截止后赞助不计入', async () => {
   const prisma = createPrisma({ sponsors: [
-    { qqNumber: '40000', amountCents: 1, sponsoredAt: AFTER_BASELINE },
-    { qqNumber: '50000', amountCents: 99000, sponsoredAt: AFTER_BASELINE },
+    { qqNumber: '40000', amountCents: 1, sponsoredAt: IN_CAMPAIGN },
+    { qqNumber: '50000', amountCents: 19900, sponsoredAt: IN_CAMPAIGN },
+    { qqNumber: '50000', amountCents: 50000, sponsoredAt: AFTER_DEADLINE },
     { qqNumber: '60000', amountCents: 3000, sponsoredAt: BEFORE_DEADLINE },
-    { qqNumber: '60000', amountCents: 4000, sponsoredAt: AFTER_BASELINE },
-    { qqNumber: '70000', amountCents: 8000, sponsoredAt: new Date('2026-10-06T11:28:00+08:00') }
+    { qqNumber: '60000', amountCents: 4000, sponsoredAt: IN_CAMPAIGN },
+    { qqNumber: '70000', amountCents: 9900, sponsoredAt: IN_CAMPAIGN },
+    { qqNumber: '80000', amountCents: 19899, sponsoredAt: IN_CAMPAIGN }
   ] });
   const rows = await new ProMembershipService(prisma as never).sponsorSummary();
   assert.equal(rows.find(row => row.qqNumber === '40000')!.eligibleTier, 'none');
   assert.equal(rows.find(row => row.qqNumber === '50000')!.eligibleTier, 'perpetual');
-  assert.equal(rows.find(row => row.qqNumber === '60000')!.eligibleTier, 'yearly');
+  assert.equal(rows.find(row => row.qqNumber === '50000')!.eligibleMinor, 19900);
+  assert.equal(rows.find(row => row.qqNumber === '60000')!.eligibleTier, 'none');
   assert.equal(rows.find(row => row.qqNumber === '70000')!.eligibleTier, 'yearly');
+  assert.equal(rows.find(row => row.qqNumber === '80000')!.eligibleTier, 'yearly');
 });
 
 test('赞助转入拒绝：重复QQ绑定同账号不同档、已生效会员重复入会', async () => {
@@ -242,10 +247,10 @@ test('撤销会员：原因必填且撤销后立即失去全部模块权益', as
 });
 
 test('活动阈值与截止时间常量符合拍板口径', () => {
-  assert.equal(SPONSOR_PERPETUAL_THRESHOLD_MINOR, 9900);
+  assert.equal(SPONSOR_YEARLY_THRESHOLD_MINOR, 9900);
+  assert.equal(SPONSOR_PERPETUAL_THRESHOLD_MINOR, 19900);
   assert.equal(DEFAULT_UPGRADE_PRICE_MINOR, 20000);
-  assert.equal(SPONSOR_ACTIVITY_DEADLINE.toISOString(), '2026-11-11T15:59:59.000Z');
-  assert.equal(SPONSOR_LEGACY_BASELINE.toISOString(), '2026-10-23T16:00:00.000Z');
+  assert.equal(SPONSOR_ACTIVITY_DEADLINE.toISOString(), '2026-12-12T15:59:59.000Z');
 });
 
 test('/v1/me 携带生效中的 Pro 会员状态，无会员时为 null', async () => {

@@ -20,7 +20,7 @@ function formatDate(value: unknown): string {
 const TIER_LABEL: Record<string, string> = { perpetual: '永久买断', yearly: '一年' };
 const SOURCE_LABEL: Record<string, string> = { sponsor_activity: '赞助活动', purchase: '购买', compensation: '补偿' };
 
-/** Pro 会员管理：赞助活动转入（≥99 买断 / <99 赠一年，截止 2026-11-11）、购买入账、补差升级与撤销。 */
+/** Pro 会员管理：赞助活动转入（≥199 永久 / ≥99 一年，截止 2026-12-12）、购买入账、补差升级与撤销。 */
 export function ProMembershipAdmin({ data, request, reload, role }: { data: any; request: Request; reload: () => Promise<void>; role: string }) {
   const memberships: any[] = data?.memberships || [];
   const sponsors: any[] = data?.sponsors || [];
@@ -106,11 +106,11 @@ export function ProMembershipAdmin({ data, request, reload, role }: { data: any;
       : <span className="badge off">已过期</span>;
 
   return <div>
-    <section className="site-admin-intro"><div><Crown size={24}/><span>PRO MEMBERSHIP</span><h2>Pro 会员管理</h2><p>Pro 会员在生效期内可使用全部收费模块（单模块权益优先）。赞助活动：截止 {formatDate(config.deadline)} 前，累计赞助 ≥ {formatYuan(config.thresholdMinor)} 转永久买断，不足则赠一年；年费会员可补差 {formatYuan(config.upgradePriceMinor)} 升级买断。所有变更写入管理员审计。</p></div></section>
+    <section className="site-admin-intro"><div><Crown size={24}/><span>PRO MEMBERSHIP</span><h2>Pro 会员管理</h2><p>Pro 会员在生效期内可使用全部收费模块（单模块权益优先）。赞助 Pro 活动：截止 {formatDate(config.deadline)} 前，累计赞助 ≥ {formatYuan(config.yearlyThresholdMinor)} 赠送一年 Pro，累计 ≥ {formatYuan(config.thresholdMinor)} 转永久买断；年费会员可补差 {formatYuan(config.upgradePriceMinor)} 升级买断。所有变更写入管理员审计。</p></div></section>
     {message && <div className={message.error ? 'alert' : 'form-success'} role="status">{message.text}</div>}
 
     <section className="panel">
-      <div className="panel-head"><div><span className="eyebrow">赞助名单</span><h2>按 QQ 聚合的赞助记录（{sponsors.length}）</h2><p>金额为活动截止前启用的赞助合计；「转入」会按规则自动定档，再补填注册邮箱即可提交。2026-10-24 起规则收紧（不溯及既往）：不足 ¥99 赠一年仅限 2026-10-24 前已有赞助记录的 QQ，收紧后新增的小额赞助会显示「不符合」。</p></div></div>
+      <div className="panel-head"><div><span className="eyebrow">赞助名单</span><h2>按 QQ 聚合的赞助记录（{sponsors.length}）</h2><p>金额为活动截止前启用的赞助合计；「转入」会按规则自动定档（累计 ≥ ¥199 永久买断，≥ ¥99 赠送一年），再补填注册邮箱即可提交。累计不足 ¥99 的 QQ 显示「不符合」，截止日后的赞助不计入可转金额。</p></div></div>
       {sponsors.length ? <div className="table-wrap"><table>
         <thead><tr><th>QQ 号</th><th>笔数</th><th>累计金额</th><th>可转金额</th><th>判定档位</th><th>最近赞助</th><th>已转入</th>{canWrite && <th>操作</th>}</tr></thead>
         <tbody>{sponsors.map(sponsor => <tr key={sponsor.qqNumber}>

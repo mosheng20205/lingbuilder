@@ -4288,7 +4288,7 @@ function getModuleProCommandDiagnostics(
     ...program.functionLibraries.map(library => ({ methods: library.methods }))
   ];
   const level = options?.proCommandEnforce ? 'error' : 'warning';
-  const hint = '开通 Pro 后即可使用：可在 设置 → 账号 查看会员状态；赞助活动（截止 2026-11-11）累计满 ¥99 可直接转 Pro。';
+  const hint = '开通 Pro 后即可使用：可在 设置 → 账号 查看会员状态；赞助活动（截止 2026-12-12）累计满 ¥99 赠送一年 Pro、满 ¥199 转永久。';
   const diagnostics: LingCppDiagnostic[] = [];
   const seen = new Set<string>();
   owners.forEach(owner => {

@@ -45,7 +45,7 @@ export class BetaProgramService {
     // 体验计划（预览渠道抢先推送）自 2026-10-07 起是 Pro 会员权益：仅生效中的 Pro 会员可申请。
     const now = new Date();
     const pro = await this.prisma.proMembership.findFirst({ where: { userId, revokedAt: null, startsAt: { lte: now }, OR: [{ endsAt: null }, { endsAt: { gt: now } }] } });
-    if (!pro) throw Object.assign(validation('体验计划（抢先体验推送）是 Pro 会员权益：仅生效中的 Pro 会员可申请。可在 设置 → 账号 查看/开通 Pro（赞助活动累计满 ¥99 可直接转 Pro）。'), { status: 402, code: 'PRO_MEMBERSHIP_REQUIRED' });
+    if (!pro) throw Object.assign(validation('体验计划（抢先体验推送）是 Pro 会员权益：仅生效中的 Pro 会员可申请。可在 设置 → 账号 查看/开通 Pro（赞助活动累计满 ¥99 赠送一年 Pro、满 ¥199 转永久，截止 2026-12-12）。'), { status: 402, code: 'PRO_MEMBERSHIP_REQUIRED' });
     const application = await this.prisma.betaProgramApplication.upsert({
       where: { userId },
       create: { userId, message: clean(body.message, 500), status: 'PENDING' },

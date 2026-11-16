@@ -52,7 +52,7 @@ export function isProMarkedCommand(entry: { access?: 'pro' } | undefined, contri
 
 /** 供调用方组装中文开通指引（诊断 suggestion / 门禁阻断文案同一口径）。 */
 export function formatProCommandHint(): string {
-  return '开通 Pro 后即可使用：可在 设置 → 账号 查看会员状态；赞助活动（截止 2026-11-11）累计满 ¥99 可直接转 Pro，或联系管理员开通。';
+  return '开通 Pro 后即可使用：可在 设置 → 账号 查看会员状态；赞助活动（截止 2026-12-12）累计满 ¥99 赠送一年 Pro、满 ¥199 转永久，或联系管理员开通。';
 }
 
 export type { LingCppModuleContext };
