@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-/** 真机 stdio 握手验收：dist/cli.cjs 必须携带第 25 条安装包导出指引，工具数 24。 */
+/** 真机 stdio 握手验收：dist/cli.cjs 必须携带第 25 条安装包导出指引，工具数 25。 */
 async function main() {
   const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'lb-installer-stdio-'));
   const child = spawn(process.execPath, [
@@ -61,7 +61,7 @@ async function main() {
   check('initialize instructions 含安装包导出工作流', instructions.includes('lingbuilder.installer.export'));
   check('instructions 写明先构建后导出与产物位置', instructions.includes('构建输出目录 installer'));
   check('instructions 写明 DLL 项目拒绝', instructions.includes('DLL（动态库）项目会被中文拒绝'));
-  check('工具数 24', toolList.length === 24, String(toolList.length));
+  check('工具数 25', toolList.length === 25, String(toolList.length));
   check('installer.export 工具存在', Boolean(installerTool));
 
   child.kill();

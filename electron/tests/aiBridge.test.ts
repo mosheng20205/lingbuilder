@@ -423,6 +423,7 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.match(String(client.getInstructions() || ''), /projects\[\]/u, 'instructions 必须引导外部 AI 用 workspace.list 首项 projects[] 确定目标项目');
     assert.match(String(client.getInstructions() || ''), /lingbuilder\.installer\.export/u, 'instructions 必须描述安装包导出工作流（先构建后导出）');
     assert.match(String(client.getInstructions() || ''), /构建输出目录 installer/u, 'instructions 必须写明安装包产物位于构建输出目录 installer/ 下');
+    assert.match(String(client.getInstructions() || ''), /自定义可执行文件主名/u, 'instructions 必须写明安装包产品名优先取自定义 exe 主名（2026-11-17 口径，未自定义回落项目名）');
     assert.match(String(client.getInstructions() || ''), /bundleVcRedist/u, 'instructions 必须说明捆绑 VC++ 运行库链装选项');
     assert.match(String(client.getInstructions() || ''), /installMode/u, 'instructions 必须说明安装目录策略选项');
     assert.match(String(client.getInstructions() || ''), /禁止按目录名猜/u, 'instructions 必须禁止多项目工作区按目录名猜项目');

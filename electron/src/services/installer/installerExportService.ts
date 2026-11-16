@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { decodeCompilerOutput } from '../tasks/compilerOutputEncoding';
+import { DEFAULT_EXECUTABLE_FILE_NAME } from '../solution/externalProjectService';
 import {
   generateInstallerNsi,
   normalizeInstallerVersion,
@@ -20,10 +21,16 @@ const execFileAsync = promisify(execFile);
  * 与构建链的契约：构建成功（exe 形态）后由构建入口（IDE F5 路由 / buildRun）
  * 写 installer-build-manifest.json 到 <构建目录>/installer/，导出只消费该清单，
  * 不重复推导项目属性——保证安装包永远与「最近一次成功构建」一致。
+ *
+ * 产品显示名（2026-11-17 起）：自定义可执行文件名优先，exe 名仍是构建链默认
+ * LingBuilderPreview（未自定义）时回落项目名；安装包文件名与安装器内全部显示身份
+ * （标题、开始菜单、卸载 DisplayName/Publisher）共用该名，保持产品身份单一来源。
  */
 
 export const INSTALLER_MANIFEST_SCHEMA_VERSION = 1;
 export const INSTALLER_MANIFEST_FILE_NAME = 'installer-build-manifest.json';
+/** 构建链默认 exe 主名（externalProjectService 的 LingBuilderPreview）；exe 名未自定义时安装包回落项目名。 */
+export const INSTALLER_DEFAULT_EXECUTABLE_BASE_NAME = DEFAULT_EXECUTABLE_FILE_NAME.replace(/\.exe$/iu, '');
 export const INSTALLER_EXPORT_MAX_FILES = 50_000;
 export const INSTALLER_EXPORT_MAX_TOTAL_BYTES = 2 * 1024 * 1024 * 1024;
 export const INSTALLER_EXPORT_MAKENSIS_TIMEOUT_MS = 10 * 60 * 1000;
@@ -344,8 +351,16 @@ export async function exportInstallerFromManifest(options: ExportInstallerOption
     const version = normalizeInstallerVersion(
       (options.version || '').trim() || (manifest.installerVersion || '').trim() || '1.0.0'
     );
+    // 产品显示名（安装包文件名、安装器标题、开始菜单快捷方式与卸载显示名的单一来源）：
+    // 自定义可执行文件名优先（用户直觉：安装包跟 exe 名走）；exe 名仍是构建链默认
+    // LingBuilderPreview（未自定义）时回落项目名，避免内部默认名漏进产品身份。
+    const fallbackDisplayName = sanitizeInstallerDisplayName(manifest.projectName, manifest.projectId);
+    const exeBaseName = manifest.outputFileName.trim().replace(/\.exe$/iu, '').trim();
+    const displayName = exeBaseName && exeBaseName.toLowerCase() !== INSTALLER_DEFAULT_EXECUTABLE_BASE_NAME.toLowerCase()
+      ? sanitizeInstallerDisplayName(exeBaseName, fallbackDisplayName)
+      : fallbackDisplayName;
     const outputFileName = sanitizeInstallerFileName(
-      `${sanitizeInstallerDisplayName(manifest.projectName, manifest.projectId)}-${version}-setup.exe`,
+      `${displayName}-${version}-setup.exe`,
       'setup',
       '.exe'
     );
@@ -384,7 +399,7 @@ export async function exportInstallerFromManifest(options: ExportInstallerOption
       : 'auto';
 
     const generated = generateInstallerNsi({
-      appName: manifest.projectName,
+      appName: displayName,
       exeFileName: manifest.outputFileName,
       version,
       architecture: manifest.architecture,

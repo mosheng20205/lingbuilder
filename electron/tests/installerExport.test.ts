@@ -198,6 +198,54 @@ test('exportInstallerFromManifest 端到端（注入 makensis 桩）', async () 
   }
 });
 
+test('exportInstallerFromManifest 安装包命名：自定义 exe 主名优先，未自定义回落项目名（2026-11-17 口径）', async () => {
+  const buildDir = await makeTempDir('lb-installer-name-');
+  try {
+    const binDir = path.join(buildDir, 'bin');
+    await fs.mkdir(binDir, { recursive: true });
+    // 自定义 exe 名（VX批量加好友.exe）与项目名（抗逆向客户端）不同：安装包跟 exe 名走。
+    await fs.writeFile(path.join(binDir, 'VX批量加好友.exe'), 'MZ');
+    const scripts: string[] = [];
+    const custom = await exportInstallerFromManifest({
+      manifest: buildManifest(buildDir, { projectName: '抗逆向客户端', outputFileName: 'VX批量加好友.exe' }),
+      version: '1.0',
+      makensisPath: 'X:',
+      runMakensis: async scriptPath => {
+        scripts.push(await fs.readFile(scriptPath, 'utf8'));
+        await fs.writeFile(path.join(buildDir, 'installer', 'VX批量加好友-1.0.0.0-setup.exe'), 'setup');
+        return { stdout: '', stderr: '' };
+      }
+    });
+    assert.equal(custom.ok, true, custom.error || '');
+    assert.equal(custom.installerFileName, 'VX批量加好友-1.0.0.0-setup.exe');
+    assert.match(scripts[0]!, /OutFile "VX批量加好友-1\.0\.0\.0-setup\.exe"/);
+    // 安装器显示身份同源：标题、快捷方式、卸载 DisplayName 全跟产品名
+    assert.match(scripts[0]!, /Name "VX批量加好友"/);
+    assert.match(scripts[0]!, /CreateShortcut "\$SMPROGRAMS\\\$\{APP_NAME\}\\\$\{APP_NAME\}\.lnk"/m);
+    assert.match(scripts[0]!, /"DisplayName" "VX批量加好友"/);
+
+    // exe 名未自定义（仍是默认 LingBuilderPreview.exe）：回落项目名。
+    scripts.length = 0;
+    await fs.writeFile(path.join(binDir, 'LingBuilderPreview.exe'), 'MZ');
+    const fallback = await exportInstallerFromManifest({
+      manifest: buildManifest(buildDir, { projectName: '抗逆向客户端', outputFileName: 'LingBuilderPreview.exe' }),
+      version: '1.0',
+      makensisPath: 'X:',
+      runMakensis: async scriptPath => {
+        scripts.push(await fs.readFile(scriptPath, 'utf8'));
+        await fs.writeFile(path.join(buildDir, 'installer', '抗逆向客户端-1.0.0.0-setup.exe'), 'setup');
+        return { stdout: '', stderr: '' };
+      }
+    });
+    assert.equal(fallback.ok, true, fallback.error || '');
+    assert.equal(fallback.installerFileName, '抗逆向客户端-1.0.0.0-setup.exe');
+    assert.match(scripts[0]!, /OutFile "抗逆向客户端-1\.0\.0\.0-setup\.exe"/);
+    assert.match(scripts[0]!, /Name "抗逆向客户端"/);
+  } finally {
+    await fs.rm(buildDir, { recursive: true, force: true });
+  }
+});
+
 test('exportInstallerFromManifest makensis 失败回传输出', async () => {
   const buildDir = await makeTempDir('lb-installer-fail-');
   try {
